@@ -12,7 +12,7 @@ This document outlines the mandatory engineering standards, tooling rules, and d
   - Add runtime packages: `uv add <package>`
   - Add dev/test/lint tools: `uv add --group <group> <package>` (e.g. `uv add --group dev ruff ty`)
   - Remove packages: `uv remove <package>`
-- **Dependency Groups**: Use `[dependency-groups]` in [pyproject.toml](file:///usr/local/google/home/jordantotten/omnimash/pyproject.toml) (PEP 735) for development, linting, and testing dependencies.
+- **Dependency Groups**: Use `[dependency-groups]` in [pyproject.toml](pyproject.toml) (PEP 735) for development, linting, and testing dependencies.
 
 ---
 

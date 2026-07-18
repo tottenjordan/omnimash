@@ -10,13 +10,13 @@ This directory documents non-obvious knowledge, session notes, and operational q
 ---
 
 ## 🗂️ Key Project Files
-- [CODE_STANDARDS.md](file:///usr/local/google/home/jordantotten/omnimash/CODE_STANDARDS.md) – Mandatory coding standards, tooling rules, and git practices.
-- [GEMINI.md](file:///usr/local/google/home/jordantotten/omnimash/GEMINI.md) – Agent context and workflow rules.
-- [Implementation Plan (2026-07-18)](file:///usr/local/google/home/jordantotten/omnimash/docs/plans/2026-07-18-omnimash-core-architecture.md) – Core architecture & pipeline implementation plan.
-- [pyproject.toml](file:///usr/local/google/home/jordantotten/omnimash/pyproject.toml) – Build configuration and dependencies (`uv`).
-- [main.py](file:///usr/local/google/home/jordantotten/omnimash/main.py) – Application entrypoint.
-- [tests/test_main.py](file:///usr/local/google/home/jordantotten/omnimash/tests/test_main.py) – Pytest test suite.
-- [README.md](file:///usr/local/google/home/jordantotten/omnimash/README.md) – Project overview.
+- [CODE_STANDARDS.md](../../CODE_STANDARDS.md) – Mandatory coding standards, tooling rules, and git practices.
+- [GEMINI.md](../../GEMINI.md) – Agent context and workflow rules.
+- [Implementation Plan (2026-07-18)](../plans/2026-07-18-omnimash-core-architecture.md) – Core architecture & pipeline implementation plan.
+- [pyproject.toml](../../pyproject.toml) – Build configuration and dependencies (`uv`).
+- [main.py](../../main.py) – Application entrypoint.
+- [tests/test_main.py](../../tests/test_main.py) – Pytest test suite.
+- [README.md](../../README.md) – Project overview.
 
 ---
 
@@ -24,6 +24,6 @@ This directory documents non-obvious knowledge, session notes, and operational q
 
 | Topic | Note File | Description |
 | :--- | :--- | :--- |
-| Subagents & Permissions | [subagent_workflow_quirks.md](file:///usr/local/google/home/jordantotten/omnimash/docs/notes/subagent_workflow_quirks.md) | Insights into subagent permission inheritance and autonomous command execution |
-| Architecture & System Design | [architecture_omnimash.md](file:///usr/local/google/home/jordantotten/omnimash/docs/notes/architecture_omnimash.md) | Reference architecture, component breakdown, and pipeline design for OmniMash |
-| Request Lifecycle & State | [request_lifecycle.md](file:///usr/local/google/home/jordantotten/omnimash/docs/notes/request_lifecycle.md) | Blueprint for state management, Model Armor gating, and Interactions API lifecycle |
+| Subagents & Permissions | [subagent_workflow_quirks.md](subagent_workflow_quirks.md) | Insights into subagent permission inheritance and autonomous command execution |
+| Architecture & System Design | [architecture_omnimash.md](architecture_omnimash.md) | Reference architecture, component breakdown, and pipeline design for OmniMash |
+| Request Lifecycle & State | [request_lifecycle.md](request_lifecycle.md) | Blueprint for state management, Model Armor gating, and Interactions API lifecycle |

@@ -1,7 +1,7 @@
 # Omnimash Agent Context & Guidelines
 
 ## 🚨 Critical Standards Reference
-Always refer to [CODE_STANDARDS.md](file:///usr/local/google/home/jordantotten/omnimash/CODE_STANDARDS.md) when writing code, making environment changes, or managing dependencies.
+Always refer to [CODE_STANDARDS.md](CODE_STANDARDS.md) when writing code, making environment changes, or managing dependencies.
 
 ---
 
@@ -16,4 +16,4 @@ Always refer to [CODE_STANDARDS.md](file:///usr/local/google/home/jordantotten/o
 
 ## 📝 Project Notes & Knowledge
 - Document session notes and non-derivable insights in single-topic markdown files under `docs/notes/`.
-- Maintain the top-level index in [docs/notes/README.md](file:///usr/local/google/home/jordantotten/omnimash/docs/notes/README.md) with direct links to key files and topic notes (kept < 200 lines).
+- Maintain the top-level index in [docs/notes/README.md](docs/notes/README.md) with direct links to key files and topic notes (kept < 200 lines).
