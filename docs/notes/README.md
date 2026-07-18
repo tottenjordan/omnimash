@@ -21,10 +21,9 @@ This directory documents non-obvious knowledge, session notes, and operational q
 ---
 
 ## 📑 Topic Notes
-*(Notes will be added here organized by topic as session work progresses)*
 
 | Topic | Note File | Description |
 | :--- | :--- | :--- |
-| *Environment & Build* | *(Pending)* | Quirks with `uv`, python runtime, or dependencies |
+| Subagents & Permissions | [subagent_workflow_quirks.md](file:///usr/local/google/home/jordantotten/omnimash/docs/notes/subagent_workflow_quirks.md) | Insights into subagent permission inheritance and autonomous command execution |
 | Architecture & System Design | [architecture_omnimash.md](file:///usr/local/google/home/jordantotten/omnimash/docs/notes/architecture_omnimash.md) | Reference architecture, component breakdown, and pipeline design for OmniMash |
 | Request Lifecycle & State | [request_lifecycle.md](file:///usr/local/google/home/jordantotten/omnimash/docs/notes/request_lifecycle.md) | Blueprint for state management, Model Armor gating, and Interactions API lifecycle |
