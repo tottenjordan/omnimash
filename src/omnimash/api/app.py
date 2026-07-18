@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from omnimash.agent.orchestrator import OmniMashAgent
 
@@ -11,12 +12,242 @@ class GenerateRequest(BaseModel):
     parent_turn_id: str | None = None
 
 
+class GenerateResponse(BaseModel):
+    success: bool
+    status: str
+    video_url: str | None = None
+    turn_id: str | None = None
+    error: str | None = None
+
+
+UI_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniMash Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-950 text-white font-sans antialiased min-h-screen">
+    <div id="__next"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        const stylePresets = [
+            { id: "90s_rap_video", name: "90s Rap Video", icon: "🎤", desc: "Fisheye lens, boom-bap aesthetic, oversized bombers" },
+            { id: "trap_disstrack", name: "Trap Disstrack", icon: "🔥", desc: "Dark 808 bass lighting, neon smoke, rapid cuts" },
+            { id: "cyberpunk_drift", name: "Cyberpunk Drift", icon: "🏎️", desc: "Holographic neon glow, synthwave color grading" },
+            { id: "vhs_anime", name: "VHS Anime", icon: "📼", desc: "Retro 4:3 VHS tape grain, analog scanlines" }
+        ];
+
+        function OmniMashApp() {
+            const [prompt, setPrompt] = useState("");
+            const [selectedPreset, setSelectedPreset] = useState("90s_rap_video");
+            const [parentTurnId, setParentTurnId] = useState("");
+            const [loading, setLoading] = useState(false);
+            const [history, setHistory] = useState([
+                { turnId: "turn_init", prompt: "Severus Snape in 90s rap video", status: "COMPLETED", videoUrl: "/static/rendered/mock.mp4", parent: null }
+            ]);
+            const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
+
+            const handleGenerate = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                try {
+                    const res = await fetch("/api/generate", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: "usr_web",
+                            project_id: "prj_mashup",
+                            prompt: prompt,
+                            clip_index: 0,
+                            parent_turn_id: parentTurnId || null
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        const newTurn = {
+                            turnId: data.turn_id,
+                            prompt: prompt,
+                            status: data.status,
+                            videoUrl: data.video_url,
+                            parent: parentTurnId || null
+                        };
+                        setHistory(prev => [...prev, newTurn]);
+                        setCurrentVideo(data.video_url);
+                        setParentTurnId(data.turn_id);
+                    }
+                } catch (err) {
+                    console.error("Generation failed:", err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="flex flex-col h-screen">
+                    <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur px-6 py-4 flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                            <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
+                                OmniMash
+                            </span>
+                            <span className="text-xs bg-purple-900/60 text-purple-300 px-2 py-0.5 rounded-full border border-purple-700">
+                                Next.js + React Dashboard
+                            </span>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 grid grid-cols-12 gap-6 p-6 overflow-hidden">
+                        <div className="col-span-4 flex flex-col space-y-6">
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg">
+                                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                                    Style Presets
+                                </h2>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {stylePresets.map(preset => (
+                                        <button
+                                            key={preset.id}
+                                            onClick={() => setSelectedPreset(preset.id)}
+                                            className={`p-3 rounded-lg border text-left transition ${
+                                                selectedPreset === preset.id
+                                                    ? "bg-purple-950/60 border-purple-500 text-white"
+                                                    : "bg-gray-800/40 border-gray-700/60 text-gray-400 hover:border-gray-600"
+                                            }`}
+                                        >
+                                            <div className="text-xl mb-1">{preset.icon}</div>
+                                            <div className="text-xs font-bold text-white">{preset.name}</div>
+                                            <div className="text-[10px] text-gray-400 mt-1 line-clamp-2">{preset.desc}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg flex-1 flex flex-col">
+                                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                                    Prompt Bar
+                                </h2>
+                                <form onSubmit={handleGenerate} className="flex-1 flex flex-col justify-between">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-400 mb-1">
+                                                Active Prompt / Conversational Diff
+                                            </label>
+                                            <textarea
+                                                rows="4"
+                                                value={prompt}
+                                                onChange={(e) => setPrompt(e.target.value)}
+                                                placeholder="e.g. Add diamond chains and green neon lights..."
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-sm focus:outline-none focus:border-purple-500 text-white placeholder-gray-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-400 mb-1">
+                                                Parent Turn ID (Branching DAG Node)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={parentTurnId}
+                                                onChange={(e) => setParentTurnId(e.target.value)}
+                                                placeholder="Leave empty for new root clip"
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600"
+                                            />
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        disabled={loading || !prompt}
+                                        className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium py-3 px-4 rounded-lg shadow-lg disabled:opacity-50 transition"
+                                    >
+                                        {loading ? "Generating Parody Clip..." : "Generate OmniMash Video"}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div className="col-span-5 flex flex-col">
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg h-full flex flex-col">
+                                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                                    Video Player
+                                </h2>
+                                <div className="flex-1 bg-black rounded-lg border border-gray-800 flex items-center justify-center relative overflow-hidden group">
+                                    {currentVideo ? (
+                                        <div className="w-full h-full flex flex-col items-center justify-center text-center p-6">
+                                            <div className="w-16 h-16 rounded-full bg-purple-600/20 text-purple-400 flex items-center justify-center mb-4 border border-purple-500/30">
+                                                ▶
+                                            </div>
+                                            <p className="text-sm font-mono text-purple-300">{currentVideo}</p>
+                                            <span className="mt-2 text-xs text-gray-500">SynthID Watermark Verified</span>
+                                        </div>
+                                    ) : (
+                                        <p className="text-gray-600 text-sm">No video rendered yet</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="col-span-3 flex flex-col">
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg h-full flex flex-col">
+                                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                                    Timeline DAG Viewer
+                                </h2>
+                                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                                    {history.map((node, idx) => (
+                                        <div
+                                            key={node.turnId || idx}
+                                            onClick={() => {
+                                                setParentTurnId(node.turnId);
+                                                if (node.videoUrl) setCurrentVideo(node.videoUrl);
+                                            }}
+                                            className={`p-3 rounded-lg border cursor-pointer transition ${
+                                                parentTurnId === node.turnId
+                                                    ? "bg-purple-950/40 border-purple-500"
+                                                    : "bg-gray-950 border-gray-800 hover:border-gray-700"
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                                                <span className="font-mono">{node.turnId || "Root"}</span>
+                                                <span className="text-[10px] bg-green-950 text-green-400 px-1.5 py-0.5 rounded border border-green-800">
+                                                    {node.status}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-200 line-clamp-2">{node.prompt}</p>
+                                            {node.parent && (
+                                                <div className="mt-2 text-[10px] text-purple-400 flex items-center">
+                                                    ↳ branch of {node.parent}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById("__next")).render(<OmniMashApp />);
+    </script>
+</body>
+</html>
+"""
+
+
 def create_app(mock_mode: bool = True) -> FastAPI:
     app = FastAPI(title="OmniMash API", version="0.1.0")
     agent = OmniMashAgent(mock_mode=mock_mode)
 
-    @app.post("/api/generate")
-    def generate_video(req: GenerateRequest):
+    @app.get("/", response_class=HTMLResponse)
+    def get_dashboard() -> HTMLResponse:
+        return HTMLResponse(content=UI_HTML)
+
+    @app.post("/api/generate", response_model=GenerateResponse)
+    def generate_video(req: GenerateRequest) -> GenerateResponse:
         res = agent.process_user_turn(
             user_id=req.user_id,
             project_id=req.project_id,
@@ -24,12 +255,12 @@ def create_app(mock_mode: bool = True) -> FastAPI:
             clip_index=req.clip_index,
             parent_turn_id=req.parent_turn_id,
         )
-        return {
-            "success": res.success,
-            "status": res.status_event,
-            "video_url": res.video_url,
-            "turn_id": res.turn_id,
-            "error": res.error_message,
-        }
+        return GenerateResponse(
+            success=res.success,
+            status=res.status_event,
+            video_url=res.video_url,
+            turn_id=res.turn_id,
+            error=res.error_message,
+        )
 
     return app
