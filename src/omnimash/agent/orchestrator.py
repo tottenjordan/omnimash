@@ -109,7 +109,7 @@ def build_adk_agent(mock_mode: bool = True) -> Agent:
 
     return Agent(
         name="omnimash_orchestrator",
-        model="gemini-2.5-flash",
+        model="gemini-omni-flash-preview",
         instruction=(
             "You are OmniMash, an AI parody and mashup video creation agent. "
             "Use generate_parody_clip to validate prompts through Model Armor, "
