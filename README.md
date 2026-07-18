@@ -21,7 +21,7 @@
 **OmniMash** runs a 5-step multimodal generation and conversational diff pipeline: it ingests character lore and video stems, compiles shorthand into a 5-part **"Anchor & Inject"** prompt taxonomy, generates 10-second 720p clips with native audio via **Gemini Omni Flash**, branches edits non-linearly across a **Session Version Tree DAG**, and flushes context decay via **Commit & Branch Checkpointing**.
 
 | Stage | Module | What it does |
-| :---: | --- | --- |
+| :--- | :--- | :--- |
 | 1 | 🛡️ **`omnimash.security`** | **Model Armor Gateway:** Pre-gates prompts for RAI violations (hate speech, dangerous content) and prompt injection/jailbreak attempts. |
 | 2 | 🪄 **`omnimash.prompts`** | **Prompt Compiler ("Anchor & Inject"):** Translates user shorthand into `[SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION]` preventing character decay and latent space averaging. |
 | 3 | 🌳 **`omnimash.state`** | **Version Tree DAG & Checkpoints:** Manages non-linear clip branching (`TurnNode`, `ProjectSession`) and tracks thread edit depth (>= 3) to signal `COMMIT_RECOMMENDED`. |
@@ -85,7 +85,7 @@ graph TD
 
     subgraph MediaPipeline["Checkpointing & Media Pipeline"]
         Omni -->|3. 720p Video + Audio Stem| Watermark["SynthID / C2PA Verification"]
-        Watermark --> DAGStore[("Session Version Tree DAG")]
+        DAGStore[("Session Version Tree DAG")]
         DAGStore -->|"Depth >= 3"| CommitGate{"Commit & Branch?"}
         CommitGate -->|POST /api/commit| ReAnchor["Fresh Interactions API Thread"]
         ReAnchor --> Omni
@@ -105,6 +105,7 @@ Detailed subsystem architectures and workflow outlines are available in [docs/di
 
 | Reference Diagram | Subsystem | Highlights |
 | :--- | :--- | :--- |
+| 🚀 [GCP Deployment Patterns](docs/diagrams/gcp_deployment_patterns.md) | **Google Cloud Platform** | Dual-Target Architecture comparing Target 1 (Full-Stack Cloud Run serverless container on port 8080) and Target 2 (Enterprise Vertex AI Agent Engine with `root_agent` and `AdkApp`). |
 | 🛡️ [Agent Orchestration Architecture](docs/diagrams/omnimash_agent_architecture.md) | `omnimash.agent` & `security` | ADK orchestrator sequence, Model Armor pre-gating, 5-part Prompt Compiler, and Gemini Omni Flash client dispatch. |
 | 🌳 [Version Tree DAG & State Lifecycle](docs/diagrams/version_tree_dag_lifecycle.md) | `omnimash.state` | Non-linear conversational diff branching, thread depth tracking (>= 3), ⚓ Checkpoint Anchor Badges, and fresh thread re-anchoring. |
 | 🎬 [Multimodal Ingestion & Video Stitching](docs/diagrams/multimodal_ingestion_stitching.md) | `ingestion` & `stitching` | 4-stage pipeline: YouTube asset extraction (`yt-dlp`), 5-part prompt compilation, Omni Flash clip rendering with commit checkpoints, and FFmpeg multi-clip concatenation. |
@@ -200,23 +201,22 @@ The built-in single-page web dashboard (React 18 + Tailwind CSS) provides:
 
 ## Deployment
 
-### Vertex AI Agent Engine
+### 1. Serverless Full-Stack Cloud Run (Live Production)
 
-OmniMash is ready for deployment on **Vertex AI Agent Engine** using `google.adk` and `vertexai.agent_engines`:
+Deploy the complete FastAPI app, React Web UI dashboard, and FFmpeg video stitcher to Cloud Run:
 
-```python
-import vertexai.agent_engines as vae
-from google.adk.agents import Agent
-from vertexai.agent_engines import AdkApp
-from omnimash.agent.orchestrator import root_agent
+```bash
+./scripts/deploy_cloud_run.sh
+```
 
-app = AdkApp(agent=root_agent)
+**Live Production URL:** [https://omnimash-934903580331.us-central1.run.app](https://omnimash-934903580331.us-central1.run.app)
 
-remote_agent = vae.create(
-    agent_engine=app,
-    display_name="omnimash-agent-production",
-    requirements=["google-cloud-aiplatform[agent_engines,a2a]>=1.112", "google-adk>=2.5.0", "google-genai"],
-)
+### 2. Vertex AI Agent Engine
+
+Deploy the Google ADK root agent to managed Vertex AI Agent Engine runtime:
+
+```bash
+python scripts/deploy_agent_engine.py
 ```
 
 ---
@@ -244,16 +244,19 @@ uv run ty check .
 ```
 .
 ├── CODE_STANDARDS.md          # Mandatory tooling rules (uv, ruff, ty, pytest)
+├── Dockerfile                 # Production Cloud Run container image
 ├── docs
 │   ├── diagrams               # Architecture diagrams & topology guides
 │   │   ├── frontend_api_topology.md
 │   │   ├── frontend_api_topology.png
+│   │   ├── gcp_deployment_patterns.md
+│   │   ├── gcp_deployment_patterns.png
 │   │   ├── multimodal_ingestion_stitching.md
 │   │   ├── multimodal_ingestion_stitching.png
 │   │   ├── omnimash_agent_architecture.md
 │   │   ├── omnimash_agent_architecture.png
 │   │   ├── README.md
-│   │   └── version_tree_dag_lifecycle.md
+│   │   ├── version_tree_dag_lifecycle.md
 │   │   └── version_tree_dag_lifecycle.png
 │   ├── notes                  # Non-derivable session knowledge & quirks
 │   │   ├── architecture_omnimash.md
@@ -272,9 +275,13 @@ uv run ty check .
 ├── main.py                    # Entrypoint script
 ├── pyproject.toml             # uv dependencies & project configuration
 ├── README.md                  # Main project documentation
+├── scripts
+│   ├── deploy_agent_engine.py # Vertex AI Agent Engine deploy runner
+│   └── deploy_cloud_run.sh    # Cloud Run automated deploy script
 ├── src
 │   └── omnimash
 │       ├── agent              # Google ADK agent orchestration loop
+│       │   ├── agent.py
 │       │   └── orchestrator.py
 │       ├── api                # FastAPI async endpoints & Web UI dashboard
 │       │   └── app.py
