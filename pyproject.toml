@@ -4,9 +4,20 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.139.2",
+    "ffmpeg-python>=0.2.0",
+    "google-genai>=2.12.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "sse-starlette>=3.4.5",
+    "uvicorn>=0.51.0",
+    "yt-dlp>=2026.7.4",
+]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.15.22",
+    "ty>=0.0.61",
 ]
