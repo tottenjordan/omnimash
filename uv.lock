@@ -21,7 +21,7 @@ wheels = [
 ]
 
 [[package]]
-name = "my-python-app"
+name = "omnimash-agent"
 version = "0.1.0"
 source = { virtual = "." }
 

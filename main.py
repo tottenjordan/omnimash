@@ -1,5 +1,5 @@
 def main():
-    print("Hello from my-python-app!")
+    print("Hello from omnimash-agent!")
 
 
 if __name__ == "__main__":
