@@ -102,3 +102,36 @@ def test_e2e_compiled_prompt_generation() -> None:
     data = res.json()
     assert data["success"] is True
     assert "video_url" in data
+
+
+def test_e2e_delta_prompt_generation_with_lock() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    # Turn 1
+    r1 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_delta",
+            "project_id": "p_delta",
+            "prompt": "Snape 90s rap",
+            "clip_index": 0,
+        },
+    )
+    assert r1.status_code == 200
+    t1_id = r1.json()["turn_id"]
+
+    # Turn 2: Follow-up delta edit
+    r2 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_delta",
+            "project_id": "p_delta",
+            "prompt": "make his chain bigger",
+            "clip_index": 0,
+            "parent_turn_id": t1_id,
+        },
+    )
+    assert r2.status_code == 200
+    data2 = r2.json()
+    assert data2["success"] is True
+    assert data2["depth"] == 1

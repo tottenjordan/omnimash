@@ -96,6 +96,14 @@ UI_HTML = """<!DOCTYPE html>
             };
         }
 
+        function compileDeltaPreview(deltaPrompt) {
+            const instruction = deltaPrompt || "make his chain bigger";
+            return {
+                preservationLock: "Maintain exact subject face, character likeness, expression, wardrobe baseline, and background environment from the previous turn.",
+                isolatedDiff: `Alter only the specified element: ${instruction}. Do not modify any surrounding visual features.`
+            };
+        }
+
         const stylePresets = [
             { id: "90s_rap_video", name: "90s Rap Video", icon: "🎤", desc: "Fisheye lens, boom-bap aesthetic, oversized bombers" },
             { id: "trap_disstrack", name: "Trap Disstrack", icon: "🔥", desc: "Dark 808 bass lighting, neon smoke, rapid cuts" },
@@ -116,7 +124,9 @@ UI_HTML = """<!DOCTYPE html>
             ]);
             const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
 
+            const selectedParentTurnId = parentTurnId;
             const compiledPreview = compilePromptPreview(prompt, selectedPreset);
+            const compiledDelta = compileDeltaPreview(prompt);
 
             const handleGenerate = async (e) => {
                 e.preventDefault();
@@ -332,42 +342,86 @@ UI_HTML = """<!DOCTYPE html>
                                 </form>
                             </div>
 
-                            {/* 🪄 5-Part Anchor & Inject Preview Card */}
+                            {/* 🪄 5-Part Anchor & Inject Preview / Delta Lock & Isolate Preview Card */}
                             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
-                                        <span>🪄 5-Part Anchor &amp; Inject Preview</span>
+                                        <span>{selectedParentTurnId ? "🪄 Delta Prompt Preview (Lock & Isolate)" : "🪄 5-Part Anchor & Inject Preview"}</span>
                                     </h2>
                                     <span className="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded border border-purple-800 font-mono">
-                                        Omni Flash Taxonomy
+                                        {selectedParentTurnId ? "Delta Mode" : "Omni Flash Taxonomy"}
                                     </span>
                                 </div>
                                 <p className="text-[11px] text-gray-400">
-                                    Live compilation of raw shorthand into rigid 5-part multimodal taxonomy to prevent character decay.
+                                    {selectedParentTurnId
+                                        ? "Conversational delta prompt isolating your edit to protect character likeness."
+                                        : "Live compilation of raw shorthand into rigid 5-part multimodal taxonomy to prevent character decay."}
                                 </p>
-                                <div className="space-y-2 text-xs">
-                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                        <span className="font-bold text-pink-400 font-mono">[SUBJECT ANCHOR]: </span>
-                                        <span className="text-gray-300">{compiledPreview.subjectAnchor}</span>
+
+                                {selectedParentTurnId ? (
+                                    <div className="space-y-3 text-xs">
+                                        <div className="bg-gray-950 p-3 rounded-lg border border-amber-500/40 space-y-1.5 shadow-sm">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-amber-300 font-mono flex items-center gap-1.5">
+                                                    <span>🔒 Preservation Lock</span>
+                                                </span>
+                                                <span className="text-[10px] bg-amber-950/80 text-amber-300 px-2 py-0.5 rounded border border-amber-700/60 font-medium">
+                                                    maintaining facial anchors and background environment
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-gray-400">
+                                                Maintains exact subject face, character likeness, expression, wardrobe baseline, and background environment.
+                                            </p>
+                                            <div className="bg-black/60 p-2 rounded border border-gray-900 font-mono text-gray-300 text-[11px] mt-1">
+                                                <span className="text-amber-400 font-bold">[PRESERVATION LOCK]: </span>
+                                                {compiledDelta.preservationLock}
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-gray-950 p-3 rounded-lg border border-purple-500/40 space-y-1.5 shadow-sm">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-purple-300 font-mono flex items-center gap-1.5">
+                                                    <span>🎯 Isolated Diff</span>
+                                                </span>
+                                                <span className="text-[10px] bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded border border-purple-700/60 font-medium">
+                                                    highlighting the isolated tweak
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-gray-400">
+                                                Highlights the isolated tweak to alter only the specified element without modifying surrounding visual features.
+                                            </p>
+                                            <div className="bg-black/60 p-2 rounded border border-gray-900 font-mono text-gray-300 text-[11px] mt-1">
+                                                <span className="text-purple-400 font-bold">[ISOLATED DIFF]: </span>
+                                                {compiledDelta.isolatedDiff}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                        <span className="font-bold text-purple-400 font-mono">[AESTHETIC INJECTION]: </span>
-                                        <span className="text-gray-300">{compiledPreview.aestheticInjection}</span>
+                                ) : (
+                                    <div className="space-y-2 text-xs">
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                            <span className="font-bold text-pink-400 font-mono">[SUBJECT ANCHOR]: </span>
+                                            <span className="text-gray-300">{compiledPreview.subjectAnchor}</span>
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                            <span className="font-bold text-purple-400 font-mono">[AESTHETIC INJECTION]: </span>
+                                            <span className="text-gray-300">{compiledPreview.aestheticInjection}</span>
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                            <span className="font-bold text-blue-400 font-mono">[ENVIRONMENT]: </span>
+                                            <span className="text-gray-300">{compiledPreview.environment}</span>
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                            <span className="font-bold text-amber-400 font-mono">[CAMERA/LIGHTING]: </span>
+                                            <span className="text-gray-300">{compiledPreview.cameraLighting}</span>
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                            <span className="font-bold text-emerald-400 font-mono">[MOTION]: </span>
+                                            <span className="text-gray-300">{compiledPreview.motion}</span>
+                                        </div>
                                     </div>
-                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                        <span className="font-bold text-blue-400 font-mono">[ENVIRONMENT]: </span>
-                                        <span className="text-gray-300">{compiledPreview.environment}</span>
-                                    </div>
-                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                        <span className="font-bold text-amber-400 font-mono">[CAMERA/LIGHTING]: </span>
-                                        <span className="text-gray-300">{compiledPreview.cameraLighting}</span>
-                                    </div>
-                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                        <span className="font-bold text-emerald-400 font-mono">[MOTION]: </span>
-                                        <span className="text-gray-300">{compiledPreview.motion}</span>
-                                    </div>
-                                </div>
+                                )}
                             </div>
+
                         </div>
 
                         <div className="col-span-5 flex flex-col">
