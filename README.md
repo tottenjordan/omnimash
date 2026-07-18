@@ -63,6 +63,15 @@ OmniMash works like an AI music video mixing studio:
 
 OmniMash is built on Google's **ADK (Agent Development Kit)** and the **Gemini Enterprise Agent Platform**:
 
+<div align="center">
+  <img src="docs/diagrams/omnimash_master_architecture.png" alt="OmniMash Master Architecture & Pipeline Diagram (PaperBanana Style)" width="100%" />
+</div>
+
+<details>
+  <summary>View Technical Dataflow Diagram (Mermaid)</summary>
+
+<br />
+
 ```mermaid
 graph TD
     User["User / Web UI Client"] -->|POST /api/generate| API["FastAPI Async Gateway"]
@@ -97,6 +106,8 @@ graph TD
     MasterVideo -->|SSE / JSON Response| User
 ```
 
+</details>
+
 ---
 
 ## Diagrams & Reference Architectures
@@ -105,6 +116,7 @@ Detailed subsystem architectures and workflow outlines are available in [docs/di
 
 | Reference Diagram | Subsystem | Highlights |
 | :--- | :--- | :--- |
+| 🌟 [Master System Architecture](docs/diagrams/omnimash_master_architecture.png) | **End-to-End Pipeline** | Publication-quality PaperBanana diagram detailing the 5 core architectural layers from Web UI to FFmpeg master rendering. |
 | 🚀 [GCP Deployment Patterns](docs/diagrams/gcp_deployment_patterns.md) | **Google Cloud Platform** | Dual-Target Architecture comparing Target 1 (Full-Stack Cloud Run serverless container on port 8080) and Target 2 (Enterprise Vertex AI Agent Engine with `root_agent` and `AdkApp`). |
 | 🛡️ [Agent Orchestration Architecture](docs/diagrams/omnimash_agent_architecture.md) | `omnimash.agent` & `security` | ADK orchestrator sequence, Model Armor pre-gating, 5-part Prompt Compiler, and Gemini Omni Flash client dispatch. |
 | 🌳 [Version Tree DAG & State Lifecycle](docs/diagrams/version_tree_dag_lifecycle.md) | `omnimash.state` | Non-linear conversational diff branching, thread depth tracking (>= 3), ⚓ Checkpoint Anchor Badges, and fresh thread re-anchoring. |
@@ -255,8 +267,9 @@ uv run ty check .
 │   │   ├── multimodal_ingestion_stitching.png
 │   │   ├── omnimash_agent_architecture.md
 │   │   ├── omnimash_agent_architecture.png
+│   │   ├── omnimash_master_architecture.png
 │   │   ├── README.md
-│   │   ├── version_tree_dag_lifecycle.md
+│   │   └── version_tree_dag_lifecycle.md
 │   │   └── version_tree_dag_lifecycle.png
 │   ├── notes                  # Non-derivable session knowledge & quirks
 │   │   ├── architecture_omnimash.md
