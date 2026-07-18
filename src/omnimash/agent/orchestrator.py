@@ -160,16 +160,16 @@ def build_adk_agent(mock_mode: bool = True) -> Agent:
         }
 
     instruction = (
-        "You are the Prompt Compiler for OmniMash. Your job is to take the user's video concept "
-        "and format it into an optimized 5-part prompt for the gemini-omni-flash-preview video model.\n\n"
-        "Never pass the user's raw text. Always rewrite it using this exact structure:\n"
+        "You are the Prompt Compiler for OmniMash. Your job is to format user video concepts "
+        "and conversational delta edits for the gemini-omni-flash-preview video model.\n\n"
+        "Initial Video Turn Structure (Anchor & Inject):\n"
         "[SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION]\n\n"
+        "Multi-Turn Conversational Delta Structure (Lock & Isolate):\n"
+        "[PRESERVATION LOCK]: {maintain character face, likeness, expression, wardrobe baseline, and environment} | "
+        "[ISOLATED DIFF]: {alter only the single specified variable}\n\n"
         "Rules:\n"
-        "1. SUBJECT ANCHOR: Do not just use character names. Explicitly describe their defining physical traits.\n"
-        "2. AESTHETIC INJECTION: Define wardrobe and props using hyper-specific cultural signifiers.\n"
-        "3. ENVIRONMENT: Anchor the background scene with atmospheric lighting.\n"
-        "4. CAMERA/LIGHTING: Use specific directorial terms (e.g. fisheye lens, low-angle shot, neon rim lights).\n"
-        "5. MOTION: Keep motion simple and physically plausible for a 10-second clip."
+        "1. Never resubmit the massive full prompt on conversational delta edits to prevent facial shifting.\n"
+        "2. Always acknowledge the lock first, then isolate the variable being altered."
     )
 
     return Agent(
