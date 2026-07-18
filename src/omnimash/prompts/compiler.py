@@ -25,6 +25,18 @@ class CompiledPromptParts:
         )
 
 
+@dataclass
+class CompiledDeltaPrompt:
+    preservation_lock: str
+    isolated_diff: str
+
+    def to_delta_prompt(self) -> str:
+        return (
+            f"[PRESERVATION LOCK]: {self.preservation_lock} | "
+            f"[ISOLATED DIFF]: {self.isolated_diff}"
+        )
+
+
 CHARACTER_LORE_ANCHORS: dict[str, str] = {
     "snape": "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
     "dumbledore": "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
@@ -92,4 +104,24 @@ class PromptCompiler:
             environment=env,
             camera_lighting=style_info["camera"],
             motion=style_info["motion"],
+        )
+
+    def compile_delta(
+        self, delta_instruction: str, custom_lock: str | None = None
+    ) -> CompiledDeltaPrompt:
+        preservation_lock = (
+            custom_lock
+            if custom_lock is not None
+            else (
+                "Maintain exact subject face, character likeness, expression, "
+                "wardrobe baseline, and background environment from the previous turn."
+            )
+        )
+        isolated_diff = (
+            f"Alter only the specified element: {delta_instruction}. "
+            "Do not modify any surrounding visual features."
+        )
+        return CompiledDeltaPrompt(
+            preservation_lock=preservation_lock,
+            isolated_diff=isolated_diff,
         )

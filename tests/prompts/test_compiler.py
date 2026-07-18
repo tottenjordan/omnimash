@@ -1,4 +1,8 @@
-from omnimash.prompts.compiler import CompiledPromptParts, PromptCompiler
+from omnimash.prompts.compiler import (
+    CompiledDeltaPrompt,
+    CompiledPromptParts,
+    PromptCompiler,
+)
 from omnimash.prompts.taxonomy import StylePreset
 
 
@@ -22,3 +26,13 @@ def test_prompt_compiler_anchor_and_inject():
     full_prompt = parts.to_full_prompt()
     assert "[SUBJECT ANCHOR]:" in full_prompt
     assert "[AESTHETIC INJECTION]:" in full_prompt
+
+
+def test_prompt_compiler_lock_and_isolate_delta():
+    compiler = PromptCompiler()
+    delta = compiler.compile_delta(delta_instruction="make his chain bigger")
+    assert isinstance(delta, CompiledDeltaPrompt)
+    assert "[PRESERVATION LOCK]:" in delta.to_delta_prompt()
+    assert "Maintain exact subject face" in delta.preservation_lock
+    assert "[ISOLATED DIFF]:" in delta.to_delta_prompt()
+    assert "make his chain bigger" in delta.isolated_diff
