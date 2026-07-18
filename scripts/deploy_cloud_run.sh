@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -e
+
+PROJECT_ID=${GOOGLE_CLOUD_PROJECT:-"hybrid-vertex"}
+REGION=${GOOGLE_CLOUD_REGION:-"us-central1"}
+SERVICE_NAME="omnimash"
+
+echo "=========================================================="
+echo "🚀 Deploying OmniMash Full-Stack Application to Cloud Run"
+echo "   Project: $PROJECT_ID"
+echo "   Region:  $REGION"
+echo "   Service: $SERVICE_NAME"
+echo "=========================================================="
+
+gcloud run deploy "$SERVICE_NAME" \
+  --source . \
+  --project "$PROJECT_ID" \
+  --region "$REGION" \
+  --allow-unauthenticated \
+  --port 8080 \
+  --memory 2Gi \
+  --cpu 2 \
+  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",GOOGLE_CLOUD_LOCATION="$REGION",PYTHONPATH="/app/src"
+
+echo ""
+echo "✅ Deployment command submitted to Cloud Run!"
