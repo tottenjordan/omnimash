@@ -4,7 +4,13 @@ This document outlines the pipeline for ingesting external character lore (YouTu
 
 ---
 
-## 🎬 Media Ingestion & Stitching Architecture
+## 🖼️ Reference Architecture Diagram
+
+![Media Ingestion & Stitching](multimodal_ingestion_stitching.png)
+
+---
+
+## 🎬 Media Ingestion & Stitching Pipeline Flow
 
 ```mermaid
 graph LR

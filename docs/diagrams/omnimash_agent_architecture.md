@@ -4,7 +4,13 @@ This document describes the orchestration loop and core subsystems powering the 
 
 ---
 
-## 🏗️ Architectural Topology
+## 🖼️ Reference Architecture Diagram
+
+![OmniMash Agent Architecture](omnimash_agent_architecture.png)
+
+---
+
+## 🏗️ Architectural Topology & Sequence
 
 ```mermaid
 sequenceDiagram

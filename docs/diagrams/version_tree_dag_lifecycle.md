@@ -4,6 +4,12 @@ This document illustrates the non-linear version tree (DAG) structure that power
 
 ---
 
+## 🖼️ Reference Architecture Diagram
+
+![Version Tree DAG Lifecycle](version_tree_dag_lifecycle.png)
+
+---
+
 ## 🌳 Version Tree DAG Branching
 
 Unlike traditional linear chat agents, OmniMash represents media edits as a directed acyclic graph (DAG). Users can fork new prompt iterations from any prior turn node without overwriting previous generations.

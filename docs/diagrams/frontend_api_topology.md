@@ -4,6 +4,12 @@ This document details the Next.js / React 18 single-page application and its con
 
 ---
 
+## 🖼️ Reference Architecture Diagram
+
+![Frontend API Topology](frontend_api_topology.png)
+
+---
+
 ## 🌐 Application Architecture
 
 ```mermaid
