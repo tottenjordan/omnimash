@@ -12,11 +12,19 @@ class GenerateRequest(BaseModel):
     parent_turn_id: str | None = None
 
 
+class CommitRequest(BaseModel):
+    user_id: str
+    project_id: str
+    turn_id: str
+    next_prompt: str = ""
+
+
 class GenerateResponse(BaseModel):
     success: bool
     status: str
     video_url: str | None = None
     turn_id: str | None = None
+    depth: int = 0
     error: str | None = None
 
 
@@ -260,6 +268,24 @@ def create_app(mock_mode: bool = True) -> FastAPI:
             status=res.status_event,
             video_url=res.video_url,
             turn_id=res.turn_id,
+            depth=res.depth,
+            error=res.error_message,
+        )
+
+    @app.post("/api/commit", response_model=GenerateResponse)
+    def commit_turn(req: CommitRequest) -> GenerateResponse:
+        res = agent.commit_and_branch(
+            user_id=req.user_id,
+            project_id=req.project_id,
+            turn_id=req.turn_id,
+            prompt=req.next_prompt,
+        )
+        return GenerateResponse(
+            success=res.success,
+            status=res.status_event,
+            video_url=res.video_url,
+            turn_id=res.turn_id,
+            depth=res.depth,
             error=res.error_message,
         )
 
