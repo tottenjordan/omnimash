@@ -15,6 +15,7 @@ class AgentTurnResponse:
     video_url: str | None = None
     error_message: str | None = None
     turn_id: str | None = None
+    depth: int = 0
 
 
 class OmniMashAgent:
@@ -72,11 +73,61 @@ class OmniMashAgent:
             parent_turn_id=parent_turn_id,
         )
 
+        status_event = (
+            "COMMIT_RECOMMENDED" if turn_node.edit_depth_in_thread >= 3 else "COMPLETED"
+        )
+
         return AgentTurnResponse(
             success=True,
-            status_event="COMPLETED",
+            status_event=status_event,
             video_url=gen_res.video_url,
             turn_id=turn_node.turn_id,
+            depth=turn_node.edit_depth_in_thread,
+        )
+
+    def commit_and_branch(
+        self,
+        user_id: str,
+        project_id: str,
+        turn_id: str,
+        prompt: str,
+    ) -> AgentTurnResponse:
+        guard_res = self.guardrail.validate_prompt(prompt)
+        if not guard_res.is_approved:
+            return AgentTurnResponse(
+                success=False,
+                status_event="GUARDRAIL_BLOCKED",
+                error_message=guard_res.rejection_reason,
+            )
+
+        session = self.session_manager.get_or_create_session(user_id, project_id)
+        if turn_id not in session.turns:
+            return AgentTurnResponse(
+                success=False,
+                status_event="ERROR",
+                error_message=f"Turn {turn_id} not found in session.",
+            )
+
+        committed_turn = self.session_manager.commit_turn(session.session_id, turn_id)
+        gen_res = self.omni_client.start_thread_from_video(
+            base_video_url=committed_turn.video_url,
+            initial_prompt=guard_res.sanitized_prompt,
+        )
+        new_node = self.session_manager.add_turn(
+            session_id=session.session_id,
+            clip_index=committed_turn.clip_index,
+            prompt=guard_res.sanitized_prompt,
+            interaction_thread_id=gen_res.interaction_thread_id,
+            video_url=gen_res.video_url,
+            parent_turn_id=turn_id,
+            is_checkpoint=True,
+        )
+        return AgentTurnResponse(
+            success=True,
+            status_event="REANCHORED",
+            video_url=gen_res.video_url,
+            turn_id=new_node.turn_id,
+            depth=0,
         )
 
 
@@ -90,7 +141,7 @@ def build_adk_agent(mock_mode: bool = True) -> Agent:
         prompt: str,
         clip_index: int = 0,
         parent_turn_id: str | None = None,
-    ) -> dict[str, str | bool | None]:
+    ) -> dict[str, str | bool | int | None]:
         """Generates a 720p parody video clip or conversational diff branch."""
         res = orchestrator.process_user_turn(
             user_id=user_id,
@@ -104,6 +155,7 @@ def build_adk_agent(mock_mode: bool = True) -> Agent:
             "status": res.status_event,
             "video_url": res.video_url,
             "turn_id": res.turn_id,
+            "depth": res.depth,
             "error": res.error_message,
         }
 
