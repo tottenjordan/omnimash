@@ -33,3 +33,14 @@ class OmniFlashClient:
                 video_url=f"/static/rendered/{interaction_thread_id}_turn_diff.mp4",
             )
         raise NotImplementedError("Live API calls require active GCP credentials.")
+
+    def start_thread_from_video(
+        self, base_video_url: str, initial_prompt: str | None = None
+    ) -> GenerationResult:
+        if self.mock_mode:
+            thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
+            return GenerationResult(
+                interaction_thread_id=thread_id,
+                video_url=f"/static/rendered/{thread_id}_turn0.mp4",
+            )
+        raise NotImplementedError("Live API calls require active GCP credentials.")
