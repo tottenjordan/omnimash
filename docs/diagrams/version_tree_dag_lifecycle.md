@@ -1,6 +1,6 @@
 # Session Version Tree DAG & State Lifecycle
 
-This document illustrates the non-linear version tree (DAG) structure that powers conversational video iteration in **OmniMash** (`src/omnimash/state/session_manager.py`).
+This document illustrates the non-linear version tree (DAG) structure and Commit & Branch Checkpointing that powers conversational video iteration in **OmniMash** (`src/omnimash/state/session_manager.py`).
 
 ---
 
@@ -10,32 +10,24 @@ This document illustrates the non-linear version tree (DAG) structure that power
 
 ---
 
-## 🌳 Version Tree DAG Branching
+## 🌳 Version Tree DAG & Thread Depth Lifecycle
 
-Unlike traditional linear chat agents, OmniMash represents media edits as a directed acyclic graph (DAG). Users can fork new prompt iterations from any prior turn node without overwriting previous generations.
+To prevent context decay in the multimodal latent space after ~4 sequential edits, OmniMash combines non-linear version branching with **Commit & Branch Checkpointing**:
 
 ```mermaid
 graph TD
-    subgraph Clip Index 0 Timeline
-        Root[Turn 1: Root Clip 0<br/>'Severus Snape in 90s rap video'<br/>ID: turn_abc1<br/>Video: /static/rendered/clip0_t1.mp4]
+    subgraph Active Thread Main (Depth Escalation)
+        Turn1["Turn 1 (Root Clip 0)<br/>Prompt: 'Severus Snape in 90s rap'<br/>Depth: 0 | ID: turn_1<br/>Video: /static/rendered/clip0_t1.mp4"]
+        Turn2["Turn 2 (Delta 1)<br/>Prompt: 'Add gold chains'<br/>Depth: 1 | Parent: turn_1<br/>Video: /static/rendered/clip0_t2.mp4"]
+        Turn3["Turn 3 (Delta 2)<br/>Prompt: 'Add neon green lighting'<br/>Depth: 2 | Parent: turn_2<br/>Video: /static/rendered/clip0_t3.mp4"]
+        Turn4["Turn 4 (Delta 3 ⚓ Checkpoint)<br/>Prompt: 'Add atmospheric fog'<br/>Depth: 3 | Status: COMMIT_RECOMMENDED<br/>Video: /static/rendered/clip0_t4.mp4"]
         
-        BranchA[Turn 2: Branch A<br/>'Add gold chains and neon green lights'<br/>Parent: turn_abc1<br/>Video: /static/rendered/clip0_t2a.mp4]
-        
-        BranchB[Turn 3: Branch B<br/>'Change background to cyberpunk rainy alley'<br/>Parent: turn_abc1<br/>Video: /static/rendered/clip0_t2b.mp4]
-        
-        LeafA2[Turn 4: Branch A.1<br/>'Swap microphone for glowing wand'<br/>Parent: turn_2a<br/>Video: /static/rendered/clip0_t3a.mp4]
-        
-        Root --> BranchA
-        Root --> BranchB
-        BranchA --> LeafA2
+        Turn1 --> Turn2 --> Turn3 --> Turn4
     end
 
-    subgraph Timeline Active Selection
-        Segment0[Clip Segment 0<br/>Active Turn: Turn 4 (Leaf A.1)]
-        Segment1[Clip Segment 1<br/>Active Turn: Turn 5 (Dumbledore Chorus)]
-        Segment2[Clip Segment 2<br/>Active Turn: Turn 6 (Voldemort Beat drop)]
-        
-        Segment0 --> Segment1 --> Segment2
+    subgraph Re-Anchored Thread Beta (Context Flushed)
+        Turn4 -.->|POST /api/commit| CommitAction[Extract 720p Output Video & Flush Context]
+        CommitAction --> TurnBeta1["Turn Beta 1 (Fresh Interactions Thread)<br/>Prompt: 'Add laser wand gestures'<br/>Depth: 0 | Checkpoint: True<br/>Video: /static/rendered/clip0_beta1.mp4"]
     end
 ```
 
@@ -50,6 +42,9 @@ graph TD
    - `prompt`: Sanitized prompt instruction.
    - `interaction_thread_id`: Gemini Omni Flash session handle.
    - `video_url`: Output 720p `.mp4` artifact URI.
+   - `edit_depth_in_thread`: Sequential turn counter within the active thread.
+   - `is_committed`: Boolean checkpoint indicator.
+   - `base_video_anchor_url`: URI of base video input if re-anchored.
 
 2. **`ClipSegment`:** Timeline reference pointing to the currently active turn node for a given clip index.
 

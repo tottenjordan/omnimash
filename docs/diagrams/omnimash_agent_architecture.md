@@ -1,6 +1,6 @@
 # Agent Orchestration Architecture
 
-This document describes the orchestration loop and core subsystems powering the **OmniMash Agent** (`src/omnimash/agent/orchestrator.py`).
+This document describes the orchestration loop, safety gateways, and prompt compiler subsystems powering the **OmniMash Agent** (`src/omnimash/agent/orchestrator.py`).
 
 ---
 
@@ -19,8 +19,8 @@ sequenceDiagram
     participant API as FastAPI App (/api/generate)
     participant Agent as OmniMashAgent Orchestrator
     participant Guard as ModelArmorGuardrail
-    participant Session as SessionManager (DAG)
-    participant Taxonomy as PromptTaxonomyEngine
+    participant Compiler as PromptCompiler (Anchor & Inject)
+    participant Session as SessionManager (DAG & Depth Tracker)
     participant Omni as OmniFlashClient (Interactions API)
 
     User->>API: POST /api/generate (user_id, project_id, prompt, parent_turn_id)
@@ -36,21 +36,26 @@ sequenceDiagram
         Agent->>Session: get_or_create_session(user_id, project_id)
         
         alt Conversational Delta Diff (parent_turn_id provided)
-            Agent->>Taxonomy: build_delta_prompt(parent_prompt, delta_instructions)
-            Taxonomy-->>Agent: formatted_delta_prompt
+            Agent->>Compiler: build_delta_prompt(parent_prompt, delta_instructions)
+            Compiler-->>Agent: formatted_delta_prompt (Anchor & Inject preservation)
             Agent->>Omni: apply_interaction_diff(interaction_thread_id, formatted_delta_prompt)
         else Initial Clip Generation
-            Agent->>Taxonomy: build_initial_prompt(character, style_preset, instructions)
-            Taxonomy-->>Agent: formatted_initial_prompt
+            Agent->>Compiler: compile(raw_prompt, style_preset, custom_instructions)
+            Compiler-->>Agent: 5-Part Compiled Prompt ([SUBJECT ANCHOR] + [AESTHETIC INJECTION] + ...)
             Agent->>Omni: generate_clip(formatted_initial_prompt)
         end
         
         Omni-->>Agent: GenerationResult(thread_id, video_url, duration=10s, watermark="SYNTHID")
         Agent->>Session: add_turn(clip_index, prompt, thread_id, video_url, parent_turn_id)
-        Session-->>Agent: TurnNode(turn_id, ...)
+        Session-->>Agent: TurnNode(turn_id, edit_depth_in_thread, ...)
         
-        Agent-->>API: AgentTurnResponse(success=True, status="COMPLETED", video_url, turn_id)
-        API-->>User: HTTP 200 / JSON {success: true, video_url, turn_id}
+        alt Thread Depth >= 3
+            Agent-->>API: AgentTurnResponse(success=True, status="COMMIT_RECOMMENDED", depth=3)
+        else Normal Turn
+            Agent-->>API: AgentTurnResponse(success=True, status="COMPLETED", depth)
+        end
+        
+        API-->>User: HTTP 200 / JSON {success: true, video_url, turn_id, status, depth}
     end
 ```
 
@@ -62,10 +67,14 @@ sequenceDiagram
    - Pre-gates all incoming prompts before executing expensive multimodal generation calls.
    - Screen for RAI violations (hate speech, sexual, harassment, dangerous content) and prompt injection/jailbreak attempts.
 
-2. **Prompt Taxonomy Engine (`omnimash.prompts.taxonomy`):**
-   - Applies style-blending heuristics across four core presets: `90s_rap_video`, `trap_disstrack`, `cyberpunk_drift`, and `vhs_anime`.
-   - Structures lore anchors and scene constraints to preserve facial and lighting consistency across conversational diffs.
+2. **5-Part Prompt Compiler (`omnimash.prompts.compiler`):**
+   - Implements the "Anchor & Inject" framework to eliminate character decay and latent space averaging.
+   - Formats user shorthand into `[SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION]`.
 
-3. **Gemini Omni Flash Interactions Client (`omnimash.engine.omni_client`):**
+3. **Session Version DAG & Depth Tracker (`omnimash.state.session_manager`):**
+   - Tracks `edit_depth_in_thread` across sequential turns.
+   - Emits `COMMIT_RECOMMENDED` at depth $\ge 3$ and manages non-linear version branching.
+
+4. **Gemini Omni Flash Interactions Client (`omnimash.engine.omni_client`):**
    - Integrates with `google-genai` SDK and Gemini Omni Flash.
-   - Preserves thread continuity across turns using `interaction_thread_id` and tags rendered video artifacts with SynthID / C2PA watermark provenance.
+   - Preserves thread continuity across turns using `interaction_thread_id`, supports `start_thread_from_video` on commits, and tags rendered video artifacts with SynthID / C2PA watermark provenance.

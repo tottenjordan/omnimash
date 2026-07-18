@@ -1,6 +1,6 @@
 # Multimodal Reference Ingestion & Multi-Clip Video Stitching
 
-This document outlines the pipeline for ingesting external character lore (YouTube/audio/image uploads) and concatenating 10-second Omni Flash clips into a master 30–60s video.
+This document outlines the 4-phase pipeline for ingesting external character lore, compiling 5-part Anchor & Inject meta-prompts, re-anchoring Omni Flash clips, and concatenating segments into a master 30–60s video.
 
 ---
 
@@ -10,30 +10,32 @@ This document outlines the pipeline for ingesting external character lore (YouTu
 
 ---
 
-## 🎬 Media Ingestion & Stitching Pipeline Flow
+## 🎬 4-Phase Processing Pipeline Flow
 
 ```mermaid
 graph LR
     subgraph 1. Ingestion Phase
         YT[Public YouTube URL] -->|yt-dlp extract| Extractor[MediaExtractor]
         Uploads[User Image / Audio Stems] --> Extractor
-        Extractor --> Keyframes[Keyframe Portait Grabs]
-        Extractor --> AudioStem[Audio Rhythm Track]
-        Extractor --> RefSummary[ExtractedReference Summary]
+        Extractor --> Keyframes[Keyframe Portraits]
+        Extractor --> AudioStem[Audio Rhythm Stems]
     end
 
-    subgraph 2. Generation Phase
-        RefSummary --> Orchestrator[OmniMashAgent]
-        Orchestrator --> Omni[Gemini Omni Flash Client]
+    subgraph 2. Prompt Compilation Phase
+        Keyframes --> Compiler[PromptCompiler Engine]
+        AudioStem --> Compiler
+        Compiler --> FiveParts["5-Part Meta-Prompt<br/>[SUBJECT ANCHOR]<br/>[AESTHETIC INJECTION]<br/>[ENVIRONMENT]<br/>[CAMERA/LIGHTING]<br/>[MOTION]"]
+    end
+
+    subgraph 3. Generation & Re-Anchoring Phase
+        FiveParts --> Omni[Gemini Omni Flash Client]
         Omni --> Clip0[Clip 0: 10s MP4]
-        Omni --> Clip1[Clip 1: 10s MP4]
-        Omni --> Clip2[Clip 2: 10s MP4]
+        Clip0 -->|Depth >= 3| Checkpoint[Commit Checkpoint]
+        Checkpoint -->|Re-Anchor| Omni
     end
 
-    subgraph 3. Stitching Phase
+    subgraph 4. Stitching Phase
         Clip0 --> Stitcher[VideoStitcher (FFmpeg)]
-        Clip1 --> Stitcher
-        Clip2 --> Stitcher
         Stitcher --> Master[Master Stitched MP4 Video (30s-60s)]
     end
 ```
@@ -45,6 +47,9 @@ graph LR
 - **Reference Ingestion (`omnimash.ingestion.media_extractor`):**
   - Extract visual character keyframes for prompt lore anchoring.
   - Separate background instrumental and vocal stems to guide the audio tempo and style cadence.
+
+- **Prompt Compiler (`omnimash.prompts.compiler`):**
+  - Translates character lore into physical descriptors preventing latent space averaging.
 
 - **FFmpeg Concatenation Engine (`omnimash.stitching.stitcher`):**
   - Collects active clips from the `ProjectSession` timeline.
