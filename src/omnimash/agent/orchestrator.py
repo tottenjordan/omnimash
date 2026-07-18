@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from google.adk.agents import Agent
+
 from omnimash.engine.omni_client import OmniFlashClient
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
 from omnimash.security.guardrail import ModelArmorGuardrail
@@ -17,6 +19,7 @@ class AgentTurnResponse:
 
 class OmniMashAgent:
     def __init__(self, mock_mode: bool = True):
+        self.mock_mode = mock_mode
         self.guardrail = ModelArmorGuardrail(mock_mode=mock_mode)
         self.session_manager = SessionManager()
         self.omni_client = OmniFlashClient(mock_mode=mock_mode)
@@ -75,3 +78,45 @@ class OmniMashAgent:
             video_url=gen_res.video_url,
             turn_id=turn_node.turn_id,
         )
+
+
+def build_adk_agent(mock_mode: bool = True) -> Agent:
+    """Builds and returns the official Google ADK Agent instance for OmniMash."""
+    orchestrator = OmniMashAgent(mock_mode=mock_mode)
+
+    def generate_parody_clip(
+        user_id: str,
+        project_id: str,
+        prompt: str,
+        clip_index: int = 0,
+        parent_turn_id: str | None = None,
+    ) -> dict[str, str | bool | None]:
+        """Generates a 720p parody video clip or conversational diff branch."""
+        res = orchestrator.process_user_turn(
+            user_id=user_id,
+            project_id=project_id,
+            prompt=prompt,
+            clip_index=clip_index,
+            parent_turn_id=parent_turn_id,
+        )
+        return {
+            "success": res.success,
+            "status": res.status_event,
+            "video_url": res.video_url,
+            "turn_id": res.turn_id,
+            "error": res.error_message,
+        }
+
+    return Agent(
+        name="omnimash_orchestrator",
+        model="gemini-2.5-flash",
+        instruction=(
+            "You are OmniMash, an AI parody and mashup video creation agent. "
+            "Use generate_parody_clip to validate prompts through Model Armor, "
+            "structure style-blended prompts, and generate 720p clips."
+        ),
+        tools=[generate_parody_clip],
+    )
+
+
+root_agent = build_adk_agent(mock_mode=True)
