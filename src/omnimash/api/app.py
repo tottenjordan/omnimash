@@ -45,6 +45,57 @@ UI_HTML = """<!DOCTYPE html>
     <script type="text/babel">
         const { useState } = React;
 
+        const characterLoreAnchors = {
+            snape: "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
+            dumbledore: "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
+            voldemort: "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
+            harry: "Harry Potter, a young man with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead"
+        };
+
+        const aestheticSignifiers = {
+            "90s_rap_video": {
+                wardrobe: "wearing an oversized shiny black puffer jacket, thick diamond Cuban link chain, and vintage Cartier glasses",
+                camera: "shot on a 90s fisheye lens, low-angle tracking shot, high-contrast MTV rap video lighting with green and purple neon rim lights",
+                motion: "nodding rhythmically to a boom-bap beat while gesturing emphatically for a 10-second clip"
+            },
+            "trap_disstrack": {
+                wardrobe: "wearing designer streetwear, iced-out medallions, and tinted aviator sunglasses",
+                camera: "rapid visual jump cuts, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes",
+                motion: "aggressive lyrical hand gestures and slow walking toward the camera for 10 seconds"
+            },
+            "cyberpunk_drift": {
+                wardrobe: "wearing a high-collar LED-lined techwear coat with holographic chrome accessories",
+                camera: "anamorphic widescreen lens, rainy asphalt reflections, synthwave purple and cyan color grading",
+                motion: "slowly turning to face the camera amidst falling digital rain for 10 seconds"
+            },
+            "vhs_anime": {
+                wardrobe: "cel-shaded retro anime styling with oversized 80s shoulder pads and vintage headbands",
+                camera: "retro 4:3 VHS tape grain, analog scanlines, chromatic aberration, and warm nostalgic bloom",
+                motion: "classic limited-frame anime speech animation and dynamic wind blowing through hair for 10 seconds"
+            }
+        };
+
+        function compilePromptPreview(rawPrompt, presetId) {
+            const lower = (rawPrompt || "").toLowerCase();
+            let subjectAnchor = "A distinct cinematic character with sharp facial features and expressive eyes";
+            for (const [key, desc] of Object.entries(characterLoreAnchors)) {
+                if (lower.includes(key)) {
+                    subjectAnchor = desc;
+                    break;
+                }
+            }
+            const style = aestheticSignifiers[presetId] || aestheticSignifiers["90s_rap_video"];
+            const environment = "in a stone Hogwarts dungeon lit by atmospheric fog and ambient glow";
+
+            return {
+                subjectAnchor,
+                aestheticInjection: style.wardrobe,
+                environment,
+                cameraLighting: style.camera,
+                motion: style.motion
+            };
+        }
+
         const stylePresets = [
             { id: "90s_rap_video", name: "90s Rap Video", icon: "🎤", desc: "Fisheye lens, boom-bap aesthetic, oversized bombers" },
             { id: "trap_disstrack", name: "Trap Disstrack", icon: "🔥", desc: "Dark 808 bass lighting, neon smoke, rapid cuts" },
@@ -64,6 +115,8 @@ UI_HTML = """<!DOCTYPE html>
                 { turnId: "turn_init", prompt: "Severus Snape in 90s rap video", status: "COMPLETED", videoUrl: "/static/rendered/mock.mp4", parent: null, is_checkpoint: false }
             ]);
             const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
+
+            const compiledPreview = compilePromptPreview(prompt, selectedPreset);
 
             const handleGenerate = async (e) => {
                 e.preventDefault();
@@ -216,7 +269,7 @@ UI_HTML = """<!DOCTYPE html>
                     </header>
 
                     <main className="flex-1 grid grid-cols-12 gap-6 p-6 overflow-hidden">
-                        <div className="col-span-4 flex flex-col space-y-6">
+                        <div className="col-span-4 flex flex-col space-y-6 overflow-y-auto pr-1">
                             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg">
                                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
                                     Style Presets
@@ -240,45 +293,80 @@ UI_HTML = """<!DOCTYPE html>
                                 </div>
                             </div>
 
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg flex-1 flex flex-col">
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
                                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
                                     Prompt Bar
                                 </h2>
-                                <form onSubmit={handleGenerate} className="flex-1 flex flex-col justify-between">
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">
-                                                Active Prompt / Conversational Diff
-                                            </label>
-                                            <textarea
-                                                rows="4"
-                                                value={prompt}
-                                                onChange={(e) => setPrompt(e.target.value)}
-                                                placeholder="e.g. Add diamond chains and green neon lights..."
-                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-sm focus:outline-none focus:border-purple-500 text-white placeholder-gray-600"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">
-                                                Parent Turn ID (Branching DAG Node)
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={parentTurnId}
-                                                onChange={(e) => setParentTurnId(e.target.value)}
-                                                placeholder="Leave empty for new root clip"
-                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600"
-                                            />
-                                        </div>
+                                <form onSubmit={handleGenerate} className="flex flex-col space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                                            Active Prompt / Conversational Diff
+                                        </label>
+                                        <textarea
+                                            rows="3"
+                                            value={prompt}
+                                            onChange={(e) => setPrompt(e.target.value)}
+                                            placeholder="e.g. Add diamond chains and green neon lights..."
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-sm focus:outline-none focus:border-purple-500 text-white placeholder-gray-600"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                                            Parent Turn ID (Branching DAG Node)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={parentTurnId}
+                                            onChange={(e) => setParentTurnId(e.target.value)}
+                                            placeholder="Leave empty for new root clip"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600"
+                                        />
                                     </div>
                                     <button
                                         type="submit"
                                         disabled={loading || !prompt}
-                                        className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium py-3 px-4 rounded-lg shadow-lg disabled:opacity-50 transition"
+                                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium py-3 px-4 rounded-lg shadow-lg disabled:opacity-50 transition"
                                     >
                                         {loading ? "Generating Parody Clip..." : "Generate OmniMash Video"}
                                     </button>
                                 </form>
+                            </div>
+
+                            {/* 🪄 5-Part Anchor & Inject Preview Card */}
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
+                                        <span>🪄 5-Part Anchor &amp; Inject Preview</span>
+                                    </h2>
+                                    <span className="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded border border-purple-800 font-mono">
+                                        Omni Flash Taxonomy
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-gray-400">
+                                    Live compilation of raw shorthand into rigid 5-part multimodal taxonomy to prevent character decay.
+                                </p>
+                                <div className="space-y-2 text-xs">
+                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                        <span className="font-bold text-pink-400 font-mono">[SUBJECT ANCHOR]: </span>
+                                        <span className="text-gray-300">{compiledPreview.subjectAnchor}</span>
+                                    </div>
+                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                        <span className="font-bold text-purple-400 font-mono">[AESTHETIC INJECTION]: </span>
+                                        <span className="text-gray-300">{compiledPreview.aestheticInjection}</span>
+                                    </div>
+                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                        <span className="font-bold text-blue-400 font-mono">[ENVIRONMENT]: </span>
+                                        <span className="text-gray-300">{compiledPreview.environment}</span>
+                                    </div>
+                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                        <span className="font-bold text-amber-400 font-mono">[CAMERA/LIGHTING]: </span>
+                                        <span className="text-gray-300">{compiledPreview.cameraLighting}</span>
+                                    </div>
+                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                        <span className="font-bold text-emerald-400 font-mono">[MOTION]: </span>
+                                        <span className="text-gray-300">{compiledPreview.motion}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

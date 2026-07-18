@@ -84,3 +84,21 @@ def test_e2e_commit_and_reanchor_pipeline() -> None:
     )
     assert rc.json()["status"] == "REANCHORED"
     assert rc.json()["depth"] == 0
+
+
+def test_e2e_compiled_prompt_generation() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_comp",
+            "project_id": "p_comp",
+            "prompt": "Snape in 90s rap video",
+            "clip_index": 0,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "video_url" in data
