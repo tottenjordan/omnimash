@@ -31,8 +31,10 @@ class PromptTaxonomyEngine:
         )
 
     def build_delta_prompt(self, current_clip_desc: str, delta_instruction: str) -> str:
+        compiled_delta = self.compiler.compile_delta(
+            delta_instruction=delta_instruction
+        )
         return (
-            "Apply conversational diff to the existing video latent space using Anchor & Inject preservation: "
-            f"[DIFF INSTRUCTION]: {delta_instruction}. "
-            "[PRESERVATION CONSTRAINT]: Maintain exact character facial anchors, wardrobe signifiers, and lighting consistency."
+            "Apply conversational diff to the existing video latent space using Lock & Isolate: "
+            f"{compiled_delta.to_delta_prompt()}"
         )
