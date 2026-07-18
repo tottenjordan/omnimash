@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="imgs/omnimash_banner.png" alt="OmniMash — AI Parody & Mashup Video Creation Platform" width="720" />
+<img src="imgs/omnimash_banner.png" alt="OmniMash — AI Parody & Mashup Video Studio featuring DumbleDior, Snape Dawg, and Dripped-out Harry Potter" width="100%" />
 
 <h1 align="center">🎬 OmniMash 🪄</h1>
 
-> Parody & mashup video creator using **gemini-omni-flash-preview** (unified multimodal text, image, audio, video in 720p with native audio and conversational diffs) and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
+> AI Parody & Mashup Video Studio inspired by viral sensations like **[Dripwarts](https://www.youtube.com/@Onirostudios)** (*DumbleDior*, *Snape Dawg*, *Harry Potter*). Powered by **`gemini-omni-flash-preview`** (unified multimodal video, native synced audio, and conversational diffs in 720p) and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?logo=uv&logoColor=white)
@@ -284,7 +284,7 @@ uv run ty check .
 │       └── 2026-07-18-omnimash-prompt-compiler-anchor-inject.md
 ├── GEMINI.md                  # AI agent workflow instructions
 ├── imgs
-│   └── omnimash_banner.png    # High-resolution project banner
+│   └── omnimash_banner.png    # High-resolution Dripwarts project banner
 ├── main.py                    # Entrypoint script
 ├── pyproject.toml             # uv dependencies & project configuration
 ├── README.md                  # Main project documentation
