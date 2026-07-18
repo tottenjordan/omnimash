@@ -14,13 +14,13 @@ This document details the Next.js / React 18 single-page application and its con
 
 ```mermaid
 graph TD
-    subgraph Browser Client (Next.js / React 18 + Tailwind CSS)
-        UI[OmniMash Web UI Dashboard]
-        PromptBar[Prompt Input Bar & Style Cards]
-        PreviewCard[🪄 5-Part Anchor & Inject Preview Card]
-        DAGView[Interactive Version DAG with Checkpoint ⚓ Badges]
-        ModalBanner[Commit & Re-Anchor Warning Banner Modal]
-        Player[720p Video Player + SynthID Badge]
+    subgraph BrowserClient["Browser Client (Next.js / React 18 + Tailwind CSS)"]
+        UI["OmniMash Web UI Dashboard"]
+        PromptBar["Prompt Input Bar & Style Cards"]
+        PreviewCard["🪄 5-Part Anchor & Inject Preview Card"]
+        DAGView["Interactive Version DAG with Checkpoint ⚓ Badges"]
+        ModalBanner["Commit & Re-Anchor Warning Banner Modal"]
+        Player["720p Video Player + SynthID Badge"]
         
         UI --> PromptBar
         UI --> PreviewCard
@@ -29,22 +29,22 @@ graph TD
         UI --> Player
     end
 
-    subgraph Backend Services (FastAPI + Uvicorn)
-        Gateway[FastAPI Async App (create_app)]
-        EndpointGen[POST /api/generate]
-        EndpointCommit[POST /api/commit]
-        EndpointRoot[GET / (HTML Dashboard)]
+    subgraph BackendServices["Backend Services (FastAPI + Uvicorn)"]
+        Gateway["FastAPI Async App (create_app)"]
+        EndpointGen["POST /api/generate"]
+        EndpointCommit["POST /api/commit"]
+        EndpointRoot["GET / (HTML Dashboard)"]
         
         Gateway --> EndpointRoot
         Gateway --> EndpointGen
         Gateway --> EndpointCommit
     end
 
-    subgraph Orchestration Engine
-        EndpointGen --> Agent[OmniMashAgent]
+    subgraph OrchestrationEngine["Orchestration Engine"]
+        EndpointGen --> Agent["OmniMashAgent"]
         EndpointCommit --> Agent
-        Agent --> State[SessionManager (Version DAG & Depth)]
-        Agent --> OmniClient[OmniFlashClient]
+        Agent --> State["SessionManager (Version DAG & Depth)"]
+        Agent --> OmniClient["OmniFlashClient"]
     end
 
     PromptBar -->|POST /api/generate| EndpointGen

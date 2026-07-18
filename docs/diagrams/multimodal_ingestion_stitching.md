@@ -14,29 +14,29 @@ This document outlines the 4-phase pipeline for ingesting external character lor
 
 ```mermaid
 graph LR
-    subgraph 1. Ingestion Phase
-        YT[Public YouTube URL] -->|yt-dlp extract| Extractor[MediaExtractor]
-        Uploads[User Image / Audio Stems] --> Extractor
-        Extractor --> Keyframes[Keyframe Portraits]
-        Extractor --> AudioStem[Audio Rhythm Stems]
+    subgraph IngestionPhase["1. Ingestion Phase"]
+        YT["Public YouTube URL"] -->|yt-dlp extract| Extractor["MediaExtractor"]
+        Uploads["User Image / Audio Stems"] --> Extractor
+        Extractor --> Keyframes["Keyframe Portraits"]
+        Extractor --> AudioStem["Audio Rhythm Stems"]
     end
 
-    subgraph 2. Prompt Compilation Phase
-        Keyframes --> Compiler[PromptCompiler Engine]
+    subgraph PromptCompilation["2. Prompt Compilation Phase"]
+        Keyframes --> Compiler["PromptCompiler Engine"]
         AudioStem --> Compiler
         Compiler --> FiveParts["5-Part Meta-Prompt<br/>[SUBJECT ANCHOR]<br/>[AESTHETIC INJECTION]<br/>[ENVIRONMENT]<br/>[CAMERA/LIGHTING]<br/>[MOTION]"]
     end
 
-    subgraph 3. Generation & Re-Anchoring Phase
-        FiveParts --> Omni[Gemini Omni Flash Client]
-        Omni --> Clip0[Clip 0: 10s MP4]
-        Clip0 -->|Depth >= 3| Checkpoint[Commit Checkpoint]
+    subgraph GenerationReAnchoring["3. Generation & Re-Anchoring Phase"]
+        FiveParts --> Omni["Gemini Omni Flash Client"]
+        Omni --> Clip0["Clip 0: 10s MP4"]
+        Clip0 -->|"Depth >= 3"| Checkpoint["Commit Checkpoint"]
         Checkpoint -->|Re-Anchor| Omni
     end
 
-    subgraph 4. Stitching Phase
-        Clip0 --> Stitcher[VideoStitcher (FFmpeg)]
-        Stitcher --> Master[Master Stitched MP4 Video (30s-60s)]
+    subgraph StitchingPhase["4. Stitching Phase"]
+        Clip0 --> Stitcher["VideoStitcher (FFmpeg)"]
+        Stitcher --> Master["Master Stitched MP4 Video (30s-60s)"]
     end
 ```
 

@@ -16,7 +16,7 @@ To prevent context decay in the multimodal latent space after ~4 sequential edit
 
 ```mermaid
 graph TD
-    subgraph Active Thread Main (Depth Escalation)
+    subgraph ThreadMain["Active Thread Main (Depth Escalation)"]
         Turn1["Turn 1 (Root Clip 0)<br/>Prompt: 'Severus Snape in 90s rap'<br/>Depth: 0 | ID: turn_1<br/>Video: /static/rendered/clip0_t1.mp4"]
         Turn2["Turn 2 (Delta 1)<br/>Prompt: 'Add gold chains'<br/>Depth: 1 | Parent: turn_1<br/>Video: /static/rendered/clip0_t2.mp4"]
         Turn3["Turn 3 (Delta 2)<br/>Prompt: 'Add neon green lighting'<br/>Depth: 2 | Parent: turn_2<br/>Video: /static/rendered/clip0_t3.mp4"]
@@ -25,8 +25,8 @@ graph TD
         Turn1 --> Turn2 --> Turn3 --> Turn4
     end
 
-    subgraph Re-Anchored Thread Beta (Context Flushed)
-        Turn4 -.->|POST /api/commit| CommitAction[Extract 720p Output Video & Flush Context]
+    subgraph ThreadBeta["Re-Anchored Thread Beta (Context Flushed)"]
+        Turn4 -.->|POST /api/commit| CommitAction["Extract 720p Output Video & Flush Context"]
         CommitAction --> TurnBeta1["Turn Beta 1 (Fresh Interactions Thread)<br/>Prompt: 'Add laser wand gestures'<br/>Depth: 0 | Checkpoint: True<br/>Video: /static/rendered/clip0_beta1.mp4"]
     end
 ```

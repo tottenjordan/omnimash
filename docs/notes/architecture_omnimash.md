@@ -9,25 +9,25 @@
 
 ```mermaid
 graph TD
-    User([User / Creator]) <--> UI[Frontend / UI & Chat]
-    UI <--> Orchestrator[ADK Agent Orchestrator]
+    User["User / Creator"] <--> UI["Frontend / UI & Chat"]
+    UI <--> Orchestrator["ADK Agent Orchestrator"]
     
-    subgraph Gemini Enterprise Agent Platform
-        Orchestrator <--> Sessions[Agent Sessions & Memory Bank]
-        Orchestrator <--> Gateway[Agent Gateway - Reference Asset Retrieval]
+    subgraph GeminiPlatform["Gemini Enterprise Agent Platform"]
+        Orchestrator <--> Sessions["Agent Sessions & Memory Bank"]
+        Orchestrator <--> Gateway["Agent Gateway - Reference Asset Retrieval"]
     end
 
-    subgraph Video Generation & Editing Engine
-        Orchestrator <--> PromptEngine[Style Blending & Meta-Prompt Engine]
-        PromptEngine <--> OmniClient[google-genai Client]
-        OmniClient <--> OmniModel[gemini-omni-flash-preview API]
-        OmniModel -- Multi-turn Interactions API --> OmniClient
+    subgraph VideoGen["Video Generation & Editing Engine"]
+        Orchestrator <--> PromptEngine["Style Blending & Meta-Prompt Engine"]
+        PromptEngine <--> OmniClient["google-genai Client"]
+        OmniClient <--> OmniModel["gemini-omni-flash-preview API"]
+        OmniModel -->|"Multi-turn Interactions API"| OmniClient
     end
 
-    subgraph Post-Processing & Stitching
-        OmniClient --> ClipManager[Clip & Asset Manager]
-        ClipManager --> Stitcher[FFmpeg / Video Stitching Engine]
-        Stitcher --> Output[Final Parody Video 720p]
+    subgraph PostProcessing["Post-Processing & Stitching"]
+        OmniClient --> ClipManager["Clip & Asset Manager"]
+        ClipManager --> Stitcher["FFmpeg / Video Stitching Engine"]
+        Stitcher --> Output["Final Parody Video 720p"]
     end
 ```
 
@@ -52,5 +52,5 @@ graph TD
 
 ### 4. Sequencing & Multi-Clip Stitching
 - **Beat-Sheet Breakdown**: For videos exceeding 10s, breaks the script into 5–10s storyboard chunks.
-- **Anchor Frame Continuity**: Feeds the last frame of Clip $N$ into Clip $N+1$ as a visual conditioning input.
+- **Anchor Frame Continuity**: Feeds the last frame of Clip N into Clip N+1 as a visual conditioning input.
 - **Stitching**: Local FFmpeg processing to concatenate clips and normalize audio tracks.

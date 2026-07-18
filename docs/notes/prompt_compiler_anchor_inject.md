@@ -14,7 +14,9 @@ When prompting `gemini-omni-flash-preview` with raw user shorthand like *"Severu
 
 The ADK agent must never pass raw user text to the video model. Instead, the **Prompt Compiler** intercepts and expands the user's intent into a rigid 5-part structure:
 
-$$\text{Final Prompt} = [\text{SUBJECT ANCHOR}] + [\text{AESTHETIC INJECTION}] + [\text{ENVIRONMENT}] + [\text{CAMERA/LIGHTING}] + [\text{MOTION}]$$
+```text
+Final Prompt = [SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION]
+```
 
 ### 1. [SUBJECT ANCHOR]
 Explicitly describe defining physical traits, facial features, hair, and expressions rather than relying on character names alone.

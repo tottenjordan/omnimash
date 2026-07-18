@@ -24,7 +24,7 @@
 | :---: | --- | --- |
 | 1 | 🛡️ **`omnimash.security`** | **Model Armor Gateway:** Pre-gates prompts for RAI violations (hate speech, dangerous content) and prompt injection/jailbreak attempts. |
 | 2 | 🪄 **`omnimash.prompts`** | **Prompt Compiler ("Anchor & Inject"):** Translates user shorthand into `[SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION]` preventing character decay and latent space averaging. |
-| 3 | 🌳 **`omnimash.state`** | **Version Tree DAG & Checkpoints:** Manages non-linear clip branching (`TurnNode`, `ProjectSession`) and tracks thread edit depth ($\ge 3$) to signal `COMMIT_RECOMMENDED`. |
+| 3 | 🌳 **`omnimash.state`** | **Version Tree DAG & Checkpoints:** Manages non-linear clip branching (`TurnNode`, `ProjectSession`) and tracks thread edit depth (>= 3) to signal `COMMIT_RECOMMENDED`. |
 | 4 | 🎬 **`omnimash.engine`** | **Gemini Omni Flash Client:** Drives the `Interactions API` with SynthID/C2PA watermarking and handles base video re-anchoring on thread commits. |
 | 5 | 🎞️ **`omnimash.stitching` & `omnimash.api`** | **FFmpeg Concatenation & FastAPI UI:** Assembles 10s clips into 30–60s master videos and serves the interactive Next.js/React dashboard. |
 
@@ -40,7 +40,7 @@ OmniMash works like an AI music video mixing studio:
 3. **Prompt Compiler** — `PromptCompiler` transforms raw shorthand (`Snape in a 90s rap video`) into an explicit 5-part meta-prompt (`gaunt man, hooked nose + oversized puffer jacket, Cuban link + fisheye lens + boom-bap motion`).
 4. **Multimodal Generation** — `OmniFlashClient` invokes `gemini-omni-flash-preview` via the Interactions API to render a 720p 10-second video with native synced audio.
 5. **Conversational Diff Branching** — When users ask to modify a scene ("Add sunglasses and neon green lights"), the system branches a new `TurnNode` from the parent turn, preserving facial identity and lighting anchors.
-6. **Commit & Branch Checkpointing** — At edit depth $\ge 3$, the user commits the turn. The engine extracts the committed 720p video and spawns a fresh Interactions API thread, eliminating conversational token clutter.
+6. **Commit & Branch Checkpointing** — At edit depth >= 3, the user commits the turn. The engine extracts the committed 720p video and spawns a fresh Interactions API thread, eliminating conversational token clutter.
 7. **Stitch & Export** — `VideoStitcher` concatenates active timeline segments via FFmpeg into a master parody video.
 
 </details>
@@ -65,33 +65,33 @@ OmniMash is built on Google's **ADK (Agent Development Kit)** and the **Gemini E
 
 ```mermaid
 graph TD
-    User([User / Web UI Client]) -->|POST /api/generate| API[FastAPI Async Gateway]
-    API --> Agent[OmniMash ADK Agent Orchestrator]
+    User["User / Web UI Client"] -->|POST /api/generate| API["FastAPI Async Gateway"]
+    API --> Agent["OmniMash ADK Agent Orchestrator"]
     
-    subgraph Security Gate
-        Agent -->|1. Prompt Validation| Guard[Model Armor Guardrail]
-        Guard -->|Blocked| Reject[400 Policy Violation Event]
-        Guard -->|Approved| SessionState[Session Version DAG Resolver]
+    subgraph SecurityGate["Security Gate"]
+        Agent -->|1. Prompt Validation| Guard["Model Armor Guardrail"]
+        Guard -->|Blocked| Reject["400 Policy Violation Event"]
+        Guard -->|Approved| SessionState["Session Version DAG Resolver"]
     end
 
-    subgraph Prompt Compiler & Multimodal Engine
-        SessionState -->|2. Anchor & Inject| Compiler[PromptCompiler: 5-Part Decomposition]
-        Compiler --> TaxInitial[Initial Generation Prompt]
-        SessionState --> TaxDelta[Conversational Diff Prompt]
+    subgraph PromptEngine["Prompt Compiler & Multimodal Engine"]
+        SessionState -->|2. Anchor & Inject| Compiler["PromptCompiler: 5-Part Decomposition"]
+        Compiler --> TaxInitial["Initial Generation Prompt"]
+        SessionState --> TaxDelta["Conversational Diff Prompt"]
         
-        TaxInitial --> Omni[Gemini Omni Flash Interactions Client]
+        TaxInitial --> Omni["Gemini Omni Flash Client"]
         TaxDelta --> Omni
     end
 
-    subgraph Checkpointing & Media Pipeline
-        Omni -->|3. 720p Video + Audio Stem| Watermark[SynthID / C2PA Verification]
-        Watermark --> DAGStore[(Session Version Tree DAG)]
-        DAGStore -->|Depth >= 3| CommitGate{Commit & Branch?}
-        CommitGate -->|POST /api/commit| ReAnchor[Fresh Interactions API Thread]
+    subgraph MediaPipeline["Checkpointing & Media Pipeline"]
+        Omni -->|3. 720p Video + Audio Stem| Watermark["SynthID / C2PA Verification"]
+        Watermark --> DAGStore[("Session Version Tree DAG")]
+        DAGStore -->|"Depth >= 3"| CommitGate{"Commit & Branch?"}
+        CommitGate -->|POST /api/commit| ReAnchor["Fresh Interactions API Thread"]
         ReAnchor --> Omni
-        DAGStore --> Timeline[Multi-Clip Timeline Manager]
-        Timeline --> Stitcher[FFmpeg Multi-Clip Concatenation Engine]
-        Stitcher --> MasterVideo[(Master Video mp4)]
+        DAGStore --> Timeline["Multi-Clip Timeline Manager"]
+        Timeline --> Stitcher["FFmpeg Multi-Clip Concatenation Engine"]
+        Stitcher --> MasterVideo[("Master Video mp4")]
     end
 
     MasterVideo -->|SSE / JSON Response| User
@@ -106,7 +106,7 @@ Detailed subsystem architectures and workflow outlines are available in [docs/di
 | Reference Diagram | Subsystem | Highlights |
 | :--- | :--- | :--- |
 | 🛡️ [Agent Orchestration Architecture](docs/diagrams/omnimash_agent_architecture.md) | `omnimash.agent` & `security` | ADK orchestrator sequence, Model Armor pre-gating, 5-part Prompt Compiler, and Gemini Omni Flash client dispatch. |
-| 🌳 [Version Tree DAG & State Lifecycle](docs/diagrams/version_tree_dag_lifecycle.md) | `omnimash.state` | Non-linear conversational diff branching, thread depth tracking ($\ge 3$), ⚓ Checkpoint Anchor Badges, and fresh thread re-anchoring. |
+| 🌳 [Version Tree DAG & State Lifecycle](docs/diagrams/version_tree_dag_lifecycle.md) | `omnimash.state` | Non-linear conversational diff branching, thread depth tracking (>= 3), ⚓ Checkpoint Anchor Badges, and fresh thread re-anchoring. |
 | 🎬 [Multimodal Ingestion & Video Stitching](docs/diagrams/multimodal_ingestion_stitching.md) | `ingestion` & `stitching` | 4-stage pipeline: YouTube asset extraction (`yt-dlp`), 5-part prompt compilation, Omni Flash clip rendering with commit checkpoints, and FFmpeg multi-clip concatenation. |
 | 🌐 [Frontend API & SSE Streaming Topology](docs/diagrams/frontend_api_topology.md) | `api` & Web UI | FastAPI async endpoints (`POST /api/generate`, `POST /api/commit`), SSE stream events, 5-part live compiler preview, and Next.js / React 18 single-page dashboard. |
 
@@ -173,7 +173,7 @@ curl -X POST http://localhost:8000/api/generate \
 
 ### Commit & Branch Checkpointing
 
-When thread depth reaches $\ge 3$ (`status: "COMMIT_RECOMMENDED"`), commit the turn to flush conversational token clutter and re-anchor from the output video:
+When thread depth reaches >= 3 (`status: "COMMIT_RECOMMENDED"`), commit the turn to flush conversational token clutter and re-anchor from the output video:
 
 ```bash
 curl -X POST http://localhost:8000/api/commit \
@@ -253,7 +253,7 @@ uv run ty check .
 │   │   ├── omnimash_agent_architecture.md
 │   │   ├── omnimash_agent_architecture.png
 │   │   ├── README.md
-│   │   ├── version_tree_dag_lifecycle.md
+│   │   └── version_tree_dag_lifecycle.md
 │   │   └── version_tree_dag_lifecycle.png
 │   ├── notes                  # Non-derivable session knowledge & quirks
 │   │   ├── architecture_omnimash.md

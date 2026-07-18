@@ -15,13 +15,13 @@ This document describes the orchestration loop, safety gateways, and prompt comp
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User / Frontend UI
-    participant API as FastAPI App (/api/generate)
-    participant Agent as OmniMashAgent Orchestrator
-    participant Guard as ModelArmorGuardrail
-    participant Compiler as PromptCompiler (Anchor & Inject)
-    participant Session as SessionManager (DAG & Depth Tracker)
-    participant Omni as OmniFlashClient (Interactions API)
+    actor User as "User / Frontend UI"
+    participant API as "FastAPI App (/api/generate)"
+    participant Agent as "OmniMashAgent Orchestrator"
+    participant Guard as "ModelArmorGuardrail"
+    participant Compiler as "PromptCompiler (Anchor & Inject)"
+    participant Session as "SessionManager (DAG & Depth Tracker)"
+    participant Omni as "OmniFlashClient (Interactions API)"
 
     User->>API: POST /api/generate (user_id, project_id, prompt, parent_turn_id)
     API->>Agent: process_user_turn()
@@ -73,7 +73,7 @@ sequenceDiagram
 
 3. **Session Version DAG & Depth Tracker (`omnimash.state.session_manager`):**
    - Tracks `edit_depth_in_thread` across sequential turns.
-   - Emits `COMMIT_RECOMMENDED` at depth $\ge 3$ and manages non-linear version branching.
+   - Emits `COMMIT_RECOMMENDED` at depth >= 3 and manages non-linear version branching.
 
 4. **Gemini Omni Flash Interactions Client (`omnimash.engine.omni_client`):**
    - Integrates with `google-genai` SDK and Gemini Omni Flash.

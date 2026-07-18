@@ -5,12 +5,12 @@
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User (Web UI)
-    participant API as FastAPI Backend (ADK)
-    participant State as Agent Sessions / Memory Bank
-    participant Armor as Model Armor (Agent Gateway)
-    participant Omni as gemini-omni-flash-preview (Interactions API)
-    participant Stitcher as FFmpeg Stitching Engine
+    actor User as "User (Web UI)"
+    participant API as "FastAPI Backend (ADK)"
+    participant State as "Agent Sessions / Memory Bank"
+    participant Armor as "Model Armor (Agent Gateway)"
+    participant Omni as "gemini-omni-flash-preview (Interactions API)"
+    participant Stitcher as "FFmpeg Stitching Engine"
 
     User->>API: Submit Prompt + Optional Reference (Upload / YouTube URL)
     API->>State: Resolve Custom Session ID & Active Interaction Thread
