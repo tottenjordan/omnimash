@@ -57,8 +57,11 @@ UI_HTML = """<!DOCTYPE html>
             const [selectedPreset, setSelectedPreset] = useState("90s_rap_video");
             const [parentTurnId, setParentTurnId] = useState("");
             const [loading, setLoading] = useState(false);
+            const [status, setStatus] = useState("COMPLETED");
+            const [showCommitModal, setShowCommitModal] = useState(false);
+            const [commitPrompt, setCommitPrompt] = useState("");
             const [history, setHistory] = useState([
-                { turnId: "turn_init", prompt: "Severus Snape in 90s rap video", status: "COMPLETED", videoUrl: "/static/rendered/mock.mp4", parent: null }
+                { turnId: "turn_init", prompt: "Severus Snape in 90s rap video", status: "COMPLETED", videoUrl: "/static/rendered/mock.mp4", parent: null, is_checkpoint: false }
             ]);
             const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
 
@@ -84,11 +87,16 @@ UI_HTML = """<!DOCTYPE html>
                             prompt: prompt,
                             status: data.status,
                             videoUrl: data.video_url,
-                            parent: parentTurnId || null
+                            parent: parentTurnId || null,
+                            is_checkpoint: data.status === "REANCHORED"
                         };
                         setHistory(prev => [...prev, newTurn]);
                         setCurrentVideo(data.video_url);
                         setParentTurnId(data.turn_id);
+                        setStatus(data.status);
+                        if (data.status === "COMMIT_RECOMMENDED") {
+                            setShowCommitModal(true);
+                        }
                     }
                 } catch (err) {
                     console.error("Generation failed:", err);
@@ -97,8 +105,105 @@ UI_HTML = """<!DOCTYPE html>
                 }
             };
 
+            const handleCommit = async () => {
+                setLoading(true);
+                try {
+                    const nextPrompt = commitPrompt || prompt || "Re-anchored checkpoint";
+                    const res = await fetch("/api/commit", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: "usr_web",
+                            project_id: "prj_mashup",
+                            turn_id: parentTurnId,
+                            next_prompt: nextPrompt
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        const newTurn = {
+                            turnId: data.turn_id,
+                            prompt: nextPrompt,
+                            status: data.status,
+                            videoUrl: data.video_url,
+                            parent: parentTurnId || null,
+                            is_checkpoint: true
+                        };
+                        setHistory(prev => [...prev, newTurn]);
+                        setCurrentVideo(data.video_url);
+                        setParentTurnId(data.turn_id);
+                        setStatus(data.status);
+                        setShowCommitModal(false);
+                        setCommitPrompt("");
+                    }
+                } catch (err) {
+                    console.error("Commit failed:", err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const isCommitModalVisible = status === "COMMIT_RECOMMENDED" || showCommitModal;
+
             return (
-                <div className="flex flex-col h-screen">
+                <div className="flex flex-col h-screen relative">
+                    {/* Commit & Re-Anchor Warning Banner Modal */}
+                    {isCommitModalVisible && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                            <div className="bg-gray-900 border-2 border-amber-500/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+                                <div className="flex items-center space-x-3 bg-amber-950/80 border border-amber-500/50 rounded-xl p-4 mb-5 text-amber-300">
+                                    <span className="text-2xl">⚠️</span>
+                                    <div>
+                                        <h3 className="font-bold text-base text-amber-200">Commit &amp; Re-Anchor</h3>
+                                        <p className="text-xs text-amber-300/80 mt-0.5">Edit depth limit reached (Depth &ge; 3). Re-anchoring preserves prompt fidelity and video quality.</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 mb-6">
+                                    <p className="text-sm text-gray-300">
+                                        You have made 3 consecutive conversational edits on this thread. To prevent multimodal video drift and context decay, commit your changes now to create a fresh video keyframe anchor.
+                                    </p>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                                            Next Prompt / Re-Anchor Prompt
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={commitPrompt}
+                                            onChange={(e) => setCommitPrompt(e.target.value)}
+                                            placeholder="e.g. Reanchored turn checkpoint..."
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-end space-x-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowCommitModal(false);
+                                            if (status === "COMMIT_RECOMMENDED") {
+                                                setStatus("DISMISSED_WARNING");
+                                            }
+                                        }}
+                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white transition"
+                                    >
+                                        Dismiss
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={loading}
+                                        onClick={handleCommit}
+                                        className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 transition disabled:opacity-50"
+                                    >
+                                        <span>⚓</span>
+                                        <span>{loading ? "Committing..." : "Commit & Re-Anchor"}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur px-6 py-4 flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                             <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
@@ -204,33 +309,48 @@ UI_HTML = """<!DOCTYPE html>
                                     Timeline DAG Viewer
                                 </h2>
                                 <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                                    {history.map((node, idx) => (
-                                        <div
-                                            key={node.turnId || idx}
-                                            onClick={() => {
-                                                setParentTurnId(node.turnId);
-                                                if (node.videoUrl) setCurrentVideo(node.videoUrl);
-                                            }}
-                                            className={`p-3 rounded-lg border cursor-pointer transition ${
-                                                parentTurnId === node.turnId
-                                                    ? "bg-purple-950/40 border-purple-500"
-                                                    : "bg-gray-950 border-gray-800 hover:border-gray-700"
-                                            }`}
-                                        >
-                                            <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-                                                <span className="font-mono">{node.turnId || "Root"}</span>
-                                                <span className="text-[10px] bg-green-950 text-green-400 px-1.5 py-0.5 rounded border border-green-800">
-                                                    {node.status}
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-gray-200 line-clamp-2">{node.prompt}</p>
-                                            {node.parent && (
-                                                <div className="mt-2 text-[10px] text-purple-400 flex items-center">
-                                                    ↳ branch of {node.parent}
+                                    {history.map((node, idx) => {
+                                        const isAnchor = node.is_checkpoint || node.status === "REANCHORED";
+                                        return (
+                                            <div
+                                                key={node.turnId || idx}
+                                                onClick={() => {
+                                                    setParentTurnId(node.turnId);
+                                                    if (node.videoUrl) setCurrentVideo(node.videoUrl);
+                                                    if (node.status === "COMMIT_RECOMMENDED") {
+                                                        setStatus("COMMIT_RECOMMENDED");
+                                                        setShowCommitModal(true);
+                                                    }
+                                                }}
+                                                className={`p-3 rounded-lg border cursor-pointer transition ${
+                                                    parentTurnId === node.turnId
+                                                        ? "bg-purple-950/40 border-purple-500"
+                                                        : "bg-gray-950 border-gray-800 hover:border-gray-700"
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                                                    <span className="font-mono">{node.turnId || "Root"}</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        {isAnchor && (
+                                                            <span className="text-[10px] bg-green-950 text-green-400 px-1.5 py-0.5 rounded border border-green-700 flex items-center gap-1 font-medium shadow-sm">
+                                                                <span>⚓</span>
+                                                                <span>Checkpoint Anchor Badge</span>
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[10px] bg-green-950 text-green-400 px-1.5 py-0.5 rounded border border-green-800">
+                                                            {node.status}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                <p className="text-xs text-gray-200 line-clamp-2">{node.prompt}</p>
+                                                {node.parent && (
+                                                    <div className="mt-2 text-[10px] text-purple-400 flex items-center">
+                                                        ↳ branch of {node.parent}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>

@@ -41,3 +41,46 @@ def test_full_e2e_flow() -> None:
     resp_ui = client.get("/")
     assert resp_ui.status_code == 200
     assert "OmniMash" in resp_ui.text
+
+
+def test_e2e_commit_and_reanchor_pipeline() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    r1 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_e2e",
+            "project_id": "p_e2e",
+            "prompt": "Initial",
+            "clip_index": 0,
+        },
+    )
+    t1 = r1.json()["turn_id"]
+
+    t_prev = t1
+    for i in range(3):
+        r = client.post(
+            "/api/generate",
+            json={
+                "user_id": "u_e2e",
+                "project_id": "p_e2e",
+                "prompt": f"Edit {i}",
+                "clip_index": 0,
+                "parent_turn_id": t_prev,
+            },
+        )
+        t_prev = r.json()["turn_id"]
+        if i == 2:
+            assert r.json()["status"] == "COMMIT_RECOMMENDED"
+
+    rc = client.post(
+        "/api/commit",
+        json={
+            "user_id": "u_e2e",
+            "project_id": "p_e2e",
+            "turn_id": t_prev,
+            "next_prompt": "Reanchored turn",
+        },
+    )
+    assert rc.json()["status"] == "REANCHORED"
+    assert rc.json()["depth"] == 0
