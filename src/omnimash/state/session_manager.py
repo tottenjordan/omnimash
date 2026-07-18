@@ -9,6 +9,9 @@ class TurnNode(BaseModel):
     prompt: str
     interaction_thread_id: str
     video_url: str
+    edit_depth_in_thread: int = 0
+    is_committed: bool = False
+    base_video_anchor_url: str | None = None
 
 
 class ClipSegment(BaseModel):
@@ -45,14 +48,29 @@ class SessionManager:
         interaction_thread_id: str,
         video_url: str,
         parent_turn_id: str | None = None,
+        is_checkpoint: bool = False,
+        base_video_anchor_url: str | None = None,
     ) -> TurnNode:
         session = self._sessions[session_id]
+
+        depth = 0
+        if parent_turn_id and parent_turn_id in session.turns:
+            parent = session.turns[parent_turn_id]
+            if (
+                parent.interaction_thread_id == interaction_thread_id
+                and not is_checkpoint
+            ):
+                depth = parent.edit_depth_in_thread + 1
+
         turn = TurnNode(
             parent_turn_id=parent_turn_id,
             clip_index=clip_index,
             prompt=prompt,
             interaction_thread_id=interaction_thread_id,
             video_url=video_url,
+            edit_depth_in_thread=depth,
+            is_committed=is_checkpoint,
+            base_video_anchor_url=base_video_anchor_url,
         )
         session.turns[turn.turn_id] = turn
 
@@ -72,3 +90,11 @@ class SessionManager:
                 )
             )
         return turn
+
+    def commit_turn(self, session_id: str, turn_id: str) -> TurnNode:
+        session = self._sessions[session_id]
+        if turn_id not in session.turns:
+            raise KeyError(f"Turn {turn_id} not found in session {session_id}")
+        node = session.turns[turn_id]
+        node.is_committed = True
+        return node

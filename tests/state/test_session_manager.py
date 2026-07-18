@@ -26,3 +26,24 @@ def test_session_creation_and_branching():
         parent_turn_id=turn1.turn_id,
     )
     assert turn2.parent_turn_id == turn1.turn_id
+
+
+def test_commit_turn_and_depth_tracking():
+    sm = SessionManager()
+    session = sm.get_or_create_session("user_test", "proj_test")
+    t1 = sm.add_turn(session.session_id, 0, "Prompt 1", "thread_1", "/clip1.mp4")
+    assert t1.edit_depth_in_thread == 0
+    assert t1.is_committed is False
+
+    t2 = sm.add_turn(
+        session.session_id,
+        0,
+        "Prompt 2",
+        "thread_1",
+        "/clip2.mp4",
+        parent_turn_id=t1.turn_id,
+    )
+    assert t2.edit_depth_in_thread == 1
+
+    committed = sm.commit_turn(session.session_id, t2.turn_id)
+    assert committed.is_committed is True
