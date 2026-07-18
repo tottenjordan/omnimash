@@ -159,14 +159,23 @@ def build_adk_agent(mock_mode: bool = True) -> Agent:
             "error": res.error_message,
         }
 
+    instruction = (
+        "You are the Prompt Compiler for OmniMash. Your job is to take the user's video concept "
+        "and format it into an optimized 5-part prompt for the gemini-omni-flash-preview video model.\n\n"
+        "Never pass the user's raw text. Always rewrite it using this exact structure:\n"
+        "[SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION]\n\n"
+        "Rules:\n"
+        "1. SUBJECT ANCHOR: Do not just use character names. Explicitly describe their defining physical traits.\n"
+        "2. AESTHETIC INJECTION: Define wardrobe and props using hyper-specific cultural signifiers.\n"
+        "3. ENVIRONMENT: Anchor the background scene with atmospheric lighting.\n"
+        "4. CAMERA/LIGHTING: Use specific directorial terms (e.g. fisheye lens, low-angle shot, neon rim lights).\n"
+        "5. MOTION: Keep motion simple and physically plausible for a 10-second clip."
+    )
+
     return Agent(
         name="omnimash_orchestrator",
         model="gemini-omni-flash-preview",
-        instruction=(
-            "You are OmniMash, an AI parody and mashup video creation agent. "
-            "Use generate_parody_clip to validate prompts through Model Armor, "
-            "structure style-blended prompts, and generate 720p clips."
-        ),
+        instruction=instruction,
         tools=[generate_parody_clip],
     )
 

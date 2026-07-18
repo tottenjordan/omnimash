@@ -1,4 +1,4 @@
-from omnimash.agent.orchestrator import OmniMashAgent
+from omnimash.agent.orchestrator import OmniMashAgent, build_adk_agent
 
 
 def test_agent_initial_creation_flow():
@@ -43,3 +43,10 @@ def test_commit_recommended_and_branch_flow():
     c_res = agent.commit_and_branch("u1", "p1", r4.turn_id, "Add laser eyes")
     assert c_res.success is True
     assert c_res.status_event == "REANCHORED"
+
+
+def test_adk_agent_instruction_and_compiler_integration():
+    adk_agent = build_adk_agent(mock_mode=True)
+    assert isinstance(adk_agent.instruction, str)
+    assert "Prompt Compiler" in adk_agent.instruction
+    assert "[SUBJECT ANCHOR]" in adk_agent.instruction
