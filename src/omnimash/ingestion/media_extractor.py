@@ -22,6 +22,16 @@ class KeyframeAnnotation:
 
 
 @dataclass
+class ParodyResearchResult:
+    synopsis: str
+    suggested_props: list[str]
+    suggested_vibe: str
+    vibe_intensity: int
+    suggested_audio: str
+    suggested_dialogue: str
+
+
+@dataclass
 class ReferenceAnalysisReport:
     video_title: str
     duration_seconds: int
@@ -123,3 +133,21 @@ class MediaExtractor:
         )
         self.storage.save_reference_analysis(session_id=session_id, report=report)
         return report
+
+    def research_parody_clash(
+        self, subject: str, aesthetic: str
+    ) -> ParodyResearchResult:
+        return ParodyResearchResult(
+            synopsis="Dripwarts: Harry & The Brick Factory - A high-fashion parody mashup blending Hogwarts wizard rivalry with 2010s Atlanta trap music beef (Gucci vs. Jeezy).",
+            suggested_props=[
+                "Diamond Lightning Bolt Chain",
+                "Vintage Gucci Tracksuit",
+                "Slytherin Snowman Pendant",
+                "Microphone Wand",
+                "Shutter Shades",
+            ],
+            suggested_vibe="Dark moody 808 bass lighting, laser smoke, and high-gloss neon reflections",
+            vibe_intensity=75,
+            suggested_audio="140 BPM Heavy 808 Trap",
+            suggested_dialogue='Harry: "I been cooking potions since first year. Burrr!" / Draco: "This is Trap or Die, Potter!"',
+        )

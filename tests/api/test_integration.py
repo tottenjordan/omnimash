@@ -247,3 +247,38 @@ def test_e2e_custom_session_name_gcs_mapping() -> None:
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
+
+
+def test_api_research_endpoint() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/research",
+        json={
+            "subject": "Harry Potter and Draco Malfoy",
+            "aesthetic": "Atlanta Trap Disstrack",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "Dripwarts" in data["synopsis"]
+    assert len(data["suggested_props"]) > 0
+    assert data["vibe_intensity"] == 75
+    assert "Trap" in data["suggested_audio"] or "808" in data["suggested_audio"]
+
+
+def test_api_extract_reference_endpoint() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/extract-reference",
+        json={
+            "url": "https://www.youtube.com/watch?v=sample_beat",
+            "session_name": "test_sess",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["video_title"] == "Reference Beat & Character Baseline"
+    assert data["detected_bpm"] == 120
+    assert len(data["extracted_keyframes"]) >= 3
