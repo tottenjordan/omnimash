@@ -1,3 +1,4 @@
+import base64
 import math
 import os
 import struct
@@ -179,8 +180,47 @@ class OmniFlashClient:
             except Exception:
                 pass
 
+    def _generate_live_omni_flash_video(
+        self,
+        prompt: str,
+        target_rel_path: str,
+        previous_interaction_id: str | None = None,
+    ) -> tuple[bool, str | None]:
+        """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing."""
+        if not self._genai_client or not hasattr(self._genai_client, "interactions"):
+            return False, None
+        try:
+            kwargs: dict[str, Any] = {
+                "model": "gemini-omni-flash-preview",
+                "input": prompt,
+            }
+            if previous_interaction_id:
+                kwargs["previous_interaction_id"] = previous_interaction_id
+
+            interaction = self._genai_client.interactions.create(**kwargs)
+            inter_id = getattr(interaction, "id", None) or getattr(
+                interaction, "interaction_id", None
+            )
+
+            output_vid = getattr(interaction, "output_video", None)
+            if output_vid:
+                data = getattr(output_vid, "data", None) or getattr(
+                    output_vid, "video_bytes", None
+                )
+                if data:
+                    video_bytes = (
+                        base64.b64decode(data) if isinstance(data, str) else data
+                    )
+                    os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
+                    with open(target_rel_path, "wb") as f:
+                        f.write(video_bytes)
+                    return True, inter_id
+        except Exception:
+            pass
+        return False, None
+
     def _generate_live_veo_video(self, prompt: str, target_rel_path: str) -> bool:
-        """Calls Google Cloud Vertex AI (veo-2.0-generate-001), polls operation, and saves MP4 bytes."""
+        """Fallback to Veo (veo-2.0-generate-001) for single-shot video generation with audio muxing."""
         if not self._genai_client:
             return False
         try:
@@ -230,7 +270,6 @@ class OmniFlashClient:
                                 os.remove(temp_raw_veo)
                             return True
 
-                    # Fallback if muxing failed: keep raw video
                     os.replace(temp_raw_veo, target_rel_path)
                     return True
         except Exception:
@@ -242,15 +281,19 @@ class OmniFlashClient:
         url = f"/static/rendered/{thread_id}_turn0.mp4"
         rel_path = url.lstrip("/")
 
-        # 1. Try real live AI video generation from Vertex AI
-        success = self._generate_live_veo_video(prompt, rel_path)
+        # 1. Primary: Gemini Omni Flash via Interactions API (Native Video + Audio + Reasoning)
+        success, inter_id = self._generate_live_omni_flash_video(prompt, rel_path)
 
-        # 2. Fallback to local prompt-rendered animated video if live generation is disabled or times out
+        # 2. Secondary Fallback: Veo single-shot video generation with audio muxing
+        if not success:
+            success = self._generate_live_veo_video(prompt, rel_path)
+
+        # 3. Tertiary Fallback: Local prompt-rendered animated video
         if not success:
             ensure_rendered_video(url, prompt=prompt)
 
         return GenerationResult(
-            interaction_thread_id=thread_id,
+            interaction_thread_id=inter_id or thread_id,
             video_url=url,
         )
 
@@ -260,7 +303,16 @@ class OmniFlashClient:
         url = f"/static/rendered/{interaction_thread_id}_turn_diff.mp4"
         rel_path = url.lstrip("/")
 
-        success = self._generate_live_veo_video(diff_prompt, rel_path)
+        # 1. Primary: Gemini Omni Flash stateful conversational diff via previous_interaction_id
+        success, _ = self._generate_live_omni_flash_video(
+            diff_prompt, rel_path, previous_interaction_id=interaction_thread_id
+        )
+
+        # 2. Secondary Fallback: Veo
+        if not success:
+            success = self._generate_live_veo_video(diff_prompt, rel_path)
+
+        # 3. Tertiary Fallback: Local prompt-rendered animated video
         if not success:
             ensure_rendered_video(url, prompt=diff_prompt)
 
