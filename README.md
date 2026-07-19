@@ -2,21 +2,23 @@
 
 <img src="imgs/omnimash_banner.png" alt="OmniMash — AI Parody & Mashup Video Studio featuring DumbleDior, Snape Dawg, and Dripped-out Harry Potter" width="100%" />
 
-<h1 align="center">🎬 OmniMash 🪄</h1>
+# 🎬 OmniMash 🪄
 
-> AI Parody & Mashup Video Studio inspired by viral sensations like **[Dripwarts](https://www.youtube.com/@Onirostudios)** (*DumbleDior*, *Snape Dawg*, *Harry Potter*). Powered by **`gemini-omni-flash-preview`** (unified multimodal video, native synced audio, and conversational diffs in 720p) and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
-
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?logo=uv&logoColor=white)
-![Ruff](https://img.shields.io/badge/lint-ruff-261230?logo=ruff&logoColor=white)
-![ty](https://img.shields.io/badge/types-ty-261230?logo=astral&logoColor=white)
-![Google ADK](https://img.shields.io/badge/Google%20ADK-2.5-4285F4?logo=google&logoColor=white)
-![Vertex AI](https://img.shields.io/badge/Vertex%20AI-Agent%20Engine-4285F4?logo=googlecloud&logoColor=white)
-![Gemini Omni Flash](https://img.shields.io/badge/Gemini%20Omni%20Flash-Preview-886FBF?logo=googlegemini&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.139-009688?logo=fastapi&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-18-000000?logo=nextdotjs&logoColor=white)
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12" />
+  <img src="https://img.shields.io/badge/packaging-uv-DE5FE9?style=flat-square&logo=uv&logoColor=white" alt="uv" />
+  <img src="https://img.shields.io/badge/lint-ruff-261230?style=flat-square&logo=ruff&logoColor=white" alt="ruff" />
+  <img src="https://img.shields.io/badge/types-ty-261230?style=flat-square&logo=astral&logoColor=white" alt="ty" />
+  <img src="https://img.shields.io/badge/Google%20ADK-2.5-4285F4?style=flat-square&logo=google&logoColor=white" alt="Google ADK" />
+  <img src="https://img.shields.io/badge/Vertex%20AI-Agent%20Engine-4285F4?style=flat-square&logo=googlecloud&logoColor=white" alt="Vertex AI" />
+  <img src="https://img.shields.io/badge/Gemini%20Omni%20Flash-Preview-886FBF?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini Omni Flash" />
+  <img src="https://img.shields.io/badge/FastAPI-0.139-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Next.js-18-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js" />
+</p>
 
 </div>
+
+> AI Parody & Mashup Video Studio inspired by viral sensations like **[Dripwarts](https://www.youtube.com/@Onirostudios)** (*DumbleDior*, *Snape Dawg*, *Harry Potter*). Powered by **`gemini-omni-flash-preview`** (unified multimodal video, native synced audio, and conversational diffs in 720p) and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
 
 **OmniMash** runs a 5-step multimodal generation and conversational diff pipeline: it ingests character lore and video stems, compiles shorthand into a 5-part **"Anchor & Inject"** prompt taxonomy, generates 10-second 720p clips with native audio via **Gemini Omni Flash**, branches edits non-linearly across a **Session Version Tree DAG**, and flushes context decay via **Commit & Branch Checkpointing**.
 
