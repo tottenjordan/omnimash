@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class OmniMashSettings(BaseSettings):
     """Centralized, type-safe application settings loaded automatically from environment and .env."""
 
-    google_cloud_project: str = "hybrid-vertex"
+    google_cloud_project: str = "your-gcp-project-id"
     google_cloud_region: str = "us-central1"
     omnimash_gcs_bucket: str | None = None
     gemini_api_key: str | None = None
@@ -21,11 +21,9 @@ class OmniMashSettings(BaseSettings):
 
     @property
     def gcs_bucket_name(self) -> str:
-        """Derives the GCS bucket name, defaulting to omnimash-media-{project_id} if not explicitly configured."""
+        """Derives the GCS bucket name, defaulting dynamically to omnimash-media-{project_id}."""
         if self.omnimash_gcs_bucket:
             return self.omnimash_gcs_bucket
-        if self.google_cloud_project == "hybrid-vertex":
-            return "omnimash-media-934903580331"
         return f"omnimash-media-{self.google_cloud_project}"
 
 

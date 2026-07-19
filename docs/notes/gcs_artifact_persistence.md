@@ -11,14 +11,14 @@ In serverless Cloud Run production environments, container instances are ephemer
 ```mermaid
 graph LR
     Generator["🎬 Gemini Omni Flash / Stitcher"] --> GCSMgr["📦 GcsStorageManager (src/omnimash/storage/gcs.py)"]
-    GCSMgr --> GCS["☁️ Google Cloud Storage (gs://omnimash-media-934903580331)"]
+    GCSMgr --> GCS["☁️ Google Cloud Storage (gs://omnimash-media-${GOOGLE_CLOUD_PROJECT})"]
     GCS --> CDN["🌐 Cloud CDN / Signed URLs"]
     CDN --> ReactUI["🖥️ React UI Video Dashboard"]
 ```
 
 ### 1. Persistent Cloud Bucket
-- **GCS Bucket:** `gs://omnimash-media-934903580331` (configurable via `OMNIMASH_GCS_BUCKET` or `GCS_BUCKET_NAME`).
-- **GCP Project:** `hybrid-vertex` (`934903580331`).
+- **GCS Bucket:** `gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}` (configurable via `OMNIMASH_GCS_BUCKET` in `.env`).
+- **GCP Project:** Dynamic from `GOOGLE_CLOUD_PROJECT`.
 - **Blob Hierarchy:**
   - `rendered/{filename}.mp4`: Final and intermediate per-turn 720p 24fps video clips.
   - `master/{filename}.mp4`: Master stitched video outputs.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ==============================================================================
 # OmniMash GCS Bucket Provisioning Script
-# Idempotently creates the GCS bucket specified in .env or settings
+# Idempotently creates the GCS bucket specified in .env or dynamically derived
 # ==============================================================================
 
 # Load .env if present
@@ -13,9 +13,9 @@ if [ -f .env ]; then
   set +a
 fi
 
-PROJECT_ID="${GOOGLE_CLOUD_PROJECT:-hybrid-vertex}"
+PROJECT_ID="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null || echo "your-gcp-project-id")}"
 REGION="${GOOGLE_CLOUD_REGION:-us-central1}"
-BUCKET_NAME="${OMNIMASH_GCS_BUCKET:-omnimash-media-934903580331}"
+BUCKET_NAME="${OMNIMASH_GCS_BUCKET:-omnimash-media-${PROJECT_ID}}"
 
 echo "=========================================================="
 echo "🎬 OmniMash GCS Bucket Provisioning"
