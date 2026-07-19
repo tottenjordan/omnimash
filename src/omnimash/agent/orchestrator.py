@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from google.adk.agents import Agent
 
@@ -20,6 +20,8 @@ class AgentTurnResponse:
     error_message: str | None = None
     turn_id: str | None = None
     depth: int = 0
+    raw_compiled_prompt: str | None = None
+    reference_analysis: dict | None = None
 
 
 class OmniMashAgent:
@@ -47,10 +49,15 @@ class OmniMashAgent:
         session = self.session_manager.get_or_create_session(user_id, project_id)
 
         # Step 0: Process reference URL if provided
+        reference_analysis = None
         if reference_url:
             self.media_extractor.process_youtube_url(
                 reference_url, session_id=session.session_id
             )
+            report = self.media_extractor.analyze_youtube_reference(
+                reference_url, session_id=session.session_id
+            )
+            reference_analysis = asdict(report)
 
         # Step 1: Model Armor Gate
         guard_res = self.guardrail.validate_prompt(prompt)
@@ -69,6 +76,7 @@ class OmniMashAgent:
                 guard_res.sanitized_prompt,
                 override_prompt=compiled_override,
             )
+            raw_compiled_prompt = delta_prompt
             self.storage.save_session_prompt(
                 session.session_id, len(session.turns), delta_prompt
             )
@@ -86,6 +94,7 @@ class OmniMashAgent:
                 on_screen_text=on_screen_text,
                 override_prompt=compiled_override,
             )
+            raw_compiled_prompt = meta_prompt
             self.storage.save_session_prompt(
                 session.session_id, len(session.turns), meta_prompt
             )
@@ -113,6 +122,8 @@ class OmniMashAgent:
             video_url=gen_res.video_url,
             turn_id=turn_node.turn_id,
             depth=turn_node.edit_depth_in_thread,
+            raw_compiled_prompt=raw_compiled_prompt,
+            reference_analysis=reference_analysis,
         )
 
     def commit_and_branch(

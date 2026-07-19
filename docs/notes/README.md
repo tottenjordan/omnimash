@@ -23,6 +23,7 @@ This directory documents non-obvious knowledge, session notes, and operational q
 
 | Topic | Note File | Description |
 | :--- | :--- | :--- |
+| Reference Analysis & Preset Inspector | [reference_analysis_and_preset_inspector.md](reference_analysis_and_preset_inspector.md) | Ingested YouTube reference keyframe annotations, BPM & color palette analysis, and 4-vector preset contribution inspector |
 | Centralized Settings & .env | [centralized_settings_and_env.md](centralized_settings_and_env.md) | Centralized pydantic-settings configuration, .env.example templates, and secret leak prevention |
 | Hierarchical Session GCS Storage | [session_scoped_gcs_artifacts.md](session_scoped_gcs_artifacts.md) | Session-scoped cloud folders (sessions/{session_id}/[intermediate,finalized,prompts,references]) |
 | GCS Artifact Persistence | [gcs_artifact_persistence.md](gcs_artifact_persistence.md) | Persistent cloud media storage (gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}) and .gitignore isolation |

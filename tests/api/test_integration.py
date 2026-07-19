@@ -175,3 +175,24 @@ def test_e2e_audio_stem_and_on_screen_text_generation() -> None:
     data = res.json()
     assert data["success"] is True
     assert data["video_url"] is not None
+
+
+def test_e2e_generate_includes_reference_analysis_and_raw_prompt() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_diag",
+            "project_id": "p_diag",
+            "prompt": "Snape 90s rap",
+            "clip_index": 0,
+            "reference_url": "https://www.youtube.com/watch?v=sample",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "reference_analysis" in data
+    assert "raw_compiled_prompt" in data
+    assert data["reference_analysis"] is not None

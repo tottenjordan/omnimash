@@ -32,6 +32,8 @@ class GenerateResponse(BaseModel):
     turn_id: str | None = None
     depth: int = 0
     error: str | None = None
+    raw_compiled_prompt: str | None = None
+    reference_analysis: dict | None = None
 
 
 UI_HTML = """<!DOCTYPE html>
@@ -136,6 +138,12 @@ UI_HTML = """<!DOCTYPE html>
             const [status, setStatus] = useState("COMPLETED");
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
+
+            // Reference Analysis & Raw Payload State
+            const [referenceAnalysis, setReferenceAnalysis] = useState(null);
+            const [rawCompiledPrompt, setRawCompiledPrompt] = useState("");
+            const [isRawPayloadOpen, setIsRawPayloadOpen] = useState(true);
+            const [copied, setCopied] = useState(false);
             
             // Editable Prompt Compiler Previews
             const [editableParts, setEditableParts] = useState(compilePromptPreview("", "90s_rap_video", "", ""));
@@ -148,6 +156,32 @@ UI_HTML = """<!DOCTYPE html>
             const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
 
             const selectedParentTurnId = parentTurnId;
+
+            const defaultAnalysis = {
+                video_title: "Reference Beat & Character Baseline",
+                duration_seconds: 180,
+                detected_bpm: 120,
+                dominant_colors: ["#1B2A4A", "#0B6623", "#D4AF37"],
+                extracted_keyframes: [
+                    {
+                        timestamp: "00:02",
+                        image_url: "/tmp/mock_frame_1.jpg",
+                        usage_annotation: "🎯 [SUBJECT ANCHOR]: Conditioning facial likeness, expression, and hair baseline."
+                    },
+                    {
+                        timestamp: "00:15",
+                        image_url: "/tmp/mock_frame_2.jpg",
+                        usage_annotation: "🧥 [AESTHETIC BASELINE]: Reference for lighting contrast and initial character wardrobe."
+                    },
+                    {
+                        timestamp: "00:30",
+                        image_url: "/tmp/mock_frame_3.jpg",
+                        usage_annotation: "🎵 [ACOUSTIC STEM]: Tempo reference extracted for 120 BPM audio track synchronization."
+                    }
+                ]
+            };
+
+            const activeAnalysis = referenceAnalysis || ((referenceUrl && referenceUrl.trim().length > 0) ? defaultAnalysis : null);
 
             useEffect(() => {
                 if (!isCustomEdited) {
@@ -172,14 +206,28 @@ UI_HTML = """<!DOCTYPE html>
                 setEditableDelta(prev => ({ ...prev, [field]: val }));
             };
 
+            const textDirective = (editableParts.onScreenText && editableParts.onScreenText.trim().length > 0)
+                ? `On-screen text: '${editableParts.onScreenText.trim()}'`
+                : "No text, no subtitles, no captions on screen";
+
+            const currentCompiledPrompt = selectedParentTurnId
+                ? `Apply conversational diff to the existing video latent space using Lock & Isolate: [PRESERVATION LOCK]: ${editableDelta.preservationLock} | [ISOLATED DIFF]: ${editableDelta.isolatedDiff}`
+                : `Generate a 720p 10-second cinematic parody video with native audio using the Anchor & Inject framework: [SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | Sound design: ${editableParts.audioTrack}. ${textDirective}.`;
+
+            const displayRawPrompt = rawCompiledPrompt || currentCompiledPrompt;
+
+            const handleCopyRawPrompt = () => {
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(displayRawPrompt);
+                }
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            };
+
             const handleGenerate = async (e) => {
                 e.preventDefault();
                 setLoading(true);
                 try {
-                    const textDirective = (editableParts.onScreenText && editableParts.onScreenText.trim().length > 0)
-                        ? `On-screen text: '${editableParts.onScreenText.trim()}'`
-                        : "No text, no subtitles, no captions on screen";
-
                     const compiledOverride = selectedParentTurnId
                         ? `[PRESERVATION LOCK]: ${editableDelta.preservationLock} | [ISOLATED DIFF]: ${editableDelta.isolatedDiff}`
                         : `[SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | Sound design: ${editableParts.audioTrack}. ${textDirective}.`;
@@ -201,6 +249,12 @@ UI_HTML = """<!DOCTYPE html>
                     });
                     const data = await res.json();
                     if (data.success) {
+                        if (data.reference_analysis) {
+                            setReferenceAnalysis(data.reference_analysis);
+                        }
+                        if (data.raw_compiled_prompt) {
+                            setRawCompiledPrompt(data.raw_compiled_prompt);
+                        }
                         const newTurn = {
                             turnId: data.turn_id,
                             prompt: prompt,
@@ -240,6 +294,12 @@ UI_HTML = """<!DOCTYPE html>
                     });
                     const data = await res.json();
                     if (data.success) {
+                        if (data.reference_analysis) {
+                            setReferenceAnalysis(data.reference_analysis);
+                        }
+                        if (data.raw_compiled_prompt) {
+                            setRawCompiledPrompt(data.raw_compiled_prompt);
+                        }
                         const newTurn = {
                             turnId: data.turn_id,
                             prompt: nextPrompt,
@@ -360,6 +420,52 @@ UI_HTML = """<!DOCTYPE html>
                                             <div className="text-[10px] text-gray-500 line-clamp-2 mt-1">{preset.desc}</div>
                                         </button>
                                     ))}
+                                </div>
+
+                                {/* Style Preset Contribution Inspector */}
+                                <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-semibold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                            <span>🔍 Style Preset Contribution Inspector</span>
+                                        </h3>
+                                        <span className="text-[10px] bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded border border-purple-800/80 font-mono">
+                                            {selectedPreset}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
+                                            <span className="font-bold text-pink-400 flex items-center gap-1">
+                                                <span>👔</span> Wardrobe
+                                            </span>
+                                            <p className="text-gray-400 text-[10px] leading-tight">
+                                                {aestheticSignifiers[selectedPreset]?.wardrobe}
+                                            </p>
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
+                                            <span className="font-bold text-amber-400 flex items-center gap-1">
+                                                <span>🎥</span> Camera / Lighting
+                                            </span>
+                                            <p className="text-gray-400 text-[10px] leading-tight">
+                                                {aestheticSignifiers[selectedPreset]?.camera}
+                                            </p>
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
+                                            <span className="font-bold text-emerald-400 flex items-center gap-1">
+                                                <span>🏃</span> Motion
+                                            </span>
+                                            <p className="text-gray-400 text-[10px] leading-tight">
+                                                {aestheticSignifiers[selectedPreset]?.motion}
+                                            </p>
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
+                                            <span className="font-bold text-teal-400 flex items-center gap-1">
+                                                <span>🎵</span> Sound Design
+                                            </span>
+                                            <p className="text-gray-400 text-[10px] leading-tight">
+                                                {aestheticSignifiers[selectedPreset]?.audio}
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -578,12 +684,40 @@ UI_HTML = """<!DOCTYPE html>
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Raw Compiled Model Payload Container */}
+                                <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsRawPayloadOpen(!isRawPayloadOpen)}
+                                            className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-2 hover:text-emerald-300 transition"
+                                        >
+                                            <span>{isRawPayloadOpen ? "▼" : "▶"}</span>
+                                            <span>📦 Raw Compiled Model Payload (gemini-omni-flash-preview)</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleCopyRawPrompt}
+                                            className="text-[10px] bg-emerald-950 text-emerald-300 hover:bg-emerald-900 px-2.5 py-1 rounded border border-emerald-700/80 font-mono transition flex items-center gap-1"
+                                        >
+                                            <span>{copied ? "✓ Copied!" : "📋 Copy Raw Prompt"}</span>
+                                        </button>
+                                    </div>
+                                    {isRawPayloadOpen && (
+                                        <div className="bg-black/90 p-3 rounded-lg border border-emerald-500/40 shadow-inner">
+                                            <pre className="font-mono text-[10px] text-emerald-300 whitespace-pre-wrap break-all leading-relaxed select-all">
+                                                {displayRawPrompt}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                         </div>
 
-                        <div className="col-span-5 flex flex-col">
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg h-full flex flex-col">
+                        <div className="col-span-5 flex flex-col space-y-6 overflow-y-auto pr-1">
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
                                 <div className="flex items-center justify-between mb-4">
                                     <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
                                         Video Player
@@ -599,9 +733,9 @@ UI_HTML = """<!DOCTYPE html>
                                         </a>
                                     )}
                                 </div>
-                                <div className="flex-1 bg-black rounded-lg border border-gray-800 flex flex-col items-center justify-center relative overflow-hidden group p-3">
+                                <div className="bg-black rounded-lg border border-gray-800 flex flex-col items-center justify-center relative overflow-hidden group p-3 min-h-[300px]">
                                     {currentVideo ? (
-                                        <div className="w-full h-full flex flex-col items-center justify-center">
+                                        <div className="w-full flex flex-col items-center justify-center">
                                             <video
                                                 key={currentVideo}
                                                 controls
@@ -621,6 +755,108 @@ UI_HTML = """<!DOCTYPE html>
                                     )}
                                 </div>
                             </div>
+
+                            {/* Ingested YouTube Reference Analysis & Keyframes Gallery */}
+                            {activeAnalysis && (
+                                <div className="bg-gray-900 border border-teal-800/80 rounded-xl p-5 shadow-lg space-y-4">
+                                    {/* Ingested Analysis Card Header & Badges */}
+                                    <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-gray-800">
+                                        <div className="space-y-0.5">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-semibold text-teal-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <span>📊</span> Ingested YouTube Reference Analysis
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-400 font-medium">
+                                                {activeAnalysis.video_title} ({activeAnalysis.duration_seconds}s)
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-3">
+                                            {/* Detected BPM Badge */}
+                                            <span className="bg-teal-950 text-teal-300 border border-teal-600 px-3 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-1.5 shadow">
+                                                <span>🎵</span> {activeAnalysis.detected_bpm} BPM
+                                            </span>
+
+                                            {/* Dominant Hex Color Palette Swatches */}
+                                            <div className="flex items-center gap-1.5 bg-gray-950 p-1.5 rounded-lg border border-gray-800">
+                                                <span className="text-[10px] text-gray-400 font-semibold uppercase mr-1">Palette:</span>
+                                                {activeAnalysis.dominant_colors.map((hex, idx) => (
+                                                    <div key={idx} className="flex items-center gap-1" title={hex}>
+                                                        <div
+                                                            style={{ backgroundColor: hex }}
+                                                            className="w-4 h-4 rounded-full border border-white/30 shadow-inner"
+                                                        />
+                                                        <span className="text-[9px] font-mono text-gray-300 hidden sm:inline">{hex}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Extracted Reference Keyframes Gallery */}
+                                    <div>
+                                        <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                                            <span>🖼️ Extracted Reference Keyframes Gallery &amp; Usage Annotations</span>
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            {activeAnalysis.extracted_keyframes.map((frame, idx) => {
+                                                const isAnchor = frame.usage_annotation.includes("SUBJECT ANCHOR");
+                                                const isBaseline = frame.usage_annotation.includes("AESTHETIC BASELINE");
+                                                const isStem = frame.usage_annotation.includes("ACOUSTIC STEM");
+
+                                                return (
+                                                    <div
+                                                        key={idx}
+                                                        className={`p-3 rounded-lg border flex flex-col justify-between space-y-2 bg-gray-950 ${
+                                                            isAnchor
+                                                                ? "border-pink-500/50"
+                                                                : isBaseline
+                                                                ? "border-purple-500/50"
+                                                                : "border-teal-500/50"
+                                                        }`}
+                                                    >
+                                                        {/* Keyframe Thumbnail Container */}
+                                                        <div className="h-24 bg-gradient-to-br from-gray-900 to-black rounded border border-gray-800 flex flex-col items-center justify-center relative overflow-hidden group">
+                                                            <span className="text-3xl opacity-60">🎬</span>
+                                                            <span className="text-[10px] font-mono text-gray-400 mt-1">
+                                                                Frame {idx + 1} ({frame.timestamp})
+                                                            </span>
+                                                            <div className="absolute top-1 left-1 bg-black/80 px-1.5 py-0.5 rounded text-[9px] font-mono text-gray-300 border border-gray-800">
+                                                                ⏱️ {frame.timestamp}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Keyframe Usage Annotation & Badges */}
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex items-center gap-1 flex-wrap">
+                                                                {isAnchor && (
+                                                                    <span className="text-[9px] bg-pink-950 text-pink-300 px-2 py-0.5 rounded border border-pink-700/80 font-bold font-mono">
+                                                                        🎯 [SUBJECT ANCHOR]
+                                                                    </span>
+                                                                )}
+                                                                {isBaseline && (
+                                                                    <span className="text-[9px] bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-700/80 font-bold font-mono">
+                                                                        🧥 [AESTHETIC BASELINE]
+                                                                    </span>
+                                                                )}
+                                                                {isStem && (
+                                                                    <span className="text-[9px] bg-teal-950 text-teal-300 px-2 py-0.5 rounded border border-teal-700/80 font-bold font-mono">
+                                                                        🎵 [ACOUSTIC STEM]
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-[10px] text-gray-300 leading-relaxed font-sans">
+                                                                {frame.usage_annotation}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="col-span-3 flex flex-col space-y-6 overflow-y-auto">
@@ -734,6 +970,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             turn_id=res.turn_id,
             depth=res.depth,
             error=res.error_message,
+            raw_compiled_prompt=res.raw_compiled_prompt,
+            reference_analysis=res.reference_analysis,
         )
 
     @app.post("/api/commit", response_model=GenerateResponse)
@@ -751,6 +989,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             turn_id=res.turn_id,
             depth=res.depth,
             error=res.error_message,
+            raw_compiled_prompt=res.raw_compiled_prompt,
+            reference_analysis=res.reference_analysis,
         )
 
     return app
