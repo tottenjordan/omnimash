@@ -31,6 +31,12 @@ class CompiledPromptParts:
             sound_directive = (
                 "Sound design: Silent video. No background music, no audio"
             )
+        elif self.voiceover and self.voiceover.strip():
+            sound_directive = (
+                f"Sound design: Foreground spoken voiceover/dialogue is dominant, "
+                f"crystal-clear, and front-of-mix. Background beat ({self.audio_track}) "
+                f"is quietly ducked at 15% volume in the background"
+            )
         else:
             sound_directive = f"Sound design: {self.audio_track}"
 

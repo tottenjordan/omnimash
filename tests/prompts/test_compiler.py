@@ -91,3 +91,13 @@ def test_prompt_compiler_lock_and_isolate_delta():
     assert "audio stem rhythm" in delta.preservation_lock
     assert "[ISOLATED DIFF]:" in delta.to_delta_prompt()
     assert "make his chain bigger" in delta.isolated_diff
+
+
+def test_compiler_applies_audio_ducking_when_voiceover_present():
+    compiler = PromptCompiler()
+    parts = compiler.compile(
+        "Snape rap", voiceover="Gaunt wizard speaking: Potter explain"
+    )
+    prompt = parts.to_full_prompt()
+    assert "ducked" in prompt.lower() or "foreground" in prompt.lower()
+    assert "Voiceover:" in prompt or "Dialogue between subjects:" in prompt
