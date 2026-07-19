@@ -57,3 +57,15 @@ def test_adk_agent_delta_prompt_instruction_rules():
     assert isinstance(adk_agent.instruction, str)
     assert "[PRESERVATION LOCK]" in adk_agent.instruction
     assert "[ISOLATED DIFF]" in adk_agent.instruction
+
+
+def test_orchestrator_processes_youtube_reference_url():
+    agent = OmniMashAgent(mock_mode=True)
+    res = agent.process_user_turn(
+        user_id="u_yt",
+        project_id="p_yt",
+        prompt="DumbleDior rapping to reference beat",
+        reference_url="https://www.youtube.com/watch?v=sample_beat",
+    )
+    assert res.success is True
+    assert res.video_url is not None

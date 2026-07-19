@@ -12,6 +12,7 @@ class GenerateRequest(BaseModel):
     prompt: str
     clip_index: int = 0
     parent_turn_id: str | None = None
+    reference_url: str | None = None
 
 
 class CommitRequest(BaseModel):
@@ -547,6 +548,7 @@ def create_app(mock_mode: bool = True) -> FastAPI:
             prompt=req.prompt,
             clip_index=req.clip_index,
             parent_turn_id=req.parent_turn_id,
+            reference_url=req.reference_url,
         )
         return GenerateResponse(
             success=res.success,

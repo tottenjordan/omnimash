@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from google.adk.agents import Agent
 
 from omnimash.engine.omni_client import OmniFlashClient
+from omnimash.ingestion.media_extractor import MediaExtractor
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
 from omnimash.security.guardrail import ModelArmorGuardrail
 from omnimash.state.session_manager import SessionManager
@@ -25,6 +26,7 @@ class OmniMashAgent:
         self.session_manager = SessionManager()
         self.omni_client = OmniFlashClient(mock_mode=mock_mode)
         self.taxonomy = PromptTaxonomyEngine()
+        self.media_extractor = MediaExtractor(mock_mode=mock_mode)
 
     def process_user_turn(
         self,
@@ -33,7 +35,12 @@ class OmniMashAgent:
         prompt: str,
         clip_index: int = 0,
         parent_turn_id: str | None = None,
+        reference_url: str | None = None,
     ) -> AgentTurnResponse:
+        # Step 0: Process reference URL if provided
+        if reference_url:
+            self.media_extractor.process_youtube_url(reference_url)
+
         # Step 1: Model Armor Gate
         guard_res = self.guardrail.validate_prompt(prompt)
         if not guard_res.is_approved:
@@ -141,6 +148,7 @@ def build_adk_agent(mock_mode: bool = True) -> Agent:
         prompt: str,
         clip_index: int = 0,
         parent_turn_id: str | None = None,
+        reference_url: str | None = None,
     ) -> dict[str, str | bool | int | None]:
         """Generates a 720p parody video clip or conversational diff branch."""
         res = orchestrator.process_user_turn(
@@ -149,6 +157,7 @@ def build_adk_agent(mock_mode: bool = True) -> Agent:
             prompt=prompt,
             clip_index=clip_index,
             parent_turn_id=parent_turn_id,
+            reference_url=reference_url,
         )
         return {
             "success": res.success,
