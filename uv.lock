@@ -237,6 +237,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
+sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/cloudpickle/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414" }
+wheels = [
+    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/cloudpickle/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
@@ -767,6 +776,7 @@ name = "omnimash-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "cloudpickle" },
     { name = "fastapi" },
     { name = "ffmpeg-python" },
     { name = "google-adk" },
@@ -789,6 +799,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cloudpickle", specifier = ">=3.1.2" },
     { name = "fastapi", specifier = ">=0.139.2" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "google-adk", specifier = ">=2.5.0" },
