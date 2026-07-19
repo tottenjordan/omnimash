@@ -67,7 +67,18 @@ Gemini Omni Flash accepts natural language speaker turns. By structuring vocal l
 
 ---
 
-## 🔇 2. Silent Video / Mute Mode
+## 🎚️ 2. Automatic Audio Ducking & Volume Balancing
+
+### Speech Clarity via Dynamic Instrumental Ducking:
+When dialogue or voiceover narration is present alongside background music, OmniMash automatically balances audio levels to ensure vocal intelligibility and speech clarity:
+
+* **Foreground Vocals:** Spoken dialogue formants (300Hz–2.5kHz speech band) are emphasized in the acoustic mix.
+* **Ducked Background Beat (15%–18% Ratio):** When `has_vocal` is detected (via voiceover prompt, dialogue directives, or character speaker turns), the instrumental background beat is dynamically ducked to **18% volume** (`val * 0.18 + formant_val`) rather than 70%.
+* **Result:** Instrumental beats (808 sub-bass, hi-hats, synthwave arpeggios, lo-fi chords) provide rhythmic ambiance in the background without muddying or masking spoken vocal lines, letting character dialogue stand out crystal-clear in the foreground.
+
+---
+
+## 🔇 3. Silent Video / Mute Mode
 
 ### When & How to Use:
 Creators often want pristine 720p 24fps video clips without any audio track for external editing or background video loops.
@@ -82,7 +93,7 @@ Creators often want pristine 720p 24fps video clips without any audio track for 
 
 ---
 
-## 🎹 3. Summary of Audio Combinations
+## 🎹 4. Summary of Audio Combinations
 
 | Combination | 🎵 Audio Stem Input | 🎙️ Voiceover & Dialogue Input | Resulting Video Audio |
 | :--- | :--- | :--- | :--- |

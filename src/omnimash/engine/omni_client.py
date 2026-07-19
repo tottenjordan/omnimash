@@ -44,7 +44,8 @@ def _generate_dynamic_audio_wav(
     if is_silent or "silent" in lower or "mute" in lower:
         bpm = 0
         audio_data = [0] * total_samples
-        os.makedirs(os.path.dirname(wav_path), exist_ok=True)
+        if dirname := os.path.dirname(wav_path):
+            os.makedirs(dirname, exist_ok=True)
         with wave.open(wav_path, "wb") as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
@@ -172,12 +173,13 @@ def _generate_dynamic_audio_wav(
                 + 0.15 * math.sin(2 * math.pi * (speaker_pitch * 2.5) * t)
                 + 0.1 * math.sin(2 * math.pi * 1200 * t)
             ) * vocal_mod
-            val = val * 0.7 + formant_val
+            val = val * 0.18 + formant_val
 
         val = max(-1.0, min(1.0, val))
         audio_data.append(int(val * 32767))
 
-    os.makedirs(os.path.dirname(wav_path), exist_ok=True)
+    if dirname := os.path.dirname(wav_path):
+        os.makedirs(dirname, exist_ok=True)
     with wave.open(wav_path, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
