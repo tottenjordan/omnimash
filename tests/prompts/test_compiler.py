@@ -21,11 +21,13 @@ def test_prompt_compiler_anchor_and_inject():
     )
     assert "dungeon" in parts.environment
     assert "fisheye lens" in parts.camera_lighting
-    assert "10-second" in parts.motion or "nodding" in parts.motion
+    assert "10-second" in parts.motion or "bopping" in parts.motion
+    assert "120 BPM" in parts.audio_track or "boom-bap" in parts.audio_track
 
     full_prompt = parts.to_full_prompt()
     assert "[SUBJECT ANCHOR]:" in full_prompt
     assert "[AESTHETIC INJECTION]:" in full_prompt
+    assert "[AUDIO TRACK]:" in full_prompt
 
 
 def test_prompt_compiler_lock_and_isolate_delta():
@@ -34,5 +36,6 @@ def test_prompt_compiler_lock_and_isolate_delta():
     assert isinstance(delta, CompiledDeltaPrompt)
     assert "[PRESERVATION LOCK]:" in delta.to_delta_prompt()
     assert "Maintain exact subject face" in delta.preservation_lock
+    assert "audio stem rhythm" in delta.preservation_lock
     assert "[ISOLATED DIFF]:" in delta.to_delta_prompt()
     assert "make his chain bigger" in delta.isolated_diff

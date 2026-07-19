@@ -59,22 +59,26 @@ UI_HTML = """<!DOCTYPE html>
             "90s_rap_video": {
                 wardrobe: "wearing an oversized shiny black puffer jacket, thick diamond Cuban link chain, and vintage Cartier glasses",
                 camera: "shot on a 90s fisheye lens, low-angle tracking shot, high-contrast MTV rap video lighting with green and purple neon rim lights",
-                motion: "nodding rhythmically to a boom-bap beat while gesturing emphatically for a 10-second clip"
+                motion: "bopping head rhythmically to a 120 BPM beat while gesturing emphatically for a 10-second clip",
+                audio: "120 BPM boom-bap hip-hop beat, vinyl scratch intro, punchy kick drum, crisp snare, and rhythmic rap cadence"
             },
             "trap_disstrack": {
                 wardrobe: "wearing designer streetwear, iced-out medallions, and tinted aviator sunglasses",
                 camera: "rapid visual jump cuts, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes",
-                motion: "aggressive lyrical hand gestures and slow walking toward the camera for 10 seconds"
+                motion: "aggressive lyrical hand gestures and slow walking toward the camera for 10 seconds",
+                audio: "Muffled blown-out 808 sub-bass, rapid 16th-note trap hi-hat trills, and slow dark rap beat playing in the background"
             },
             "cyberpunk_drift": {
                 wardrobe: "wearing a high-collar LED-lined techwear coat with holographic chrome accessories",
                 camera: "anamorphic widescreen lens, rainy asphalt reflections, synthwave purple and cyan color grading",
-                motion: "slowly turning to face the camera amidst falling digital rain for 10 seconds"
+                motion: "slowly turning to face the camera amidst falling digital rain for 10 seconds",
+                audio: "Synthesizer arpeggios, heavy analog synth bassline, and futuristic ambient cyberpunk drone"
             },
             "vhs_anime": {
                 wardrobe: "cel-shaded retro anime styling with oversized 80s shoulder pads and vintage headbands",
                 camera: "retro 4:3 VHS tape grain, analog scanlines, chromatic aberration, and warm nostalgic bloom",
-                motion: "classic limited-frame anime speech animation and dynamic wind blowing through hair for 10 seconds"
+                motion: "classic limited-frame anime speech animation and dynamic wind blowing through hair for 10 seconds",
+                audio: "Retro 80s city pop brass samples, lo-fi cassette tape hiss, and upbeat Japanese synth melody"
             }
         };
 
@@ -95,15 +99,16 @@ UI_HTML = """<!DOCTYPE html>
                 aestheticInjection: style.wardrobe,
                 environment,
                 cameraLighting: style.camera,
-                motion: style.motion
+                motion: style.motion,
+                audioTrack: style.audio
             };
         }
 
         function compileDeltaPreview(deltaPrompt) {
             const instruction = deltaPrompt || "make his chain bigger";
             return {
-                preservationLock: "Maintain exact subject face, character likeness, expression, wardrobe baseline, and background environment from the previous turn.",
-                isolatedDiff: `Alter only the specified element: ${instruction}. Do not modify any surrounding visual features.`
+                preservationLock: "Maintain exact subject face, character likeness, expression, wardrobe baseline, background environment, and audio stem rhythm from the previous turn.",
+                isolatedDiff: `Alter only the specified element: ${instruction}. Do not modify any surrounding visual or audio features.`
             };
         }
 
@@ -441,6 +446,10 @@ UI_HTML = """<!DOCTYPE html>
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
                                             <span className="font-bold text-emerald-400 font-mono">[MOTION]: </span>
                                             <span className="text-gray-300">{compiledPreview.motion}</span>
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                            <span className="font-bold text-teal-400 font-mono">[AUDIO TRACK]: </span>
+                                            <span className="text-gray-300">{compiledPreview.audioTrack}</span>
                                         </div>
                                     </div>
                                 )}

@@ -14,6 +14,7 @@ class CompiledPromptParts:
     environment: str
     camera_lighting: str
     motion: str
+    audio_track: str
 
     def to_full_prompt(self) -> str:
         return (
@@ -21,7 +22,8 @@ class CompiledPromptParts:
             f"[AESTHETIC INJECTION]: {self.aesthetic_injection} | "
             f"[ENVIRONMENT]: {self.environment} | "
             f"[CAMERA/LIGHTING]: {self.camera_lighting} | "
-            f"[MOTION]: {self.motion}"
+            f"[MOTION]: {self.motion} | "
+            f"[AUDIO TRACK]: {self.audio_track}"
         )
 
 
@@ -48,22 +50,26 @@ AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
     "90s_rap_video": {
         "wardrobe": "wearing an oversized shiny black puffer jacket, thick diamond Cuban link chain, and vintage Cartier glasses",
         "camera": "shot on a 90s fisheye lens, low-angle tracking shot, high-contrast MTV rap video lighting with green and purple neon rim lights",
-        "motion": "nodding rhythmically to a boom-bap beat while gesturing emphatically for a 10-second clip",
+        "motion": "bopping head rhythmically to a 120 BPM beat while gesturing emphatically for a 10-second clip",
+        "audio": "120 BPM boom-bap hip-hop beat, vinyl scratch intro, punchy kick drum, crisp snare, and rhythmic rap cadence",
     },
     "trap_disstrack": {
         "wardrobe": "wearing designer streetwear, iced-out medallions, and tinted aviator sunglasses",
         "camera": "rapid visual jump cuts, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes",
         "motion": "aggressive lyrical hand gestures and slow walking toward the camera for 10 seconds",
+        "audio": "Muffled blown-out 808 sub-bass, rapid 16th-note trap hi-hat trills, and slow dark rap beat playing in the background",
     },
     "cyberpunk_drift": {
         "wardrobe": "wearing a high-collar LED-lined techwear coat with holographic chrome accessories",
         "camera": "anamorphic widescreen lens, rainy asphalt reflections, synthwave purple and cyan color grading",
         "motion": "slowly turning to face the camera amidst falling digital rain for 10 seconds",
+        "audio": "Synthesizer arpeggios, heavy analog synth bassline, and futuristic ambient cyberpunk drone",
     },
     "vhs_anime": {
         "wardrobe": "cel-shaded retro anime styling with oversized 80s shoulder pads and vintage headbands",
         "camera": "retro 4:3 VHS tape grain, analog scanlines, chromatic aberration, and warm nostalgic bloom",
         "motion": "classic limited-frame anime speech animation and dynamic wind blowing through hair for 10 seconds",
+        "audio": "Retro 80s city pop brass samples, lo-fi cassette tape hiss, and upbeat Japanese synth melody",
     },
 }
 
@@ -104,6 +110,7 @@ class PromptCompiler:
             environment=env,
             camera_lighting=style_info["camera"],
             motion=style_info["motion"],
+            audio_track=style_info["audio"],
         )
 
     def compile_delta(
@@ -114,12 +121,12 @@ class PromptCompiler:
             if custom_lock is not None
             else (
                 "Maintain exact subject face, character likeness, expression, "
-                "wardrobe baseline, and background environment from the previous turn."
+                "wardrobe baseline, background environment, and audio stem rhythm from the previous turn."
             )
         )
         isolated_diff = (
             f"Alter only the specified element: {delta_instruction}. "
-            "Do not modify any surrounding visual features."
+            "Do not modify any surrounding visual or audio features."
         )
         return CompiledDeltaPrompt(
             preservation_lock=preservation_lock,
