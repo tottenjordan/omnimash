@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Generated media artifacts (persisted in Google Cloud Storage gs://omnimash-media-934903580331)
+static/rendered/*
+!static/rendered/.gitkeep
+*.mp4
+*.wav
+*.mov
+*.webm
