@@ -67,14 +67,15 @@ Gemini Omni Flash accepts natural language speaker turns. By structuring vocal l
 
 ---
 
-## 🎚️ 2. Automatic Audio Ducking & Volume Balancing
+## 🎚️ 2. Automatic Audio Ducking & Text-to-Speech Spoken Voice Synthesis
 
-### Speech Clarity via Dynamic Instrumental Ducking:
-When dialogue or voiceover narration is present alongside background music, OmniMash automatically balances audio levels to ensure vocal intelligibility and speech clarity:
+### Real Spoken Voiceover & Character Dialogue Generation:
+When dialogue or voiceover narration is present alongside background music, OmniMash uses a multi-layer acoustic pipeline to synthesize and balance audio levels so spoken words are crystal-clear:
 
-* **Foreground Vocals:** Spoken dialogue formants (300Hz–2.5kHz speech band) are emphasized in the acoustic mix.
-* **Ducked Background Beat (15%–18% Ratio):** When `has_vocal` is detected (via voiceover prompt, dialogue directives, or character speaker turns), the instrumental background beat is dynamically ducked to **18% volume** (`val * 0.18 + formant_val`) rather than 70%.
-* **Result:** Instrumental beats (808 sub-bass, hi-hats, synthwave arpeggios, lo-fi chords) provide rhythmic ambiance in the background without muddying or masking spoken vocal lines, letting character dialogue stand out crystal-clear in the foreground.
+* **Spoken Speech Synthesis (TTS Engine):** Spoken character dialogue turns and voiceover monologues are synthesized into real audible spoken words using FFmpeg's built-in `libflite` TTS engine at 44.1kHz.
+* **Foreground Speech Amplification (180% Volume):** Spoken dialogue is mixed in the foreground at high volume (`volume=1.8`) to ensure complete intelligibility.
+* **Ducked Background Beat (12% Volume):** When voiceover or character dialogue is detected, the instrumental background beat (808 sub-bass, hi-hats, synthwave arpeggios, or boom-bap drums) is dynamically ducked down to **12% background volume** (`volume=0.12`).
+* **Result:** Spoken words from the characters dominate the mix cleanly in the foreground, while the background beat provides a subtle, quiet rhythmic groove beneath their voices.
 
 ---
 
