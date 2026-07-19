@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,6 +18,8 @@ class CompiledPromptParts:
     voiceover: str = ""
     is_silent: bool = False
     on_screen_text: str = ""
+    drip_props: list[str] = field(default_factory=list)
+    vibe_intensity: int = 50
 
     def to_full_prompt(self) -> str:
         text_directive = (
@@ -116,6 +118,8 @@ class PromptCompiler:
         voiceover: str | None = None,
         is_silent: bool = False,
         on_screen_text: str | None = None,
+        drip_props: list[str] | str | None = None,
+        vibe_intensity: int = 50,
     ) -> CompiledPromptParts:
         lower = raw_prompt.lower()
 
@@ -135,24 +139,48 @@ class PromptCompiler:
             AESTHETIC_SIGNIFIERS["90s_rap_video"],
         )
 
-        # 3. Resolve Environment
+        # 3. Normalize Drip Props & Resolve Aesthetic Injection
+        props_list: list[str] = []
+        if isinstance(drip_props, str):
+            props_list = [p.strip() for p in drip_props.split(",") if p.strip()]
+        elif isinstance(drip_props, list):
+            props_list = [str(p).strip() for p in drip_props if str(p).strip()]
+
+        aesthetic = style_info["wardrobe"]
+        if props_list:
+            aesthetic = f"{aesthetic}, accessorized with {', '.join(props_list)}"
+
+        # 4. Resolve Environment
         env = "in a stone Hogwarts dungeon lit by atmospheric fog and ambient glow"
         if custom_instructions:
             env = f"in {custom_instructions} with atmospheric environmental lighting"
 
-        # 4. Resolve Audio Track (explicit override takes precedence over preset)
+        # 5. Map Vibe Intensity & Resolve Camera/Lighting
+        if vibe_intensity <= 30:
+            vibe_desc = "Dark moody underground lighting, heavy laser smoke, high-contrast shadows, raw 16mm grain"
+        elif vibe_intensity <= 70:
+            vibe_desc = "Cinematic high-contrast MTV lighting with balanced ambient color grading"
+        else:
+            vibe_desc = "High-gloss neon lighting, vibrant anamorphic lens flare, holographic bloom, polished commercial aesthetic"
+
+        base_camera = style_info["camera"].rstrip(".")
+        camera_lighting = f"{base_camera}. {vibe_desc}"
+
+        # 6. Resolve Audio Track (explicit override takes precedence over preset)
         audio = audio_stem.strip() if audio_stem else style_info["audio"]
 
         return CompiledPromptParts(
             subject_anchor=anchor,
-            aesthetic_injection=style_info["wardrobe"],
+            aesthetic_injection=aesthetic,
             environment=env,
-            camera_lighting=style_info["camera"],
+            camera_lighting=camera_lighting,
             motion=style_info["motion"],
             audio_track=audio,
             voiceover=voiceover.strip() if voiceover else "",
             is_silent=is_silent,
             on_screen_text=on_screen_text.strip() if on_screen_text else "",
+            drip_props=props_list,
+            vibe_intensity=vibe_intensity,
         )
 
     def compile_delta(
