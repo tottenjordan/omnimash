@@ -52,6 +52,8 @@ class PromptTaxonomyEngine:
         is_silent: bool = False,
         on_screen_text: str | None = None,
         override_prompt: str | None = None,
+        drip_props: list[str] | str | None = None,
+        vibe_intensity: int = 50,
     ) -> str:
         if override_prompt:
             return override_prompt
@@ -64,6 +66,8 @@ class PromptTaxonomyEngine:
             voiceover=voiceover,
             is_silent=is_silent,
             on_screen_text=on_screen_text,
+            drip_props=drip_props,
+            vibe_intensity=vibe_intensity,
         )
         return (
             "Generate a 720p 10-second cinematic parody video with native audio using the Anchor & Inject framework: "

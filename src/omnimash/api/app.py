@@ -4,6 +4,20 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from omnimash.agent.orchestrator import OmniMashAgent
+from omnimash.ingestion.media_extractor import (
+    ParodyResearchResult,
+    ReferenceAnalysisReport,
+)
+
+
+class ResearchRequest(BaseModel):
+    subject: str
+    aesthetic: str
+
+
+class ExtractReferenceRequest(BaseModel):
+    url: str
+    session_name: str | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -1068,6 +1082,16 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             error=res.error_message,
             raw_compiled_prompt=res.raw_compiled_prompt,
             reference_analysis=res.reference_analysis,
+        )
+
+    @app.post("/api/research", response_model=ParodyResearchResult)
+    def research_parody(req: ResearchRequest) -> ParodyResearchResult:
+        return agent.media_extractor.research_parody_clash(req.subject, req.aesthetic)
+
+    @app.post("/api/extract-reference", response_model=ReferenceAnalysisReport)
+    def extract_reference(req: ExtractReferenceRequest) -> ReferenceAnalysisReport:
+        return agent.media_extractor.analyze_youtube_reference(
+            req.url, session_id=req.session_name or "default"
         )
 
     return app

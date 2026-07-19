@@ -247,3 +247,66 @@ def test_e2e_custom_session_name_gcs_mapping() -> None:
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
+
+
+def test_api_research_endpoint() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/research",
+        json={
+            "subject": "Harry Potter and Draco Malfoy",
+            "aesthetic": "Atlanta Trap Disstrack",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "Dripwarts" in data["synopsis"]
+    assert len(data["suggested_props"]) > 0
+    assert data["vibe_intensity"] == 75
+    assert "Trap" in data["suggested_audio"] or "808" in data["suggested_audio"]
+
+
+def test_api_extract_reference_endpoint() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/extract-reference",
+        json={
+            "url": "https://www.youtube.com/watch?v=sample_beat",
+            "session_name": "test_sess",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["video_title"] == "Reference Beat & Character Baseline"
+    assert data["detected_bpm"] == 120
+    assert len(data["extracted_keyframes"]) >= 3
+
+
+def test_e2e_directors_studio_3_act_flow() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    # Act 1: Research Clash
+    r1 = client.post(
+        "/api/research",
+        json={"subject": "Harry & Draco", "aesthetic": "Atlanta Trap"},
+    )
+    assert r1.status_code == 200
+    research = r1.json()
+
+    # Act 2 & 3: Generate Video with Drip Props & Session Name
+    r2 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_studio",
+            "project_id": "prj_studio",
+            "prompt": "Trapwarts trailer",
+            "session_name": "trapwarts_vol1",
+            "clip_index": 0,
+            "voiceover": research["suggested_dialogue"],
+        },
+    )
+    assert r2.status_code == 200
+    assert r2.json()["success"] is True
+

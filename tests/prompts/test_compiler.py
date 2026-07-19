@@ -101,3 +101,16 @@ def test_compiler_applies_audio_ducking_when_voiceover_present():
     prompt = parts.to_full_prompt()
     assert "ducked" in prompt.lower() or "foreground" in prompt.lower()
     assert "Voiceover:" in prompt or "Dialogue between subjects:" in prompt
+
+
+def test_compiler_vibe_slider_and_drip_props():
+    compiler = PromptCompiler()
+    parts = compiler.compile(
+        "Harry Potter rap",
+        drip_props=["Diamond Lightning Bolt Chain", "Vintage Gucci Tracksuit"],
+        vibe_intensity=85,
+    )
+    prompt = parts.to_full_prompt()
+    assert "Diamond Lightning Bolt Chain" in prompt
+    assert "Vintage Gucci Tracksuit" in prompt
+    assert "High-gloss neon lighting" in prompt or "anamorphic" in prompt

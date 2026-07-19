@@ -1,4 +1,8 @@
-from omnimash.ingestion.media_extractor import MediaExtractor, ReferenceAnalysisReport
+from omnimash.ingestion.media_extractor import (
+    MediaExtractor,
+    ParodyResearchResult,
+    ReferenceAnalysisReport,
+)
 
 
 def test_extract_reference_mock():
@@ -19,3 +23,14 @@ def test_media_extractor_generates_analysis_report():
     assert len(report.extracted_keyframes) >= 3
     assert "[SUBJECT ANCHOR]" in report.extracted_keyframes[0].usage_annotation
     assert len(report.dominant_colors) > 0
+
+
+def test_media_extractor_parody_research():
+    extractor = MediaExtractor(mock_mode=True)
+    res = extractor.research_parody_clash(
+        subject="Harry Potter and Draco Malfoy", aesthetic="Atlanta Trap Disstrack"
+    )
+    assert isinstance(res, ParodyResearchResult)
+    assert len(res.suggested_props) > 0
+    assert res.vibe_intensity >= 0
+    assert "Trap" in res.suggested_audio or "808" in res.suggested_audio
