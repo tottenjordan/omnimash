@@ -1,4 +1,8 @@
-from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
+from omnimash.prompts.taxonomy import (
+    PresetContribution,
+    PromptTaxonomyEngine,
+    StylePreset,
+)
 
 
 def test_compose_blend_prompt():
@@ -34,3 +38,13 @@ def test_taxonomy_engine_uses_lock_and_isolate_delta_compiler():
     assert "Maintain exact subject face" in delta_prompt
     assert "[ISOLATED DIFF]:" in delta_prompt
     assert "make his chain bigger" in delta_prompt
+
+
+def test_taxonomy_engine_provides_preset_contributions():
+    engine = PromptTaxonomyEngine()
+    contrib = engine.get_preset_contribution(StylePreset.NINETIES_RAP_VIDEO)
+    assert isinstance(contrib, PresetContribution)
+    assert "puffer jacket" in contrib.wardrobe
+    assert "fisheye lens" in contrib.camera_lighting
+    assert "bopping" in contrib.motion
+    assert "boom-bap" in contrib.sound_design

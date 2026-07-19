@@ -1,6 +1,21 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
 from enum import Enum
 
-from omnimash.prompts.compiler import CompiledPromptParts, PromptCompiler
+from omnimash.prompts.compiler import (
+    AESTHETIC_SIGNIFIERS,
+    CompiledPromptParts,
+    PromptCompiler,
+)
+
+
+@dataclass
+class PresetContribution:
+    wardrobe: str
+    camera_lighting: str
+    motion: str
+    sound_design: str
 
 
 class StylePreset(str, Enum):
@@ -13,6 +28,19 @@ class StylePreset(str, Enum):
 class PromptTaxonomyEngine:
     def __init__(self) -> None:
         self.compiler = PromptCompiler()
+
+    def get_preset_contribution(self, preset: StylePreset | str) -> PresetContribution:
+        preset_key = str(preset.value if hasattr(preset, "value") else preset)
+        style_info = AESTHETIC_SIGNIFIERS.get(
+            preset_key,
+            AESTHETIC_SIGNIFIERS["90s_rap_video"],
+        )
+        return PresetContribution(
+            wardrobe=style_info["wardrobe"],
+            camera_lighting=style_info["camera"],
+            motion=style_info["motion"],
+            sound_design=style_info["audio"],
+        )
 
     def build_initial_prompt(
         self,
