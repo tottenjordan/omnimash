@@ -28,6 +28,19 @@ def test_prompt_compiler_anchor_and_inject():
     assert "[SUBJECT ANCHOR]:" in full_prompt
     assert "[AESTHETIC INJECTION]:" in full_prompt
     assert "[AUDIO TRACK]:" in full_prompt
+    assert "Sound design:" in full_prompt
+    assert "No text, no subtitles, no captions on screen" in full_prompt
+
+
+def test_prompt_compiler_with_custom_on_screen_text():
+    compiler = PromptCompiler()
+    parts = compiler.compile(
+        raw_prompt="Severus Snape",
+        style_preset=StylePreset.NINETIES_RAP_VIDEO,
+        on_screen_text="SNAPE 1994 DISSTRACK",
+    )
+    full_prompt = parts.to_full_prompt()
+    assert "On-screen text: 'SNAPE 1994 DISSTRACK'" in full_prompt
 
 
 def test_prompt_compiler_lock_and_isolate_delta():

@@ -15,15 +15,22 @@ class CompiledPromptParts:
     camera_lighting: str
     motion: str
     audio_track: str
+    on_screen_text: str = ""
 
     def to_full_prompt(self) -> str:
+        text_directive = (
+            f"On-screen text: '{self.on_screen_text}'"
+            if self.on_screen_text and self.on_screen_text.strip()
+            else "No text, no subtitles, no captions on screen"
+        )
         return (
             f"[SUBJECT ANCHOR]: {self.subject_anchor} | "
             f"[AESTHETIC INJECTION]: {self.aesthetic_injection} | "
             f"[ENVIRONMENT]: {self.environment} | "
             f"[CAMERA/LIGHTING]: {self.camera_lighting} | "
             f"[MOTION]: {self.motion} | "
-            f"[AUDIO TRACK]: {self.audio_track}"
+            f"[AUDIO TRACK]: {self.audio_track} | "
+            f"Sound design: {self.audio_track}. {text_directive}."
         )
 
 
@@ -55,7 +62,7 @@ AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
     },
     "trap_disstrack": {
         "wardrobe": "wearing designer streetwear, iced-out medallions, and tinted aviator sunglasses",
-        "camera": "In a single continuous shot, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes. No dialogue",
+        "camera": "In a single continuous shot, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes",
         "motion": "aggressive lyrical hand gestures and slow walking toward the camera for 10 seconds",
         "audio": "Muffled blown-out 808 sub-bass, rapid 16th-note trap hi-hat trills, and slow dark rap beat playing in the background",
     },
@@ -81,6 +88,7 @@ class PromptCompiler:
         style_preset: StylePreset | str = "90s_rap_video",
         custom_instructions: str = "",
         audio_stem: str | None = None,
+        on_screen_text: str | None = None,
     ) -> CompiledPromptParts:
         lower = raw_prompt.lower()
 
@@ -115,6 +123,7 @@ class PromptCompiler:
             camera_lighting=style_info["camera"],
             motion=style_info["motion"],
             audio_track=audio,
+            on_screen_text=on_screen_text.strip() if on_screen_text else "",
         )
 
     def compile_delta(
