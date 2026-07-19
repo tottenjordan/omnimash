@@ -12,7 +12,6 @@ This directory documents non-obvious knowledge, session notes, and operational q
 ## 🗂️ Key Project Files
 - [CODE_STANDARDS.md](../../CODE_STANDARDS.md) – Mandatory coding standards, tooling rules, and git practices.
 - [GEMINI.md](../../GEMINI.md) – Agent context and workflow rules.
-- [Implementation Plan (2026-07-18)](../plans/2026-07-18-omnimash-core-architecture.md) – Core architecture & pipeline implementation plan.
 - [pyproject.toml](../../pyproject.toml) – Build configuration and dependencies (`uv`).
 - [main.py](../../main.py) – Application entrypoint.
 - [tests/test_main.py](../../tests/test_main.py) – Pytest test suite.
@@ -24,6 +23,8 @@ This directory documents non-obvious knowledge, session notes, and operational q
 
 | Topic | Note File | Description |
 | :--- | :--- | :--- |
+| YouTube & Audio Reference Ingestion | [youtube_reference_ingestion.md](youtube_reference_ingestion.md) | Ingesting public YouTube reference videos, character portraits, and audio stems via MediaExtractor |
+| Delta Prompting & Lock/Isolate | [delta_prompting_lock_isolate.md](delta_prompting_lock_isolate.md) | Solving facial shift and over-correction on multi-turn edits via 2-part Lock & Isolate delta prompting |
 | Prompt Compiler & Anchor/Inject | [prompt_compiler_anchor_inject.md](prompt_compiler_anchor_inject.md) | Solving character decay and latent space averaging via 5-part Anchor & Inject meta-prompts |
 | Context Decay & Checkpoints | [context_decay_commit_branch.md](context_decay_commit_branch.md) | Solving the 4-turn multimodal context decay via Commit & Branch thread re-anchoring |
 | Subagents & Permissions | [subagent_workflow_quirks.md](subagent_workflow_quirks.md) | Insights into subagent permission inheritance and autonomous command execution |
