@@ -29,4 +29,5 @@ This directory documents non-obvious knowledge, session notes, and operational q
 | Context Decay & Checkpoints | [context_decay_commit_branch.md](context_decay_commit_branch.md) | Solving the 4-turn multimodal context decay via Commit & Branch thread re-anchoring |
 | Subagents & Permissions | [subagent_workflow_quirks.md](subagent_workflow_quirks.md) | Insights into subagent permission inheritance and autonomous command execution |
 | Architecture & System Design | [architecture_omnimash.md](architecture_omnimash.md) | Reference architecture, component breakdown, and pipeline design for OmniMash |
+| PR-First Workflow | [development_workflow_prs.md](development_workflow_prs.md) | Mandatory process for submitting structural changes as unmerged Pull Requests |
 | Request Lifecycle & State | [request_lifecycle.md](request_lifecycle.md) | Blueprint for state management, Model Armor gating, and Interactions API lifecycle |
