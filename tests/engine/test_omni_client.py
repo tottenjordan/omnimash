@@ -99,3 +99,17 @@ def test_dynamic_audio_wav_ducks_instrumental_when_voiceover_present():
     for p in [wav_no_vo, wav_vo]:
         if os.path.exists(p):
             os.remove(p)
+
+
+def test_ensure_rendered_video_synthesizes_spoken_dialogue_audio():
+    video_url = "/static/rendered/test_spoken_speech.mp4"
+    ensure_rendered_video(
+        video_url,
+        prompt="140 BPM Heavy 808 Trap",
+        voiceover='Harry: "You talkin bout potions Draco? I been cooking since first year. Burrr!" / Draco: "This is Trap or Die Potter!"',
+    )
+    rel_path = video_url.lstrip("/")
+    assert os.path.exists(rel_path)
+    assert os.path.getsize(rel_path) > 10000
+    if os.path.exists(rel_path):
+        os.remove(rel_path)

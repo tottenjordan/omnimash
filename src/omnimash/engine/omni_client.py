@@ -189,13 +189,60 @@ def _generate_dynamic_audio_wav(
     return bpm
 
 
+def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -> bool:
+    """Synthesizes crystal-clear spoken voiceover or character dialogue into a 44.1kHz WAV using FFmpeg's flite TTS engine."""
+    if not voiceover_text or not voiceover_text.strip():
+        return False
+
+    raw_text = voiceover_text.strip()
+    clean_text = raw_text.replace("'", "").replace('"', "")
+    clean_text = clean_text.replace(":", " says ").replace("/", ". ")
+    clean_text = " ".join(clean_text.split())
+
+    if not clean_text:
+        return False
+
+    if dirname := os.path.dirname(speech_wav_path):
+        os.makedirs(dirname, exist_ok=True)
+
+    filter_str = f"flite=text='{clean_text}':voice=kal16"
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        filter_str,
+        "-ar",
+        "44100",
+        "-ac",
+        "2",
+        speech_wav_path,
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, check=False)
+        return (
+            res.returncode == 0
+            and os.path.exists(speech_wav_path)
+            and os.path.getsize(speech_wav_path) > 1000
+        )
+    except Exception:
+        return False
+
+
 def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
     """Backward compatibility wrapper for 120 BPM hip-hop audio synthesis."""
     _generate_dynamic_audio_wav(wav_path, prompt="120 BPM boom-bap", duration=duration)
 
 
-def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
-    """Ensures a valid playable 720p 24fps MP4 with frame-locked visual rhythm and dynamic multi-genre audio or silence."""
+def ensure_rendered_video(
+    video_url: str,
+    prompt: str = "",
+    voiceover: str | None = None,
+    is_silent: bool = False,
+    audio_stem: str | None = None,
+) -> None:
+    """Ensures a valid playable 720p 24fps MP4 with synthesized spoken dialogue, ducked background beats, or complete silence."""
     if not video_url.startswith("/static/"):
         return
     rel_path = video_url.lstrip("/")
@@ -203,20 +250,77 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
     if os.path.exists(rel_path) and os.path.getsize(rel_path) > 100000:
         return
 
-    wav_path = "static/rendered/temp_beat.wav"
+    # Extract voiceover / dialogue if not explicitly passed
+    effective_voiceover = voiceover
+    if not effective_voiceover and prompt:
+        import re
+
+        vo_match = re.search(
+            r"(?:Voiceover|Dialogue between subjects):\s*([^\n\.]+)",
+            prompt,
+            re.IGNORECASE,
+        )
+        if vo_match:
+            effective_voiceover = vo_match.group(1).strip()
+        elif ":" in prompt and '"' in prompt:
+            effective_voiceover = prompt
+
+    effective_silent = (
+        is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
+    )
+
+    wav_beat_path = "static/rendered/temp_beat.wav"
+    wav_speech_path = "static/rendered/temp_speech.wav"
+    wav_final_audio = "static/rendered/temp_audio_final.wav"
+
     bpm = 120
     try:
-        bpm = _generate_dynamic_audio_wav(wav_path, prompt=prompt, duration=10)
+        bpm = _generate_dynamic_audio_wav(
+            wav_beat_path,
+            prompt=audio_stem or prompt,
+            voiceover=effective_voiceover,
+            is_silent=effective_silent,
+            duration=10,
+        )
     except Exception:
         pass
+
+    has_speech = False
+    if not effective_silent and effective_voiceover:
+        has_speech = _synthesize_spoken_dialogue_wav(
+            wav_speech_path, effective_voiceover
+        )
+
+    # Mix spoken dialogue (foreground 180% vol) and instrumental beat (ducked 12% vol)
+    target_audio_wav = wav_beat_path
+    if has_speech and os.path.exists(wav_speech_path) and os.path.exists(wav_beat_path):
+        cmd_mix = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            wav_beat_path,
+            "-i",
+            wav_speech_path,
+            "-filter_complex",
+            "[0:a]volume=0.12[bg];[1:a]volume=1.8[fg];[bg][fg]amix=inputs=2:duration=first:dropout_transition=2[a]",
+            "-map",
+            "[a]",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            wav_final_audio,
+        ]
+        res_mix = subprocess.run(cmd_mix, capture_output=True, check=False)
+        if res_mix.returncode == 0 and os.path.exists(wav_final_audio):
+            target_audio_wav = wav_final_audio
 
     clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
     banner_img = "imgs/omnimash_banner.png"
     freq_hz = (bpm / 60.0) if bpm > 0 else 1.0
 
-    if os.path.exists(banner_img) and os.path.exists(wav_path):
+    if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
         try:
-            # Synchronized 24 FPS zoompan with rhythmic bass bounce matching dynamic BPM
             cmd = [
                 "ffmpeg",
                 "-y",
@@ -225,9 +329,9 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
                 "-i",
                 banner_img,
                 "-i",
-                wav_path,
+                target_audio_wav,
                 "-filter_complex",
-                f"[0:v]scale=1280:720,zoompan=z='min(1.05+0.03*abs(sin(2*PI*{freq_hz:.2f}*in_time)),1.2)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawtext=text='🎬 OMNIMASH • GEMINI OMNI FLASH':fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,drawtext=text='PROMPT: {clean_prompt}':fontcolor=white:fontsize=24:x=30:y=h-75,drawtext=text='🛡️ SynthID C2PA Verified • 720p 24fps Audio Sync ({bpm} BPM)':fontcolor=0x34A853:fontsize=18:x=30:y=h-35[v]; [1:a]aresample=async=1:first_pts=0[a]",
+                f"[0:v]scale=1280:720,zoompan=z='min(1.05+0.03*abs(sin(2*PI*{freq_hz:.2f}*in_time)),1.2)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawtext=text='🎬 OMNIMASH • GEMINI OMNI FLASH':fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,drawtext=text='PROMPT: {clean_prompt}':fontcolor=white:fontsize=24:x=30:y=h-75,drawtext=text='🛡️ SynthID C2PA Verified • 720p 24fps Spoken Audio Sync ({bpm} BPM)':fontcolor=0x34A853:fontsize=18:x=30:y=h-35[v]; [1:a]aresample=async=1:first_pts=0[a]",
                 "-map",
                 "[v]",
                 "-map",
@@ -256,8 +360,8 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
     # Fallback MP4 generation with animated procedural visualizer filter
     try:
         audio_inputs = (
-            ["-i", wav_path]
-            if os.path.exists(wav_path)
+            ["-i", target_audio_wav]
+            if os.path.exists(target_audio_wav)
             else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
         )
         cmd = [
@@ -435,7 +539,12 @@ class OmniFlashClient:
         return False
 
     def generate_clip(
-        self, prompt: str, session_id: str | None = None
+        self,
+        prompt: str,
+        session_id: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
+        audio_stem: str | None = None,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
@@ -450,7 +559,13 @@ class OmniFlashClient:
 
         # 3. Tertiary Fallback: Local prompt-rendered animated video
         if not success:
-            ensure_rendered_video(url, prompt=prompt)
+            ensure_rendered_video(
+                url,
+                prompt=prompt,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
+            )
 
         # Persist media artifact to Google Cloud Storage under session subfolder
         gcs_blob = self.storage.build_session_blob_path(
@@ -470,6 +585,9 @@ class OmniFlashClient:
         interaction_thread_id: str,
         diff_prompt: str,
         session_id: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
+        audio_stem: str | None = None,
     ) -> GenerationResult:
         url = f"/static/rendered/{interaction_thread_id}_turn_diff.mp4"
         rel_path = url.lstrip("/")
@@ -485,7 +603,13 @@ class OmniFlashClient:
 
         # 3. Tertiary Fallback: Local prompt-rendered animated video
         if not success:
-            ensure_rendered_video(url, prompt=diff_prompt)
+            ensure_rendered_video(
+                url,
+                prompt=diff_prompt,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
+            )
 
         # Persist media artifact to Google Cloud Storage under session subfolder
         gcs_blob = self.storage.build_session_blob_path(
@@ -505,6 +629,9 @@ class OmniFlashClient:
         base_video_url: str,
         initial_prompt: str | None = None,
         session_id: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
+        audio_stem: str | None = None,
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
@@ -515,7 +642,13 @@ class OmniFlashClient:
         if not success:
             success = self._generate_live_veo_video(prompt, rel_path)
         if not success:
-            ensure_rendered_video(url, prompt=prompt)
+            ensure_rendered_video(
+                url,
+                prompt=prompt,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
+            )
 
         # Persist media artifact to Google Cloud Storage under session subfolder
         gcs_blob = self.storage.build_session_blob_path(

@@ -89,6 +89,9 @@ class OmniMashAgent:
                 parent_turn.interaction_thread_id,
                 delta_prompt,
                 session_id=session.session_id,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
             )
         else:
             meta_prompt = self.taxonomy.build_initial_prompt(
@@ -106,7 +109,11 @@ class OmniMashAgent:
                 session.session_id, len(session.turns), meta_prompt
             )
             gen_res = self.omni_client.generate_clip(
-                meta_prompt, session_id=session.session_id
+                meta_prompt,
+                session_id=session.session_id,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
             )
 
         # Step 3: Persist Turn in Session Version Tree
