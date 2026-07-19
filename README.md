@@ -171,9 +171,10 @@ export GOOGLE_CLOUD_PROJECT=$(gcloud config get-value project)
 gcloud auth application-default login
 ```
 
-**2. Install dependencies via `uv`**
+**2. Configure environment and install dependencies**
 
 ```bash
+cp .env.example .env
 uv sync
 ```
 

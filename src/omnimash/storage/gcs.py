@@ -1,5 +1,6 @@
 import os
 from typing import Any
+from omnimash.config import settings
 
 try:
     from google.cloud import storage
@@ -14,18 +15,11 @@ class GcsStorageManager:
         self,
         bucket_name: str | None = None,
         project_id: str | None = None,
-        mock_mode: bool = True,
+        mock_mode: bool | None = None,
     ):
-        self.mock_mode = mock_mode
-        self.project_id = (
-            project_id or os.environ.get("GOOGLE_CLOUD_PROJECT") or "hybrid-vertex"
-        )
-        self.bucket_name = (
-            bucket_name
-            or os.environ.get("OMNIMASH_GCS_BUCKET")
-            or os.environ.get("GCS_BUCKET_NAME")
-            or "omnimash-media-934903580331"
-        )
+        self.mock_mode = settings.mock_mode if mock_mode is None else mock_mode
+        self.project_id = project_id or settings.google_cloud_project
+        self.bucket_name = bucket_name or settings.gcs_bucket_name
         self._client: Any = None
         self._bucket: Any = None
 
@@ -59,7 +53,6 @@ class GcsStorageManager:
 
         destination_blob_name = destination_blob_name.lstrip("/")
 
-        # In mock mode or when offline/testing, return simulated persistent GCS URL
         if self.mock_mode or not self._bucket:
             return self.get_public_url(destination_blob_name)
 

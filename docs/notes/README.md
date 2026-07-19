@@ -23,6 +23,7 @@ This directory documents non-obvious knowledge, session notes, and operational q
 
 | Topic | Note File | Description |
 | :--- | :--- | :--- |
+| Centralized Settings & .env | [centralized_settings_and_env.md](centralized_settings_and_env.md) | Centralized pydantic-settings configuration, .env.example templates, and secret leak prevention |
 | GCS Artifact Persistence | [gcs_artifact_persistence.md](gcs_artifact_persistence.md) | Persistent cloud media storage (gs://omnimash-media-934903580331) and .gitignore repository isolation |
 | YouTube & Audio Reference Ingestion | [youtube_reference_ingestion.md](youtube_reference_ingestion.md) | Ingesting public YouTube reference videos, character portraits, and audio stems via MediaExtractor |
 | Delta Prompting & Lock/Isolate | [delta_prompting_lock_isolate.md](delta_prompting_lock_isolate.md) | Solving facial shift and over-correction on multi-turn edits via 2-part Lock & Isolate delta prompting |
