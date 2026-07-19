@@ -19,7 +19,14 @@ class MediaExtractor:
             bucket_name=bucket_name, mock_mode=self.mock_mode
         )
 
-    def process_youtube_url(self, url: str) -> ExtractedReference:
+    def process_youtube_url(
+        self, url: str, session_id: str | None = None
+    ) -> ExtractedReference:
+        blob_path = self.storage.build_session_blob_path(
+            session_id=session_id,
+            category="references",
+            filename="reference_bundle.tar",
+        )
         if self.mock_mode:
             ref = ExtractedReference(
                 is_valid=True,
@@ -27,14 +34,12 @@ class MediaExtractor:
                 keyframes=["/tmp/mock_frame_1.jpg", "/tmp/mock_frame_2.jpg"],
                 audio_track_path="/tmp/mock_audio_stem.mp3",
                 description="Extracted 90s hip-hop beat and character portrait keyframes.",
-                gcs_uri=self.storage.get_gcs_uri(
-                    "references/mock_reference_bundle.tar"
-                ),
+                gcs_uri=self.storage.get_gcs_uri(blob_path),
             )
             return ref
 
         return ExtractedReference(
             is_valid=True,
             source_url=url,
-            gcs_uri=self.storage.get_gcs_uri("references/live_reference.tar"),
+            gcs_uri=self.storage.get_gcs_uri(blob_path),
         )

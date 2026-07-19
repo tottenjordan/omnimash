@@ -35,6 +35,9 @@ This document outlines the mandatory engineering standards, tooling rules, and d
 
 ## 📦 Git, Commit & Pull Request Guidelines
 - **Structural Changes as Pull Requests**: All structural changes (modifying core architecture, schemas, system instructions, or adding new features) must be committed on a dedicated branch (`feature/...`, `refactor/...`, `fix/...`) and submitted as a Pull Request.
-- **Unmerged PR Review Policy**: Never auto-merge PRs containing structural changes. Push the branch, open the Pull Request against `main`, and present the PR link and test verification summary to the user for review.
-- **No Co-Authored-By Trailers**: Never add `Co-Authored-By` trailers or attribution lines when creating git commits or submitting PRs.
 - **Commit Messages**: Write clean, descriptive commit messages matching Conventional Commits.
+
+---
+
+## ☁️ Cloud Resources & Deployment Policy
+- **Explicit Approval Required for Redeployments**: Never redeploy any cloud resources (e.g. Cloud Run deployments via `./scripts/deploy_cloud_run.sh` or `gcloud run deploy`, Cloud Storage modifications, or Vertex AI Agent Engine deployments) without explicit, direct user approval.

@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Any
 from omnimash.config import settings
@@ -9,7 +10,7 @@ except ImportError:
 
 
 class GcsStorageManager:
-    """Manages persistent cloud storage for final and intermediate video, audio, and image artifacts."""
+    """Manages persistent cloud storage for session-scoped video, audio, prompt, and reference artifacts."""
 
     def __init__(
         self,
@@ -57,16 +58,34 @@ class GcsStorageManager:
         clean_blob = blob_name.lstrip("/")
         return f"gs://{self.bucket_name}/{clean_blob}"
 
+    def build_session_blob_path(
+        self,
+        session_id: str | None,
+        category: str,
+        filename: str,
+    ) -> str:
+        """Constructs a hierarchical session-scoped blob path: sessions/{session_id}/{category}/{filename}."""
+        sid = session_id or "global"
+        clean_cat = category.strip("/")
+        clean_file = os.path.basename(filename)
+        return f"sessions/{sid}/{clean_cat}/{clean_file}"
+
     def upload_file(
         self,
         local_path: str,
         destination_blob_name: str | None = None,
+        session_id: str | None = None,
+        category: str = "intermediate",
         content_type: str | None = None,
     ) -> str:
-        """Uploads a local media artifact to GCS and returns the persistent HTTPS storage URL."""
+        """Uploads a local media artifact to GCS under its session subfolder."""
         if not destination_blob_name:
             basename = os.path.basename(local_path)
-            destination_blob_name = f"rendered/{basename}"
+            destination_blob_name = self.build_session_blob_path(
+                session_id=session_id,
+                category=category,
+                filename=basename,
+            )
 
         destination_blob_name = destination_blob_name.lstrip("/")
 
@@ -83,6 +102,8 @@ class GcsStorageManager:
                     content_type = "image/jpeg"
                 elif local_path.endswith(".png"):
                     content_type = "image/png"
+                elif local_path.endswith(".json"):
+                    content_type = "application/json"
 
             blob = self._bucket.blob(destination_blob_name)
             blob.upload_from_filename(local_path, content_type=content_type)
@@ -107,3 +128,21 @@ class GcsStorageManager:
             return self.get_public_url(destination_blob_name)
         except Exception:
             return self.get_public_url(destination_blob_name)
+
+    def save_session_prompt(
+        self,
+        session_id: str,
+        turn_index: int,
+        prompt_data: dict[str, Any] | str,
+    ) -> str:
+        """Persists compiled prompts (5-part Anchor/Inject or 2-part Lock/Isolate) to sessions/{session_id}/prompts/."""
+        filename = f"turn_{turn_index}_prompt.json"
+        blob_path = self.build_session_blob_path(session_id, "prompts", filename)
+        content = (
+            json.dumps(prompt_data, indent=2)
+            if isinstance(prompt_data, dict)
+            else json.dumps({"prompt": prompt_data}, indent=2)
+        )
+        return self.upload_bytes(
+            content.encode("utf-8"), blob_path, content_type="application/json"
+        )

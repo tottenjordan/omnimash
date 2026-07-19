@@ -10,7 +10,12 @@ class VideoStitcher:
             bucket_name=bucket_name, mock_mode=self.mock_mode
         )
 
-    def concatenate_clips(self, clip_paths: list[str], output_dir: str = "/tmp") -> str:
+    def concatenate_clips(
+        self,
+        clip_paths: list[str],
+        output_dir: str = "/tmp",
+        session_id: str | None = None,
+    ) -> str:
         master_filename = f"master_{uuid.uuid4().hex[:8]}_stitched.mp4"
         out_path = os.path.join(output_dir, master_filename)
 
@@ -19,7 +24,10 @@ class VideoStitcher:
             with open(out_path, "w") as f:
                 f.write("mock mp4 master video content")
 
-        self.storage.upload_file(
-            out_path, destination_blob_name=f"master/{master_filename}"
+        gcs_blob = self.storage.build_session_blob_path(
+            session_id=session_id,
+            category="finalized",
+            filename=master_filename,
         )
+        self.storage.upload_file(out_path, destination_blob_name=gcs_blob)
         return out_path

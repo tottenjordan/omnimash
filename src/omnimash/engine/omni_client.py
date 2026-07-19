@@ -319,7 +319,9 @@ class OmniFlashClient:
             pass
         return False
 
-    def generate_clip(self, prompt: str) -> GenerationResult:
+    def generate_clip(
+        self, prompt: str, session_id: str | None = None
+    ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
         rel_path = url.lstrip("/")
@@ -335,8 +337,10 @@ class OmniFlashClient:
         if not success:
             ensure_rendered_video(url, prompt=prompt)
 
-        # Persist media artifact to Google Cloud Storage
-        gcs_blob = f"rendered/{os.path.basename(rel_path)}"
+        # Persist media artifact to Google Cloud Storage under session subfolder
+        gcs_blob = self.storage.build_session_blob_path(
+            session_id, "intermediate", os.path.basename(rel_path)
+        )
         self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
         gcs_uri = self.storage.get_gcs_uri(gcs_blob)
 
@@ -347,7 +351,10 @@ class OmniFlashClient:
         )
 
     def apply_interaction_diff(
-        self, interaction_thread_id: str, diff_prompt: str
+        self,
+        interaction_thread_id: str,
+        diff_prompt: str,
+        session_id: str | None = None,
     ) -> GenerationResult:
         url = f"/static/rendered/{interaction_thread_id}_turn_diff.mp4"
         rel_path = url.lstrip("/")
@@ -365,8 +372,10 @@ class OmniFlashClient:
         if not success:
             ensure_rendered_video(url, prompt=diff_prompt)
 
-        # Persist media artifact to Google Cloud Storage
-        gcs_blob = f"rendered/{os.path.basename(rel_path)}"
+        # Persist media artifact to Google Cloud Storage under session subfolder
+        gcs_blob = self.storage.build_session_blob_path(
+            session_id, "intermediate", os.path.basename(rel_path)
+        )
         self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
         gcs_uri = self.storage.get_gcs_uri(gcs_blob)
 
@@ -377,7 +386,10 @@ class OmniFlashClient:
         )
 
     def start_thread_from_video(
-        self, base_video_url: str, initial_prompt: str | None = None
+        self,
+        base_video_url: str,
+        initial_prompt: str | None = None,
+        session_id: str | None = None,
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
@@ -390,8 +402,10 @@ class OmniFlashClient:
         if not success:
             ensure_rendered_video(url, prompt=prompt)
 
-        # Persist media artifact to Google Cloud Storage
-        gcs_blob = f"rendered/{os.path.basename(rel_path)}"
+        # Persist media artifact to Google Cloud Storage under session subfolder
+        gcs_blob = self.storage.build_session_blob_path(
+            session_id, "intermediate", os.path.basename(rel_path)
+        )
         self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
         gcs_uri = self.storage.get_gcs_uri(gcs_blob)
 
