@@ -23,6 +23,7 @@ This directory documents non-obvious knowledge, session notes, and operational q
 
 | Topic | Note File | Description |
 | :--- | :--- | :--- |
+| Digital Director's Studio (3-Act Flow) | [digital_directors_studio_3_act_workflow.md](digital_directors_studio_3_act_workflow.md) | 3-Act progressive linear studio (The Clash, The Fine-Tune, The Director's Chair) with Gemini Parody Research |
 | Session Naming & Resilient Rendering | [session_naming_and_resilient_video_rendering.md](session_naming_and_resilient_video_rendering.md) | Custom UI session name mapping to GCS folders, container font packages, and procedural visualizer fallback |
 | Audio, Voiceover & Dialogue Prompting | [audio_dialogue_and_voiceover_prompting.md](audio_dialogue_and_voiceover_prompting.md) | Decoupling background sound design, multi-character spoken dialogue, voiceovers, and silent video in Gemini Omni Flash |
 | Reference Analysis & Preset Inspector | [reference_analysis_and_preset_inspector.md](reference_analysis_and_preset_inspector.md) | Ingested YouTube reference keyframe annotations, BPM & color palette analysis, and 4-vector preset contribution inspector |
