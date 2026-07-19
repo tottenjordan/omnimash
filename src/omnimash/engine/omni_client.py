@@ -25,57 +25,151 @@ class GenerationResult:
     synth_id_watermark: str = "SYNTHID_C2PA_VERIFIED"
 
 
-def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
-    """Synthesizes a 120 BPM rhythmic hip-hop beat with frame-locked kick, snare, hi-hats, and 808 bassline."""
+def _generate_dynamic_audio_wav(
+    wav_path: str,
+    prompt: str = "",
+    voiceover: str | None = None,
+    is_silent: bool = False,
+    duration: int = 10,
+) -> int:
+    """Synthesizes dynamic multi-genre audio (BPM, bass frequency, chords, drum rhythm, speech formants, or complete silence) matching prompt directives."""
     sample_rate = 44100
     total_samples = sample_rate * duration
-    bpm = 120
-    beat_interval = 60 / bpm  # 0.5s per beat exactly
+    lower = prompt.lower()
 
-    audio_data: list[int] = []
+    # Check for silent video condition
+    if is_silent or "silent" in lower or "mute" in lower:
+        bpm = 0
+        audio_data = [0] * total_samples
+        os.makedirs(os.path.dirname(wav_path), exist_ok=True)
+        with wave.open(wav_path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(struct.pack(f"<{len(audio_data)}h", *audio_data))
+        return 0
+
+    # Resolve genre & BPM
+    if "140" in lower or "drill" in lower or "trap" in lower:
+        bpm = 140
+        style = "drill"
+    elif "anime" in lower or "vhs" in lower or "city pop" in lower or "lo-fi" in lower:
+        bpm = 85
+        style = "anime"
+    elif "cyberpunk" in lower or "synth" in lower:
+        bpm = 110
+        style = "cyberpunk"
+    else:
+        bpm = 120
+        style = "boombap"
+
+    beat_interval = 60 / bpm
+    has_vocal = bool(
+        voiceover
+        or "voiceover" in lower
+        or "dialogue" in lower
+        or ":" in prompt
+        or '"' in prompt
+    )
+
+    audio_data = []
 
     for i in range(total_samples):
         t = i / sample_rate
         beat_pos = t % beat_interval
         beat_index = int(t / beat_interval) % 4
-
         val = 0.0
 
-        # 1. Kick Drum (Beats 1 & 3 - exactly t=0.0s, 1.0s, 2.0s...): 55Hz pitch drop
-        if beat_index in [0, 2]:
-            kick_t = beat_pos
-            if kick_t < 0.25:
-                freq = 120 * math.exp(-kick_t * 20) + 45
+        if style == "drill":
+            # 140 BPM UK Drill / Trap: Sliding 808 sub-bass, rapid triplet hi-hat rolls, punchy snare
+            if beat_index in [0, 2]:
+                kick_t = beat_pos
+                if kick_t < 0.2:
+                    slide_freq = 140 * math.exp(-kick_t * 15) + 38
+                    val += (
+                        0.7
+                        * math.sin(2 * math.pi * slide_freq * kick_t)
+                        * math.exp(-kick_t * 10)
+                    )
+            if beat_index in [1, 3]:
+                snare_t = beat_pos
+                if snare_t < 0.15:
+                    noise = ((i * 1103515245 + 12345) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
+                    val += 0.5 * noise * math.exp(-snare_t * 30)
+            hat_t = t % (beat_interval / 4)
+            if hat_t < 0.03:
+                noise = ((i * 214013 + 2531011) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
+                val += 0.2 * noise * math.exp(-hat_t * 100)
+
+        elif style == "cyberpunk":
+            # 110 BPM Synthwave / Cyberpunk: Arpeggiated analog synth, sidechained saw bass
+            arp_notes = [110.0, 130.8, 164.8, 196.0, 220.0, 261.6]
+            note_idx = int(t * 8) % len(arp_notes)
+            synth_freq = arp_notes[note_idx]
+            val += (
+                0.3
+                * math.sin(2 * math.pi * synth_freq * t)
+                * (0.5 + 0.5 * math.sin(2 * math.pi * 2 * t))
+            )
+            bass_t = (t * 55.0) % 1.0
+            saw = bass_t * 2.0 - 1.0
+            val += 0.3 * saw * math.exp(-(t % beat_interval) * 5)
+
+        elif style == "anime":
+            # 85 BPM VHS City Pop / Lo-Fi: Warm vinyl saturation, mellow chords, jazz bass
+            chord_freqs = [261.63, 329.63, 392.0]
+            for f in chord_freqs:
+                val += 0.12 * math.sin(2 * math.pi * f * t)
+            if beat_index == 0 and beat_pos < 0.3:
                 val += (
-                    0.6 * math.sin(2 * math.pi * freq * kick_t) * math.exp(-kick_t * 12)
+                    0.5
+                    * math.sin(2 * math.pi * 50 * beat_pos)
+                    * math.exp(-beat_pos * 8)
                 )
+            crackle = ((i * 37911 + 71) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
+            val += 0.04 * crackle
 
-        # 2. Snare / Clap (Beats 2 & 4 - exactly t=0.5s, 1.5s, 2.5s...): noise + 220Hz burst
-        if beat_index in [1, 3]:
-            snare_t = beat_pos
-            if snare_t < 0.2:
-                noise = ((i * 1103515245 + 12345) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
-                val += 0.4 * noise * math.exp(-snare_t * 25)
-                val += (
-                    0.3
-                    * math.sin(2 * math.pi * 220 * snare_t)
-                    * math.exp(-snare_t * 18)
-                )
+        else:
+            # 120 BPM 90s Boom-Bap Hip Hop
+            if beat_index in [0, 2]:
+                kick_t = beat_pos
+                if kick_t < 0.25:
+                    freq = 120 * math.exp(-kick_t * 20) + 45
+                    val += (
+                        0.6
+                        * math.sin(2 * math.pi * freq * kick_t)
+                        * math.exp(-kick_t * 12)
+                    )
+            if beat_index in [1, 3]:
+                snare_t = beat_pos
+                if snare_t < 0.2:
+                    noise = ((i * 1103515245 + 12345) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
+                    val += 0.4 * noise * math.exp(-snare_t * 25) + 0.3 * math.sin(
+                        2 * math.pi * 220 * snare_t
+                    ) * math.exp(-snare_t * 18)
+            hat_t = t % 0.125
+            if hat_t < 0.05:
+                noise = ((i * 214013 + 2531011) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
+                val += 0.15 * noise * math.exp(-hat_t * 80)
+            bass_notes = [55, 65.4, 49, 58.2]
+            bass_freq = bass_notes[int(t / 2.0) % 4]
+            val += (
+                0.35
+                * math.sin(2 * math.pi * bass_freq * t)
+                * (0.8 + 0.2 * math.sin(2 * math.pi * 4 * t))
+            )
 
-        # 3. Hi-Hat (Every 16th note - 0.125s)
-        hat_t = t % 0.125
-        if hat_t < 0.05:
-            noise = ((i * 214013 + 2531011) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
-            val += 0.15 * noise * math.exp(-hat_t * 80)
-
-        # 4. Melodic 808 Bassline
-        bass_notes = [55, 65.4, 49, 58.2]
-        bass_freq = bass_notes[int(t / 2.0) % 4]
-        val += (
-            0.35
-            * math.sin(2 * math.pi * bass_freq * t)
-            * (0.8 + 0.2 * math.sin(2 * math.pi * 4 * t))
-        )
+        # Layer Spoken Dialogue / Voiceover Speech-Band Formants (300Hz–2.5kHz)
+        if has_vocal:
+            vocal_mod = 0.5 + 0.5 * math.sin(2 * math.pi * 3.5 * t)
+            # Alternate dialogue pitch if multi-character colon syntax is detected
+            speaker_pitch = 160.0 if int(t / 3.0) % 2 == 0 else 240.0
+            formant_val = (
+                0.25 * math.sin(2 * math.pi * speaker_pitch * t)
+                + 0.15 * math.sin(2 * math.pi * (speaker_pitch * 2.5) * t)
+                + 0.1 * math.sin(2 * math.pi * 1200 * t)
+            ) * vocal_mod
+            val = val * 0.7 + formant_val
 
         val = max(-1.0, min(1.0, val))
         audio_data.append(int(val * 32767))
@@ -87,9 +181,16 @@ def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
         wf.setframerate(sample_rate)
         wf.writeframes(struct.pack(f"<{len(audio_data)}h", *audio_data))
 
+    return bpm
+
+
+def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
+    """Backward compatibility wrapper for 120 BPM hip-hop audio synthesis."""
+    _generate_dynamic_audio_wav(wav_path, prompt="120 BPM boom-bap", duration=duration)
+
 
 def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
-    """Ensures a valid playable 720p 24fps MP4 with frame-locked visual rhythm and 120 BPM audio."""
+    """Ensures a valid playable 720p 24fps MP4 with frame-locked visual rhythm and dynamic multi-genre audio or silence."""
     if not video_url.startswith("/static/"):
         return
     rel_path = video_url.lstrip("/")
@@ -98,17 +199,19 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
         return
 
     wav_path = "static/rendered/temp_beat.wav"
+    bpm = 120
     try:
-        _generate_hiphop_beat_wav(wav_path, duration=10)
+        bpm = _generate_dynamic_audio_wav(wav_path, prompt=prompt, duration=10)
     except Exception:
         pass
 
     clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
     banner_img = "imgs/omnimash_banner.png"
+    freq_hz = (bpm / 60.0) if bpm > 0 else 1.0
 
     if os.path.exists(banner_img) and os.path.exists(wav_path):
         try:
-            # Synchronized 24 FPS zoompan with rhythmic 2Hz bass bounce matching 120 BPM kick drums
+            # Synchronized 24 FPS zoompan with rhythmic bass bounce matching dynamic BPM
             cmd = [
                 "ffmpeg",
                 "-y",
@@ -119,7 +222,7 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
                 "-i",
                 wav_path,
                 "-filter_complex",
-                f"[0:v]scale=1280:720,zoompan=z='min(1.05+0.03*abs(sin(2*PI*2*in_time)),1.2)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawtext=text='🎬 OMNIMASH • GEMINI OMNI FLASH':fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,drawtext=text='PROMPT: {clean_prompt}':fontcolor=white:fontsize=24:x=30:y=h-75,drawtext=text='🛡️ SynthID C2PA Verified • 720p 24fps Native Audio Sync':fontcolor=0x34A853:fontsize=18:x=30:y=h-35[v]; [1:a]aresample=async=1:first_pts=0[a]",
+                f"[0:v]scale=1280:720,zoompan=z='min(1.05+0.03*abs(sin(2*PI*{freq_hz:.2f}*in_time)),1.2)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawtext=text='🎬 OMNIMASH • GEMINI OMNI FLASH':fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,drawtext=text='PROMPT: {clean_prompt}':fontcolor=white:fontsize=24:x=30:y=h-75,drawtext=text='🛡️ SynthID C2PA Verified • 720p 24fps Audio Sync ({bpm} BPM)':fontcolor=0x34A853:fontsize=18:x=30:y=h-35[v]; [1:a]aresample=async=1:first_pts=0[a]",
                 "-map",
                 "[v]",
                 "-map",
@@ -271,10 +374,12 @@ class OmniFlashClient:
                     with open(temp_raw_veo, "wb") as f:
                         f.write(vid.video_bytes)
 
-                    # Synthesize hip-hop beat audio track and mux with frame-accurate sync
+                    # Synthesize dynamic audio track and mux with frame-accurate sync
                     wav_path = "static/rendered/temp_beat.wav"
                     try:
-                        _generate_hiphop_beat_wav(wav_path, duration=10)
+                        _generate_dynamic_audio_wav(
+                            wav_path, prompt=prompt, duration=10
+                        )
                     except Exception:
                         pass
 
