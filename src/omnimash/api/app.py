@@ -54,7 +54,7 @@ class GenerateResponse(BaseModel):
     reference_analysis: dict | None = None
 
 
-UI_HTML = """<!DOCTYPE html>
+UI_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -131,7 +131,7 @@ UI_HTML = """<!DOCTYPE html>
             const [customDripInput, setCustomDripInput] = useState("");
             const [vibeIntensity, setVibeIntensity] = useState(75); // 0 (Gritty) to 100 (Glossy)
             const [audioBeat, setAudioBeat] = useState("140 BPM Heavy 808 Trap");
-            const [voiceover, setVoiceover] = useState('Harry: "I been cooking potions since first year. Burrr!" / Draco: "This is Trap or Die, Potter!"');
+            const [voiceover, setVoiceover] = useState("Harry: \"I been cooking potions since first year. Burrr!\" / Draco: \"This is Trap or Die, Potter!\"");
             const [isSilent, setIsSilent] = useState(false);
             const [onScreenText, setOnScreenText] = useState("DRIPWARTS: HARRY VS. DRACO VOL. 1");
             const [rawCompiledPrompt, setRawCompiledPrompt] = useState("");
@@ -195,7 +195,7 @@ UI_HTML = """<!DOCTYPE html>
                     suggested_vibe: "Dark moody 808 bass lighting, laser smoke, and high-gloss neon reflections",
                     vibe_intensity: 80,
                     suggested_audio: "140 BPM Heavy 808 Trap",
-                    suggested_dialogue: 'Harry: "I been cooking potions since first year. Burrr!" / Draco: "This is Trap or Die, Potter!"'
+                    suggested_dialogue: "Harry: \"I been cooking potions since first year. Burrr!\" / Draco: \"This is Trap or Die, Potter!\""
                 });
             };
 
