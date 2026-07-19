@@ -44,3 +44,8 @@ def test_omni_client_gcs_persistence():
         res.gcs_uri
         == f"gs://custom-media-bucket/rendered/{os.path.basename(res.video_url)}"
     )
+
+
+def test_gcs_ensure_bucket_exists():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    assert gcs.ensure_bucket_exists() is True

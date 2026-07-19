@@ -171,10 +171,11 @@ export GOOGLE_CLOUD_PROJECT=$(gcloud config get-value project)
 gcloud auth application-default login
 ```
 
-**2. Configure environment and install dependencies**
+**2. Configure environment and provision storage**
 
 ```bash
 cp .env.example .env
+./scripts/setup_gcs_bucket.sh
 uv sync
 ```
 
