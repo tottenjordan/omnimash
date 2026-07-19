@@ -135,3 +135,22 @@ def test_e2e_delta_prompt_generation_with_lock() -> None:
     data2 = r2.json()
     assert data2["success"] is True
     assert data2["depth"] == 1
+
+
+def test_e2e_youtube_reference_url_generation() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_yt",
+            "project_id": "p_yt",
+            "prompt": "DumbleDior dropping bars",
+            "clip_index": 0,
+            "reference_url": "https://www.youtube.com/watch?v=sample_beat",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["video_url"] is not None

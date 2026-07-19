@@ -116,6 +116,7 @@ UI_HTML = """<!DOCTYPE html>
 
         function OmniMashApp() {
             const [prompt, setPrompt] = useState("");
+            const [referenceUrl, setReferenceUrl] = useState("");
             const [selectedPreset, setSelectedPreset] = useState("90s_rap_video");
             const [parentTurnId, setParentTurnId] = useState("");
             const [loading, setLoading] = useState(false);
@@ -143,7 +144,8 @@ UI_HTML = """<!DOCTYPE html>
                             project_id: "prj_mashup",
                             prompt: prompt,
                             clip_index: 0,
-                            parent_turn_id: parentTurnId || null
+                            parent_turn_id: parentTurnId || null,
+                            reference_url: referenceUrl
                         })
                     });
                     const data = await res.json();
@@ -325,6 +327,18 @@ UI_HTML = """<!DOCTYPE html>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-400 mb-1">
+                                            📺 Reference YouTube URL or Audio Stem
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={referenceUrl}
+                                            onChange={(e) => setReferenceUrl(e.target.value)}
+                                            placeholder="e.g. https://www.youtube.com/watch?v=sample_beat"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">
                                             Parent Turn ID (Branching DAG Node)
                                         </label>
                                         <input
@@ -351,9 +365,16 @@ UI_HTML = """<!DOCTYPE html>
                                     <h2 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
                                         <span>{selectedParentTurnId ? "🪄 Delta Prompt Preview (Lock & Isolate)" : "🪄 5-Part Anchor & Inject Preview"}</span>
                                     </h2>
-                                    <span className="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded border border-purple-800 font-mono">
-                                        {selectedParentTurnId ? "Delta Mode" : "Omni Flash Taxonomy"}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        {referenceUrl && (
+                                            <span className="text-[10px] bg-green-950 text-green-400 px-2 py-0.5 rounded border border-green-800 font-mono font-medium flex items-center gap-1">
+                                                <span>🎵 Reference Audio Stem Attached</span>
+                                            </span>
+                                        )}
+                                        <span className="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded border border-purple-800 font-mono">
+                                            {selectedParentTurnId ? "Delta Mode" : "Omni Flash Taxonomy"}
+                                        </span>
+                                    </div>
                                 </div>
                                 <p className="text-[11px] text-gray-400">
                                     {selectedParentTurnId
@@ -429,25 +450,54 @@ UI_HTML = """<!DOCTYPE html>
 
                         <div className="col-span-5 flex flex-col">
                             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg h-full flex flex-col">
-                                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                                    Video Player
-                                </h2>
-                                <div className="flex-1 bg-black rounded-lg border border-gray-800 flex flex-col items-center justify-center relative overflow-hidden group p-2">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                                        Video Player
+                                    </h2>
+                                    {currentVideo && (
+                                        <a
+                                            href={currentVideo}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-xs text-purple-400 hover:text-purple-300 underline font-mono flex items-center gap-1"
+                                        >
+                                            <span>↗</span> Fullscreen / Direct MP4
+                                        </a>
+                                    )}
+                                </div>
+                                <div className="flex-1 bg-black rounded-lg border border-gray-800 flex flex-col items-center justify-center relative overflow-hidden group p-3">
                                     {currentVideo ? (
                                         <div className="w-full h-full flex flex-col items-center justify-center">
                                             <video
+                                                id="active-parody-player"
                                                 key={currentVideo}
+                                                src={currentVideo}
                                                 controls
                                                 autoPlay
+                                                muted
                                                 playsInline
-                                                className="w-full h-full max-h-[360px] object-contain rounded-md shadow-2xl bg-black border border-purple-500/30"
+                                                className="w-full h-full max-h-[340px] object-contain rounded-md shadow-2xl bg-black border border-purple-500/40"
                                             >
-                                                <source src={currentVideo} type="video/mp4" />
                                                 Your browser does not support the video tag.
                                             </video>
-                                            <div className="mt-2 flex items-center justify-between w-full px-2 text-xs text-gray-400">
-                                                <span className="font-mono text-purple-300 truncate max-w-[200px]">▶ {currentVideo}</span>
-                                                <span className="text-[10px] bg-green-950 text-green-400 px-2 py-0.5 rounded border border-green-800 flex items-center gap-1 font-medium">
+                                            <div className="mt-3 flex items-center justify-between w-full px-1 text-xs text-gray-400">
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const vid = document.getElementById("active-parody-player");
+                                                            if (vid) {
+                                                                vid.muted = false;
+                                                                vid.play();
+                                                            }
+                                                        }}
+                                                        className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1 transition shadow"
+                                                    >
+                                                        <span>▶ Play with Audio</span>
+                                                    </button>
+                                                    <span className="font-mono text-purple-300 truncate max-w-[160px]">{currentVideo}</span>
+                                                </div>
+                                                <span className="text-[10px] bg-green-950 text-green-400 px-2 py-0.5 rounded border border-green-800 flex items-center gap-1 font-medium shadow-sm">
                                                     <span>🛡️</span> SynthID C2PA Verified
                                                 </span>
                                             </div>
