@@ -69,3 +69,17 @@ def test_orchestrator_processes_youtube_reference_url():
     )
     assert res.success is True
     assert res.video_url is not None
+
+
+def test_orchestrator_accepts_audio_stem_and_compiled_override():
+    agent = OmniMashAgent(mock_mode=True)
+    res = agent.process_user_turn(
+        user_id="u_custom",
+        project_id="p_custom",
+        prompt="Harry with custom drill",
+        clip_index=0,
+        audio_stem="140 BPM UK Drill 808s",
+        compiled_override="[SUBJECT ANCHOR]: Harry | [AESTHETIC INJECTION]: Streetwear | [ENVIRONMENT]: London | [CAMERA/LIGHTING]: 4K | [MOTION]: Gestures | [AUDIO TRACK]: 140 BPM Drill",
+    )
+    assert res.success is True
+    assert res.video_url is not None

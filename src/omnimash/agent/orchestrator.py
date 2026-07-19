@@ -40,6 +40,8 @@ class OmniMashAgent:
         clip_index: int = 0,
         parent_turn_id: str | None = None,
         reference_url: str | None = None,
+        audio_stem: str | None = None,
+        compiled_override: str | None = None,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(user_id, project_id)
 
@@ -62,7 +64,9 @@ class OmniMashAgent:
         if parent_turn_id and parent_turn_id in session.turns:
             parent_turn = session.turns[parent_turn_id]
             delta_prompt = self.taxonomy.build_delta_prompt(
-                parent_turn.prompt, guard_res.sanitized_prompt
+                parent_turn.prompt,
+                guard_res.sanitized_prompt,
+                override_prompt=compiled_override,
             )
             self.storage.save_session_prompt(
                 session.session_id, len(session.turns), delta_prompt
@@ -77,6 +81,8 @@ class OmniMashAgent:
                 base_character=guard_res.sanitized_prompt,
                 style_preset=StylePreset.NINETIES_RAP_VIDEO,
                 custom_instructions="parody skit",
+                audio_stem=audio_stem,
+                override_prompt=compiled_override,
             )
             self.storage.save_session_prompt(
                 session.session_id, len(session.turns), meta_prompt

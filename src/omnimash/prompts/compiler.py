@@ -80,6 +80,7 @@ class PromptCompiler:
         raw_prompt: str,
         style_preset: StylePreset | str = "90s_rap_video",
         custom_instructions: str = "",
+        audio_stem: str | None = None,
     ) -> CompiledPromptParts:
         lower = raw_prompt.lower()
 
@@ -104,13 +105,16 @@ class PromptCompiler:
         if custom_instructions:
             env = f"in {custom_instructions} with atmospheric environmental lighting"
 
+        # 4. Resolve Audio Track (explicit override takes precedence over preset)
+        audio = audio_stem.strip() if audio_stem else style_info["audio"]
+
         return CompiledPromptParts(
             subject_anchor=anchor,
             aesthetic_injection=style_info["wardrobe"],
             environment=env,
             camera_lighting=style_info["camera"],
             motion=style_info["motion"],
-            audio_track=style_info["audio"],
+            audio_track=audio,
         )
 
     def compile_delta(
