@@ -7,17 +7,19 @@ from omnimash.agent.orchestrator import OmniMashAgent
 
 
 class GenerateRequest(BaseModel):
-    user_id: str
-    project_id: str
+    user_id: str = "usr_default"
+    project_id: str = "prj_default"
     prompt: str
     clip_index: int = 0
     parent_turn_id: str | None = None
     reference_url: str | None = None
+    audio_stem: str | None = None
+    compiled_override: str | None = None
 
 
 class CommitRequest(BaseModel):
-    user_id: str
-    project_id: str
+    user_id: str = "usr_default"
+    project_id: str = "prj_default"
     turn_id: str
     next_prompt: str = ""
 
@@ -46,7 +48,7 @@ UI_HTML = """<!DOCTYPE html>
     <div id="__next"></div>
 
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
 
         const characterLoreAnchors = {
             snape: "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
@@ -58,31 +60,31 @@ UI_HTML = """<!DOCTYPE html>
         const aestheticSignifiers = {
             "90s_rap_video": {
                 wardrobe: "wearing an oversized shiny black puffer jacket, thick diamond Cuban link chain, and vintage Cartier glasses",
-                camera: "shot on a 90s fisheye lens, low-angle tracking shot, high-contrast MTV rap video lighting with green and purple neon rim lights",
+                camera: "In a single continuous shot, no scene cuts. Shot on a 90s fisheye lens, low-angle tracking shot, high-contrast MTV rap video lighting with green and purple neon rim lights",
                 motion: "bopping head rhythmically to a 120 BPM beat while gesturing emphatically for a 10-second clip",
                 audio: "120 BPM boom-bap hip-hop beat, vinyl scratch intro, punchy kick drum, crisp snare, and rhythmic rap cadence"
             },
             "trap_disstrack": {
                 wardrobe: "wearing designer streetwear, iced-out medallions, and tinted aviator sunglasses",
-                camera: "rapid visual jump cuts, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes",
+                camera: "In a single continuous shot, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes. No dialogue",
                 motion: "aggressive lyrical hand gestures and slow walking toward the camera for 10 seconds",
                 audio: "Muffled blown-out 808 sub-bass, rapid 16th-note trap hi-hat trills, and slow dark rap beat playing in the background"
             },
             "cyberpunk_drift": {
                 wardrobe: "wearing a high-collar LED-lined techwear coat with holographic chrome accessories",
-                camera: "anamorphic widescreen lens, rainy asphalt reflections, synthwave purple and cyan color grading",
+                camera: "In a single continuous shot, no scene cuts. Anamorphic widescreen lens, rainy asphalt reflections, synthwave purple and cyan color grading",
                 motion: "slowly turning to face the camera amidst falling digital rain for 10 seconds",
                 audio: "Synthesizer arpeggios, heavy analog synth bassline, and futuristic ambient cyberpunk drone"
             },
             "vhs_anime": {
                 wardrobe: "cel-shaded retro anime styling with oversized 80s shoulder pads and vintage headbands",
-                camera: "retro 4:3 VHS tape grain, analog scanlines, chromatic aberration, and warm nostalgic bloom",
+                camera: "In a single continuous shot. Retro 4:3 VHS tape grain, analog scanlines, chromatic aberration, and warm nostalgic bloom",
                 motion: "classic limited-frame anime speech animation and dynamic wind blowing through hair for 10 seconds",
                 audio: "Retro 80s city pop brass samples, lo-fi cassette tape hiss, and upbeat Japanese synth melody"
             }
         };
 
-        function compilePromptPreview(rawPrompt, presetId) {
+        function compilePromptPreview(rawPrompt, presetId, customAudio) {
             const lower = (rawPrompt || "").toLowerCase();
             let subjectAnchor = "A distinct cinematic character with sharp facial features and expressive eyes";
             for (const [key, desc] of Object.entries(characterLoreAnchors)) {
@@ -93,6 +95,7 @@ UI_HTML = """<!DOCTYPE html>
             }
             const style = aestheticSignifiers[presetId] || aestheticSignifiers["90s_rap_video"];
             const environment = "in a stone Hogwarts dungeon lit by atmospheric fog and ambient glow";
+            const audioTrack = (customAudio && customAudio.trim().length > 0) ? customAudio.trim() : style.audio;
 
             return {
                 subjectAnchor,
@@ -100,7 +103,7 @@ UI_HTML = """<!DOCTYPE html>
                 environment,
                 cameraLighting: style.camera,
                 motion: style.motion,
-                audioTrack: style.audio
+                audioTrack
             };
         }
 
@@ -122,25 +125,58 @@ UI_HTML = """<!DOCTYPE html>
         function OmniMashApp() {
             const [prompt, setPrompt] = useState("");
             const [referenceUrl, setReferenceUrl] = useState("");
+            const [audioStem, setAudioStem] = useState("");
             const [selectedPreset, setSelectedPreset] = useState("90s_rap_video");
             const [parentTurnId, setParentTurnId] = useState("");
             const [loading, setLoading] = useState(false);
             const [status, setStatus] = useState("COMPLETED");
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
+            
+            // Editable Prompt Compiler Previews
+            const [editableParts, setEditableParts] = useState(compilePromptPreview("", "90s_rap_video", ""));
+            const [editableDelta, setEditableDelta] = useState(compileDeltaPreview(""));
+            const [isCustomEdited, setIsCustomEdited] = useState(false);
+
             const [history, setHistory] = useState([
                 { turnId: "turn_init", prompt: "Severus Snape in 90s rap video", status: "COMPLETED", videoUrl: "/static/rendered/mock.mp4", parent: null, is_checkpoint: false }
             ]);
             const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
 
             const selectedParentTurnId = parentTurnId;
-            const compiledPreview = compilePromptPreview(prompt, selectedPreset);
-            const compiledDelta = compileDeltaPreview(prompt);
+
+            // Update auto-compiled defaults whenever prompt, preset, or audioStem changes (if user hasn't overridden)
+            useEffect(() => {
+                if (!isCustomEdited) {
+                    setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem));
+                    setEditableDelta(compileDeltaPreview(prompt));
+                }
+            }, [prompt, selectedPreset, audioStem, isCustomEdited]);
+
+            const handleResetAutoCompile = () => {
+                setIsCustomEdited(false);
+                setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem));
+                setEditableDelta(compileDeltaPreview(prompt));
+            };
+
+            const handlePartChange = (field, val) => {
+                setIsCustomEdited(true);
+                setEditableParts(prev => ({ ...prev, [field]: val }));
+            };
+
+            const handleDeltaChange = (field, val) => {
+                setIsCustomEdited(true);
+                setEditableDelta(prev => ({ ...prev, [field]: val }));
+            };
 
             const handleGenerate = async (e) => {
                 e.preventDefault();
                 setLoading(true);
                 try {
+                    const compiledOverride = selectedParentTurnId
+                        ? `[PRESERVATION LOCK]: ${editableDelta.preservationLock} | [ISOLATED DIFF]: ${editableDelta.isolatedDiff}`
+                        : `[SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack}`;
+
                     const res = await fetch("/api/generate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -150,7 +186,9 @@ UI_HTML = """<!DOCTYPE html>
                             prompt: prompt,
                             clip_index: 0,
                             parent_turn_id: parentTurnId || null,
-                            reference_url: referenceUrl
+                            reference_url: referenceUrl || null,
+                            audio_stem: audioStem || null,
+                            compiled_override: compiledOverride
                         })
                     });
                     const data = await res.json();
@@ -290,6 +328,7 @@ UI_HTML = """<!DOCTYPE html>
 
                     <main className="flex-1 grid grid-cols-12 gap-6 p-6 overflow-hidden">
                         <div className="col-span-4 flex flex-col space-y-6 overflow-y-auto pr-1">
+                            {/* Style Presets */}
                             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg">
                                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
                                     Style Presets
@@ -298,60 +337,81 @@ UI_HTML = """<!DOCTYPE html>
                                     {stylePresets.map(preset => (
                                         <button
                                             key={preset.id}
-                                            onClick={() => setSelectedPreset(preset.id)}
-                                            className={`p-3 rounded-lg border text-left transition ${
+                                            onClick={() => {
+                                                setSelectedPreset(preset.id);
+                                                setIsCustomEdited(false);
+                                            }}
+                                            className={`p-3 rounded-lg border text-left transition flex flex-col justify-between ${
                                                 selectedPreset === preset.id
-                                                    ? "bg-purple-950/60 border-purple-500 text-white"
-                                                    : "bg-gray-800/40 border-gray-700/60 text-gray-400 hover:border-gray-600"
+                                                    ? "border-purple-500 bg-purple-950/40 text-purple-200"
+                                                    : "border-gray-800 hover:border-gray-700 bg-gray-950 text-gray-400"
                                             }`}
                                         >
                                             <div className="text-xl mb-1">{preset.icon}</div>
-                                            <div className="text-xs font-bold text-white">{preset.name}</div>
-                                            <div className="text-[10px] text-gray-400 mt-1 line-clamp-2">{preset.desc}</div>
+                                            <div className="font-semibold text-xs">{preset.name}</div>
+                                            <div className="text-[10px] text-gray-500 line-clamp-2 mt-1">{preset.desc}</div>
                                         </button>
                                     ))}
                                 </div>
                             </div>
 
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
+                            {/* UI Input Controls (Separated Inputs) */}
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg">
                                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                                    Prompt Bar
+                                    Prompt &amp; Media Inputs
                                 </h2>
-                                <form onSubmit={handleGenerate} className="flex flex-col space-y-4">
+                                <form onSubmit={handleGenerate} className="space-y-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">
-                                            Active Prompt / Conversational Diff
+                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1">
+                                            Creative Concept / Parody Prompt
                                         </label>
                                         <textarea
-                                            rows="3"
+                                            rows={2}
                                             value={prompt}
                                             onChange={(e) => setPrompt(e.target.value)}
-                                            placeholder="e.g. Add diamond chains and green neon lights..."
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-sm focus:outline-none focus:border-purple-500 text-white placeholder-gray-600"
+                                            placeholder="e.g. Severus Snape rapping in 90s rap video, or make his chain bigger"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none"
                                         />
                                     </div>
+
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">
-                                            📺 Reference YouTube URL or Audio Stem
+                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                                            <span>🎥 1. Reference YouTube URL</span>
+                                            <span className="text-[10px] text-gray-500 font-normal">extracts portrait keyframes</span>
+                                        </label>
+                                        <input
+                                            type="url"
+                                            value={referenceUrl}
+                                            onChange={(e) => setReferenceUrl(e.target.value)}
+                                            placeholder="https://www.youtube.com/watch?v=sample_character"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none font-mono"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                                            <span>🎵 2. Audio Stem / Beat Description</span>
+                                            <span className="text-[10px] text-gray-500 font-normal">acoustic BPM &amp; tempo</span>
                                         </label>
                                         <input
                                             type="text"
-                                            value={referenceUrl}
-                                            onChange={(e) => setReferenceUrl(e.target.value)}
-                                            placeholder="e.g. https://www.youtube.com/watch?v=sample_beat"
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                                            value={audioStem}
+                                            onChange={(e) => setAudioStem(e.target.value)}
+                                            placeholder="e.g. 140 BPM UK Drill 808s, or 120 BPM Boom-Bap..."
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-teal-500 focus:outline-none"
                                         />
                                     </div>
+
                                     <div>
                                         <label className="block text-xs font-medium text-gray-400 mb-1">
-                                            Parent Turn ID (Branching DAG Node)
+                                            Parent Turn ID (for Conversational Diffs)
                                         </label>
                                         <input
                                             type="text"
                                             value={parentTurnId}
                                             onChange={(e) => setParentTurnId(e.target.value)}
                                             placeholder="Leave empty for new root clip"
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 font-mono"
                                         />
                                     </div>
                                     <button
@@ -364,27 +424,32 @@ UI_HTML = """<!DOCTYPE html>
                                 </form>
                             </div>
 
-                            {/* 🪄 5-Part Anchor & Inject Preview / Delta Lock & Isolate Preview Card */}
+                            {/* 🪄 6-Part Anchor & Inject Preview / Delta Lock & Isolate Preview Card (DIRECTLY EDITABLE) */}
                             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
-                                        <span>{selectedParentTurnId ? "🪄 Delta Prompt Preview (Lock & Isolate)" : "🪄 5-Part Anchor & Inject Preview"}</span>
+                                        <span>{selectedParentTurnId ? "🪄 Delta Prompt Tuning (Lock & Isolate)" : "🪄 6-Part Anchor & Inject Prompt Tuning"}</span>
                                     </h2>
                                     <div className="flex items-center gap-2">
-                                        {referenceUrl && (
-                                            <span className="text-[10px] bg-green-950 text-green-400 px-2 py-0.5 rounded border border-green-800 font-mono font-medium flex items-center gap-1">
-                                                <span>🎵 Reference Audio Stem Attached</span>
+                                        {isCustomEdited ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleResetAutoCompile}
+                                                className="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-800 font-medium hover:bg-amber-900 transition"
+                                            >
+                                                🔄 Reset Auto-Compile
+                                            </button>
+                                        ) : (
+                                            <span className="text-[10px] bg-green-950 text-green-300 px-2 py-0.5 rounded border border-green-800 font-medium">
+                                                ✨ Auto-Compiled (Click to Edit)
                                             </span>
                                         )}
-                                        <span className="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded border border-purple-800 font-mono">
-                                            {selectedParentTurnId ? "Delta Mode" : "Omni Flash Taxonomy"}
-                                        </span>
                                     </div>
                                 </div>
                                 <p className="text-[11px] text-gray-400">
                                     {selectedParentTurnId
-                                        ? "Conversational delta prompt isolating your edit to protect character likeness."
-                                        : "Live compilation of raw shorthand into rigid 5-part multimodal taxonomy to prevent character decay."}
+                                        ? "Directly edit the lock or isolated diff before generating to enforce precise conversational diffing."
+                                        : "Directly edit any of the 6 compiled taxonomy fields to tune the prompt before generation."}
                                 </p>
 
                                 {selectedParentTurnId ? (
@@ -392,64 +457,92 @@ UI_HTML = """<!DOCTYPE html>
                                         <div className="bg-gray-950 p-3 rounded-lg border border-amber-500/40 space-y-1.5 shadow-sm">
                                             <div className="flex items-center justify-between">
                                                 <span className="font-bold text-amber-300 font-mono flex items-center gap-1.5">
-                                                    <span>🔒 Preservation Lock</span>
+                                                    <span>🔒 [PRESERVATION LOCK]</span>
                                                 </span>
                                                 <span className="text-[10px] bg-amber-950/80 text-amber-300 px-2 py-0.5 rounded border border-amber-700/60 font-medium">
-                                                    maintaining facial anchors and background environment
+                                                    Editable Lock
                                                 </span>
                                             </div>
-                                            <p className="text-[11px] text-gray-400">
-                                                Maintains exact subject face, character likeness, expression, wardrobe baseline, and background environment.
-                                            </p>
-                                            <div className="bg-black/60 p-2 rounded border border-gray-900 font-mono text-gray-300 text-[11px] mt-1">
-                                                <span className="text-amber-400 font-bold">[PRESERVATION LOCK]: </span>
-                                                {compiledDelta.preservationLock}
-                                            </div>
+                                            <textarea
+                                                rows={2}
+                                                value={editableDelta.preservationLock}
+                                                onChange={(e) => handleDeltaChange("preservationLock", e.target.value)}
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-2 text-gray-200 text-[11px] font-mono focus:border-amber-400 focus:outline-none"
+                                            />
                                         </div>
 
                                         <div className="bg-gray-950 p-3 rounded-lg border border-purple-500/40 space-y-1.5 shadow-sm">
                                             <div className="flex items-center justify-between">
                                                 <span className="font-bold text-purple-300 font-mono flex items-center gap-1.5">
-                                                    <span>🎯 Isolated Diff</span>
+                                                    <span>🎯 [ISOLATED DIFF]</span>
                                                 </span>
                                                 <span className="text-[10px] bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded border border-purple-700/60 font-medium">
-                                                    highlighting the isolated tweak
+                                                    Editable Diff
                                                 </span>
                                             </div>
-                                            <p className="text-[11px] text-gray-400">
-                                                Highlights the isolated tweak to alter only the specified element without modifying surrounding visual features.
-                                            </p>
-                                            <div className="bg-black/60 p-2 rounded border border-gray-900 font-mono text-gray-300 text-[11px] mt-1">
-                                                <span className="text-purple-400 font-bold">[ISOLATED DIFF]: </span>
-                                                {compiledDelta.isolatedDiff}
-                                            </div>
+                                            <textarea
+                                                rows={2}
+                                                value={editableDelta.isolatedDiff}
+                                                onChange={(e) => handleDeltaChange("isolatedDiff", e.target.value)}
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-2 text-gray-200 text-[11px] font-mono focus:border-purple-400 focus:outline-none"
+                                            />
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="space-y-2 text-xs">
+                                    <div className="space-y-2.5 text-xs">
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-pink-400 font-mono">[SUBJECT ANCHOR]: </span>
-                                            <span className="text-gray-300">{compiledPreview.subjectAnchor}</span>
+                                            <span className="font-bold text-pink-400 font-mono block mb-1">[SUBJECT ANCHOR]: </span>
+                                            <textarea
+                                                rows={2}
+                                                value={editableParts.subjectAnchor}
+                                                onChange={(e) => handlePartChange("subjectAnchor", e.target.value)}
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-pink-500 focus:outline-none"
+                                            />
                                         </div>
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-purple-400 font-mono">[AESTHETIC INJECTION]: </span>
-                                            <span className="text-gray-300">{compiledPreview.aestheticInjection}</span>
+                                            <span className="font-bold text-purple-400 font-mono block mb-1">[AESTHETIC INJECTION]: </span>
+                                            <textarea
+                                                rows={2}
+                                                value={editableParts.aestheticInjection}
+                                                onChange={(e) => handlePartChange("aestheticInjection", e.target.value)}
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-purple-500 focus:outline-none"
+                                            />
                                         </div>
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-blue-400 font-mono">[ENVIRONMENT]: </span>
-                                            <span className="text-gray-300">{compiledPreview.environment}</span>
+                                            <span className="font-bold text-blue-400 font-mono block mb-1">[ENVIRONMENT]: </span>
+                                            <input
+                                                type="text"
+                                                value={editableParts.environment}
+                                                onChange={(e) => handlePartChange("environment", e.target.value)}
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-blue-500 focus:outline-none"
+                                            />
                                         </div>
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-amber-400 font-mono">[CAMERA/LIGHTING]: </span>
-                                            <span className="text-gray-300">{compiledPreview.cameraLighting}</span>
+                                            <span className="font-bold text-amber-400 font-mono block mb-1">[CAMERA/LIGHTING]: </span>
+                                            <textarea
+                                                rows={2}
+                                                value={editableParts.cameraLighting}
+                                                onChange={(e) => handlePartChange("cameraLighting", e.target.value)}
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-amber-500 focus:outline-none"
+                                            />
                                         </div>
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-emerald-400 font-mono">[MOTION]: </span>
-                                            <span className="text-gray-300">{compiledPreview.motion}</span>
+                                            <span className="font-bold text-emerald-400 font-mono block mb-1">[MOTION]: </span>
+                                            <input
+                                                type="text"
+                                                value={editableParts.motion}
+                                                onChange={(e) => handlePartChange("motion", e.target.value)}
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-emerald-500 focus:outline-none"
+                                            />
                                         </div>
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-teal-400 font-mono">[AUDIO TRACK]: </span>
-                                            <span className="text-gray-300">{compiledPreview.audioTrack}</span>
+                                            <span className="font-bold text-teal-400 font-mono block mb-1">[AUDIO TRACK]: </span>
+                                            <input
+                                                type="text"
+                                                value={editableParts.audioTrack}
+                                                onChange={(e) => handlePartChange("audioTrack", e.target.value)}
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-teal-500 focus:outline-none"
+                                            />
                                         </div>
                                     </div>
                                 )}
@@ -478,95 +571,80 @@ UI_HTML = """<!DOCTYPE html>
                                     {currentVideo ? (
                                         <div className="w-full h-full flex flex-col items-center justify-center">
                                             <video
-                                                id="active-parody-player"
                                                 key={currentVideo}
-                                                src={currentVideo}
                                                 controls
                                                 autoPlay
-                                                muted
-                                                playsInline
-                                                className="w-full h-full max-h-[340px] object-contain rounded-md shadow-2xl bg-black border border-purple-500/40"
+                                                loop
+                                                className="max-h-[380px] w-auto rounded shadow-2xl object-contain border border-gray-900"
                                             >
+                                                <source src={currentVideo} type="video/mp4" />
                                                 Your browser does not support the video tag.
                                             </video>
-                                            <div className="mt-3 flex items-center justify-between w-full px-1 text-xs text-gray-400">
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const vid = document.getElementById("active-parody-player");
-                                                            if (vid) {
-                                                                vid.muted = false;
-                                                                vid.play();
-                                                            }
-                                                        }}
-                                                        className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1 transition shadow"
-                                                    >
-                                                        <span>▶ Play with Audio</span>
-                                                    </button>
-                                                    <span className="font-mono text-purple-300 truncate max-w-[160px]">{currentVideo}</span>
-                                                </div>
-                                                <span className="text-[10px] bg-green-950 text-green-400 px-2 py-0.5 rounded border border-green-800 flex items-center gap-1 font-medium shadow-sm">
-                                                    <span>🛡️</span> SynthID C2PA Verified
-                                                </span>
-                                            </div>
                                         </div>
                                     ) : (
-                                        <div className="text-center p-6">
-                                            <div className="w-12 h-12 rounded-full bg-gray-900 border border-gray-800 text-gray-500 flex items-center justify-center mx-auto mb-3">
-                                                🎬
-                                            </div>
-                                            <p className="text-gray-400 text-sm font-medium">No video rendered yet</p>
-                                            <p className="text-gray-600 text-xs mt-1">Enter a prompt and click "Generate Parody Clip" to render & play in 720p.</p>
+                                        <div className="text-center text-gray-600 space-y-2">
+                                            <div className="text-4xl">🎬</div>
+                                            <div className="text-xs">No video rendered yet. Choose a preset or prompt to begin.</div>
                                         </div>
                                     )}
                                 </div>
                             </div>
                         </div>
 
-                        <div className="col-span-3 flex flex-col">
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg h-full flex flex-col">
-                                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                                    Timeline DAG Viewer
-                                </h2>
-                                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                                    {history.map((node, idx) => {
-                                        const isAnchor = node.is_checkpoint || node.status === "REANCHORED";
+                        <div className="col-span-3 flex flex-col space-y-6 overflow-y-auto">
+                            {/* Version Tree DAG */}
+                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg flex-1 flex flex-col">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                                        Version Tree DAG
+                                    </h2>
+                                    <span className="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded-full font-mono">
+                                        {history.length} Clips
+                                    </span>
+                                </div>
+                                <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+                                    {history.map((item, idx) => {
+                                        const isCurrent = currentVideo === item.videoUrl;
                                         return (
                                             <div
-                                                key={node.turnId || idx}
+                                                key={item.turnId}
                                                 onClick={() => {
-                                                    setParentTurnId(node.turnId);
-                                                    if (node.videoUrl) setCurrentVideo(node.videoUrl);
-                                                    if (node.status === "COMMIT_RECOMMENDED") {
-                                                        setStatus("COMMIT_RECOMMENDED");
-                                                        setShowCommitModal(true);
-                                                    }
+                                                    setCurrentVideo(item.videoUrl);
+                                                    setParentTurnId(item.turnId);
                                                 }}
-                                                className={`p-3 rounded-lg border cursor-pointer transition ${
-                                                    parentTurnId === node.turnId
-                                                        ? "bg-purple-950/40 border-purple-500"
-                                                        : "bg-gray-950 border-gray-800 hover:border-gray-700"
+                                                className={`p-3 rounded-lg border cursor-pointer transition relative text-xs ${
+                                                    isCurrent
+                                                        ? "border-purple-500 bg-purple-950/30"
+                                                        : "border-gray-800 hover:border-gray-700 bg-gray-950"
                                                 }`}
                                             >
-                                                <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-                                                    <span className="font-mono">{node.turnId || "Root"}</span>
-                                                    <div className="flex items-center space-x-1">
-                                                        {isAnchor && (
-                                                             <span className="text-[10px] bg-green-950 text-green-400 px-1.5 py-0.5 rounded border border-green-700 flex items-center gap-1 font-medium shadow-sm">
-                                                                <span>⚓</span>
-                                                                <span>Checkpoint Anchor Badge</span>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="font-mono text-[10px] text-gray-500">
+                                                        Turn #{idx + 1}
+                                                    </span>
+                                                    <div className="flex items-center gap-1">
+                                                        {item.is_checkpoint && (
+                                                            <span className="text-[9px] bg-amber-950 text-amber-400 px-1.5 py-0.5 rounded border border-amber-800 font-bold">
+                                                                ⚓ Checkpoint Anchor
                                                             </span>
                                                         )}
-                                                        <span className="text-[10px] bg-green-950 text-green-400 px-1.5 py-0.5 rounded border border-green-800">
-                                                            {node.status}
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                                                            item.status === "COMPLETED" || item.status === "REANCHORED"
+                                                                ? "bg-green-950 text-green-400"
+                                                                : item.status === "COMMIT_RECOMMENDED"
+                                                                ? "bg-amber-950 text-amber-400"
+                                                                : "bg-red-950 text-red-400"
+                                                        }`}>
+                                                            {item.status}
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <p className="text-xs text-gray-200 line-clamp-2">{node.prompt}</p>
-                                                {node.parent && (
-                                                    <div className="mt-2 text-[10px] text-purple-400 flex items-center">
-                                                        ↳ branch of {node.parent}
+                                                <div className="text-gray-300 font-medium line-clamp-2">
+                                                    {item.prompt}
+                                                </div>
+                                                {item.parent && (
+                                                    <div className="text-[10px] text-gray-600 font-mono mt-1">
+                                                        ↳ diff from: {item.parent}
                                                     </div>
                                                 )}
                                             </div>
@@ -613,6 +691,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             clip_index=req.clip_index,
             parent_turn_id=req.parent_turn_id,
             reference_url=req.reference_url,
+            audio_stem=req.audio_stem,
+            compiled_override=req.compiled_override,
         )
         return GenerateResponse(
             success=res.success,
@@ -624,7 +704,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
 
     @app.post("/api/commit", response_model=GenerateResponse)
-    def commit_turn(req: CommitRequest) -> GenerateResponse:
+    def commit_and_branch(req: CommitRequest) -> GenerateResponse:
         res = agent.commit_and_branch(
             user_id=req.user_id,
             project_id=req.project_id,
