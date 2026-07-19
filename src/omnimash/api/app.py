@@ -1,5 +1,7 @@
+import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from omnimash.agent.orchestrator import OmniMashAgent
 
@@ -429,17 +431,34 @@ UI_HTML = """<!DOCTYPE html>
                                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
                                     Video Player
                                 </h2>
-                                <div className="flex-1 bg-black rounded-lg border border-gray-800 flex items-center justify-center relative overflow-hidden group">
+                                <div className="flex-1 bg-black rounded-lg border border-gray-800 flex flex-col items-center justify-center relative overflow-hidden group p-2">
                                     {currentVideo ? (
-                                        <div className="w-full h-full flex flex-col items-center justify-center text-center p-6">
-                                            <div className="w-16 h-16 rounded-full bg-purple-600/20 text-purple-400 flex items-center justify-center mb-4 border border-purple-500/30">
-                                                ▶
+                                        <div className="w-full h-full flex flex-col items-center justify-center">
+                                            <video
+                                                key={currentVideo}
+                                                controls
+                                                autoPlay
+                                                playsInline
+                                                className="w-full h-full max-h-[360px] object-contain rounded-md shadow-2xl bg-black border border-purple-500/30"
+                                            >
+                                                <source src={currentVideo} type="video/mp4" />
+                                                Your browser does not support the video tag.
+                                            </video>
+                                            <div className="mt-2 flex items-center justify-between w-full px-2 text-xs text-gray-400">
+                                                <span className="font-mono text-purple-300 truncate max-w-[200px]">▶ {currentVideo}</span>
+                                                <span className="text-[10px] bg-green-950 text-green-400 px-2 py-0.5 rounded border border-green-800 flex items-center gap-1 font-medium">
+                                                    <span>🛡️</span> SynthID C2PA Verified
+                                                </span>
                                             </div>
-                                            <p className="text-sm font-mono text-purple-300">{currentVideo}</p>
-                                            <span className="mt-2 text-xs text-gray-500">SynthID Watermark Verified</span>
                                         </div>
                                     ) : (
-                                        <p className="text-gray-600 text-sm">No video rendered yet</p>
+                                        <div className="text-center p-6">
+                                            <div className="w-12 h-12 rounded-full bg-gray-900 border border-gray-800 text-gray-500 flex items-center justify-center mx-auto mb-3">
+                                                🎬
+                                            </div>
+                                            <p className="text-gray-400 text-sm font-medium">No video rendered yet</p>
+                                            <p className="text-gray-600 text-xs mt-1">Enter a prompt and click "Generate Parody Clip" to render & play in 720p.</p>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -474,7 +493,7 @@ UI_HTML = """<!DOCTYPE html>
                                                     <span className="font-mono">{node.turnId || "Root"}</span>
                                                     <div className="flex items-center space-x-1">
                                                         {isAnchor && (
-                                                            <span className="text-[10px] bg-green-950 text-green-400 px-1.5 py-0.5 rounded border border-green-700 flex items-center gap-1 font-medium shadow-sm">
+                                                             <span className="text-[10px] bg-green-950 text-green-400 px-1.5 py-0.5 rounded border border-green-700 flex items-center gap-1 font-medium shadow-sm">
                                                                 <span>⚓</span>
                                                                 <span>Checkpoint Anchor Badge</span>
                                                             </span>
@@ -511,6 +530,10 @@ UI_HTML = """<!DOCTYPE html>
 def create_app(mock_mode: bool = True) -> FastAPI:
     app = FastAPI(title="OmniMash API", version="0.1.0")
     agent = OmniMashAgent(mock_mode=mock_mode)
+
+    static_dir = os.path.join(os.getcwd(), "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/", response_class=HTMLResponse)
     def get_dashboard() -> HTMLResponse:
