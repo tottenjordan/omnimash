@@ -47,8 +47,11 @@ class OmniMashAgent:
         is_silent: bool = False,
         on_screen_text: str | None = None,
         compiled_override: str | None = None,
+        session_name: str | None = None,
     ) -> AgentTurnResponse:
-        session = self.session_manager.get_or_create_session(user_id, project_id)
+        session = self.session_manager.get_or_create_session(
+            user_id, project_id, session_name=session_name
+        )
 
         # Step 0: Process reference URL if provided
         reference_analysis = None
@@ -136,6 +139,7 @@ class OmniMashAgent:
         project_id: str,
         turn_id: str,
         prompt: str,
+        session_name: str | None = None,
     ) -> AgentTurnResponse:
         guard_res = self.guardrail.validate_prompt(prompt)
         if not guard_res.is_approved:
@@ -145,7 +149,9 @@ class OmniMashAgent:
                 error_message=guard_res.rejection_reason,
             )
 
-        session = self.session_manager.get_or_create_session(user_id, project_id)
+        session = self.session_manager.get_or_create_session(
+            user_id, project_id, session_name=session_name
+        )
         if turn_id not in session.turns:
             return AgentTurnResponse(
                 success=False,
