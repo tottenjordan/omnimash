@@ -9,8 +9,8 @@ Always refer to [CODE_STANDARDS.md](CODE_STANDARDS.md) when writing code, making
 - **Package Manager:** Use `uv` exclusively (`uv add`, `uv remove`, `uv sync`). Never use bare `pip` or manual `python` execution.
 - **Run Commands:** Always run commands prefixed with `uv run` (e.g. `uv run pytest`, `uv run ruff check`).
 - **Linting & Formatting:** Use `ruff` for all linting and code formatting. Do not use `black` or `flake8`.
-- **Testing & Type Checking:** Use `pytest` for testing and `ty` for type checking.
 - **Git Commits & PRs:** Never add `Co-Authored-By` trailers in commit messages or pull requests.
+- **Cloud Redeployments:** Never redeploy any cloud resources (Cloud Run, Cloud Storage, Vertex AI) without explicit user approval.
 
 ---
 

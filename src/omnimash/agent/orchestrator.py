@@ -9,6 +9,9 @@ from omnimash.security.guardrail import ModelArmorGuardrail
 from omnimash.state.session_manager import SessionManager
 
 
+from omnimash.storage.gcs import GcsStorageManager
+
+
 @dataclass
 class AgentTurnResponse:
     success: bool
@@ -27,6 +30,7 @@ class OmniMashAgent:
         self.omni_client = OmniFlashClient(mock_mode=mock_mode)
         self.taxonomy = PromptTaxonomyEngine()
         self.media_extractor = MediaExtractor(mock_mode=mock_mode)
+        self.storage = GcsStorageManager(mock_mode=mock_mode)
 
     def process_user_turn(
         self,
@@ -37,9 +41,13 @@ class OmniMashAgent:
         parent_turn_id: str | None = None,
         reference_url: str | None = None,
     ) -> AgentTurnResponse:
+        session = self.session_manager.get_or_create_session(user_id, project_id)
+
         # Step 0: Process reference URL if provided
         if reference_url:
-            self.media_extractor.process_youtube_url(reference_url)
+            self.media_extractor.process_youtube_url(
+                reference_url, session_id=session.session_id
+            )
 
         # Step 1: Model Armor Gate
         guard_res = self.guardrail.validate_prompt(prompt)
@@ -50,17 +58,19 @@ class OmniMashAgent:
                 error_message=guard_res.rejection_reason,
             )
 
-        # Step 2: Session Resolution
-        session = self.session_manager.get_or_create_session(user_id, project_id)
-
-        # Step 3: Check if initial generation or conversational diff
+        # Step 2: Check if initial generation or conversational diff
         if parent_turn_id and parent_turn_id in session.turns:
             parent_turn = session.turns[parent_turn_id]
             delta_prompt = self.taxonomy.build_delta_prompt(
                 parent_turn.prompt, guard_res.sanitized_prompt
             )
+            self.storage.save_session_prompt(
+                session.session_id, len(session.turns), delta_prompt
+            )
             gen_res = self.omni_client.apply_interaction_diff(
-                parent_turn.interaction_thread_id, delta_prompt
+                parent_turn.interaction_thread_id,
+                delta_prompt,
+                session_id=session.session_id,
             )
         else:
             meta_prompt = self.taxonomy.build_initial_prompt(
@@ -68,9 +78,14 @@ class OmniMashAgent:
                 style_preset=StylePreset.NINETIES_RAP_VIDEO,
                 custom_instructions="parody skit",
             )
-            gen_res = self.omni_client.generate_clip(meta_prompt)
+            self.storage.save_session_prompt(
+                session.session_id, len(session.turns), meta_prompt
+            )
+            gen_res = self.omni_client.generate_clip(
+                meta_prompt, session_id=session.session_id
+            )
 
-        # Step 4: Persist Turn in Session Version Tree
+        # Step 3: Persist Turn in Session Version Tree
         turn_node = self.session_manager.add_turn(
             session_id=session.session_id,
             clip_index=clip_index,
@@ -119,6 +134,7 @@ class OmniMashAgent:
         gen_res = self.omni_client.start_thread_from_video(
             base_video_url=committed_turn.video_url,
             initial_prompt=guard_res.sanitized_prompt,
+            session_id=session.session_id,
         )
         new_node = self.session_manager.add_turn(
             session_id=session.session_id,
