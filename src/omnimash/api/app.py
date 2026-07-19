@@ -14,6 +14,7 @@ class GenerateRequest(BaseModel):
     parent_turn_id: str | None = None
     reference_url: str | None = None
     audio_stem: str | None = None
+    on_screen_text: str | None = None
     compiled_override: str | None = None
 
 
@@ -84,7 +85,7 @@ UI_HTML = """<!DOCTYPE html>
             }
         };
 
-        function compilePromptPreview(rawPrompt, presetId, customAudio) {
+        function compilePromptPreview(rawPrompt, presetId, customAudio, customText) {
             const lower = (rawPrompt || "").toLowerCase();
             let subjectAnchor = "A distinct cinematic character with sharp facial features and expressive eyes";
             for (const [key, desc] of Object.entries(characterLoreAnchors)) {
@@ -96,6 +97,7 @@ UI_HTML = """<!DOCTYPE html>
             const style = aestheticSignifiers[presetId] || aestheticSignifiers["90s_rap_video"];
             const environment = "in a stone Hogwarts dungeon lit by atmospheric fog and ambient glow";
             const audioTrack = (customAudio && customAudio.trim().length > 0) ? customAudio.trim() : style.audio;
+            const onScreenText = (customText && customText.trim().length > 0) ? customText.trim() : "";
 
             return {
                 subjectAnchor,
@@ -103,7 +105,8 @@ UI_HTML = """<!DOCTYPE html>
                 environment,
                 cameraLighting: style.camera,
                 motion: style.motion,
-                audioTrack
+                audioTrack,
+                onScreenText
             };
         }
 
@@ -126,6 +129,7 @@ UI_HTML = """<!DOCTYPE html>
             const [prompt, setPrompt] = useState("");
             const [referenceUrl, setReferenceUrl] = useState("");
             const [audioStem, setAudioStem] = useState("");
+            const [onScreenText, setOnScreenText] = useState("");
             const [selectedPreset, setSelectedPreset] = useState("90s_rap_video");
             const [parentTurnId, setParentTurnId] = useState("");
             const [loading, setLoading] = useState(false);
@@ -134,7 +138,7 @@ UI_HTML = """<!DOCTYPE html>
             const [commitPrompt, setCommitPrompt] = useState("");
             
             // Editable Prompt Compiler Previews
-            const [editableParts, setEditableParts] = useState(compilePromptPreview("", "90s_rap_video", ""));
+            const [editableParts, setEditableParts] = useState(compilePromptPreview("", "90s_rap_video", "", ""));
             const [editableDelta, setEditableDelta] = useState(compileDeltaPreview(""));
             const [isCustomEdited, setIsCustomEdited] = useState(false);
 
@@ -145,17 +149,16 @@ UI_HTML = """<!DOCTYPE html>
 
             const selectedParentTurnId = parentTurnId;
 
-            // Update auto-compiled defaults whenever prompt, preset, or audioStem changes (if user hasn't overridden)
             useEffect(() => {
                 if (!isCustomEdited) {
-                    setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem));
+                    setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem, onScreenText));
                     setEditableDelta(compileDeltaPreview(prompt));
                 }
-            }, [prompt, selectedPreset, audioStem, isCustomEdited]);
+            }, [prompt, selectedPreset, audioStem, onScreenText, isCustomEdited]);
 
             const handleResetAutoCompile = () => {
                 setIsCustomEdited(false);
-                setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem));
+                setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem, onScreenText));
                 setEditableDelta(compileDeltaPreview(prompt));
             };
 
@@ -173,9 +176,13 @@ UI_HTML = """<!DOCTYPE html>
                 e.preventDefault();
                 setLoading(true);
                 try {
+                    const textDirective = (editableParts.onScreenText && editableParts.onScreenText.trim().length > 0)
+                        ? `On-screen text: '${editableParts.onScreenText.trim()}'`
+                        : "No text, no subtitles, no captions on screen";
+
                     const compiledOverride = selectedParentTurnId
                         ? `[PRESERVATION LOCK]: ${editableDelta.preservationLock} | [ISOLATED DIFF]: ${editableDelta.isolatedDiff}`
-                        : `[SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack}`;
+                        : `[SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | Sound design: ${editableParts.audioTrack}. ${textDirective}.`;
 
                     const res = await fetch("/api/generate", {
                         method: "POST",
@@ -188,6 +195,7 @@ UI_HTML = """<!DOCTYPE html>
                             parent_turn_id: parentTurnId || null,
                             reference_url: referenceUrl || null,
                             audio_stem: audioStem || null,
+                            on_screen_text: onScreenText || null,
                             compiled_override: compiledOverride
                         })
                     });
@@ -358,7 +366,7 @@ UI_HTML = """<!DOCTYPE html>
                             {/* UI Input Controls (Separated Inputs) */}
                             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg">
                                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                                    Prompt &amp; Media Inputs
+                                    Prompt &amp; Multimodal Inputs
                                 </h2>
                                 <form onSubmit={handleGenerate} className="space-y-4">
                                     <div>
@@ -390,7 +398,7 @@ UI_HTML = """<!DOCTYPE html>
 
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
-                                            <span>🎵 2. Audio Stem / Beat Description</span>
+                                            <span>🎵 2. Audio Stem / Sound Design</span>
                                             <span className="text-[10px] text-gray-500 font-normal">acoustic BPM &amp; tempo</span>
                                         </label>
                                         <input
@@ -399,6 +407,20 @@ UI_HTML = """<!DOCTYPE html>
                                             onChange={(e) => setAudioStem(e.target.value)}
                                             placeholder="e.g. 140 BPM UK Drill 808s, or 120 BPM Boom-Bap..."
                                             className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-teal-500 focus:outline-none"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                                            <span>📝 3. On-Screen Text / Subtitles (Optional)</span>
+                                            <span className="text-[10px] text-gray-500 font-normal">captions, titles, lyrics</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={onScreenText}
+                                            onChange={(e) => setOnScreenText(e.target.value)}
+                                            placeholder="e.g. SNAPE 1994, lyrics, or leave empty for clean video..."
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-amber-500 focus:outline-none"
                                         />
                                     </div>
 
@@ -449,7 +471,7 @@ UI_HTML = """<!DOCTYPE html>
                                 <p className="text-[11px] text-gray-400">
                                     {selectedParentTurnId
                                         ? "Directly edit the lock or isolated diff before generating to enforce precise conversational diffing."
-                                        : "Directly edit any of the 6 compiled taxonomy fields to tune the prompt before generation."}
+                                        : "Directly edit any of the 6 compiled taxonomy fields or on-screen subtitles to tune the prompt before generation."}
                                 </p>
 
                                 {selectedParentTurnId ? (
@@ -536,12 +558,22 @@ UI_HTML = """<!DOCTYPE html>
                                             />
                                         </div>
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-teal-400 font-mono block mb-1">[AUDIO TRACK]: </span>
+                                            <span className="font-bold text-teal-400 font-mono block mb-1">[AUDIO SOUND DESIGN]: </span>
                                             <input
                                                 type="text"
                                                 value={editableParts.audioTrack}
                                                 onChange={(e) => handlePartChange("audioTrack", e.target.value)}
                                                 className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-teal-500 focus:outline-none"
+                                            />
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                            <span className="font-bold text-amber-300 font-mono block mb-1">[ON-SCREEN TEXT / SUBTITLES]: </span>
+                                            <input
+                                                type="text"
+                                                value={editableParts.onScreenText}
+                                                onChange={(e) => handlePartChange("onScreenText", e.target.value)}
+                                                placeholder="Leave empty for clean video without captions"
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-amber-400 focus:outline-none"
                                             />
                                         </div>
                                     </div>
@@ -692,6 +724,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             parent_turn_id=req.parent_turn_id,
             reference_url=req.reference_url,
             audio_stem=req.audio_stem,
+            on_screen_text=req.on_screen_text,
             compiled_override=req.compiled_override,
         )
         return GenerateResponse(

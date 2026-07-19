@@ -156,7 +156,7 @@ def test_e2e_youtube_reference_url_generation() -> None:
     assert data["video_url"] is not None
 
 
-def test_e2e_audio_stem_and_custom_preview_override() -> None:
+def test_e2e_audio_stem_and_on_screen_text_generation() -> None:
     app = create_app(mock_mode=True)
     client = TestClient(app)
     res = client.post(
@@ -168,7 +168,7 @@ def test_e2e_audio_stem_and_custom_preview_override() -> None:
             "clip_index": 0,
             "reference_url": "https://www.youtube.com/watch?v=voldy",
             "audio_stem": "140 BPM UK Drill 808s and sliding bass",
-            "compiled_override": "[SUBJECT ANCHOR]: Voldemort | [AESTHETIC INJECTION]: Techwear | [ENVIRONMENT]: Dungeon | [CAMERA/LIGHTING]: Single continuous shot | [MOTION]: Head bobbing | [AUDIO TRACK]: 140 BPM Drill",
+            "on_screen_text": "VOLDY 1994 DISSTRACK",
         },
     )
     assert res.status_code == 200

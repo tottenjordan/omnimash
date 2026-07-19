@@ -20,6 +20,7 @@ class PromptTaxonomyEngine:
         style_preset: StylePreset,
         custom_instructions: str,
         audio_stem: str | None = None,
+        on_screen_text: str | None = None,
         override_prompt: str | None = None,
     ) -> str:
         if override_prompt:
@@ -30,6 +31,7 @@ class PromptTaxonomyEngine:
             style_preset=style_preset,
             custom_instructions=custom_instructions,
             audio_stem=audio_stem,
+            on_screen_text=on_screen_text,
         )
         return (
             "Generate a 720p 10-second cinematic parody video with native audio using the Anchor & Inject framework: "

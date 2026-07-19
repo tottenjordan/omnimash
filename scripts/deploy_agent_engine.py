@@ -25,9 +25,7 @@ def deploy_to_agent_engine(
     print(
         f"🚀 Initializing Vertex AI client for project '{project_id}' in '{location}' with staging bucket '{staging_bucket}'..."
     )
-    vertexai.init(
-        project=project_id, location=location, staging_bucket=staging_bucket
-    )
+    vertexai.init(project=project_id, location=location, staging_bucket=staging_bucket)
 
     app = agent_engines.AdkApp(agent=root_agent)
 

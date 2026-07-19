@@ -41,6 +41,7 @@ class OmniMashAgent:
         parent_turn_id: str | None = None,
         reference_url: str | None = None,
         audio_stem: str | None = None,
+        on_screen_text: str | None = None,
         compiled_override: str | None = None,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(user_id, project_id)
@@ -82,6 +83,7 @@ class OmniMashAgent:
                 style_preset=StylePreset.NINETIES_RAP_VIDEO,
                 custom_instructions="parody skit",
                 audio_stem=audio_stem,
+                on_screen_text=on_screen_text,
                 override_prompt=compiled_override,
             )
             self.storage.save_session_prompt(
