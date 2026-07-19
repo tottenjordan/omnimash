@@ -8,6 +8,7 @@ from typing import Any
 import uuid
 import wave
 from dataclasses import dataclass
+from omnimash.storage.gcs import GcsStorageManager
 
 try:
     from google import genai
@@ -19,6 +20,7 @@ except ImportError:
 class GenerationResult:
     interaction_thread_id: str
     video_url: str
+    gcs_uri: str | None = None
     duration_seconds: int = 10
     synth_id_watermark: str = "SYNTHID_C2PA_VERIFIED"
 
@@ -182,12 +184,22 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
 
 
 class OmniFlashClient:
-    def __init__(self, api_key: str | None = None, mock_mode: bool = True):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        mock_mode: bool = True,
+        bucket_name: str | None = None,
+    ):
         self.api_key = api_key
         self.mock_mode = mock_mode
         self.project = os.environ.get("GOOGLE_CLOUD_PROJECT", "hybrid-vertex")
         self.location = "us-central1"
         self._genai_client = None
+        self.storage = GcsStorageManager(
+            bucket_name=bucket_name,
+            project_id=self.project,
+            mock_mode=self.mock_mode,
+        )
 
         if not self.mock_mode and genai:
             try:
@@ -323,9 +335,15 @@ class OmniFlashClient:
         if not success:
             ensure_rendered_video(url, prompt=prompt)
 
+        # Persist media artifact to Google Cloud Storage
+        gcs_blob = f"rendered/{os.path.basename(rel_path)}"
+        self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
+        gcs_uri = self.storage.get_gcs_uri(gcs_blob)
+
         return GenerationResult(
             interaction_thread_id=inter_id or thread_id,
             video_url=url,
+            gcs_uri=gcs_uri,
         )
 
     def apply_interaction_diff(
@@ -347,9 +365,15 @@ class OmniFlashClient:
         if not success:
             ensure_rendered_video(url, prompt=diff_prompt)
 
+        # Persist media artifact to Google Cloud Storage
+        gcs_blob = f"rendered/{os.path.basename(rel_path)}"
+        self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
+        gcs_uri = self.storage.get_gcs_uri(gcs_blob)
+
         return GenerationResult(
             interaction_thread_id=interaction_thread_id,
             video_url=url,
+            gcs_uri=gcs_uri,
         )
 
     def start_thread_from_video(
@@ -366,7 +390,13 @@ class OmniFlashClient:
         if not success:
             ensure_rendered_video(url, prompt=prompt)
 
+        # Persist media artifact to Google Cloud Storage
+        gcs_blob = f"rendered/{os.path.basename(rel_path)}"
+        self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
+        gcs_uri = self.storage.get_gcs_uri(gcs_blob)
+
         return GenerationResult(
             interaction_thread_id=inter_id or thread_id,
             video_url=url,
+            gcs_uri=gcs_uri,
         )

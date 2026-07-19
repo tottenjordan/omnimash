@@ -8,3 +8,21 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables and API secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+adc.json
+!/.env.example
+
+# Generated media artifacts (persisted in Google Cloud Storage)
+static/rendered/*
+!static/rendered/.gitkeep
+*.mp4
+*.wav
+*.mov
+*.webm

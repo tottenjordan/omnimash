@@ -150,6 +150,7 @@ Detailed subsystem architectures and workflow outlines are available in [docs/di
 | Reference Diagram | Subsystem | Highlights |
 | :--- | :--- | :--- |
 | 🌟 [Master System Architecture](docs/diagrams/omnimash_master_architecture.png) | **End-to-End Pipeline** | Publication-quality PaperBanana diagram detailing the 5 core architectural layers from Web UI to FFmpeg master rendering. |
+| ☁️ [GCS Persistent Media Pipeline](docs/diagrams/omnimash_gcs_storage_workflow.png) | `omnimash.storage` | PaperBanana workflow diagram showing intermediate/final video streaming to GCS (`gs://omnimash-media-934903580331`) and `.gitignore` repository isolation. |
 | 🚀 [GCP Deployment Patterns](docs/diagrams/gcp_deployment_patterns.md) | **Google Cloud Platform** | Dual-Target Architecture comparing Target 1 (Full-Stack Cloud Run serverless container on port 8080) and Target 2 (Enterprise Vertex AI Agent Engine with `root_agent` and `AdkApp`). |
 | 🛡️ [Agent Orchestration Architecture](docs/diagrams/omnimash_agent_architecture.md) | `omnimash.agent` & `security` | ADK orchestrator sequence, Model Armor pre-gating, 5-part Prompt Compiler, and Gemini Omni Flash client dispatch. |
 | 🌳 [Version Tree DAG & State Lifecycle](docs/diagrams/version_tree_dag_lifecycle.md) | `omnimash.state` | Non-linear conversational diff branching, thread depth tracking (>= 3), ⚓ Checkpoint Anchor Badges, and fresh thread re-anchoring. |
@@ -170,9 +171,10 @@ export GOOGLE_CLOUD_PROJECT=$(gcloud config get-value project)
 gcloud auth application-default login
 ```
 
-**2. Install dependencies via `uv`**
+**2. Configure environment and install dependencies**
 
 ```bash
+cp .env.example .env
 uv sync
 ```
 
