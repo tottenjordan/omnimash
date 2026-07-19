@@ -1,7 +1,9 @@
+import math
 import os
-import shutil
+import struct
 import subprocess
 import uuid
+import wave
 from dataclasses import dataclass
 
 
@@ -13,17 +15,86 @@ class GenerationResult:
     synth_id_watermark: str = "SYNTHID_C2PA_VERIFIED"
 
 
-def ensure_rendered_video(video_url: str) -> None:
-    """Ensures a valid playable 720p MP4 file with Dripwarts animation and beat audio exists on disk."""
+def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
+    """Synthesizes a 120 BPM rhythmic hip-hop beat with kick, snare, hi-hats, and 808 bassline."""
+    sample_rate = 44100
+    total_samples = sample_rate * duration
+    bpm = 120
+    beat_interval = 60 / bpm  # 0.5s per beat
+
+    audio_data: list[int] = []
+
+    for i in range(total_samples):
+        t = i / sample_rate
+        beat_pos = t % beat_interval
+        beat_index = int(t / beat_interval) % 4
+
+        val = 0.0
+
+        # 1. Kick Drum (Beats 1 & 3): 55Hz pitch drop
+        if beat_index in [0, 2]:
+            kick_t = beat_pos
+            if kick_t < 0.25:
+                freq = 120 * math.exp(-kick_t * 20) + 45
+                val += (
+                    0.6 * math.sin(2 * math.pi * freq * kick_t) * math.exp(-kick_t * 12)
+                )
+
+        # 2. Snare / Clap (Beats 2 & 4): noise + 220Hz burst
+        if beat_index in [1, 3]:
+            snare_t = beat_pos
+            if snare_t < 0.2:
+                noise = ((i * 1103515245 + 12345) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
+                val += 0.4 * noise * math.exp(-snare_t * 25)
+                val += (
+                    0.3
+                    * math.sin(2 * math.pi * 220 * snare_t)
+                    * math.exp(-snare_t * 18)
+                )
+
+        # 3. Hi-Hat (Every 16th note - 0.125s)
+        hat_t = t % 0.125
+        if hat_t < 0.05:
+            noise = ((i * 214013 + 2531011) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
+            val += 0.15 * noise * math.exp(-hat_t * 80)
+
+        # 4. Melodic 808 Bassline
+        bass_notes = [55, 65.4, 49, 58.2]
+        bass_freq = bass_notes[int(t / 2.0) % 4]
+        val += (
+            0.35
+            * math.sin(2 * math.pi * bass_freq * t)
+            * (0.8 + 0.2 * math.sin(2 * math.pi * 4 * t))
+        )
+
+        val = max(-1.0, min(1.0, val))
+        audio_data.append(int(val * 32767))
+
+    os.makedirs(os.path.dirname(wav_path), exist_ok=True)
+    with wave.open(wav_path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(struct.pack(f"<{len(audio_data)}h", *audio_data))
+
+
+def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
+    """Ensures a valid playable 720p MP4 file with Dripwarts animation and 120 BPM beat exists on disk."""
     if not video_url.startswith("/static/"):
         return
     rel_path = video_url.lstrip("/")
     os.makedirs(os.path.dirname(rel_path), exist_ok=True)
-    if os.path.exists(rel_path) and os.path.getsize(rel_path) > 50000:
+    if os.path.exists(rel_path) and os.path.getsize(rel_path) > 100000:
         return
 
+    wav_path = "static/rendered/temp_beat.wav"
+    try:
+        _generate_hiphop_beat_wav(wav_path, duration=10)
+    except Exception:
+        pass
+
     banner_img = "imgs/omnimash_banner.png"
-    if os.path.exists(banner_img):
+    if os.path.exists(banner_img) and os.path.exists(wav_path):
         try:
             cmd = [
                 "ffmpeg",
@@ -32,28 +103,21 @@ def ensure_rendered_video(video_url: str) -> None:
                 "1",
                 "-i",
                 banner_img,
-                "-f",
-                "lavfi",
                 "-i",
-                "anoisesrc=c=pink:r=44100:a=0.1, lowpass=f=120, volume=3, aecho=0.8:0.88:60:0.4",
-                "-f",
-                "lavfi",
-                "-i",
-                "sine=frequency=110:duration=10",
+                wav_path,
                 "-filter_complex",
-                "[0:v]scale=1280:720,zoompan=z='min(zoom+0.001,1.15)':d=250:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720,drawbox=y=ih-80:color=black@0.6:width=iw:height=80:t=fill,drawtext=text='🎬 OmniMash • Dripwarts Parody (Snape Dawg x DumbleDior)':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=h-55,drawtext=text='🛡️ SynthID C2PA Verified • 720p 24fps Native Audio':fontcolor=0x34A853:fontsize=18:x=(w-text_w)/2:y=h-25[v]; [1:a][2:a]amix=inputs=2[a]",
+                "[0:v]scale=1280:720,zoompan=z=1.05:d=250:s=1280x720[v]",
                 "-map",
                 "[v]",
                 "-map",
-                "[a]",
+                "1:a",
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
                 "aac",
-                "-t",
-                "10",
+                "-shortest",
                 rel_path,
             ]
             res = subprocess.run(cmd, capture_output=True, check=False)
@@ -62,7 +126,7 @@ def ensure_rendered_video(video_url: str) -> None:
         except Exception:
             pass
 
-    # Fallback if banner image is not accessible
+    # Fallback MP4 generation
     try:
         subprocess.run(
             [
@@ -72,18 +136,15 @@ def ensure_rendered_video(video_url: str) -> None:
                 "lavfi",
                 "-i",
                 "color=c=0x110022:s=1280x720:d=10",
-                "-f",
-                "lavfi",
                 "-i",
-                "sine=frequency=110:duration=10",
-                "-vf",
-                "drawtext=text='🎬 OmniMash - 720p Parody Video Clip':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2",
+                wav_path if os.path.exists(wav_path) else "anoisesrc=d=10",
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
                 "aac",
+                "-shortest",
                 rel_path,
             ],
             capture_output=True,
@@ -102,7 +163,7 @@ class OmniFlashClient:
         if self.mock_mode:
             thread_id = f"thread_{uuid.uuid4().hex[:8]}"
             url = f"/static/rendered/{thread_id}_turn0.mp4"
-            ensure_rendered_video(url)
+            ensure_rendered_video(url, prompt=prompt)
             return GenerationResult(
                 interaction_thread_id=thread_id,
                 video_url=url,
@@ -114,7 +175,7 @@ class OmniFlashClient:
     ) -> GenerationResult:
         if self.mock_mode:
             url = f"/static/rendered/{interaction_thread_id}_turn_diff.mp4"
-            ensure_rendered_video(url)
+            ensure_rendered_video(url, prompt=diff_prompt)
             return GenerationResult(
                 interaction_thread_id=interaction_thread_id,
                 video_url=url,
@@ -127,7 +188,7 @@ class OmniFlashClient:
         if self.mock_mode:
             thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
             url = f"/static/rendered/{thread_id}_turn0.mp4"
-            ensure_rendered_video(url)
+            ensure_rendered_video(url, prompt=initial_prompt or "")
             return GenerationResult(
                 interaction_thread_id=thread_id,
                 video_url=url,
