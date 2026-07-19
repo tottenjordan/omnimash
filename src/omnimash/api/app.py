@@ -578,9 +578,14 @@ UI_HTML = """<!DOCTYPE html>
 """
 
 
-def create_app(mock_mode: bool = True) -> FastAPI:
+def create_app(mock_mode: bool | None = None) -> FastAPI:
     app = FastAPI(title="OmniMash API", version="0.1.0")
-    agent = OmniMashAgent(mock_mode=mock_mode)
+    is_mock = (
+        mock_mode
+        if mock_mode is not None
+        else (os.environ.get("MOCK_MODE", "false").lower() in ("true", "1"))
+    )
+    agent = OmniMashAgent(mock_mode=is_mock)
 
     static_dir = os.path.join(os.getcwd(), "static")
     if os.path.exists(static_dir):
