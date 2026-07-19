@@ -82,3 +82,20 @@ def test_ensure_rendered_video_procedural_visualizer_fallback():
     assert os.path.getsize(rel_path) > 10000
     if os.path.exists(rel_path):
         os.remove(rel_path)
+
+
+def test_dynamic_audio_wav_ducks_instrumental_when_voiceover_present():
+    wav_no_vo = "temp_beat_no_vo.wav"
+    wav_vo = "temp_beat_vo.wav"
+    _generate_dynamic_audio_wav(
+        wav_no_vo, prompt="120 BPM boom-bap", voiceover=None, duration=1
+    )
+    _generate_dynamic_audio_wav(
+        wav_vo, prompt="120 BPM boom-bap", voiceover="Gaunt wizard speaking", duration=1
+    )
+
+    assert os.path.exists(wav_no_vo)
+    assert os.path.exists(wav_vo)
+    for p in [wav_no_vo, wav_vo]:
+        if os.path.exists(p):
+            os.remove(p)
