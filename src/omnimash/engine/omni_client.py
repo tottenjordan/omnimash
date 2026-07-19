@@ -24,11 +24,11 @@ class GenerationResult:
 
 
 def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
-    """Synthesizes a 120 BPM rhythmic hip-hop beat with kick, snare, hi-hats, and 808 bassline."""
+    """Synthesizes a 120 BPM rhythmic hip-hop beat with frame-locked kick, snare, hi-hats, and 808 bassline."""
     sample_rate = 44100
     total_samples = sample_rate * duration
     bpm = 120
-    beat_interval = 60 / bpm
+    beat_interval = 60 / bpm  # 0.5s per beat exactly
 
     audio_data: list[int] = []
 
@@ -39,7 +39,7 @@ def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
 
         val = 0.0
 
-        # 1. Kick Drum (Beats 1 & 3): 55Hz pitch drop
+        # 1. Kick Drum (Beats 1 & 3 - exactly t=0.0s, 1.0s, 2.0s...): 55Hz pitch drop
         if beat_index in [0, 2]:
             kick_t = beat_pos
             if kick_t < 0.25:
@@ -48,7 +48,7 @@ def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
                     0.6 * math.sin(2 * math.pi * freq * kick_t) * math.exp(-kick_t * 12)
                 )
 
-        # 2. Snare / Clap (Beats 2 & 4): noise + 220Hz burst
+        # 2. Snare / Clap (Beats 2 & 4 - exactly t=0.5s, 1.5s, 2.5s...): noise + 220Hz burst
         if beat_index in [1, 3]:
             snare_t = beat_pos
             if snare_t < 0.2:
@@ -87,7 +87,7 @@ def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
 
 
 def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
-    """Ensures a valid playable 720p MP4 file with Dripwarts animation and 120 BPM beat exists on disk."""
+    """Ensures a valid playable 720p 24fps MP4 with frame-locked visual rhythm and 120 BPM audio."""
     if not video_url.startswith("/static/"):
         return
     rel_path = video_url.lstrip("/")
@@ -106,6 +106,7 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
 
     if os.path.exists(banner_img) and os.path.exists(wav_path):
         try:
+            # Synchronized 24 FPS zoompan with rhythmic 2Hz bass bounce matching 120 BPM kick drums
             cmd = [
                 "ffmpeg",
                 "-y",
@@ -116,18 +117,24 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
                 "-i",
                 wav_path,
                 "-filter_complex",
-                f"[0:v]scale=1280:720,zoompan=z='min(zoom+0.0015,1.2)':d=250:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawtext=text='🎬 OMNIMASH • GEMINI OMNI FLASH':fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,drawtext=text='PROMPT: {clean_prompt}':fontcolor=white:fontsize=24:x=30:y=h-75,drawtext=text='🛡️ SynthID C2PA Verified • 720p 24fps Native Audio':fontcolor=0x34A853:fontsize=18:x=30:y=h-35[v]",
+                f"[0:v]scale=1280:720,zoompan=z='min(1.05+0.03*abs(sin(2*PI*2*in_time)),1.2)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawtext=text='🎬 OMNIMASH • GEMINI OMNI FLASH':fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,drawtext=text='PROMPT: {clean_prompt}':fontcolor=white:fontsize=24:x=30:y=h-75,drawtext=text='🛡️ SynthID C2PA Verified • 720p 24fps Native Audio Sync':fontcolor=0x34A853:fontsize=18:x=30:y=h-35[v]; [1:a]aresample=async=1:first_pts=0[a]",
                 "-map",
                 "[v]",
                 "-map",
-                "1:a",
+                "[a]",
+                "-r",
+                "24",
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
                 "aac",
+                "-b:a",
+                "192k",
                 "-shortest",
+                "-movflags",
+                "+faststart",
                 rel_path,
             ]
             res = subprocess.run(cmd, capture_output=True, check=False)
@@ -136,7 +143,7 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
         except Exception:
             pass
 
-    # Fallback MP4 generation
+    # Fallback MP4 generation with synchronized timestamps
     try:
         subprocess.run(
             [
@@ -145,9 +152,17 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
                 "-f",
                 "lavfi",
                 "-i",
-                "color=c=0x110022:s=1280x720:d=10",
+                "color=c=0x110022:s=1280x720:d=10:r=24",
                 "-i",
-                wav_path if os.path.exists(wav_path) else "anoisesrc=d=10",
+                wav_path if os.path.exists(wav_path) else "anoisesrc=d=10:r=44100",
+                "-filter_complex",
+                "[0:v]setpts=PTS-STARTPTS[v];[1:a]aresample=async=1:first_pts=0[a]",
+                "-map",
+                "[v]",
+                "-map",
+                "[a]",
+                "-r",
+                "24",
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
@@ -155,6 +170,8 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
                 "-c:a",
                 "aac",
                 "-shortest",
+                "-movflags",
+                "+faststart",
                 rel_path,
             ],
             capture_output=True,
@@ -220,7 +237,7 @@ class OmniFlashClient:
         return False, None
 
     def _generate_live_veo_video(self, prompt: str, target_rel_path: str) -> bool:
-        """Fallback to Veo (veo-2.0-generate-001) for single-shot video generation with audio muxing."""
+        """Fallback to Veo (veo-2.0-generate-001) for single-shot video generation with frame-accurate audio-video sync."""
         if not self._genai_client:
             return False
         try:
@@ -242,7 +259,7 @@ class OmniFlashClient:
                     with open(temp_raw_veo, "wb") as f:
                         f.write(vid.video_bytes)
 
-                    # Synthesize hip-hop beat audio track and mux with Veo video
+                    # Synthesize hip-hop beat audio track and mux with frame-accurate sync
                     wav_path = "static/rendered/temp_beat.wav"
                     try:
                         _generate_hiphop_beat_wav(wav_path, duration=10)
@@ -257,11 +274,25 @@ class OmniFlashClient:
                             temp_raw_veo,
                             "-i",
                             wav_path,
+                            "-filter_complex",
+                            "[0:v]fps=24,setpts=PTS-STARTPTS[v];[1:a]aresample=async=1:first_pts=0[a]",
+                            "-map",
+                            "[v]",
+                            "-map",
+                            "[a]",
+                            "-r",
+                            "24",
                             "-c:v",
-                            "copy",
+                            "libx264",
+                            "-pix_fmt",
+                            "yuv420p",
                             "-c:a",
                             "aac",
+                            "-b:a",
+                            "192k",
                             "-shortest",
+                            "-movflags",
+                            "+faststart",
                             target_rel_path,
                         ]
                         res = subprocess.run(cmd, capture_output=True, check=False)
@@ -329,11 +360,13 @@ class OmniFlashClient:
         rel_path = url.lstrip("/")
 
         prompt = initial_prompt or "Reanchored video turn"
-        success = self._generate_live_veo_video(prompt, rel_path)
+        success, inter_id = self._generate_live_omni_flash_video(prompt, rel_path)
+        if not success:
+            success = self._generate_live_veo_video(prompt, rel_path)
         if not success:
             ensure_rendered_video(url, prompt=prompt)
 
         return GenerationResult(
-            interaction_thread_id=thread_id,
+            interaction_thread_id=inter_id or thread_id,
             video_url=url,
         )
