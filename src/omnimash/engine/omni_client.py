@@ -2,11 +2,11 @@ import math
 import os
 import struct
 import subprocess
+import time
+from typing import Any
 import uuid
 import wave
 from dataclasses import dataclass
-
-from typing import Any
 
 try:
     from google import genai
@@ -91,6 +91,8 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
         return
     rel_path = video_url.lstrip("/")
     os.makedirs(os.path.dirname(rel_path), exist_ok=True)
+    if os.path.exists(rel_path) and os.path.getsize(rel_path) > 100000:
+        return
 
     wav_path = "static/rendered/temp_beat.wav"
     try:
@@ -177,20 +179,44 @@ class OmniFlashClient:
             except Exception:
                 pass
 
+    def _generate_live_veo_video(self, prompt: str, target_rel_path: str) -> bool:
+        """Calls Google Cloud Vertex AI (veo-2.0-generate-001), polls operation, and saves MP4 bytes."""
+        if not self._genai_client:
+            return False
+        try:
+            op = self._genai_client.models.generate_videos(
+                model="veo-2.0-generate-001",
+                prompt=prompt,
+            )
+            for _ in range(25):
+                time.sleep(3)
+                op = self._genai_client.operations.get(operation=op)
+                if op.done:
+                    break
+
+            if op.done and op.response and op.response.generated_videos:
+                vid = op.response.generated_videos[0].video
+                if hasattr(vid, "video_bytes") and vid.video_bytes:
+                    os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
+                    with open(target_rel_path, "wb") as f:
+                        f.write(vid.video_bytes)
+                    return True
+        except Exception:
+            pass
+        return False
+
     def generate_clip(self, prompt: str) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
+        rel_path = url.lstrip("/")
 
-        # Try live Vertex AI / Google Cloud video generation if client is available
-        if self._genai_client:
-            try:
-                self._genai_client.models.generate_videos(
-                    model="veo-2.0-generate-001", prompt=prompt
-                )
-            except Exception:
-                pass
+        # 1. Try real live AI video generation from Vertex AI
+        success = self._generate_live_veo_video(prompt, rel_path)
 
-        ensure_rendered_video(url, prompt=prompt)
+        # 2. Fallback to local prompt-rendered animated video if live generation is disabled or times out
+        if not success:
+            ensure_rendered_video(url, prompt=prompt)
+
         return GenerationResult(
             interaction_thread_id=thread_id,
             video_url=url,
@@ -200,16 +226,12 @@ class OmniFlashClient:
         self, interaction_thread_id: str, diff_prompt: str
     ) -> GenerationResult:
         url = f"/static/rendered/{interaction_thread_id}_turn_diff.mp4"
+        rel_path = url.lstrip("/")
 
-        if self._genai_client:
-            try:
-                self._genai_client.models.generate_videos(
-                    model="veo-2.0-generate-001", prompt=diff_prompt
-                )
-            except Exception:
-                pass
+        success = self._generate_live_veo_video(diff_prompt, rel_path)
+        if not success:
+            ensure_rendered_video(url, prompt=diff_prompt)
 
-        ensure_rendered_video(url, prompt=diff_prompt)
         return GenerationResult(
             interaction_thread_id=interaction_thread_id,
             video_url=url,
@@ -220,7 +242,13 @@ class OmniFlashClient:
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
-        ensure_rendered_video(url, prompt=initial_prompt or "")
+        rel_path = url.lstrip("/")
+
+        prompt = initial_prompt or "Reanchored video turn"
+        success = self._generate_live_veo_video(prompt, rel_path)
+        if not success:
+            ensure_rendered_video(url, prompt=prompt)
+
         return GenerationResult(
             interaction_thread_id=thread_id,
             video_url=url,
