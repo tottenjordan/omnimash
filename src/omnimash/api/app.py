@@ -14,6 +14,8 @@ class GenerateRequest(BaseModel):
     parent_turn_id: str | None = None
     reference_url: str | None = None
     audio_stem: str | None = None
+    voiceover: str | None = None
+    is_silent: bool = False
     on_screen_text: str | None = None
     compiled_override: str | None = None
 
@@ -69,7 +71,7 @@ UI_HTML = """<!DOCTYPE html>
             },
             "trap_disstrack": {
                 wardrobe: "wearing designer streetwear, iced-out medallions, and tinted aviator sunglasses",
-                camera: "In a single continuous shot, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes. No dialogue",
+                camera: "In a single continuous shot, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes",
                 motion: "aggressive lyrical hand gestures and slow walking toward the camera for 10 seconds",
                 audio: "Muffled blown-out 808 sub-bass, rapid 16th-note trap hi-hat trills, and slow dark rap beat playing in the background"
             },
@@ -87,7 +89,7 @@ UI_HTML = """<!DOCTYPE html>
             }
         };
 
-        function compilePromptPreview(rawPrompt, presetId, customAudio, customText) {
+        function compilePromptPreview(rawPrompt, presetId, customAudio, customVoiceover, customSilent, customText) {
             const lower = (rawPrompt || "").toLowerCase();
             let subjectAnchor = "A distinct cinematic character with sharp facial features and expressive eyes";
             for (const [key, desc] of Object.entries(characterLoreAnchors)) {
@@ -100,6 +102,7 @@ UI_HTML = """<!DOCTYPE html>
             const environment = "in a stone Hogwarts dungeon lit by atmospheric fog and ambient glow";
             const audioTrack = (customAudio && customAudio.trim().length > 0) ? customAudio.trim() : style.audio;
             const onScreenText = (customText && customText.trim().length > 0) ? customText.trim() : "";
+            const voiceover = (customVoiceover && customVoiceover.trim().length > 0) ? customVoiceover.trim() : "";
 
             return {
                 subjectAnchor,
@@ -108,6 +111,8 @@ UI_HTML = """<!DOCTYPE html>
                 cameraLighting: style.camera,
                 motion: style.motion,
                 audioTrack,
+                voiceover,
+                isSilent: customSilent,
                 onScreenText
             };
         }
@@ -131,6 +136,8 @@ UI_HTML = """<!DOCTYPE html>
             const [prompt, setPrompt] = useState("");
             const [referenceUrl, setReferenceUrl] = useState("");
             const [audioStem, setAudioStem] = useState("");
+            const [voiceover, setVoiceover] = useState("");
+            const [isSilent, setIsSilent] = useState(false);
             const [onScreenText, setOnScreenText] = useState("");
             const [selectedPreset, setSelectedPreset] = useState("90s_rap_video");
             const [parentTurnId, setParentTurnId] = useState("");
@@ -146,7 +153,7 @@ UI_HTML = """<!DOCTYPE html>
             const [copied, setCopied] = useState(false);
             
             // Editable Prompt Compiler Previews
-            const [editableParts, setEditableParts] = useState(compilePromptPreview("", "90s_rap_video", "", ""));
+            const [editableParts, setEditableParts] = useState(compilePromptPreview("", "90s_rap_video", "", "", false, ""));
             const [editableDelta, setEditableDelta] = useState(compileDeltaPreview(""));
             const [isCustomEdited, setIsCustomEdited] = useState(false);
 
@@ -185,14 +192,14 @@ UI_HTML = """<!DOCTYPE html>
 
             useEffect(() => {
                 if (!isCustomEdited) {
-                    setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem, onScreenText));
+                    setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem, voiceover, isSilent, onScreenText));
                     setEditableDelta(compileDeltaPreview(prompt));
                 }
-            }, [prompt, selectedPreset, audioStem, onScreenText, isCustomEdited]);
+            }, [prompt, selectedPreset, audioStem, voiceover, isSilent, onScreenText, isCustomEdited]);
 
             const handleResetAutoCompile = () => {
                 setIsCustomEdited(false);
-                setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem, onScreenText));
+                setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem, voiceover, isSilent, onScreenText));
                 setEditableDelta(compileDeltaPreview(prompt));
             };
 
@@ -210,9 +217,19 @@ UI_HTML = """<!DOCTYPE html>
                 ? `On-screen text: '${editableParts.onScreenText.trim()}'`
                 : "No text, no subtitles, no captions on screen";
 
+            const soundDirective = (editableParts.isSilent || (editableParts.audioTrack || "").toLowerCase() === "mute" || (editableParts.audioTrack || "").toLowerCase() === "none")
+                ? "Sound design: Silent video. No background music, no audio"
+                : `Sound design: ${editableParts.audioTrack}`;
+
+            const vocalDirective = editableParts.voiceover && editableParts.voiceover.trim().length > 0
+                ? (editableParts.voiceover.includes(":") || editableParts.voiceover.includes("\\n")
+                    ? ` Dialogue between subjects: ${editableParts.voiceover.trim()}.`
+                    : ` Voiceover: ${editableParts.voiceover.trim()}.`)
+                : "";
+
             const currentCompiledPrompt = selectedParentTurnId
                 ? `Apply conversational diff to the existing video latent space using Lock & Isolate: [PRESERVATION LOCK]: ${editableDelta.preservationLock} | [ISOLATED DIFF]: ${editableDelta.isolatedDiff}`
-                : `Generate a 720p 10-second cinematic parody video with native audio using the Anchor & Inject framework: [SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | Sound design: ${editableParts.audioTrack}. ${textDirective}.`;
+                : `Generate a 720p 10-second cinematic parody video with native audio using the Anchor & Inject framework: [SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | ${soundDirective}.${vocalDirective} ${textDirective}.`;
 
             const displayRawPrompt = rawCompiledPrompt || currentCompiledPrompt;
 
@@ -230,7 +247,7 @@ UI_HTML = """<!DOCTYPE html>
                 try {
                     const compiledOverride = selectedParentTurnId
                         ? `[PRESERVATION LOCK]: ${editableDelta.preservationLock} | [ISOLATED DIFF]: ${editableDelta.isolatedDiff}`
-                        : `[SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | Sound design: ${editableParts.audioTrack}. ${textDirective}.`;
+                        : `[SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | ${soundDirective}.${vocalDirective} ${textDirective}.`;
 
                     const res = await fetch("/api/generate", {
                         method: "POST",
@@ -243,6 +260,8 @@ UI_HTML = """<!DOCTYPE html>
                             parent_turn_id: parentTurnId || null,
                             reference_url: referenceUrl || null,
                             audio_stem: audioStem || null,
+                            voiceover: voiceover || null,
+                            is_silent: isSilent,
                             on_screen_text: onScreenText || null,
                             compiled_override: compiledOverride
                         })
@@ -503,22 +522,47 @@ UI_HTML = """<!DOCTYPE html>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
-                                            <span>🎵 2. Audio Stem / Sound Design</span>
-                                            <span className="text-[10px] text-gray-500 font-normal">acoustic BPM &amp; tempo</span>
-                                        </label>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center justify-between">
+                                                <span>🎵 2. Audio Stem / Sound Design</span>
+                                            </label>
+                                            <label className="flex items-center gap-1.5 cursor-pointer text-[10px] bg-gray-950 px-2 py-0.5 rounded border border-gray-800 text-gray-300 hover:text-white">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSilent}
+                                                    onChange={(e) => setIsSilent(e.target.checked)}
+                                                    className="rounded bg-gray-900 border-gray-700 text-teal-500 focus:ring-0"
+                                                />
+                                                <span>🔇 Mute (Silent Video)</span>
+                                            </label>
+                                        </div>
                                         <input
                                             type="text"
-                                            value={audioStem}
+                                            disabled={isSilent}
+                                            value={isSilent ? "🔇 Muted (Silent Video)" : audioStem}
                                             onChange={(e) => setAudioStem(e.target.value)}
                                             placeholder="e.g. 140 BPM UK Drill 808s, or 120 BPM Boom-Bap..."
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-teal-500 focus:outline-none"
+                                            className={`w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-teal-500 focus:outline-none ${isSilent ? "opacity-50 italic" : ""}`}
                                         />
                                     </div>
 
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
-                                            <span>📝 3. On-Screen Text / Subtitles (Optional)</span>
+                                            <span>🎙️ 3. Voiceover &amp; Character Dialogue</span>
+                                            <span className="text-[10px] text-gray-500 font-normal">spoken lines or back-and-forth</span>
+                                        </label>
+                                        <textarea
+                                            rows={2}
+                                            value={voiceover}
+                                            onChange={(e) => setVoiceover(e.target.value)}
+                                            placeholder='e.g. Snape: "Potter, explain yourself." / Harry: "It was the beat, professor!"'
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                                            <span>📝 4. On-Screen Text / Subtitles (Optional)</span>
                                             <span className="text-[10px] text-gray-500 font-normal">captions, titles, lyrics</span>
                                         </label>
                                         <input
@@ -552,11 +596,11 @@ UI_HTML = """<!DOCTYPE html>
                                 </form>
                             </div>
 
-                            {/* 🪄 6-Part Anchor & Inject Preview / Delta Lock & Isolate Preview Card (DIRECTLY EDITABLE) */}
+                            {/* 🪄 7-Part Anchor & Inject Preview / Delta Lock & Isolate Preview Card (DIRECTLY EDITABLE) */}
                             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
-                                        <span>{selectedParentTurnId ? "🪄 Delta Prompt Tuning (Lock & Isolate)" : "🪄 6-Part Anchor & Inject Prompt Tuning"}</span>
+                                        <span>{selectedParentTurnId ? "🪄 Delta Prompt Tuning (Lock & Isolate)" : "🪄 7-Part Prompt Tuning & Inspector"}</span>
                                     </h2>
                                     <div className="flex items-center gap-2">
                                         {isCustomEdited ? (
@@ -577,7 +621,7 @@ UI_HTML = """<!DOCTYPE html>
                                 <p className="text-[11px] text-gray-400">
                                     {selectedParentTurnId
                                         ? "Directly edit the lock or isolated diff before generating to enforce precise conversational diffing."
-                                        : "Directly edit any of the 6 compiled taxonomy fields or on-screen subtitles to tune the prompt before generation."}
+                                        : "Directly edit any of the 7 compiled taxonomy fields, voiceovers, or on-screen subtitles before generation."}
                                 </p>
 
                                 {selectedParentTurnId ? (
@@ -670,6 +714,16 @@ UI_HTML = """<!DOCTYPE html>
                                                 value={editableParts.audioTrack}
                                                 onChange={(e) => handlePartChange("audioTrack", e.target.value)}
                                                 className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-teal-500 focus:outline-none"
+                                            />
+                                        </div>
+                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                            <span className="font-bold text-cyan-400 font-mono block mb-1">[VOICEOVER / DIALOGUE]: </span>
+                                            <textarea
+                                                rows={2}
+                                                value={editableParts.voiceover}
+                                                onChange={(e) => handlePartChange("voiceover", e.target.value)}
+                                                placeholder='e.g. Snape: "Potter, explain yourself."'
+                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-cyan-500 focus:outline-none"
                                             />
                                         </div>
                                         <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
@@ -960,6 +1014,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             parent_turn_id=req.parent_turn_id,
             reference_url=req.reference_url,
             audio_stem=req.audio_stem,
+            voiceover=req.voiceover,
+            is_silent=req.is_silent,
             on_screen_text=req.on_screen_text,
             compiled_override=req.compiled_override,
         )

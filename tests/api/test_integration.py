@@ -177,6 +177,39 @@ def test_e2e_audio_stem_and_on_screen_text_generation() -> None:
     assert data["video_url"] is not None
 
 
+def test_e2e_voiceover_and_silent_video_generation() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    # 1. Voiceover / Multi-Subject Dialogue
+    res1 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_vo",
+            "project_id": "p_vo",
+            "prompt": "Snape and Harry",
+            "clip_index": 0,
+            "voiceover": 'Snape: "Potter, explain." / Harry: "It was the beat!"',
+        },
+    )
+    assert res1.status_code == 200
+    assert res1.json()["success"] is True
+
+    # 2. Silent Video
+    res2 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_silent",
+            "project_id": "p_silent",
+            "prompt": "Silent Snape walking",
+            "clip_index": 0,
+            "is_silent": True,
+        },
+    )
+    assert res2.status_code == 200
+    assert res2.json()["success"] is True
+
+
 def test_e2e_generate_includes_reference_analysis_and_raw_prompt() -> None:
     app = create_app(mock_mode=True)
     client = TestClient(app)

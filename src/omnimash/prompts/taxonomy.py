@@ -48,6 +48,8 @@ class PromptTaxonomyEngine:
         style_preset: StylePreset,
         custom_instructions: str,
         audio_stem: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
         on_screen_text: str | None = None,
         override_prompt: str | None = None,
     ) -> str:
@@ -59,6 +61,8 @@ class PromptTaxonomyEngine:
             style_preset=style_preset,
             custom_instructions=custom_instructions,
             audio_stem=audio_stem,
+            voiceover=voiceover,
+            is_silent=is_silent,
             on_screen_text=on_screen_text,
         )
         return (

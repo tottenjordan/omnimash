@@ -26,12 +26,28 @@ class GenerationResult:
 
 
 def _generate_dynamic_audio_wav(
-    wav_path: str, prompt: str = "", duration: int = 10
+    wav_path: str,
+    prompt: str = "",
+    voiceover: str | None = None,
+    is_silent: bool = False,
+    duration: int = 10,
 ) -> int:
-    """Synthesizes dynamic multi-genre audio (BPM, bass frequency, chords, drum rhythm) matching prompt directives."""
+    """Synthesizes dynamic multi-genre audio (BPM, bass frequency, chords, drum rhythm, speech formants, or complete silence) matching prompt directives."""
     sample_rate = 44100
     total_samples = sample_rate * duration
     lower = prompt.lower()
+
+    # Check for silent video condition
+    if is_silent or "silent" in lower or "mute" in lower:
+        bpm = 0
+        audio_data = [0] * total_samples
+        os.makedirs(os.path.dirname(wav_path), exist_ok=True)
+        with wave.open(wav_path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(struct.pack(f"<{len(audio_data)}h", *audio_data))
+        return 0
 
     # Resolve genre & BPM
     if "140" in lower or "drill" in lower or "trap" in lower:
@@ -48,7 +64,15 @@ def _generate_dynamic_audio_wav(
         style = "boombap"
 
     beat_interval = 60 / bpm
-    audio_data: list[int] = []
+    has_vocal = bool(
+        voiceover
+        or "voiceover" in lower
+        or "dialogue" in lower
+        or ":" in prompt
+        or '"' in prompt
+    )
+
+    audio_data = []
 
     for i in range(total_samples):
         t = i / sample_rate
@@ -135,6 +159,18 @@ def _generate_dynamic_audio_wav(
                 * (0.8 + 0.2 * math.sin(2 * math.pi * 4 * t))
             )
 
+        # Layer Spoken Dialogue / Voiceover Speech-Band Formants (300Hz–2.5kHz)
+        if has_vocal:
+            vocal_mod = 0.5 + 0.5 * math.sin(2 * math.pi * 3.5 * t)
+            # Alternate dialogue pitch if multi-character colon syntax is detected
+            speaker_pitch = 160.0 if int(t / 3.0) % 2 == 0 else 240.0
+            formant_val = (
+                0.25 * math.sin(2 * math.pi * speaker_pitch * t)
+                + 0.15 * math.sin(2 * math.pi * (speaker_pitch * 2.5) * t)
+                + 0.1 * math.sin(2 * math.pi * 1200 * t)
+            ) * vocal_mod
+            val = val * 0.7 + formant_val
+
         val = max(-1.0, min(1.0, val))
         audio_data.append(int(val * 32767))
 
@@ -154,7 +190,7 @@ def _generate_hiphop_beat_wav(wav_path: str, duration: int = 10) -> None:
 
 
 def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
-    """Ensures a valid playable 720p 24fps MP4 with frame-locked visual rhythm and dynamic multi-genre audio."""
+    """Ensures a valid playable 720p 24fps MP4 with frame-locked visual rhythm and dynamic multi-genre audio or silence."""
     if not video_url.startswith("/static/"):
         return
     rel_path = video_url.lstrip("/")
@@ -171,7 +207,7 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
 
     clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
     banner_img = "imgs/omnimash_banner.png"
-    freq_hz = bpm / 60.0
+    freq_hz = (bpm / 60.0) if bpm > 0 else 1.0
 
     if os.path.exists(banner_img) and os.path.exists(wav_path):
         try:

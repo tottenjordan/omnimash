@@ -15,6 +15,8 @@ class CompiledPromptParts:
     camera_lighting: str
     motion: str
     audio_track: str
+    voiceover: str = ""
+    is_silent: bool = False
     on_screen_text: str = ""
 
     def to_full_prompt(self) -> str:
@@ -23,6 +25,23 @@ class CompiledPromptParts:
             if self.on_screen_text and self.on_screen_text.strip()
             else "No text, no subtitles, no captions on screen"
         )
+
+        lower_audio = self.audio_track.lower().strip()
+        if self.is_silent or lower_audio in ("none", "mute", "silent"):
+            sound_directive = (
+                "Sound design: Silent video. No background music, no audio"
+            )
+        else:
+            sound_directive = f"Sound design: {self.audio_track}"
+
+        vocal_directive = ""
+        if self.voiceover and self.voiceover.strip():
+            vo = self.voiceover.strip()
+            if ":" in vo or "\n" in vo:
+                vocal_directive = f" Dialogue between subjects: {vo}."
+            else:
+                vocal_directive = f" Voiceover: {vo}."
+
         return (
             f"[SUBJECT ANCHOR]: {self.subject_anchor} | "
             f"[AESTHETIC INJECTION]: {self.aesthetic_injection} | "
@@ -30,7 +49,7 @@ class CompiledPromptParts:
             f"[CAMERA/LIGHTING]: {self.camera_lighting} | "
             f"[MOTION]: {self.motion} | "
             f"[AUDIO TRACK]: {self.audio_track} | "
-            f"Sound design: {self.audio_track}. {text_directive}."
+            f"{sound_directive}.{vocal_directive} {text_directive}."
         )
 
 
@@ -88,6 +107,8 @@ class PromptCompiler:
         style_preset: StylePreset | str = "90s_rap_video",
         custom_instructions: str = "",
         audio_stem: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
         on_screen_text: str | None = None,
     ) -> CompiledPromptParts:
         lower = raw_prompt.lower()
@@ -123,6 +144,8 @@ class PromptCompiler:
             camera_lighting=style_info["camera"],
             motion=style_info["motion"],
             audio_track=audio,
+            voiceover=voiceover.strip() if voiceover else "",
+            is_silent=is_silent,
             on_screen_text=on_screen_text.strip() if on_screen_text else "",
         )
 

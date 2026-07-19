@@ -43,6 +43,8 @@ class OmniMashAgent:
         parent_turn_id: str | None = None,
         reference_url: str | None = None,
         audio_stem: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
         on_screen_text: str | None = None,
         compiled_override: str | None = None,
     ) -> AgentTurnResponse:
@@ -91,6 +93,8 @@ class OmniMashAgent:
                 style_preset=StylePreset.NINETIES_RAP_VIDEO,
                 custom_instructions="parody skit",
                 audio_stem=audio_stem,
+                voiceover=voiceover,
+                is_silent=is_silent,
                 on_screen_text=on_screen_text,
                 override_prompt=compiled_override,
             )
