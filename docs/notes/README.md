@@ -28,6 +28,7 @@ This directory documents non-obvious knowledge, session notes, and operational q
 | GCS Artifact Persistence | [gcs_artifact_persistence.md](gcs_artifact_persistence.md) | Persistent cloud media storage (gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}) and .gitignore isolation |
 | YouTube & Audio Reference Ingestion | [youtube_reference_ingestion.md](youtube_reference_ingestion.md) | Ingesting public YouTube reference videos, character portraits, and audio stems via MediaExtractor |
 | Delta Prompting & Lock/Isolate | [delta_prompting_lock_isolate.md](delta_prompting_lock_isolate.md) | Solving facial shift and over-correction on multi-turn edits via 2-part Lock & Isolate delta prompting |
+| User Journey & Multimodal Inputs | [user_journey_and_multimodal_inputs.md](user_journey_and_multimodal_inputs.md) | Comprehensive breakdown of the 4 UI inputs, YouTube references, editable 6-part previews, and style presets |
 | Joint Audio-Video Latent Space | [joint_audio_video_latent_prompting.md](joint_audio_video_latent_prompting.md) | Synchronizing character kinematic motion to 120 BPM audio stems via 6-part [AUDIO TRACK] prompting |
 | Prompt Compiler & Anchor/Inject | [prompt_compiler_anchor_inject.md](prompt_compiler_anchor_inject.md) | Solving character decay and latent space averaging via 6-part Anchor & Inject meta-prompts |
 | Context Decay & Checkpoints | [context_decay_commit_branch.md](context_decay_commit_branch.md) | Solving the 4-turn multimodal context decay via Commit & Branch thread re-anchoring |
