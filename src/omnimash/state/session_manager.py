@@ -1,3 +1,4 @@
+import re
 import uuid
 from pydantic import BaseModel, Field
 
@@ -32,8 +33,13 @@ class SessionManager:
     def __init__(self):
         self._sessions: dict[str, ProjectSession] = {}
 
-    def get_or_create_session(self, user_id: str, project_id: str) -> ProjectSession:
-        session_key = f"{user_id}:{project_id}"
+    def get_or_create_session(
+        self, user_id: str, project_id: str, session_name: str | None = None
+    ) -> ProjectSession:
+        if session_name and session_name.strip():
+            session_key = re.sub(r"[^a-zA-Z0-9_-]", "_", session_name.strip())
+        else:
+            session_key = f"{user_id}:{project_id}"
         if session_key not in self._sessions:
             self._sessions[session_key] = ProjectSession(
                 session_id=session_key, user_id=user_id, project_id=project_id

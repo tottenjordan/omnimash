@@ -47,3 +47,10 @@ def test_commit_turn_and_depth_tracking():
 
     committed = sm.commit_turn(session.session_id, t2.turn_id)
     assert committed.is_committed is True
+
+
+def test_session_manager_custom_session_name():
+    sm = SessionManager()
+    session = sm.get_or_create_session("u_1", "p_1", session_name="Dripwarts Vol 1!")
+    assert session.session_id == "Dripwarts_Vol_1_"
+    assert session.user_id == "u_1"

@@ -1,4 +1,5 @@
 import base64
+import logging
 import math
 import os
 import struct
@@ -9,6 +10,8 @@ import uuid
 import wave
 from dataclasses import dataclass
 from omnimash.storage.gcs import GcsStorageManager
+
+logger = logging.getLogger("omnimash.engine")
 
 try:
     from google import genai
@@ -248,37 +251,38 @@ def ensure_rendered_video(video_url: str, prompt: str = "") -> None:
         except Exception:
             pass
 
-    # Fallback MP4 generation with synchronized timestamps
+    # Fallback MP4 generation with animated procedural visualizer filter
     try:
+        audio_inputs = (
+            ["-i", wav_path]
+            if os.path.exists(wav_path)
+            else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
+        )
+        cmd = [
+            "ffmpeg",
+            "-y",
+            *audio_inputs,
+            "-filter_complex",
+            "[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-r",
+            "24",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            rel_path,
+        ]
         subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-f",
-                "lavfi",
-                "-i",
-                "color=c=0x110022:s=1280x720:d=10:r=24",
-                "-i",
-                wav_path if os.path.exists(wav_path) else "anoisesrc=d=10:r=44100",
-                "-filter_complex",
-                "[0:v]setpts=PTS-STARTPTS[v];[1:a]aresample=async=1:first_pts=0[a]",
-                "-map",
-                "[v]",
-                "-map",
-                "[a]",
-                "-r",
-                "24",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-shortest",
-                "-movflags",
-                "+faststart",
-                rel_path,
-            ],
+            cmd,
             capture_output=True,
             check=False,
         )
@@ -322,6 +326,9 @@ class OmniFlashClient:
         if not self._genai_client or not hasattr(self._genai_client, "interactions"):
             return False, None
         try:
+            logger.info(
+                "Requesting Gemini Omni Flash video generation for prompt: %s", prompt
+            )
             kwargs: dict[str, Any] = {
                 "model": "gemini-omni-flash-preview",
                 "input": prompt,
@@ -347,8 +354,8 @@ class OmniFlashClient:
                     with open(target_rel_path, "wb") as f:
                         f.write(video_bytes)
                     return True, inter_id
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Vertex AI generation error: %s", exc)
         return False, None
 
     def _generate_live_veo_video(self, prompt: str, target_rel_path: str) -> bool:
@@ -356,6 +363,7 @@ class OmniFlashClient:
         if not self._genai_client:
             return False
         try:
+            logger.info("Requesting Veo video generation for prompt: %s", prompt)
             op = self._genai_client.models.generate_videos(
                 model="veo-2.0-generate-001",
                 prompt=prompt,
@@ -420,8 +428,8 @@ class OmniFlashClient:
 
                     os.replace(temp_raw_veo, target_rel_path)
                     return True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Vertex AI generation error: %s", exc)
         return False
 
     def generate_clip(
