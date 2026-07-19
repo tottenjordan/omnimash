@@ -229,3 +229,21 @@ def test_e2e_generate_includes_reference_analysis_and_raw_prompt() -> None:
     assert "reference_analysis" in data
     assert "raw_compiled_prompt" in data
     assert data["reference_analysis"] is not None
+
+
+def test_e2e_custom_session_name_gcs_mapping() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/generate",
+        json={
+            "user_id": "u_custom",
+            "project_id": "p_custom",
+            "prompt": "Snape in 90s rap video",
+            "clip_index": 0,
+            "session_name": "dripwarts_vol1",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True

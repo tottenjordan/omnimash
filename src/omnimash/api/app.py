@@ -18,6 +18,7 @@ class GenerateRequest(BaseModel):
     is_silent: bool = False
     on_screen_text: str | None = None
     compiled_override: str | None = None
+    session_name: str | None = None
 
 
 class CommitRequest(BaseModel):
@@ -25,6 +26,7 @@ class CommitRequest(BaseModel):
     project_id: str = "prj_default"
     turn_id: str
     next_prompt: str = ""
+    session_name: str | None = None
 
 
 class GenerateResponse(BaseModel):
@@ -133,6 +135,7 @@ UI_HTML = """<!DOCTYPE html>
         ];
 
         function OmniMashApp() {
+            const [sessionName, setSessionName] = useState("dripwarts_vol1");
             const [prompt, setPrompt] = useState("");
             const [referenceUrl, setReferenceUrl] = useState("");
             const [audioStem, setAudioStem] = useState("");
@@ -263,7 +266,8 @@ UI_HTML = """<!DOCTYPE html>
                             voiceover: voiceover || null,
                             is_silent: isSilent,
                             on_screen_text: onScreenText || null,
-                            compiled_override: compiledOverride
+                            compiled_override: compiledOverride,
+                            session_name: sessionName
                         })
                     });
                     const data = await res.json();
@@ -308,7 +312,8 @@ UI_HTML = """<!DOCTYPE html>
                             user_id: "usr_web",
                             project_id: "prj_mashup",
                             turn_id: parentTurnId,
-                            next_prompt: nextPrompt
+                            next_prompt: nextPrompt,
+                            session_name: sessionName
                         })
                     });
                     const data = await res.json();
@@ -494,6 +499,20 @@ UI_HTML = """<!DOCTYPE html>
                                     Prompt &amp; Multimodal Inputs
                                 </h2>
                                 <form onSubmit={handleGenerate} className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                                            <span>🗂️ Session / GCS Folder Name</span>
+                                            <span className="text-[10px] text-purple-400 font-mono">gs://bucket/sessions/{sessionName || "default"}/</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={sessionName}
+                                            onChange={(e) => setSessionName(e.target.value)}
+                                            placeholder="e.g. dripwarts_vol1"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none font-mono"
+                                        />
+                                    </div>
+
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1">
                                             Creative Concept / Parody Prompt
@@ -1018,6 +1037,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             is_silent=req.is_silent,
             on_screen_text=req.on_screen_text,
             compiled_override=req.compiled_override,
+            session_name=req.session_name,
         )
         return GenerateResponse(
             success=res.success,
@@ -1037,6 +1057,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             project_id=req.project_id,
             turn_id=req.turn_id,
             prompt=req.next_prompt,
+            session_name=req.session_name,
         )
         return GenerateResponse(
             success=res.success,
