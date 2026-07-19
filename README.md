@@ -67,6 +67,37 @@ OmniMash is built on Google's **ADK (Agent Development Kit)** and the **Gemini E
   <img src="docs/diagrams/omnimash_master_architecture.png" alt="OmniMash Master Architecture & Pipeline Diagram (PaperBanana Style)" width="100%" />
 </div>
 
+---
+
+## 🎬 Step-by-Step Multimodal Workflow Pipeline
+
+OmniMash transforms short user concepts and reference links into frame-accurate parody video clips using a 5-stage multimodal workflow:
+
+<div align="center">
+  <img src="docs/diagrams/omnimash_workflow_step_by_step.png" alt="OmniMash Step-by-Step Multimodal Video Generation & Audio Sync Workflow (PaperBanana Diagram)" width="100%" />
+</div>
+
+### 🔍 The 5-Step Methodology
+
+1. **📺 YouTube & Audio Reference Ingestion (`MediaExtractor`)**:
+   - Ingests public YouTube URLs (e.g. the viral `@Onirostudios` *Dripwarts* series) or audio stems.
+   - Isolates high-resolution character visual portraits (*DumbleDior* in Dior robes, *Snape Dawg* in Cartier sunglasses) and extracts 120 BPM hip-hop audio stems.
+
+2. **🧠 Prompt Taxonomy & Conversational Delta Compiler (`PromptCompiler`)**:
+   - **Turn 1 (5-Part Anchor & Inject):** Decomposes raw concepts into `[SUBJECT ANCHOR]`, `[AESTHETIC INJECTION]`, `[ENVIRONMENT]`, `[CAMERA/LIGHTING]`, and `[MOTION]`.
+   - **Follow-up Turns (2-Part Lock & Isolate):** Enforces `[PRESERVATION LOCK]` to freeze character likeness and background while targeting `[ISOLATED DIFF]` to prevent facial drift.
+
+3. **✨ Gemini Omni Flash Engine (`gemini-omni-flash-preview`)**:
+   - Invoked via Google's stateful **Interactions API** (`client.interactions.create`).
+   - Leverages native multi-input reasoning and $1\text{M}+$ token context window to synthesize 720p 24fps video and synchronized native audio in a single pass.
+
+4. **⏱️ Frame-Accurate Audio-Video Sync & Container Muxing**:
+   - Applies `aresample=async=1:first_pts=0` and `-r 24` presentation timestamp (PTS) locking to guarantee the audio beat drops on the exact visual frame.
+   - Muxes MP4 containers with `-movflags +faststart` for instant HTML5 browser playback and validates SynthID C2PA cryptographic watermarks.
+
+5. **🖥️ Live React UI Dashboard & Video Streaming**:
+   - Streams 3+ MB MP4 video clips directly to the client dashboard with unmuted HTML5 player controls, live Lock & Isolate preview cards, and thread re-anchoring at depth $\ge 3$.
+
 <details>
   <summary>View Technical Dataflow Diagram (Mermaid)</summary>
 
