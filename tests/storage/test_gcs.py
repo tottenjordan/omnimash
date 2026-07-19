@@ -30,6 +30,22 @@ def test_gcs_save_session_prompt():
     assert "sessions/session_abc/prompts/turn_0_prompt.json" in url
 
 
+def test_gcs_save_and_get_reference_analysis():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    report_dict = {
+        "video_title": "Sample Beat",
+        "duration_seconds": 120,
+        "detected_bpm": 120,
+        "dominant_colors": ["#1B2A4A"],
+        "extracted_keyframes": [],
+    }
+    url = gcs.save_reference_analysis("session_abc", report_dict)
+    assert "sessions/session_abc/references/reference_analysis.json" in url
+    retrieved = gcs.get_reference_analysis("session_abc")
+    assert retrieved == report_dict
+    assert gcs.get_reference_analysis("non_existent_session") is None
+
+
 def test_omni_client_session_gcs_persistence():
     client = OmniFlashClient(mock_mode=True, bucket_name="custom-media-bucket")
     res = client.generate_clip(prompt="DumbleDior in Dior robes", session_id="sess_xyz")

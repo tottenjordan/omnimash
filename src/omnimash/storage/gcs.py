@@ -1,7 +1,14 @@
+from __future__ import annotations
+
+import dataclasses
 import json
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
 from omnimash.config import settings
+
+if TYPE_CHECKING:
+    from omnimash.ingestion.media_extractor import ReferenceAnalysisReport
 
 try:
     from google.cloud import storage
@@ -23,6 +30,7 @@ class GcsStorageManager:
         self.bucket_name = bucket_name or settings.gcs_bucket_name
         self._client: Any = None
         self._bucket: Any = None
+        self._mock_analyses: dict[str, dict[str, Any]] = {}
 
         if not self.mock_mode and storage:
             try:
@@ -146,3 +154,47 @@ class GcsStorageManager:
         return self.upload_bytes(
             content.encode("utf-8"), blob_path, content_type="application/json"
         )
+
+    def save_reference_analysis(
+        self,
+        session_id: str,
+        report: ReferenceAnalysisReport | dict[str, Any],
+    ) -> str:
+        """Persists reference video acoustic and visual analysis metadata to sessions/{session_id}/references/reference_analysis.json."""
+        report_dict: dict[str, Any]
+        if dataclasses.is_dataclass(report) and not isinstance(report, type):
+            report_dict = dataclasses.asdict(report)
+        elif isinstance(report, dict):
+            report_dict = {str(k): v for k, v in report.items()}
+        else:
+            report_dict = {}
+
+        self._mock_analyses[session_id] = report_dict
+
+        filename = "reference_analysis.json"
+        blob_path = self.build_session_blob_path(session_id, "references", filename)
+        content = json.dumps(report_dict, indent=2)
+        return self.upload_bytes(
+            content.encode("utf-8"), blob_path, content_type="application/json"
+        )
+
+    def get_reference_analysis(self, session_id: str) -> dict[str, Any] | None:
+        """Retrieves reference video acoustic and visual analysis metadata for a session."""
+        if session_id in self._mock_analyses:
+            return self._mock_analyses[session_id]
+
+        if not self.mock_mode and self._bucket:
+            try:
+                blob_path = self.build_session_blob_path(
+                    session_id, "references", "reference_analysis.json"
+                ).lstrip("/")
+                blob = self._bucket.blob(blob_path)
+                if blob.exists():
+                    data = blob.download_as_text()
+                    res: dict[str, Any] = json.loads(data)
+                    self._mock_analyses[session_id] = res
+                    return res
+            except Exception:
+                pass
+
+        return None
