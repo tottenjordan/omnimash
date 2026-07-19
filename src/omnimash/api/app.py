@@ -352,9 +352,9 @@ UI_HTML = """<!DOCTYPE html>
                                     <button
                                         type="submit"
                                         disabled={loading || !prompt}
-                                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium py-3 px-4 rounded-lg shadow-lg disabled:opacity-50 transition"
+                                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium py-3 px-4 rounded-lg shadow-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
                                     >
-                                        {loading ? "Generating Parody Clip..." : "Generate OmniMash Video"}
+                                        <span>{loading ? "🎬 Rendering 720p Video..." : "🎬 Generate Parody Clip"}</span>
                                     </button>
                                 </form>
                             </div>
