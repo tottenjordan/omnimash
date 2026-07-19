@@ -59,11 +59,17 @@ UI_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OmniMash Dashboard</title>
+    <title>OmniMash • Digital Director's Studio</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0b0f19; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1f293d; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #374151; }
+    </style>
 </head>
 <body class="bg-gray-950 text-white font-sans antialiased min-h-screen">
     <div id="__next"></div>
@@ -71,239 +77,238 @@ UI_HTML = """<!DOCTYPE html>
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        const characterLoreAnchors = {
-            snape: "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
-            dumbledore: "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
-            voldemort: "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
-            harry: "Harry Potter, a young man with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead"
-        };
+        const subjectArchetypes = [
+            { id: "harry_draco", name: "Harry & Draco (Trap-Warts)", icon: "🧙‍♂️", desc: "Gucci Harry vs. Jeezy Draco trap rivalry at Hogwarts", prompt: "Harry 'Gucci' Potter and Draco 'Jeezy' Malfoy in a rap video confrontation" },
+            { id: "snape", name: "Dark Wizard (Snape)", icon: "🧙", desc: "Severus Snape in gothic stone dungeon with heavy shadows", prompt: "Severus Snape in 90s rap video" },
+            { id: "scifi_hunter", name: "Sci-Fi Bounty Hunter", icon: "🚀", desc: "Armored bounty hunter in neon cantina", prompt: "Sci-Fi Bounty Hunter in futuristic neon cantina" },
+            { id: "painter", name: "Renaissance Painter", icon: "🎨", desc: "16th-century classical master in gilded studio", prompt: "Renaissance Painter in dramatic baroque lighting" },
+            { id: "custom", name: "Custom Subject Prompt", icon: "✍️", desc: "Define your own subject archetype or uploaded characters", prompt: "" }
+        ];
 
-        const aestheticSignifiers = {
-            "90s_rap_video": {
-                wardrobe: "wearing an oversized shiny black puffer jacket, thick diamond Cuban link chain, and vintage Cartier glasses",
-                camera: "In a single continuous shot, no scene cuts. Shot on a 90s fisheye lens, low-angle tracking shot, high-contrast MTV rap video lighting with green and purple neon rim lights",
-                motion: "bopping head rhythmically to a 120 BPM beat while gesturing emphatically for a 10-second clip",
-                audio: "120 BPM boom-bap hip-hop beat, vinyl scratch intro, punchy kick drum, crisp snare, and rhythmic rap cadence"
-            },
-            "trap_disstrack": {
-                wardrobe: "wearing designer streetwear, iced-out medallions, and tinted aviator sunglasses",
-                camera: "In a single continuous shot, dark moody 808 bass lighting, heavy laser smoke, and strobe flashes",
-                motion: "aggressive lyrical hand gestures and slow walking toward the camera for 10 seconds",
-                audio: "Muffled blown-out 808 sub-bass, rapid 16th-note trap hi-hat trills, and slow dark rap beat playing in the background"
-            },
-            "cyberpunk_drift": {
-                wardrobe: "wearing a high-collar LED-lined techwear coat with holographic chrome accessories",
-                camera: "In a single continuous shot, no scene cuts. Anamorphic widescreen lens, rainy asphalt reflections, synthwave purple and cyan color grading",
-                motion: "slowly turning to face the camera amidst falling digital rain for 10 seconds",
-                audio: "Synthesizer arpeggios, heavy analog synth bassline, and futuristic ambient cyberpunk drone"
-            },
-            "vhs_anime": {
-                wardrobe: "cel-shaded retro anime styling with oversized 80s shoulder pads and vintage headbands",
-                camera: "In a single continuous shot. Retro 4:3 VHS tape grain, analog scanlines, chromatic aberration, and warm nostalgic bloom",
-                motion: "classic limited-frame anime speech animation and dynamic wind blowing through hair for 10 seconds",
-                audio: "Retro 80s city pop brass samples, lo-fi cassette tape hiss, and upbeat Japanese synth melody"
-            }
-        };
+        const aestheticSubcultures = [
+            { id: "trap_disstrack", name: "Atlanta Trap Disstrack", icon: "🔥", desc: "Dark 808 bass lighting, heavy laser smoke, iced-out drip", bpm: "140 BPM Heavy 808 Trap" },
+            { id: "90s_rap_video", name: "90s East Coast Rap", icon: "🎤", desc: "Fisheye lens, boom-bap beat, oversized shiny puffers", bpm: "120 BPM Boom-Bap" },
+            { id: "cyberpunk_drift", name: "Cyberpunk Drift", icon: "🏎️", desc: "Holographic neon glow, synthwave purple & cyan grading", bpm: "110 BPM Cyberpunk Synthwave" },
+            { id: "vhs_anime", name: "VHS Anime Lo-Fi", icon: "📼", desc: "Retro 4:3 VHS tape grain, analog scanlines, warm bloom", bpm: "85 BPM VHS Lo-Fi" },
+            { id: "nu_metal", name: "00s Nu-Metal Video", icon: "🎸", desc: "Fisheye low-angle, grunge distortion, aggressive cadence", bpm: "130 BPM Nu-Metal Groove" }
+        ];
 
-        function compilePromptPreview(rawPrompt, presetId, customAudio, customVoiceover, customSilent, customText) {
-            const lower = (rawPrompt || "").toLowerCase();
-            let subjectAnchor = "A distinct cinematic character with sharp facial features and expressive eyes";
-            for (const [key, desc] of Object.entries(characterLoreAnchors)) {
-                if (lower.includes(key)) {
-                    subjectAnchor = desc;
-                    break;
-                }
-            }
-            const style = aestheticSignifiers[presetId] || aestheticSignifiers["90s_rap_video"];
-            const environment = "in a stone Hogwarts dungeon lit by atmospheric fog and ambient glow";
-            const audioTrack = (customAudio && customAudio.trim().length > 0) ? customAudio.trim() : style.audio;
-            const onScreenText = (customText && customText.trim().length > 0) ? customText.trim() : "";
-            const voiceover = (customVoiceover && customVoiceover.trim().length > 0) ? customVoiceover.trim() : "";
-
-            return {
-                subjectAnchor,
-                aestheticInjection: style.wardrobe,
-                environment,
-                cameraLighting: style.camera,
-                motion: style.motion,
-                audioTrack,
-                voiceover,
-                isSilent: customSilent,
-                onScreenText
-            };
-        }
-
-        function compileDeltaPreview(deltaPrompt) {
-            const instruction = deltaPrompt || "make his chain bigger";
-            return {
-                preservationLock: "Maintain exact subject face, character likeness, expression, wardrobe baseline, background environment, and audio stem rhythm from the previous turn.",
-                isolatedDiff: `Alter only the specified element: ${instruction}. Do not modify any surrounding visual or audio features.`
-            };
-        }
-
-        const stylePresets = [
-            { id: "90s_rap_video", name: "90s Rap Video", icon: "🎤", desc: "Fisheye lens, boom-bap aesthetic, oversized bombers" },
-            { id: "trap_disstrack", name: "Trap Disstrack", icon: "🔥", desc: "Dark 808 bass lighting, neon smoke, rapid cuts" },
-            { id: "cyberpunk_drift", name: "Cyberpunk Drift", icon: "🏎️", desc: "Holographic neon glow, synthwave color grading" },
-            { id: "vhs_anime", name: "VHS Anime", icon: "📼", desc: "Retro 4:3 VHS tape grain, analog scanlines" }
+        const presetDripPool = [
+            "💎 Diamond Lightning Bolt Chain",
+            "🧥 Vintage Gucci Tracksuit",
+            "⛄ Slytherin Snowman Pendant",
+            "🎙️ Microphone Wand",
+            "🕶️ Shutter Shades",
+            "✨ Diamond Grillz",
+            "👑 Oversized Puffer Vest",
+            "⌚ Iced-Out Rolex Watch"
         ];
 
         function OmniMashApp() {
+            // Navigation Act State (1: The Clash, 2: The Fine-Tune, 3: The Director's Chair)
+            const [activeAct, setActiveAct] = useState(1);
+
+            // Session & Project State
             const [sessionName, setSessionName] = useState("dripwarts_vol1");
-            const [prompt, setPrompt] = useState("");
-            const [referenceUrl, setReferenceUrl] = useState("");
-            const [audioStem, setAudioStem] = useState("");
-            const [voiceover, setVoiceover] = useState("");
+
+            // Act 1: The Clash State
+            const [selectedSubjectId, setSelectedSubjectId] = useState("harry_draco");
+            const [customSubjectText, setCustomSubjectText] = useState("");
+            const [selectedAestheticId, setSelectedAestheticId] = useState("trap_disstrack");
+            const [referenceUrl, setReferenceUrl] = useState("https://www.youtube.com/watch?v=sample_trap_beat");
+            const [referenceAnalysis, setReferenceAnalysis] = useState(null);
+            const [parodyResearch, setParodyResearch] = useState(null);
+            const [researchLoading, setResearchLoading] = useState(false);
+            const [extractLoading, setExtractLoading] = useState(false);
+
+            // Act 2: The Fine-Tune State
+            const [activeDrip, setActiveDrip] = useState([
+                "💎 Diamond Lightning Bolt Chain",
+                "🧥 Vintage Gucci Tracksuit",
+                "⛄ Slytherin Snowman Pendant",
+                "🎙️ Microphone Wand"
+            ]);
+            const [customDripInput, setCustomDripInput] = useState("");
+            const [vibeIntensity, setVibeIntensity] = useState(75); // 0 (Gritty) to 100 (Glossy)
+            const [audioBeat, setAudioBeat] = useState("140 BPM Heavy 808 Trap");
+            const [voiceover, setVoiceover] = useState('Harry: "I been cooking potions since first year. Burrr!" / Draco: "This is Trap or Die, Potter!"');
             const [isSilent, setIsSilent] = useState(false);
-            const [onScreenText, setOnScreenText] = useState("");
-            const [selectedPreset, setSelectedPreset] = useState("90s_rap_video");
+            const [onScreenText, setOnScreenText] = useState("DRIPWARTS: HARRY VS. DRACO VOL. 1");
+            const [rawCompiledPrompt, setRawCompiledPrompt] = useState("");
+            const [isRawPayloadOpen, setIsRawPayloadOpen] = useState(true);
+            const [copied, setCopied] = useState(false);
+
+            // Act 3: The Director's Chair State
+            const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
+            const [deltaPrompt, setDeltaPrompt] = useState("");
             const [parentTurnId, setParentTurnId] = useState("");
             const [loading, setLoading] = useState(false);
             const [status, setStatus] = useState("COMPLETED");
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
 
-            // Reference Analysis & Raw Payload State
-            const [referenceAnalysis, setReferenceAnalysis] = useState(null);
-            const [rawCompiledPrompt, setRawCompiledPrompt] = useState("");
-            const [isRawPayloadOpen, setIsRawPayloadOpen] = useState(true);
-            const [copied, setCopied] = useState(false);
-            
-            // Editable Prompt Compiler Previews
-            const [editableParts, setEditableParts] = useState(compilePromptPreview("", "90s_rap_video", "", "", false, ""));
-            const [editableDelta, setEditableDelta] = useState(compileDeltaPreview(""));
-            const [isCustomEdited, setIsCustomEdited] = useState(false);
-
             const [history, setHistory] = useState([
-                { turnId: "turn_init", prompt: "Severus Snape in 90s rap video", status: "COMPLETED", videoUrl: "/static/rendered/mock.mp4", parent: null, is_checkpoint: false }
+                {
+                    turnId: "turn_init",
+                    prompt: "Dripwarts: Harry Gucci Potter & Draco Jeezy Malfoy trailer",
+                    status: "COMPLETED",
+                    videoUrl: "/static/rendered/mock.mp4",
+                    parent: null,
+                    lock: "Maintain exact Harry Gucci & Draco Jeezy face likeness, diamond lightning chain, Gucci tracksuit, and Hogwarts dungeon environment.",
+                    diff: "Initial 720p 10-second directorial cut generated from Act 1 & Act 2 setups."
+                }
             ]);
-            const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
 
-            const selectedParentTurnId = parentTurnId;
+            // Helper: Resolve active prompt string
+            const getActiveSubject = () => {
+                if (selectedSubjectId === "custom") return customSubjectText || "Custom cinematic character";
+                const arch = subjectArchetypes.find(s => s.id === selectedSubjectId);
+                return arch ? arch.prompt : "Harry 'Gucci' Potter and Draco 'Jeezy' Malfoy";
+            };
 
-            const defaultAnalysis = {
-                video_title: "Reference Beat & Character Baseline",
-                duration_seconds: 180,
-                detected_bpm: 120,
-                dominant_colors: ["#1B2A4A", "#0B6623", "#D4AF37"],
-                extracted_keyframes: [
-                    {
-                        timestamp: "00:02",
-                        image_url: "/tmp/mock_frame_1.jpg",
-                        usage_annotation: "🎯 [SUBJECT ANCHOR]: Conditioning facial likeness, expression, and hair baseline."
-                    },
-                    {
-                        timestamp: "00:15",
-                        image_url: "/tmp/mock_frame_2.jpg",
-                        usage_annotation: "🧥 [AESTHETIC BASELINE]: Reference for lighting contrast and initial character wardrobe."
-                    },
-                    {
-                        timestamp: "00:30",
-                        image_url: "/tmp/mock_frame_3.jpg",
-                        usage_annotation: "🎵 [ACOUSTIC STEM]: Tempo reference extracted for 120 BPM audio track synchronization."
+            const getVibeDescription = (val) => {
+                if (val <= 30) return "🌑 Gritty / Underground (Dark moody lighting, heavy laser smoke, 16mm raw grain)";
+                if (val <= 70) return "🎥 Balanced Cinematic (High-contrast MTV rap video lighting, balanced color grading)";
+                return "💎 High-Gloss Neon (Anamorphic lens flare, holographic bloom, polished commercial aesthetic)";
+            };
+
+            // 1-Click "Load Trap-Warts Concept" Loader
+            const handleLoadTrapWartsConcept = () => {
+                setSelectedSubjectId("harry_draco");
+                setSelectedAestheticId("trap_disstrack");
+                setSessionName("dripwarts_vol1");
+                setActiveDrip([
+                    "💎 Diamond Lightning Bolt Chain",
+                    "🧥 Vintage Gucci Tracksuit",
+                    "⛄ Slytherin Snowman Pendant",
+                    "🎙️ Microphone Wand",
+                    "🕶️ Shutter Shades"
+                ]);
+                setVibeIntensity(80);
+                setAudioBeat("140 BPM Heavy 808 Trap");
+                setVoiceover('Harry: "You talkin\' \'bout potions, Draco? I been cooking since first year. Burrr!" / Draco: "This is Trap or Die, Potter! Let\'s get it!"');
+                setOnScreenText("DRIPWARTS: HARRY VS. DRACO VOL. 1");
+                setIsSilent(false);
+                setParodyResearch({
+                    synopsis: "Dripwarts: Harry & The Brick Factory - A viral high-fashion rap trailer mashup of Hogwarts wizard rivalry with 2010s Atlanta trap music beef (Gucci vs. Jeezy).",
+                    suggested_props: ["Diamond Lightning Bolt Chain", "Vintage Gucci Tracksuit", "Slytherin Snowman Pendant", "Microphone Wand", "Shutter Shades"],
+                    suggested_vibe: "Dark moody 808 bass lighting, laser smoke, and high-gloss neon reflections",
+                    vibe_intensity: 80,
+                    suggested_audio: "140 BPM Heavy 808 Trap",
+                    suggested_dialogue: 'Harry: "I been cooking potions since first year. Burrr!" / Draco: "This is Trap or Die, Potter!"'
+                });
+            };
+
+            // Ingest Reference URL (POST /api/extract-reference)
+            const handleExtractReference = async () => {
+                if (!referenceUrl) return;
+                setExtractLoading(true);
+                try {
+                    const res = await fetch("/api/extract-reference", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url: referenceUrl, session_name: sessionName })
+                    });
+                    const data = await res.json();
+                    setReferenceAnalysis(data);
+                } catch (err) {
+                    console.error("Reference extraction failed:", err);
+                } finally {
+                    setExtractLoading(false);
+                }
+            };
+
+            // Gemini Parody Research (POST /api/research)
+            const handleResearchClash = async () => {
+                setResearchLoading(true);
+                try {
+                    const subject = getActiveSubject();
+                    const aesthetic = aestheticSubcultures.find(a => a.id === selectedAestheticId)?.name || "Trap Disstrack";
+                    const res = await fetch("/api/research", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ subject, aesthetic })
+                    });
+                    const data = await res.json();
+                    setParodyResearch(data);
+                    if (data.suggested_props && data.suggested_props.length > 0) {
+                        setActiveDrip(data.suggested_props.map(p => p.startsWith("💎") || p.startsWith("🧥") ? p : `💎 ${p}`));
                     }
-                ]
-            };
-
-            const activeAnalysis = referenceAnalysis || ((referenceUrl && referenceUrl.trim().length > 0) ? defaultAnalysis : null);
-
-            useEffect(() => {
-                if (!isCustomEdited) {
-                    setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem, voiceover, isSilent, onScreenText));
-                    setEditableDelta(compileDeltaPreview(prompt));
+                    if (data.vibe_intensity) setVibeIntensity(data.vibe_intensity);
+                    if (data.suggested_audio) setAudioBeat(data.suggested_audio);
+                    if (data.suggested_dialogue) setVoiceover(data.suggested_dialogue);
+                } catch (err) {
+                    console.error("Parody research failed:", err);
+                } finally {
+                    setResearchLoading(false);
                 }
-            }, [prompt, selectedPreset, audioStem, voiceover, isSilent, onScreenText, isCustomEdited]);
-
-            const handleResetAutoCompile = () => {
-                setIsCustomEdited(false);
-                setEditableParts(compilePromptPreview(prompt, selectedPreset, audioStem, voiceover, isSilent, onScreenText));
-                setEditableDelta(compileDeltaPreview(prompt));
             };
 
-            const handlePartChange = (field, val) => {
-                setIsCustomEdited(true);
-                setEditableParts(prev => ({ ...prev, [field]: val }));
-            };
-
-            const handleDeltaChange = (field, val) => {
-                setIsCustomEdited(true);
-                setEditableDelta(prev => ({ ...prev, [field]: val }));
-            };
-
-            const textDirective = (editableParts.onScreenText && editableParts.onScreenText.trim().length > 0)
-                ? `On-screen text: '${editableParts.onScreenText.trim()}'`
-                : "No text, no subtitles, no captions on screen";
-
-            const soundDirective = (editableParts.isSilent || (editableParts.audioTrack || "").toLowerCase() === "mute" || (editableParts.audioTrack || "").toLowerCase() === "none")
-                ? "Sound design: Silent video. No background music, no audio"
-                : `Sound design: ${editableParts.audioTrack}`;
-
-            const vocalDirective = editableParts.voiceover && editableParts.voiceover.trim().length > 0
-                ? (editableParts.voiceover.includes(":") || editableParts.voiceover.includes("\\n")
-                    ? ` Dialogue between subjects: ${editableParts.voiceover.trim()}.`
-                    : ` Voiceover: ${editableParts.voiceover.trim()}.`)
-                : "";
-
-            const currentCompiledPrompt = selectedParentTurnId
-                ? `Apply conversational diff to the existing video latent space using Lock & Isolate: [PRESERVATION LOCK]: ${editableDelta.preservationLock} | [ISOLATED DIFF]: ${editableDelta.isolatedDiff}`
-                : `Generate a 720p 10-second cinematic parody video with native audio using the Anchor & Inject framework: [SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | ${soundDirective}.${vocalDirective} ${textDirective}.`;
-
-            const displayRawPrompt = rawCompiledPrompt || currentCompiledPrompt;
-
-            const handleCopyRawPrompt = () => {
-                if (navigator.clipboard) {
-                    navigator.clipboard.writeText(displayRawPrompt);
+            const toggleDripProp = (prop) => {
+                if (activeDrip.includes(prop)) {
+                    setActiveDrip(activeDrip.filter(p => p !== prop));
+                } else {
+                    setActiveDrip([...activeDrip, prop]);
                 }
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
             };
 
-            const handleGenerate = async (e) => {
+            const addCustomDrip = (e) => {
                 e.preventDefault();
+                if (customDripInput.trim().length > 0) {
+                    const newProp = `✨ ${customDripInput.trim()}`;
+                    if (!activeDrip.includes(newProp)) {
+                        setActiveDrip([...activeDrip, newProp]);
+                    }
+                    setCustomDripInput("");
+                }
+            };
+
+            // Generate Video Cut (POST /api/generate)
+            const handleGenerate = async (e) => {
+                if (e) e.preventDefault();
                 setLoading(true);
                 try {
-                    const compiledOverride = selectedParentTurnId
-                        ? `[PRESERVATION LOCK]: ${editableDelta.preservationLock} | [ISOLATED DIFF]: ${editableDelta.isolatedDiff}`
-                        : `[SUBJECT ANCHOR]: ${editableParts.subjectAnchor} | [AESTHETIC INJECTION]: ${editableParts.aestheticInjection} | [ENVIRONMENT]: ${editableParts.environment} | [CAMERA/LIGHTING]: ${editableParts.cameraLighting} | [MOTION]: ${editableParts.motion} | [AUDIO TRACK]: ${editableParts.audioTrack} | ${soundDirective}.${vocalDirective} ${textDirective}.`;
+                    const subject = getActiveSubject();
+                    const aesthetic = aestheticSubcultures.find(a => a.id === selectedAestheticId)?.name || "Trap Disstrack";
+                    const promptText = deltaPrompt || `${subject} in a ${aesthetic} video`;
 
                     const res = await fetch("/api/generate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            user_id: "usr_web",
-                            project_id: "prj_mashup",
-                            prompt: prompt,
+                            user_id: "usr_studio",
+                            project_id: "prj_director",
+                            prompt: promptText,
                             clip_index: 0,
                             parent_turn_id: parentTurnId || null,
                             reference_url: referenceUrl || null,
-                            audio_stem: audioStem || null,
+                            audio_stem: isSilent ? "mute" : audioBeat,
                             voiceover: voiceover || null,
                             is_silent: isSilent,
                             on_screen_text: onScreenText || null,
-                            compiled_override: compiledOverride,
                             session_name: sessionName
                         })
                     });
                     const data = await res.json();
                     if (data.success) {
-                        if (data.reference_analysis) {
-                            setReferenceAnalysis(data.reference_analysis);
-                        }
-                        if (data.raw_compiled_prompt) {
-                            setRawCompiledPrompt(data.raw_compiled_prompt);
-                        }
+                        if (data.reference_analysis) setReferenceAnalysis(data.reference_analysis);
+                        if (data.raw_compiled_prompt) setRawCompiledPrompt(data.raw_compiled_prompt);
+                        
                         const newTurn = {
                             turnId: data.turn_id,
-                            prompt: prompt,
+                            prompt: promptText,
                             status: data.status,
                             videoUrl: data.video_url,
                             parent: parentTurnId || null,
-                            is_checkpoint: data.status === "REANCHORED"
+                            lock: "Maintain subject face likeness, diamond chains, and background environment.",
+                            diff: deltaPrompt ? `Delta edit: ${deltaPrompt}` : `Initial directorial cut (${aesthetic})`
                         };
                         setHistory(prev => [...prev, newTurn]);
                         setCurrentVideo(data.video_url);
                         setParentTurnId(data.turn_id);
                         setStatus(data.status);
+                        setDeltaPrompt("");
+                        setActiveAct(3); // Advance to Act 3 Director's Chair!
                         if (data.status === "COMMIT_RECOMMENDED") {
                             setShowCommitModal(true);
                         }
@@ -315,16 +320,17 @@ UI_HTML = """<!DOCTYPE html>
                 }
             };
 
+            // Commit & Re-Anchor
             const handleCommit = async () => {
                 setLoading(true);
                 try {
-                    const nextPrompt = commitPrompt || prompt || "Re-anchored checkpoint";
+                    const nextPrompt = commitPrompt || "Re-anchored checkpoint";
                     const res = await fetch("/api/commit", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            user_id: "usr_web",
-                            project_id: "prj_mashup",
+                            user_id: "usr_studio",
+                            project_id: "prj_director",
                             turn_id: parentTurnId,
                             next_prompt: nextPrompt,
                             session_name: sessionName
@@ -332,19 +338,14 @@ UI_HTML = """<!DOCTYPE html>
                     });
                     const data = await res.json();
                     if (data.success) {
-                        if (data.reference_analysis) {
-                            setReferenceAnalysis(data.reference_analysis);
-                        }
-                        if (data.raw_compiled_prompt) {
-                            setRawCompiledPrompt(data.raw_compiled_prompt);
-                        }
                         const newTurn = {
                             turnId: data.turn_id,
                             prompt: nextPrompt,
                             status: data.status,
                             videoUrl: data.video_url,
                             parent: parentTurnId || null,
-                            is_checkpoint: true
+                            lock: "New baseline re-anchored keyframe lock established.",
+                            diff: `Checkpoint commit: ${nextPrompt}`
                         };
                         setHistory(prev => [...prev, newTurn]);
                         setCurrentVideo(data.video_url);
@@ -363,47 +364,35 @@ UI_HTML = """<!DOCTYPE html>
             const isCommitModalVisible = status === "COMMIT_RECOMMENDED" || showCommitModal;
 
             return (
-                <div className="flex flex-col h-screen relative">
-                    {/* Commit & Re-Anchor Warning Banner Modal */}
+                <div className="flex flex-col min-h-screen bg-gray-950 text-gray-100">
+                    {/* Commit & Re-Anchor Warning Modal */}
                     {isCommitModalVisible && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
                             <div className="bg-gray-900 border-2 border-amber-500/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
                                 <div className="flex items-center space-x-3 bg-amber-950/80 border border-amber-500/50 rounded-xl p-4 mb-5 text-amber-300">
                                     <span className="text-2xl">⚠️</span>
                                     <div>
-                                        <h3 className="font-bold text-base text-amber-200">Commit &amp; Re-Anchor</h3>
-                                        <p className="text-xs text-amber-300/80 mt-0.5">Edit depth limit reached (Depth &ge; 3). Re-anchoring preserves prompt fidelity and video quality.</p>
+                                        <h3 className="font-bold text-base text-amber-200">Commit &amp; Re-Anchor Required</h3>
+                                        <p className="text-xs text-amber-300/80 mt-0.5">Edit depth limit reached (Depth &ge; 3). Re-anchoring establishes a fresh keyframe baseline to prevent drift.</p>
                                     </div>
                                 </div>
-
                                 <div className="space-y-4 mb-6">
-                                    <p className="text-sm text-gray-300">
-                                        You have made 3 consecutive conversational edits on this thread. To prevent multimodal video drift and context decay, commit your changes now to create a fresh video keyframe anchor.
-                                    </p>
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">
-                                            Next Prompt / Re-Anchor Prompt
-                                        </label>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">Re-Anchor Prompt / Summary</label>
                                         <input
                                             type="text"
                                             value={commitPrompt}
                                             onChange={(e) => setCommitPrompt(e.target.value)}
-                                            placeholder="e.g. Reanchored turn checkpoint..."
+                                            placeholder="e.g. Master keyframe lock for Act 3..."
                                             className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500"
                                         />
                                     </div>
                                 </div>
-
                                 <div className="flex items-center justify-end space-x-3">
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setShowCommitModal(false);
-                                            if (status === "COMMIT_RECOMMENDED") {
-                                                setStatus("DISMISSED_WARNING");
-                                            }
-                                        }}
-                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white transition"
+                                        onClick={() => setShowCommitModal(false)}
+                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white"
                                     >
                                         Dismiss
                                     </button>
@@ -411,7 +400,7 @@ UI_HTML = """<!DOCTYPE html>
                                         type="button"
                                         disabled={loading}
                                         onClick={handleCommit}
-                                        className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 transition disabled:opacity-50"
+                                        className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 text-black font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2"
                                     >
                                         <span>⚓</span>
                                         <span>{loading ? "Committing..." : "Commit & Re-Anchor"}</span>
@@ -421,593 +410,631 @@ UI_HTML = """<!DOCTYPE html>
                         </div>
                     )}
 
-                    <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur px-6 py-4 flex items-center justify-between">
+                    {/* Top Application Header & Toolbar */}
+                    <header className="border-b border-gray-800 bg-gray-900/90 backdrop-blur sticky top-0 z-40 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-2">
+                                <span className="text-2xl">🎬</span>
+                                <div>
+                                    <h1 className="text-lg font-extrabold bg-gradient-to-r from-purple-400 via-pink-400 to-amber-400 bg-clip-text text-transparent">
+                                        OMNIMASH • DIGITAL DIRECTOR'S STUDIO
+                                    </h1>
+                                    <p className="text-[11px] text-gray-400">Anchor &amp; Inject Progressive Latent Engine</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Session / GCS Folder & Trap-Warts Loader */}
                         <div className="flex items-center space-x-3">
-                            <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
-                                OmniMash
-                            </span>
-                            <span className="text-xs bg-purple-900/60 text-purple-300 px-2 py-0.5 rounded-full border border-purple-700">
-                                Next.js + React Dashboard
-                            </span>
+                            <div className="bg-black/60 border border-gray-800 rounded-lg px-3 py-1.5 flex items-center space-x-2">
+                                <span className="text-xs text-purple-400">🗂️ GCS Session:</span>
+                                <input
+                                    type="text"
+                                    value={sessionName}
+                                    onChange={(e) => setSessionName(e.target.value)}
+                                    placeholder="session_name"
+                                    className="bg-transparent border-b border-gray-700 text-xs font-mono text-purple-200 focus:outline-none focus:border-purple-400 w-32"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleLoadTrapWartsConcept}
+                                className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-95 text-white font-bold text-xs py-1.5 px-3.5 rounded-lg shadow flex items-center gap-1.5 transition transform hover:scale-105"
+                            >
+                                <span>⚡</span>
+                                <span>Load Trap-Warts Concept</span>
+                            </button>
                         </div>
                     </header>
 
-                    <main className="flex-1 grid grid-cols-12 gap-6 p-6 overflow-hidden">
-                        <div className="col-span-4 flex flex-col space-y-6 overflow-y-auto pr-1">
-                            {/* Style Presets */}
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg">
-                                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                                    Style Presets
-                                </h2>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {stylePresets.map(preset => (
-                                        <button
-                                            key={preset.id}
-                                            onClick={() => {
-                                                setSelectedPreset(preset.id);
-                                                setIsCustomEdited(false);
-                                            }}
-                                            className={`p-3 rounded-lg border text-left transition flex flex-col justify-between ${
-                                                selectedPreset === preset.id
-                                                    ? "border-purple-500 bg-purple-950/40 text-purple-200"
-                                                    : "border-gray-800 hover:border-gray-700 bg-gray-950 text-gray-400"
-                                            }`}
-                                        >
-                                            <div className="text-xl mb-1">{preset.icon}</div>
-                                            <div className="font-semibold text-xs">{preset.name}</div>
-                                            <div className="text-[10px] text-gray-500 line-clamp-2 mt-1">{preset.desc}</div>
-                                        </button>
-                                    ))}
+                    {/* 3-Act Stepper Navigation Bar */}
+                    <div className="bg-gray-900/60 border-b border-gray-800/80 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-6">
+                        <button
+                            onClick={() => setActiveAct(1)}
+                            className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                activeAct === 1
+                                    ? "bg-purple-600/30 text-purple-300 border border-purple-500 shadow-lg shadow-purple-900/20"
+                                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                            }`}
+                        >
+                            <span className="text-base">🎭</span>
+                            <span>Act 1: The Clash</span>
+                            {activeAct > 1 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
+                        </button>
+                        <span className="text-gray-700 font-bold">➔</span>
+                        <button
+                            onClick={() => setActiveAct(2)}
+                            className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                activeAct === 2
+                                    ? "bg-pink-600/30 text-pink-300 border border-pink-500 shadow-lg shadow-pink-900/20"
+                                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                            }`}
+                        >
+                            <span className="text-base">🎛️</span>
+                            <span>Act 2: The Fine-Tune</span>
+                            {activeAct > 2 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
+                        </button>
+                        <span className="text-gray-700 font-bold">➔</span>
+                        <button
+                            onClick={() => setActiveAct(3)}
+                            className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                activeAct === 3
+                                    ? "bg-amber-600/30 text-amber-300 border border-amber-500 shadow-lg shadow-amber-900/20"
+                                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                            }`}
+                        >
+                            <span className="text-base">🎬</span>
+                            <span>Act 3: The Director's Chair</span>
+                        </button>
+                    </div>
+
+                    {/* Main Stage Studio Container */}
+                    <main className="flex-1 max-w-7xl w-full mx-auto p-6 overflow-y-auto custom-scrollbar">
+
+                        {/* ========================================================= */}
+                        {/* 🎭 ACT 1: THE CLASH (SPLIT-SCREEN SETUP)                   */}
+                        {/* ========================================================= */}
+                        {activeAct === 1 && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-r from-purple-950/40 to-pink-950/40 border border-purple-800/50 rounded-2xl p-5">
+                                    <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
+                                        <span>🎭</span>
+                                        <span>Act 1: The Clash • Define Conflicting Universes</span>
+                                    </h2>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Choose your Subject Anchor (left) and Aesthetic Injection (right) to anchor the joint audio-video latent space.
+                                    </p>
                                 </div>
 
-                                {/* Style Preset Contribution Inspector */}
-                                <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-xs font-semibold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
-                                            <span>🔍 Style Preset Contribution Inspector</span>
-                                        </h3>
-                                        <span className="text-[10px] bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded border border-purple-800/80 font-mono">
-                                            {selectedPreset}
-                                        </span>
+                                {/* Split-Screen Card Grids */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {/* Left Column: Subject Anchor Cards */}
+                                    <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-5 shadow-xl">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-sm font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
+                                                <span>🎯 [SUBJECT ANCHOR]</span>
+                                            </h3>
+                                            <span className="text-[11px] bg-pink-950/80 text-pink-300 px-2 py-0.5 rounded border border-pink-800/60">
+                                                Character Likeness
+                                            </span>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {subjectArchetypes.map(arch => (
+                                                <div
+                                                    key={arch.id}
+                                                    onClick={() => setSelectedSubjectId(arch.id)}
+                                                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                                                        selectedSubjectId === arch.id
+                                                            ? "bg-pink-950/40 border-pink-500 shadow-md shadow-pink-950/50"
+                                                            : "bg-gray-950/60 border-gray-800/80 hover:border-gray-700"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center space-x-3">
+                                                            <span className="text-2xl">{arch.icon}</span>
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-white">{arch.name}</h4>
+                                                                <p className="text-[11px] text-gray-400 mt-0.5">{arch.desc}</p>
+                                                            </div>
+                                                        </div>
+                                                        <input
+                                                            type="radio"
+                                                            checked={selectedSubjectId === arch.id}
+                                                            onChange={() => setSelectedSubjectId(arch.id)}
+                                                            className="text-pink-500 focus:ring-0"
+                                                        />
+                                                    </div>
+                                                    {arch.id === "custom" && selectedSubjectId === "custom" && (
+                                                        <div className="mt-3 pt-3 border-t border-gray-800">
+                                                            <input
+                                                                type="text"
+                                                                value={customSubjectText}
+                                                                onChange={(e) => setCustomSubjectText(e.target.value)}
+                                                                placeholder="e.g. 1920s jazz detective with trench coat..."
+                                                                className="w-full bg-black/80 border border-gray-700 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
-                                            <span className="font-bold text-pink-400 flex items-center gap-1">
-                                                <span>👔</span> Wardrobe
+
+                                    {/* Right Column: Aesthetic Injection Cards */}
+                                    <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-5 shadow-xl">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                                <span>🎨 [AESTHETIC INJECTION]</span>
+                                            </h3>
+                                            <span className="text-[11px] bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded border border-purple-800/60">
+                                                Musical Subculture
                                             </span>
-                                            <p className="text-gray-400 text-[10px] leading-tight">
-                                                {aestheticSignifiers[selectedPreset]?.wardrobe}
-                                            </p>
                                         </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
-                                            <span className="font-bold text-amber-400 flex items-center gap-1">
-                                                <span>🎥</span> Camera / Lighting
-                                            </span>
-                                            <p className="text-gray-400 text-[10px] leading-tight">
-                                                {aestheticSignifiers[selectedPreset]?.camera}
-                                            </p>
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
-                                            <span className="font-bold text-emerald-400 flex items-center gap-1">
-                                                <span>🏃</span> Motion
-                                            </span>
-                                            <p className="text-gray-400 text-[10px] leading-tight">
-                                                {aestheticSignifiers[selectedPreset]?.motion}
-                                            </p>
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
-                                            <span className="font-bold text-teal-400 flex items-center gap-1">
-                                                <span>🎵</span> Sound Design
-                                            </span>
-                                            <p className="text-gray-400 text-[10px] leading-tight">
-                                                {aestheticSignifiers[selectedPreset]?.audio}
-                                            </p>
+                                        <div className="space-y-3">
+                                            {aestheticSubcultures.map(aes => (
+                                                <div
+                                                    key={aes.id}
+                                                    onClick={() => {
+                                                        setSelectedAestheticId(aes.id);
+                                                        setAudioBeat(aes.bpm);
+                                                    }}
+                                                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                                                        selectedAestheticId === aes.id
+                                                            ? "bg-purple-950/40 border-purple-500 shadow-md shadow-purple-950/50"
+                                                            : "bg-gray-950/60 border-gray-800/80 hover:border-gray-700"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center space-x-3">
+                                                            <span className="text-2xl">{aes.icon}</span>
+                                                            <div>
+                                                                <h4 className="text-xs font-bold text-white">{aes.name}</h4>
+                                                                <p className="text-[11px] text-gray-400 mt-0.5">{aes.desc}</p>
+                                                            </div>
+                                                        </div>
+                                                        <input
+                                                            type="radio"
+                                                            checked={selectedAestheticId === aes.id}
+                                                            onChange={() => {
+                                                                setSelectedAestheticId(aes.id);
+                                                                setAudioBeat(aes.bpm);
+                                                            }}
+                                                            className="text-purple-500 focus:ring-0"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* UI Input Controls (Separated Inputs) */}
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg">
-                                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                                    Prompt &amp; Multimodal Inputs
-                                </h2>
-                                <form onSubmit={handleGenerate} className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
-                                            <span>🗂️ Session / GCS Folder Name</span>
-                                            <span className="text-[10px] text-purple-400 font-mono">gs://bucket/sessions/{sessionName || "default"}/</span>
-                                        </label>
+                                {/* YouTube Reference URL & Extraction Panel */}
+                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
+                                    <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        <span>🔍</span>
+                                        <span>Multimodal YouTube Reference &amp; Keyframe Ingestion</span>
+                                    </h3>
+                                    <div className="flex flex-col sm:flex-row items-center gap-3">
                                         <input
                                             type="text"
-                                            value={sessionName}
-                                            onChange={(e) => setSessionName(e.target.value)}
-                                            placeholder="e.g. dripwarts_vol1"
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none font-mono"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1">
-                                            Creative Concept / Parody Prompt
-                                        </label>
-                                        <textarea
-                                            rows={2}
-                                            value={prompt}
-                                            onChange={(e) => setPrompt(e.target.value)}
-                                            placeholder="e.g. Severus Snape rapping in 90s rap video, or make his chain bigger"
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
-                                            <span>🎥 1. Reference YouTube URL</span>
-                                            <span className="text-[10px] text-gray-500 font-normal">extracts portrait keyframes</span>
-                                        </label>
-                                        <input
-                                            type="url"
                                             value={referenceUrl}
                                             onChange={(e) => setReferenceUrl(e.target.value)}
-                                            placeholder="https://www.youtube.com/watch?v=sample_character"
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none font-mono"
+                                            placeholder="https://www.youtube.com/watch?v=..."
+                                            className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
                                         />
-                                    </div>
-
-                                    <div>
-                                        <div className="flex items-center justify-between mb-1">
-                                            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center justify-between">
-                                                <span>🎵 2. Audio Stem / Sound Design</span>
-                                            </label>
-                                            <label className="flex items-center gap-1.5 cursor-pointer text-[10px] bg-gray-950 px-2 py-0.5 rounded border border-gray-800 text-gray-300 hover:text-white">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSilent}
-                                                    onChange={(e) => setIsSilent(e.target.checked)}
-                                                    className="rounded bg-gray-900 border-gray-700 text-teal-500 focus:ring-0"
-                                                />
-                                                <span>🔇 Mute (Silent Video)</span>
-                                            </label>
-                                        </div>
-                                        <input
-                                            type="text"
-                                            disabled={isSilent}
-                                            value={isSilent ? "🔇 Muted (Silent Video)" : audioStem}
-                                            onChange={(e) => setAudioStem(e.target.value)}
-                                            placeholder="e.g. 140 BPM UK Drill 808s, or 120 BPM Boom-Bap..."
-                                            className={`w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-teal-500 focus:outline-none ${isSilent ? "opacity-50 italic" : ""}`}
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
-                                            <span>🎙️ 3. Voiceover &amp; Character Dialogue</span>
-                                            <span className="text-[10px] text-gray-500 font-normal">spoken lines or back-and-forth</span>
-                                        </label>
-                                        <textarea
-                                            rows={2}
-                                            value={voiceover}
-                                            onChange={(e) => setVoiceover(e.target.value)}
-                                            placeholder='e.g. Snape: "Potter, explain yourself." / Harry: "It was the beat, professor!"'
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1 flex items-center justify-between">
-                                            <span>📝 4. On-Screen Text / Subtitles (Optional)</span>
-                                            <span className="text-[10px] text-gray-500 font-normal">captions, titles, lyrics</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={onScreenText}
-                                            onChange={(e) => setOnScreenText(e.target.value)}
-                                            placeholder="e.g. SNAPE 1994, lyrics, or leave empty for clean video..."
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:border-amber-500 focus:outline-none"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">
-                                            Parent Turn ID (for Conversational Diffs)
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={parentTurnId}
-                                            onChange={(e) => setParentTurnId(e.target.value)}
-                                            placeholder="Leave empty for new root clip"
-                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 font-mono"
-                                        />
-                                    </div>
-                                    <button
-                                        type="submit"
-                                        disabled={loading || !prompt}
-                                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium py-3 px-4 rounded-lg shadow-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
-                                    >
-                                        <span>{loading ? "🎬 Rendering 720p Video..." : "🎬 Generate Parody Clip"}</span>
-                                    </button>
-                                </form>
-                            </div>
-
-                            {/* 🪄 7-Part Anchor & Inject Preview / Delta Lock & Isolate Preview Card (DIRECTLY EDITABLE) */}
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
-                                        <span>{selectedParentTurnId ? "🪄 Delta Prompt Tuning (Lock & Isolate)" : "🪄 7-Part Prompt Tuning & Inspector"}</span>
-                                    </h2>
-                                    <div className="flex items-center gap-2">
-                                        {isCustomEdited ? (
-                                            <button
-                                                type="button"
-                                                onClick={handleResetAutoCompile}
-                                                className="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-800 font-medium hover:bg-amber-900 transition"
-                                            >
-                                                🔄 Reset Auto-Compile
-                                            </button>
-                                        ) : (
-                                            <span className="text-[10px] bg-green-950 text-green-300 px-2 py-0.5 rounded border border-green-800 font-medium">
-                                                ✨ Auto-Compiled (Click to Edit)
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                <p className="text-[11px] text-gray-400">
-                                    {selectedParentTurnId
-                                        ? "Directly edit the lock or isolated diff before generating to enforce precise conversational diffing."
-                                        : "Directly edit any of the 7 compiled taxonomy fields, voiceovers, or on-screen subtitles before generation."}
-                                </p>
-
-                                {selectedParentTurnId ? (
-                                    <div className="space-y-3 text-xs">
-                                        <div className="bg-gray-950 p-3 rounded-lg border border-amber-500/40 space-y-1.5 shadow-sm">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-bold text-amber-300 font-mono flex items-center gap-1.5">
-                                                    <span>🔒 [PRESERVATION LOCK]</span>
-                                                </span>
-                                                <span className="text-[10px] bg-amber-950/80 text-amber-300 px-2 py-0.5 rounded border border-amber-700/60 font-medium">
-                                                    Editable Lock
-                                                </span>
-                                            </div>
-                                            <textarea
-                                                rows={2}
-                                                value={editableDelta.preservationLock}
-                                                onChange={(e) => handleDeltaChange("preservationLock", e.target.value)}
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-2 text-gray-200 text-[11px] font-mono focus:border-amber-400 focus:outline-none"
-                                            />
-                                        </div>
-
-                                        <div className="bg-gray-950 p-3 rounded-lg border border-purple-500/40 space-y-1.5 shadow-sm">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-bold text-purple-300 font-mono flex items-center gap-1.5">
-                                                    <span>🎯 [ISOLATED DIFF]</span>
-                                                </span>
-                                                <span className="text-[10px] bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded border border-purple-700/60 font-medium">
-                                                    Editable Diff
-                                                </span>
-                                            </div>
-                                            <textarea
-                                                rows={2}
-                                                value={editableDelta.isolatedDiff}
-                                                onChange={(e) => handleDeltaChange("isolatedDiff", e.target.value)}
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-2 text-gray-200 text-[11px] font-mono focus:border-purple-400 focus:outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2.5 text-xs">
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-pink-400 font-mono block mb-1">[SUBJECT ANCHOR]: </span>
-                                            <textarea
-                                                rows={2}
-                                                value={editableParts.subjectAnchor}
-                                                onChange={(e) => handlePartChange("subjectAnchor", e.target.value)}
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-pink-500 focus:outline-none"
-                                            />
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-purple-400 font-mono block mb-1">[AESTHETIC INJECTION]: </span>
-                                            <textarea
-                                                rows={2}
-                                                value={editableParts.aestheticInjection}
-                                                onChange={(e) => handlePartChange("aestheticInjection", e.target.value)}
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-purple-500 focus:outline-none"
-                                            />
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-blue-400 font-mono block mb-1">[ENVIRONMENT]: </span>
-                                            <input
-                                                type="text"
-                                                value={editableParts.environment}
-                                                onChange={(e) => handlePartChange("environment", e.target.value)}
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-blue-500 focus:outline-none"
-                                            />
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-amber-400 font-mono block mb-1">[CAMERA/LIGHTING]: </span>
-                                            <textarea
-                                                rows={2}
-                                                value={editableParts.cameraLighting}
-                                                onChange={(e) => handlePartChange("cameraLighting", e.target.value)}
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-amber-500 focus:outline-none"
-                                            />
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-emerald-400 font-mono block mb-1">[MOTION]: </span>
-                                            <input
-                                                type="text"
-                                                value={editableParts.motion}
-                                                onChange={(e) => handlePartChange("motion", e.target.value)}
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-emerald-500 focus:outline-none"
-                                            />
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-teal-400 font-mono block mb-1">[AUDIO SOUND DESIGN]: </span>
-                                            <input
-                                                type="text"
-                                                value={editableParts.audioTrack}
-                                                onChange={(e) => handlePartChange("audioTrack", e.target.value)}
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-teal-500 focus:outline-none"
-                                            />
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-cyan-400 font-mono block mb-1">[VOICEOVER / DIALOGUE]: </span>
-                                            <textarea
-                                                rows={2}
-                                                value={editableParts.voiceover}
-                                                onChange={(e) => handlePartChange("voiceover", e.target.value)}
-                                                placeholder='e.g. Snape: "Potter, explain yourself."'
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-cyan-500 focus:outline-none"
-                                            />
-                                        </div>
-                                        <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                            <span className="font-bold text-amber-300 font-mono block mb-1">[ON-SCREEN TEXT / SUBTITLES]: </span>
-                                            <input
-                                                type="text"
-                                                value={editableParts.onScreenText}
-                                                onChange={(e) => handlePartChange("onScreenText", e.target.value)}
-                                                placeholder="Leave empty for clean video without captions"
-                                                className="w-full bg-black/80 border border-gray-800 rounded p-1.5 text-gray-300 text-[11px] focus:border-amber-400 focus:outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Raw Compiled Model Payload Container */}
-                                <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
-                                    <div className="flex items-center justify-between">
                                         <button
                                             type="button"
-                                            onClick={() => setIsRawPayloadOpen(!isRawPayloadOpen)}
-                                            className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-2 hover:text-emerald-300 transition"
+                                            disabled={extractLoading || !referenceUrl}
+                                            onClick={handleExtractReference}
+                                            className="w-full sm:w-auto bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-2.5 px-4 rounded-xl shadow flex items-center justify-center gap-2 transition disabled:opacity-50"
                                         >
-                                            <span>{isRawPayloadOpen ? "▼" : "▶"}</span>
-                                            <span>📦 Raw Compiled Model Payload (gemini-omni-flash-preview)</span>
+                                            <span>🔍</span>
+                                            <span>{extractLoading ? "Extracting..." : "Extract Reference Assets"}</span>
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={handleCopyRawPrompt}
-                                            className="text-[10px] bg-emerald-950 text-emerald-300 hover:bg-emerald-900 px-2.5 py-1 rounded border border-emerald-700/80 font-mono transition flex items-center gap-1"
+                                            disabled={researchLoading}
+                                            onClick={handleResearchClash}
+                                            className="w-full sm:w-auto bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow flex items-center justify-center gap-2 transition disabled:opacity-50"
                                         >
-                                            <span>{copied ? "✓ Copied!" : "📋 Copy Raw Prompt"}</span>
+                                            <span>🧠</span>
+                                            <span>{researchLoading ? "Researching..." : "Research Parody with Gemini 3.5"}</span>
                                         </button>
                                     </div>
-                                    {isRawPayloadOpen && (
-                                        <div className="bg-black/90 p-3 rounded-lg border border-emerald-500/40 shadow-inner">
-                                            <pre className="font-mono text-[10px] text-emerald-300 whitespace-pre-wrap break-all leading-relaxed select-all">
-                                                {displayRawPrompt}
-                                            </pre>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
 
-                        </div>
-
-                        <div className="col-span-5 flex flex-col space-y-6 overflow-y-auto pr-1">
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-                                        Video Player
-                                    </h2>
-                                    {currentVideo && (
-                                        <a
-                                            href={currentVideo}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-xs text-purple-400 hover:text-purple-300 underline font-mono flex items-center gap-1"
-                                        >
-                                            <span>↗</span> Fullscreen / Direct MP4
-                                        </a>
-                                    )}
-                                </div>
-                                <div className="bg-black rounded-lg border border-gray-800 flex flex-col items-center justify-center relative overflow-hidden group p-3 min-h-[300px]">
-                                    {currentVideo ? (
-                                        <div className="w-full flex flex-col items-center justify-center">
-                                            <video
-                                                key={currentVideo}
-                                                controls
-                                                autoPlay
-                                                loop
-                                                className="max-h-[380px] w-auto rounded shadow-2xl object-contain border border-gray-900"
-                                            >
-                                                <source src={currentVideo} type="video/mp4" />
-                                                Your browser does not support the video tag.
-                                            </video>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center text-gray-600 space-y-2">
-                                            <div className="text-4xl">🎬</div>
-                                            <div className="text-xs">No video rendered yet. Choose a preset or prompt to begin.</div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Ingested YouTube Reference Analysis & Keyframes Gallery */}
-                            {activeAnalysis && (
-                                <div className="bg-gray-900 border border-teal-800/80 rounded-xl p-5 shadow-lg space-y-4">
-                                    {/* Ingested Analysis Card Header & Badges */}
-                                    <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-gray-800">
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-semibold text-teal-300 uppercase tracking-wider flex items-center gap-1.5">
-                                                    <span>📊</span> Ingested YouTube Reference Analysis
-                                                </span>
+                                    {/* Ingested Analysis Card & Keyframes */}
+                                    {referenceAnalysis && (
+                                        <div className="mt-5 pt-5 border-t border-gray-800 space-y-4">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-xs font-bold text-purple-300">📊 {referenceAnalysis.video_title}</span>
+                                                    <span className="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded border border-purple-800">
+                                                        {referenceAnalysis.detected_bpm} BPM Detected
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center space-x-1.5">
+                                                    <span className="text-[10px] text-gray-400">Palette:</span>
+                                                    {referenceAnalysis.dominant_colors.map((c, i) => (
+                                                        <span key={i} className="w-4 h-4 rounded-full border border-gray-700 shadow" style={{ backgroundColor: c }} title={c}></span>
+                                                    ))}
+                                                </div>
                                             </div>
-                                            <div className="text-xs text-gray-400 font-medium">
-                                                {activeAnalysis.video_title} ({activeAnalysis.duration_seconds}s)
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="flex items-center gap-3">
-                                            {/* Detected BPM Badge */}
-                                            <span className="bg-teal-950 text-teal-300 border border-teal-600 px-3 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-1.5 shadow">
-                                                <span>🎵</span> {activeAnalysis.detected_bpm} BPM
-                                            </span>
 
-                                            {/* Dominant Hex Color Palette Swatches */}
-                                            <div className="flex items-center gap-1.5 bg-gray-950 p-1.5 rounded-lg border border-gray-800">
-                                                <span className="text-[10px] text-gray-400 font-semibold uppercase mr-1">Palette:</span>
-                                                {activeAnalysis.dominant_colors.map((hex, idx) => (
-                                                    <div key={idx} className="flex items-center gap-1" title={hex}>
-                                                        <div
-                                                            style={{ backgroundColor: hex }}
-                                                            className="w-4 h-4 rounded-full border border-white/30 shadow-inner"
-                                                        />
-                                                        <span className="text-[9px] font-mono text-gray-300 hidden sm:inline">{hex}</span>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                {referenceAnalysis.extracted_keyframes.map((kf, i) => (
+                                                    <div key={i} className="bg-gray-950 rounded-xl border border-gray-800 p-2.5 text-left">
+                                                        <div className="h-20 bg-gray-900 rounded-lg flex items-center justify-center text-xs text-gray-500 font-mono mb-2 border border-gray-800/80">
+                                                            🖼️ Frame @ {kf.timestamp}
+                                                        </div>
+                                                        <p className="text-[11px] text-gray-300 font-mono leading-tight">{kf.usage_annotation}</p>
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
 
-                                    {/* Extracted Reference Keyframes Gallery */}
-                                    <div>
-                                        <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                                            <span>🖼️ Extracted Reference Keyframes Gallery &amp; Usage Annotations</span>
-                                        </h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                            {activeAnalysis.extracted_keyframes.map((frame, idx) => {
-                                                const isAnchor = frame.usage_annotation.includes("SUBJECT ANCHOR");
-                                                const isBaseline = frame.usage_annotation.includes("AESTHETIC BASELINE");
-                                                const isStem = frame.usage_annotation.includes("ACOUSTIC STEM");
+                                    {/* Gemini Parody Research Breakdown */}
+                                    {parodyResearch && (
+                                        <div className="mt-5 p-4 bg-purple-950/30 border border-purple-800/60 rounded-xl space-y-2">
+                                            <div className="flex items-center space-x-2 text-xs font-bold text-pink-300">
+                                                <span>✨ Gemini 3.5 Flash Parody Lore Breakdown:</span>
+                                            </div>
+                                            <p className="text-xs text-purple-200">{parodyResearch.synopsis}</p>
+                                            <div className="text-[11px] text-gray-300 flex flex-wrap gap-2 pt-1">
+                                                <span className="bg-black/60 px-2 py-0.5 rounded border border-purple-900 font-mono">Suggested Audio: {parodyResearch.suggested_audio}</span>
+                                                <span className="bg-black/60 px-2 py-0.5 rounded border border-purple-900 font-mono">Vibe: {parodyResearch.suggested_vibe}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
 
-                                                return (
-                                                    <div
-                                                        key={idx}
-                                                        className={`p-3 rounded-lg border flex flex-col justify-between space-y-2 bg-gray-950 ${
-                                                            isAnchor
-                                                                ? "border-pink-500/50"
-                                                                : isBaseline
-                                                                ? "border-purple-500/50"
-                                                                : "border-teal-500/50"
+                                {/* Act 1 Bottom Navigation */}
+                                <div className="flex justify-end pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveAct(2)}
+                                        className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-90 text-white font-bold text-sm py-3 px-8 rounded-xl shadow-xl flex items-center gap-2 transition transform hover:scale-105"
+                                    >
+                                        <span>Proceed to Act 2: Fine-Tune Directing</span>
+                                        <span>➔</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ========================================================= */}
+                        {/* 🎛️ ACT 2: THE FINE-TUNE (DIRECTING CONTROLS)              */}
+                        {/* ========================================================= */}
+                        {activeAct === 2 && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-r from-pink-950/40 to-amber-950/40 border border-pink-800/50 rounded-2xl p-5">
+                                    <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
+                                        <span>🎛️</span>
+                                        <span>Act 2: The Fine-Tune • Direct Props, Camera Vibe &amp; Audio Synchronization</span>
+                                    </h2>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Customize specific wardrobe props ("Drip"), camera lighting vibe, audio beat loop, and spoken character dialogue.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                    {/* Left 7 Cols: Directorial Controls */}
+                                    <div className="lg:col-span-7 space-y-5">
+                                        {/* 1. The Drip Selector */}
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
+                                            <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                <span>💎</span>
+                                                <span>The "Drip" Selector (Aesthetic Wardrobe &amp; Props)</span>
+                                            </h3>
+                                            <div className="flex flex-wrap gap-2 mb-3">
+                                                {presetDripPool.map((prop, i) => (
+                                                    <button
+                                                        key={i}
+                                                        type="button"
+                                                        onClick={() => toggleDripProp(prop)}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                                                            activeDrip.includes(prop)
+                                                                ? "bg-pink-600 text-white shadow-md shadow-pink-900/50"
+                                                                : "bg-gray-950 text-gray-400 border border-gray-800 hover:border-gray-700"
                                                         }`}
                                                     >
-                                                        {/* Keyframe Thumbnail Container */}
-                                                        <div className="h-24 bg-gradient-to-br from-gray-900 to-black rounded border border-gray-800 flex flex-col items-center justify-center relative overflow-hidden group">
-                                                            <span className="text-3xl opacity-60">🎬</span>
-                                                            <span className="text-[10px] font-mono text-gray-400 mt-1">
-                                                                Frame {idx + 1} ({frame.timestamp})
-                                                            </span>
-                                                            <div className="absolute top-1 left-1 bg-black/80 px-1.5 py-0.5 rounded text-[9px] font-mono text-gray-300 border border-gray-800">
-                                                                ⏱️ {frame.timestamp}
-                                                            </div>
-                                                        </div>
+                                                        <span>{prop}</span>
+                                                        {activeDrip.includes(prop) && <span>✓</span>}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <form onSubmit={addCustomDrip} className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={customDripInput}
+                                                    onChange={(e) => setCustomDripInput(e.target.value)}
+                                                    placeholder="Add custom drip accessory (e.g. 1996 Cartier shades)..."
+                                                    className="flex-1 bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500"
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    className="bg-gray-800 hover:bg-gray-700 text-xs text-pink-300 font-bold px-3 py-2 rounded-lg border border-gray-700"
+                                                >
+                                                    + Add Drip
+                                                </button>
+                                            </form>
+                                        </div>
 
-                                                        {/* Keyframe Usage Annotation & Badges */}
-                                                        <div className="space-y-1.5">
-                                                            <div className="flex items-center gap-1 flex-wrap">
-                                                                {isAnchor && (
-                                                                    <span className="text-[9px] bg-pink-950 text-pink-300 px-2 py-0.5 rounded border border-pink-700/80 font-bold font-mono">
-                                                                        🎯 [SUBJECT ANCHOR]
-                                                                    </span>
-                                                                )}
-                                                                {isBaseline && (
-                                                                    <span className="text-[9px] bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-700/80 font-bold font-mono">
-                                                                        🧥 [AESTHETIC BASELINE]
-                                                                    </span>
-                                                                )}
-                                                                {isStem && (
-                                                                    <span className="text-[9px] bg-teal-950 text-teal-300 px-2 py-0.5 rounded border border-teal-700/80 font-bold font-mono">
-                                                                        🎵 [ACOUSTIC STEM]
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-[10px] text-gray-300 leading-relaxed font-sans">
-                                                                {frame.usage_annotation}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
+                                        {/* 2. Vibe Slider (Lighting / Camera) */}
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>🎥</span>
+                                                    <span>Vibe Slider (Lighting &amp; Camera Grading)</span>
+                                                </h3>
+                                                <span className="text-xs font-mono font-bold text-amber-300">{vibeIntensity}%</span>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                value={vibeIntensity}
+                                                onChange={(e) => setVibeIntensity(parseInt(e.target.value))}
+                                                className="w-full accent-amber-500 bg-gray-950 h-2 rounded-lg cursor-pointer"
+                                            />
+                                            <div className="flex justify-between text-[10px] text-gray-500 mt-1 font-mono">
+                                                <span>0% (Gritty / 16mm)</span>
+                                                <span>50% (Balanced MTV)</span>
+                                                <span>100% (High-Gloss Neon)</span>
+                                            </div>
+                                            <div className="mt-3 p-2.5 bg-black/60 border border-gray-800/80 rounded-xl text-xs text-amber-200 font-mono">
+                                                {getVibeDescription(vibeIntensity)}
+                                            </div>
+                                        </div>
+
+                                        {/* 3. Audio Beat Loop & Voiceover Directives */}
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                                <span>🎵</span>
+                                                <span>Audio Beat Loop &amp; Voiceover Overrides</span>
+                                            </h3>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {["140 BPM Heavy 808 Trap", "120 BPM Boom-Bap", "110 BPM Cyberpunk Synthwave", "85 BPM VHS Lo-Fi"].map((beat, i) => (
+                                                    <button
+                                                        key={i}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setAudioBeat(beat);
+                                                            setIsSilent(false);
+                                                        }}
+                                                        className={`p-2.5 rounded-xl border text-left text-xs font-mono transition ${
+                                                            !isSilent && audioBeat === beat
+                                                                ? "bg-purple-950/60 border-purple-500 text-purple-200 shadow"
+                                                                : "bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700"
+                                                        }`}
+                                                    >
+                                                        🎵 {beat}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <div className="flex items-center space-x-2 pt-1">
+                                                <input
+                                                    type="checkbox"
+                                                    id="silentToggle"
+                                                    checked={isSilent}
+                                                    onChange={(e) => setIsSilent(e.target.checked)}
+                                                    className="rounded text-purple-600 focus:ring-0"
+                                                />
+                                                <label htmlFor="silentToggle" className="text-xs text-gray-300">
+                                                    🔇 Override to Silent Video (No background music, no audio)
+                                                </label>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-300 mb-1">
+                                                    🎙️ Spoken Voiceover / Character Dialogue Turns
+                                                </label>
+                                                <textarea
+                                                    rows={2}
+                                                    value={voiceover}
+                                                    onChange={(e) => setVoiceover(e.target.value)}
+                                                    placeholder='e.g. Harry: "I been cooking potions..." / Draco: "This is Trap or Die!"'
+                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
+                                                />
+                                                <p className="text-[10px] text-purple-400/90 mt-1">
+                                                    🎚️ Automatic Beat Ducking: Background beat will be ducked to 18% volume for crystal-clear foreground speech.
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
-                        </div>
 
-                        <div className="col-span-3 flex flex-col space-y-6 overflow-y-auto">
-                            {/* Version Tree DAG */}
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg flex-1 flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-                                        Version Tree DAG
-                                    </h2>
-                                    <span className="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded-full font-mono">
-                                        {history.length} Clips
-                                    </span>
-                                </div>
-                                <div className="space-y-3 flex-1 overflow-y-auto pr-1">
-                                    {history.map((item, idx) => {
-                                        const isCurrent = currentVideo === item.videoUrl;
-                                        return (
-                                            <div
-                                                key={item.turnId}
-                                                onClick={() => {
-                                                    setCurrentVideo(item.videoUrl);
-                                                    setParentTurnId(item.turnId);
-                                                }}
-                                                className={`p-3 rounded-lg border cursor-pointer transition relative text-xs ${
-                                                    isCurrent
-                                                        ? "border-purple-500 bg-purple-950/30"
-                                                        : "border-gray-800 hover:border-gray-700 bg-gray-950"
-                                                }`}
-                                            >
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="font-mono text-[10px] text-gray-500">
-                                                        Turn #{idx + 1}
-                                                    </span>
-                                                    <div className="flex items-center gap-1">
-                                                        {item.is_checkpoint && (
-                                                            <span className="text-[9px] bg-amber-950 text-amber-400 px-1.5 py-0.5 rounded border border-amber-800 font-bold">
-                                                                ⚓ Checkpoint Anchor
-                                                            </span>
-                                                        )}
-                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                                                            item.status === "COMPLETED" || item.status === "REANCHORED"
-                                                                ? "bg-green-950 text-green-400"
-                                                                : item.status === "COMMIT_RECOMMENDED"
-                                                                ? "bg-amber-950 text-amber-400"
-                                                                : "bg-red-950 text-red-400"
-                                                        }`}>
-                                                            {item.status}
+                                    {/* Right 5 Cols: Live Compiled Prompt Preview */}
+                                    <div className="lg:col-span-5 space-y-5">
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl flex flex-col h-full justify-between">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h3 className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                                                        <span>📋</span>
+                                                        <span>Compiled Anchor &amp; Inject Prompt</span>
+                                                    </h3>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (navigator.clipboard) navigator.clipboard.writeText(rawCompiledPrompt || "Compiled prompt");
+                                                            setCopied(true);
+                                                            setTimeout(() => setCopied(false), 2000);
+                                                        }}
+                                                        className="text-[10px] bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded hover:bg-purple-900"
+                                                    >
+                                                        {copied ? "✓ Copied!" : "📋 Copy Prompt"}
+                                                    </button>
+                                                </div>
+
+                                                <div className="space-y-2 text-xs font-mono">
+                                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                                        <span className="text-pink-400 font-bold block mb-0.5">[SUBJECT ANCHOR]:</span>
+                                                        <span className="text-gray-300">{getActiveSubject()}</span>
+                                                    </div>
+                                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                                        <span className="text-purple-400 font-bold block mb-0.5">[AESTHETIC &amp; DRIP]:</span>
+                                                        <span className="text-gray-300">
+                                                            {aestheticSubcultures.find(a => a.id === selectedAestheticId)?.desc}, accessorized with {activeDrip.join(", ")}
+                                                        </span>
+                                                    </div>
+                                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                                        <span className="text-amber-400 font-bold block mb-0.5">[CAMERA &amp; VIBE]:</span>
+                                                        <span className="text-gray-300">{getVibeDescription(vibeIntensity)}</span>
+                                                    </div>
+                                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
+                                                        <span className="text-blue-400 font-bold block mb-0.5">[AUDIO &amp; DIALOGUE]:</span>
+                                                        <span className="text-gray-300">
+                                                            {isSilent ? "Silent Video" : audioBeat}. {voiceover}
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <div className="text-gray-300 font-medium line-clamp-2">
-                                                    {item.prompt}
-                                                </div>
-                                                {item.parent && (
-                                                    <div className="text-[10px] text-gray-600 font-mono mt-1">
-                                                        ↳ diff from: {item.parent}
-                                                    </div>
-                                                )}
                                             </div>
-                                        );
-                                    })}
+
+                                            <div className="pt-6 flex items-center justify-between gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setActiveAct(1)}
+                                                    className="px-4 py-2.5 rounded-xl border border-gray-800 text-xs text-gray-400 hover:text-white"
+                                                >
+                                                    ⮌ Back to Act 1
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={loading}
+                                                    onClick={handleGenerate}
+                                                    className="flex-1 bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-90 text-white font-bold text-sm py-3 px-6 rounded-xl shadow-xl flex items-center justify-center gap-2 transition disabled:opacity-50"
+                                                >
+                                                    <span>🚀</span>
+                                                    <span>{loading ? "Rendering Directorial Cut..." : "Generate Directorial Cut ➔"}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
+
+                        {/* ========================================================= */}
+                        {/* 🎬 ACT 3: THE DIRECTOR'S CHAIR (ITERATION & TIMELINE)      */}
+                        {/* ========================================================= */}
+                        {activeAct === 3 && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-r from-amber-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
+                                            <span>🎬</span>
+                                            <span>Act 3: The Director's Chair • High-Resolution Playback &amp; Conversational Edits</span>
+                                        </h2>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Review the rendered 10-second cut and apply conversational diffs via the Gemini Enterprise Interactions API.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveAct(2)}
+                                        className="bg-gray-900 border border-gray-700 text-xs text-amber-300 px-3 py-1.5 rounded-lg hover:bg-gray-800"
+                                    >
+                                        🎛️ Adjust Fine-Tune Directing
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                    {/* Left 8 Cols: Central High-Res Video Player & Delta Chat Bar */}
+                                    <div className="lg:col-span-8 space-y-4">
+                                        <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden shadow-2xl relative">
+                                            <video
+                                                src={currentVideo}
+                                                controls
+                                                autoPlay
+                                                loop
+                                                className="w-full aspect-video object-contain bg-black"
+                                            />
+                                            <div className="p-4 bg-gray-900/90 border-t border-gray-800 flex items-center justify-between">
+                                                <div className="flex items-center space-x-2 text-xs">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                                                    <span className="font-bold text-gray-300">Live Latent Cut</span>
+                                                    <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono">
+                                                        Turn: {parentTurnId || "turn_init"}
+                                                    </span>
+                                                </div>
+                                                <a
+                                                    href={currentVideo}
+                                                    download="omnimash_cut.mp4"
+                                                    className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1"
+                                                >
+                                                    <span>⬇️ Download MP4</span>
+                                                </a>
+                                            </div>
+                                        </div>
+
+                                        {/* Direct the Scene Conversational Delta Chat Bar */}
+                                        <form onSubmit={handleGenerate} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl flex gap-3 items-center">
+                                            <div className="text-xl">💬</div>
+                                            <input
+                                                type="text"
+                                                value={deltaPrompt}
+                                                onChange={(e) => setDeltaPrompt(e.target.value)}
+                                                placeholder="Direct the scene (e.g. Make his sunglasses darker and add green laser smoke)..."
+                                                className="flex-1 bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 font-mono"
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={loading || !deltaPrompt}
+                                                className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 text-black font-bold text-xs py-3 px-5 rounded-xl shadow flex items-center gap-2 transition disabled:opacity-50"
+                                            >
+                                                <span>⚡</span>
+                                                <span>{loading ? "Applying..." : "Apply Delta Edit"}</span>
+                                            </button>
+                                        </form>
+                                    </div>
+
+                                    {/* Right 4 Cols: Chronological Layer-Cake Edit History */}
+                                    <div className="lg:col-span-4 bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl flex flex-col h-[560px]">
+                                        <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
+                                            <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                                                <span>🍰</span>
+                                                <span>Chronological Edit History</span>
+                                            </h3>
+                                            <span className="text-[10px] bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800">
+                                                Layer-Cake Timeline
+                                            </span>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                                            {history.map((turn, i) => (
+                                                <div
+                                                    key={i}
+                                                    onClick={() => {
+                                                        setCurrentVideo(turn.videoUrl);
+                                                        setParentTurnId(turn.turnId);
+                                                    }}
+                                                    className={`p-3 rounded-xl border text-left cursor-pointer transition ${
+                                                        parentTurnId === turn.turnId
+                                                            ? "bg-amber-950/40 border-amber-500 shadow-md"
+                                                            : "bg-gray-950/80 border-gray-800 hover:border-gray-700"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between text-[10px] font-mono text-gray-400 mb-1.5">
+                                                        <span>Turn #{i + 1} ({turn.turnId})</span>
+                                                        <span className="bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">{turn.status}</span>
+                                                    </div>
+                                                    <p className="text-xs font-bold text-gray-200 mb-2">{turn.prompt}</p>
+
+                                                    <div className="space-y-1.5 text-[10px] font-mono">
+                                                        <div className="bg-black/60 p-1.5 rounded border border-gray-800/80 text-pink-300">
+                                                            <span className="font-bold">🔒 Lock:</span> {turn.lock}
+                                                        </div>
+                                                        <div className="bg-black/60 p-1.5 rounded border border-gray-800/80 text-purple-300">
+                                                            <span className="font-bold">🎯 Diff:</span> {turn.diff}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </main>
                 </div>
             );
