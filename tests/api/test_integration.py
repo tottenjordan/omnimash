@@ -282,3 +282,31 @@ def test_api_extract_reference_endpoint() -> None:
     assert data["video_title"] == "Reference Beat & Character Baseline"
     assert data["detected_bpm"] == 120
     assert len(data["extracted_keyframes"]) >= 3
+
+
+def test_e2e_directors_studio_3_act_flow() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    # Act 1: Research Clash
+    r1 = client.post(
+        "/api/research",
+        json={"subject": "Harry & Draco", "aesthetic": "Atlanta Trap"},
+    )
+    assert r1.status_code == 200
+    research = r1.json()
+
+    # Act 2 & 3: Generate Video with Drip Props & Session Name
+    r2 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_studio",
+            "project_id": "prj_studio",
+            "prompt": "Trapwarts trailer",
+            "session_name": "trapwarts_vol1",
+            "clip_index": 0,
+            "voiceover": research["suggested_dialogue"],
+        },
+    )
+    assert r2.status_code == 200
+    assert r2.json()["success"] is True
+
