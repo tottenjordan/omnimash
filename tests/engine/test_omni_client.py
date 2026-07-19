@@ -72,3 +72,13 @@ def test_ensure_rendered_video_creates_playable_mp4():
     # Clean up test artifact
     if os.path.exists(rel_path):
         os.remove(rel_path)
+
+
+def test_ensure_rendered_video_procedural_visualizer_fallback():
+    video_url = "/static/rendered/test_procedural_render.mp4"
+    ensure_rendered_video(video_url, prompt="140 BPM UK Drill 808s")
+    rel_path = video_url.lstrip("/")
+    assert os.path.exists(rel_path)
+    assert os.path.getsize(rel_path) > 10000
+    if os.path.exists(rel_path):
+        os.remove(rel_path)
