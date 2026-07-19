@@ -198,8 +198,40 @@ class OmniFlashClient:
                 vid = op.response.generated_videos[0].video
                 if hasattr(vid, "video_bytes") and vid.video_bytes:
                     os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
-                    with open(target_rel_path, "wb") as f:
+                    temp_raw_veo = f"{target_rel_path}.raw.mp4"
+                    with open(temp_raw_veo, "wb") as f:
                         f.write(vid.video_bytes)
+
+                    # Synthesize hip-hop beat audio track and mux with Veo video
+                    wav_path = "static/rendered/temp_beat.wav"
+                    try:
+                        _generate_hiphop_beat_wav(wav_path, duration=10)
+                    except Exception:
+                        pass
+
+                    if os.path.exists(wav_path):
+                        cmd = [
+                            "ffmpeg",
+                            "-y",
+                            "-i",
+                            temp_raw_veo,
+                            "-i",
+                            wav_path,
+                            "-c:v",
+                            "copy",
+                            "-c:a",
+                            "aac",
+                            "-shortest",
+                            target_rel_path,
+                        ]
+                        res = subprocess.run(cmd, capture_output=True, check=False)
+                        if res.returncode == 0:
+                            if os.path.exists(temp_raw_veo):
+                                os.remove(temp_raw_veo)
+                            return True
+
+                    # Fallback if muxing failed: keep raw video
+                    os.replace(temp_raw_veo, target_rel_path)
                     return True
         except Exception:
             pass
