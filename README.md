@@ -5,15 +5,15 @@
 # 🎬 OmniMash 🪄
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12" />
-  <img src="https://img.shields.io/badge/packaging-uv-DE5FE9?style=flat-square&logo=uv&logoColor=white" alt="uv" />
-  <img src="https://img.shields.io/badge/lint-ruff-261230?style=flat-square&logo=ruff&logoColor=white" alt="ruff" />
-  <img src="https://img.shields.io/badge/types-ty-261230?style=flat-square&logo=astral&logoColor=white" alt="ty" />
-  <img src="https://img.shields.io/badge/Google%20ADK-2.5-4285F4?style=flat-square&logo=google&logoColor=white" alt="Google ADK" />
-  <img src="https://img.shields.io/badge/Vertex%20AI-Agent%20Engine-4285F4?style=flat-square&logo=googlecloud&logoColor=white" alt="Vertex AI" />
-  <img src="https://img.shields.io/badge/Gemini%20Omni%20Flash-Preview-886FBF?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini Omni Flash" />
-  <img src="https://img.shields.io/badge/FastAPI-0.139-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Next.js-18-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js" />
+  <img src="docs/badges/python.svg" alt="Python 3.12" />
+  <img src="docs/badges/uv.svg" alt="uv" />
+  <img src="docs/badges/ruff.svg" alt="ruff" />
+  <img src="docs/badges/ty.svg" alt="ty" />
+  <img src="docs/badges/adk.svg" alt="Google ADK" />
+  <img src="docs/badges/vertex_ai.svg" alt="Vertex AI" />
+  <img src="docs/badges/gemini_omni_flash.svg" alt="Gemini Omni Flash" />
+  <img src="docs/badges/fastapi.svg" alt="FastAPI" />
+  <img src="docs/badges/pytest.svg" alt="Pytest" />
 </p>
 
 </div>
