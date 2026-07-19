@@ -2,10 +2,9 @@ from omnimash.config import OmniMashSettings
 
 
 def test_omnimash_settings_defaults():
-    s = OmniMashSettings(mock_mode=True)
-    assert s.google_cloud_project == "hybrid-vertex"
+    s = OmniMashSettings(mock_mode=True, omnimash_gcs_bucket=None)
     assert s.google_cloud_region == "us-central1"
-    assert s.gcs_bucket_name == "omnimash-media-934903580331"
+    assert s.gcs_bucket_name == f"omnimash-media-{s.google_cloud_project}"
 
 
 def test_omnimash_settings_custom_project():

@@ -26,9 +26,26 @@ class GcsStorageManager:
         if not self.mock_mode and storage:
             try:
                 self._client = storage.Client(project=self.project_id)
-                self._bucket = self._client.bucket(self.bucket_name)
+                self.ensure_bucket_exists()
             except Exception:
                 pass
+
+    def ensure_bucket_exists(self, location: str | None = None) -> bool:
+        """Verifies or programmatically creates the GCS bucket in the configured GCP project."""
+        if self.mock_mode or not self._client:
+            return True
+        try:
+            loc = location or settings.google_cloud_region or "us-central1"
+            bucket = self._client.lookup_bucket(self.bucket_name)
+            if not bucket:
+                self._bucket = self._client.create_bucket(
+                    self.bucket_name, location=loc
+                )
+            else:
+                self._bucket = bucket
+            return True
+        except Exception:
+            return False
 
     def get_public_url(self, blob_name: str) -> str:
         """Returns the public HTTPS URL for a given GCS blob name."""
