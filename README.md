@@ -54,6 +54,7 @@ OmniMash works like an AI music video mixing studio:
 ## Table of Contents
 - [Architecture](#architecture)
 - [Diagrams & Reference Architectures](#diagrams--reference-architectures)
+- [Getting Started & User Journey](#-getting-started--user-journey)
 - [Quickstart](#quickstart)
 - [Usage](#usage)
 - [Web UI Dashboard](#web-ui-dashboard)
@@ -168,6 +169,73 @@ Detailed subsystem architectures and workflow outlines are available in [docs/di
 | 🌳 [Version Tree DAG & State Lifecycle](docs/diagrams/version_tree_dag_lifecycle.md) | `omnimash.state` | Non-linear conversational diff branching, thread depth tracking ($\ge 3$), ⚓ Checkpoint Anchor Badges, and fresh thread re-anchoring. |
 | 🎬 [Multimodal Ingestion & Video Stitching](docs/diagrams/multimodal_ingestion_stitching.md) | `ingestion` & `stitching` | 4-stage pipeline: YouTube asset extraction (`yt-dlp`), storyboard prompt compilation, Omni Flash clip rendering with commit checkpoints, and FFmpeg multi-clip concatenation. |
 | 🌐 [Frontend API & SSE Streaming Topology](docs/diagrams/frontend_api_topology.md) | `api` & Web UI | FastAPI async endpoints (`POST /api/deconstruct-concept`, `POST /api/generate`, `POST /api/commit`), dynamic Character Roles, and React 18 single-page dashboard. |
+
+---
+
+## 🚀 Getting Started & User Journey
+
+Follow this visual step-by-step walkthrough to launch OmniMash and create full-length AI parody videos using the **3-Act Digital Director's Studio**.
+
+---
+
+### Step 1: Launch the Studio Locally
+
+Start the FastAPI application and embedded React 18 single-page dashboard using `uv`:
+
+```bash
+# Start local development server on port 8080
+uv run uvicorn omnimash.api.app:app --host 0.0.0.0 --port 8080
+```
+
+Open your browser to `http://localhost:8080` (or access the live production instance at [https://omnimash-934903580331.us-central1.run.app](https://omnimash-934903580331.us-central1.run.app)).
+
+---
+
+### Step 2: Act 1 — The Concept & Cast Manager
+
+In **Act 1**, define the high-level creative vision and character bindings for your parody video.
+
+<div align="center">
+  <img src="imgs/ui_act1_concept_and_cast.jpg" alt="OmniMash Act 1: The Concept & Cast Manager" width="100%" />
+</div>
+
+1. **Enter Visual Shorthand:** Type your open-ended parody concept (e.g., *"Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"*).
+2. **Deconstruct Concept:** Click **✨ Deconstruct Concept** (`POST /api/deconstruct-concept`). OmniMash parses the prompt into structured `MetaPromptTags`.
+3. **Configure Dynamic Character Roles:** Review and edit dynamic character roles (`Role A: Harry`, `Role B: Draco`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) to lock facial likeness and costume aesthetics across scenes.
+4. **Tune Meta-Prompt Tags:** Adjust aesthetic tag chips (`Cyberpunk Neon`, `90s Fisheye Lens`, `110 BPM Atlanta Trap Beat`).
+
+---
+
+### Step 3: Act 2 — Fine-Tune & Storyboard Directing
+
+In **Act 2**, sequence your multi-character storyline into structured scenes.
+
+<div align="center">
+  <img src="imgs/ui_act2_storyboard_directing.jpg" alt="OmniMash Act 2: Fine-Tune & Storyboard Directing" width="100%" />
+</div>
+
+1. **Add Scene Directives:** Break your script into sequential scenes (`Scene 1: Courtyard Arrival`, `Scene 2: Mic Handoff`).
+2. **Assign Active Roles:** Toggle which character roles appear in each scene (`Role A`, `Role B`).
+3. **Write Actions & Dialogue:** Provide character actions and synced rap bars / dialogue lines (e.g., *[Draco]: "I been cooking potions since first year!"*).
+4. **Inspect Compiled Storyboard Prompt:** Verify the live prompt compiler box on the right, structured with `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`.
+
+---
+
+### Step 4: Act 3 — The Screening Room & Branching
+
+In **Act 3**, render your 720p HD parody cut with native synced audio, monitor generation health, and branch conversational edits.
+
+<div align="center">
+  <img src="imgs/ui_act3_screening_room.jpg" alt="OmniMash Act 3: The Screening Room & Branching" width="100%" />
+</div>
+
+1. **Generate Parody Cut:** Click **🎬 Generate Parody Cut** (`POST /api/generate`).
+2. **Monitor Generation Health:**
+   - **Generation Status Badge:** Look for the green `🟢 Live Gemini Omni Flash` status pill in the header.
+   - **Active Error Mitigation Banner:** If Vertex AI returns `401 UNAUTHENTICATED` (e.g., API keys not supported on Vertex endpoints), OmniMash automatically switches to the Google AI Studio Developer API client (`GOOGLE_API_KEY`) and retries with exponential backoff.
+3. **Play 720p Native Video:** Inspect the rendered 720p 24fps video with frame-accurate native voiceover and beat synchronization.
+4. **Branch Conversational Diffs:** Request iterative scene edits (e.g., *"Swap wand for microphone"*) to create non-linear branches in the **Version Tree DAG**.
+5. **Commit & Branch:** At edit depth $\ge 3$ (`COMMIT_RECOMMENDED`), click **Commit & Branch** (`POST /api/commit`) to flush token context decay and re-anchor from the committed video.
 
 ---
 
