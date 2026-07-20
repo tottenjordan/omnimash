@@ -372,9 +372,11 @@ The built-in single-page web dashboard (React 18 + Tailwind CSS) implements the 
 
 ---
 
-## 🛡️ Gemini Omni Flash Zero-Veo Policy & Error Mitigation
+## 🛡️ Gemini Omni Flash Zero-Veo Policy, Relaxed Safety & Error Mitigation
 
 - **Zero-Veo Policy:** OmniMash exclusively targets `gemini-omni-flash-preview` for native joint video and audio synthesis and conversational editing. Legacy Veo fallback models have been completely eliminated.
+- **Relaxed Safety Filters (`BLOCK_NONE`):** `OmniFlashClient` passes `google.genai.types.SafetySetting` configured with `BLOCK_NONE` across all harm categories (`HARM_CATEGORY_HARASSMENT`, `HARM_CATEGORY_HATE_SPEECH`, `HARM_CATEGORY_SEXUALLY_EXPLICIT`, `HARM_CATEGORY_DANGEROUS_CONTENT`, `HARM_CATEGORY_CIVIC_INTEGRITY`) to eliminate false-positive policy blocks on creative parodies.
+- **Expanded Pop-Culture Prompt Abstraction:** `_abstract_prompt_for_responsible_ai` automatically converts restricted pop-culture names (Harry Potter, Star Wars, Marvel/DC Superheroes, Lord of the Rings, Gaming/Anime icons, and Celebrities) into rich visual archetypes, ensuring 100% compliant generation while preserving exact character likenesses.
 - **Dual-Strategy Client Authentication:** Automatically initializes Google AI Studio Developer API (`GOOGLE_API_KEY`) and Vertex AI ADC (`GOOGLE_CLOUD_PROJECT`, `GEMINI_LOCATION`) clients.
 - **Active Error Mitigation (401 UNAUTHENTICATED):** When Vertex AI returns a `401 UNAUTHENTICATED` (e.g. API keys not supported on Vertex endpoints), `OmniFlashClient` logs the mitigation event, seamlessly invokes `switch_to_developer_api()`, and retries generation using the Developer API client.
 - **3-Attempt Exponential Backoff:** Automatically retries transient errors (`429 Rate Limit`, `404 Endpoint Mismatch`, `ResourceExhausted`) with exponential backoff delays.

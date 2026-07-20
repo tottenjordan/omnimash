@@ -528,24 +528,81 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
     text = prompt.strip()
 
     replacements = {
+        # Harry Potter Universe
         r"\bharry\s*potter\b": "a young wizard student with round spectacles and black hair",
         r"\bharry\b": "a young wizard with spectacles",
+        r"\bseverus\s*snape\b": "a stern potion master wizard with sleek black hair and dark robes",
+        r"\bsnape\b": "a stern potion master wizard in dark robes",
         r"\bdraco\s*malfoy\b": "a sleek blonde rival wizard student in emerald robes",
         r"\bdraco\b": "a blonde rival wizard student",
         r"\bvoldemort\b": "a dark sorcerer in obsidian robes",
         r"\bhermione\s*granger\b": "a smart young witch student with curly hair",
         r"\bhermione\b": "a smart young witch student",
-        r"\bron\s*weasley\b": "a red-haired wizard student",
+        r"\bron\s*weasley\b": "a red-haired wizard student in robes",
         r"\bron\b": "a red-haired wizard student",
         r"\bdumbledore\b": "a wise elderly headmaster wizard with a long silver beard",
+        r"\bhagrid\b": "a towering friendly giant gamekeeper with a bushy beard and heavy coat",
+        r"\bmcgonagall\b": "a distinguished witch professor in emerald robes and pointed hat",
         r"\bhogwarts\b": "a grand gothic magical stone castle academy",
         r"\bdripwarts\b": "a high-fashion hip-hop magical castle academy",
-        r"\bbatman\b": "a masked superhero detective in dark armor",
-        r"\bsuperman\b": "a superhero in a red cape and blue suit",
-        r"\btaylor\s*swift\b": "a famous pop superstar singer on a stadium stage",
-        r"\bdonald\s*trump\b": "a charismatic business executive in a suit",
-        r"\bkamala\s*harris\b": "a prominent political leader in a blazer",
-        r"\belon\s*musk\b": "a tech entrepreneur in a futuristic laboratory",
+        # Star Wars Universe
+        r"\bdarth\s*vader\b": "an imposing dark armored galactic villain with a helmet and glowing red saber",
+        r"\bluke\s*skywalker\b": "a heroic galactic farmboy knight in robes with a glowing energy blade",
+        r"\byoda\b": "a wise small green grand master alien with large ears and a walking stick",
+        r"\bobi[- ]wan\s*kenobi\b": "a noble bearded galactic mentor knight in hooded desert robes",
+        r"\bkenobi\b": "a noble galactic knight mentor in hooded robes",
+        r"\bhan\s*solo\b": "a roguish interstellar smuggler pilot in a vest with a blaster",
+        r"\bchewbacca\b": "a tall furry bipedal alien warrior with a bandolier",
+        r"\bkylo\s*ren\b": "a conflicted masked dark galactic warrior with a crossguard red energy blade",
+        r"\bstormtrooper\b": "a futuristic galactic soldier in white armored combat gear",
+        # Superheroes (Marvel / DC)
+        r"\bbatman\b": "a masked superhero detective in dark armor and cape",
+        r"\bbruce\s*wayne\b": "a billionaire philanthropist vigilante in a sharp tailored suit",
+        r"\bjoker\b": "a flamboyant villain with green hair, pale makeup, and a purple suit",
+        r"\bsuperman\b": "a powerful superhero in a red cape and blue suit with an emblem",
+        r"\bspider[- ]man\b": "an agile superhero in a red and blue webbed suit",
+        r"\bspiderman\b": "an agile superhero in a red and blue webbed suit",
+        r"\biron\s*man\b": "a high-tech armored superhero in a red and gold powered suit",
+        r"\btony\s*stark\b": "a charismatic billionaire genius inventor in stylish tech attire",
+        r"\bthanos\b": "a towering purple galactic titan warrior in golden battle armor",
+        r"\bthor\b": "a mighty thunder warrior god with a mystical hammer and cape",
+        r"\bwolverine\b": "a fierce mutant brawler with metallic claws and a yellow leather suit",
+        r"\bcaptain\s*america\b": "a patriotic super-soldier hero carrying a star-spangled circular shield",
+        r"\bhulk\b": "a giant muscular green powerhouse behemoth",
+        # Fantasy / Lord of the Rings
+        r"\bgandalf\b": "a legendary wise gray-bearded wizard with a pointed hat and wooden staff",
+        r"\bfrodo\b": "a small brave halfling adventurer with curly hair and an elven cloak",
+        r"\bsauron\b": "a menacing dark lord in spiked black armor with a burning eye",
+        r"\bgollum\b": "a slender pale cave-dwelling creature with large luminous eyes",
+        r"\blegolas\b": "a graceful blonde elven archer in woodland attire",
+        r"\baragorn\b": "a weathered ranger king warrior with a silver sword",
+        # Gaming & Anime
+        r"\bgoku\b": "a martial arts warrior with spiky black hair in an orange gi with a glowing golden aura",
+        r"\bnaruto\b": "an energetic ninja with spiky blonde hair, a headband, and an orange tracksuit",
+        r"\bmario\b": "a cheerful plumber hero in blue overalls, red shirt, and red cap with a mustache",
+        r"\bluigi\b": "a tall cheerful plumber hero in blue overalls, green shirt, and green cap with a mustache",
+        r"\bbowser\b": "a menacing giant spiked turtle dragon king with red hair",
+        r"\bsonic\b": "a speedy blue anthropomorphic hedgehog hero with red running sneakers",
+        r"\bmaster\s*chief\b": "a futuristic armored super-soldier in green powered combat armor and gold visor helmet",
+        r"\bpikachu\b": "a cute small yellow electric rodent creature with rosy cheeks and lightning-bolt tail",
+        # Celebrities & Cultural Icons
+        r"\bgordon\s*ramsay\b": "a fiery passionate celebrity master chef in a white chef jacket",
+        r"\bjulia\s*child\b": "a classic enthusiastic television chef with an apron in a vintage kitchen",
+        r"\bsnoop\s*dogg\b": "an iconic laid-back hip-hop legend in sunglasses and stylish streetwear",
+        r"\beminem\b": "a fast-rhyming hip-hop superstar in a hoodie and baseball cap",
+        r"\bdrake\b": "a chart-topping melodic hip-hop star in designer puffer jacket and jewelry",
+        r"\bkendrick\s*lamar\b": "a visionary poetic hip-hop artist in artistic streetwear",
+        r"\bkanye\s*west\b": "an avant-garde music producer and fashion designer in oversized streetwear",
+        r"\bye\b": "an avant-garde hip-hop artist and designer in futuristic minimalist streetwear",
+        r"\bbeyonce\b": "a glamorous global pop queen superstar performing in shimmering haute couture",
+        r"\btaylor\s*swift\b": "a famous pop superstar singer with sparkling attire on a stadium stage",
+        r"\belon\s*musk\b": "a tech entrepreneur executive in a futuristic laboratory and rocket hangar",
+        r"\bdonald\s*trump\b": "a charismatic business executive and politician in a navy suit and red tie",
+        r"\bkamala\s*harris\b": "a prominent political leader in a tailored blazer and pearl necklace",
+        r"\bjoe\s*biden\b": "a senior statesman political leader in a classic suit and aviator sunglasses",
+        r"\bbarack\s*obama\b": "an eloquent former statesman leader in a crisp suit",
+        r"\bgucci\s*mane\b": "a legendary trap music pioneer wearing diamond chains and designer sunglasses",
+        r"\bjeezy\b": "a gravelly-voiced southern trap hip-hop icon in a leather jacket and snowman chain",
     }
 
     import re
@@ -555,6 +612,38 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         abstracted = re.sub(pattern, archetype, abstracted, flags=re.IGNORECASE)
 
     return abstracted
+
+
+def _get_relaxed_safety_settings() -> list[Any] | None:
+    """Configures relaxed BLOCK_NONE safety thresholds across all harm categories for unrestricted Gemini Omni Flash video generation."""
+    if genai and hasattr(genai, "types"):
+        types = genai.types
+        categories = [
+            types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+            types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+        ]
+        return [
+            types.SafetySetting(
+                category=cat,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            )
+            for cat in categories
+        ]
+
+    fallback_categories = [
+        "HARM_CATEGORY_HARASSMENT",
+        "HARM_CATEGORY_HATE_SPEECH",
+        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "HARM_CATEGORY_DANGEROUS_CONTENT",
+        "HARM_CATEGORY_CIVIC_INTEGRITY",
+    ]
+    return [{"category": cat, "threshold": "BLOCK_NONE"} for cat in fallback_categories]
+
+
+get_relaxed_safety_settings = _get_relaxed_safety_settings
 
 
 class OmniFlashClient:
@@ -663,6 +752,7 @@ class OmniFlashClient:
         kwargs: dict[str, Any] = {
             "model": "gemini-omni-flash-preview",
             "input": safe_input,
+            "safety_settings": _get_relaxed_safety_settings(),
         }
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id

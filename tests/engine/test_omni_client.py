@@ -7,7 +7,9 @@ import pytest
 import omnimash.config
 from omnimash.engine.omni_client import (
     OmniFlashClient,
+    _abstract_prompt_for_responsible_ai,
     _generate_dynamic_audio_wav,
+    _get_relaxed_safety_settings,
     ensure_rendered_video,
 )
 import omnimash.engine.omni_client as omni_module
@@ -237,3 +239,279 @@ def test_ensure_rendered_video_synthesizes_spoken_dialogue_audio() -> None:
     assert os.path.getsize(rel_path) > 10000
     if os.path.exists(rel_path):
         os.remove(rel_path)
+
+
+@pytest.mark.parametrize(
+    ("prompt", "restricted_keywords", "expected_snippets"),
+    [
+        (
+            "Harry Potter and Severus Snape meet Hermione Granger, Ron Weasley, Draco Malfoy, Voldemort, Dumbledore, Hagrid, and McGonagall at Hogwarts and Dripwarts.",
+            [
+                "Harry Potter",
+                "Harry",
+                "Severus Snape",
+                "Snape",
+                "Hermione Granger",
+                "Hermione",
+                "Ron Weasley",
+                "Ron",
+                "Draco Malfoy",
+                "Draco",
+                "Voldemort",
+                "Dumbledore",
+                "Hagrid",
+                "McGonagall",
+                "Hogwarts",
+                "Dripwarts",
+            ],
+            [
+                "young wizard student",
+                "potion master wizard",
+                "witch student",
+                "red-haired wizard student",
+                "blonde rival wizard student",
+                "dark sorcerer",
+                "elderly headmaster wizard",
+                "giant gamekeeper",
+                "distinguished witch professor",
+                "magical stone castle academy",
+                "hip-hop magical castle academy",
+            ],
+        ),
+        (
+            "Darth Vader and Luke Skywalker battle Yoda, Obi-Wan Kenobi, Kenobi, Han Solo, Chewbacca, Kylo Ren, and a Stormtrooper in space.",
+            [
+                "Darth Vader",
+                "Luke Skywalker",
+                "Yoda",
+                "Obi-Wan Kenobi",
+                "Kenobi",
+                "Han Solo",
+                "Chewbacca",
+                "Kylo Ren",
+                "Stormtrooper",
+            ],
+            [
+                "dark armored galactic villain",
+                "galactic farmboy knight",
+                "grand master alien",
+                "galactic mentor knight",
+                "interstellar smuggler pilot",
+                "furry bipedal alien warrior",
+                "conflicted masked dark galactic warrior",
+                "futuristic galactic soldier",
+            ],
+        ),
+        (
+            "Batman, Bruce Wayne, Joker, Superman, Spider-Man, Spiderman, Iron Man, Tony Stark, Thanos, Thor, Wolverine, Captain America, and Hulk team up.",
+            [
+                "Batman",
+                "Bruce Wayne",
+                "Joker",
+                "Superman",
+                "Spider-Man",
+                "Spiderman",
+                "Iron Man",
+                "Tony Stark",
+                "Thanos",
+                "Thor",
+                "Wolverine",
+                "Captain America",
+                "Hulk",
+            ],
+            [
+                "masked superhero detective",
+                "billionaire philanthropist vigilante",
+                "flamboyant villain",
+                "powerful superhero in a red cape",
+                "agile superhero in a red and blue webbed suit",
+                "high-tech armored superhero",
+                "charismatic billionaire genius inventor",
+                "purple galactic titan warrior",
+                "mighty thunder warrior god",
+                "fierce mutant brawler",
+                "patriotic super-soldier hero",
+                "giant muscular green powerhouse behemoth",
+            ],
+        ),
+        (
+            "Gandalf, Frodo, Sauron, Gollum, Legolas, and Aragorn embark on a quest.",
+            [
+                "Gandalf",
+                "Frodo",
+                "Sauron",
+                "Gollum",
+                "Legolas",
+                "Aragorn",
+            ],
+            [
+                "wise gray-bearded wizard",
+                "halfling adventurer",
+                "menacing dark lord",
+                "cave-dwelling creature",
+                "elven archer",
+                "weathered ranger king warrior",
+            ],
+        ),
+        (
+            "Goku, Naruto, Mario, Luigi, Bowser, Sonic, Master Chief, and Pikachu in a crossover game.",
+            [
+                "Goku",
+                "Naruto",
+                "Mario",
+                "Luigi",
+                "Bowser",
+                "Sonic",
+                "Master Chief",
+                "Pikachu",
+            ],
+            [
+                "martial arts warrior",
+                "energetic ninja",
+                "cheerful plumber hero",
+                "tall cheerful plumber hero",
+                "spiked turtle dragon king",
+                "speedy blue anthropomorphic hedgehog hero",
+                "green powered combat armor",
+                "yellow electric rodent creature",
+            ],
+        ),
+        (
+            "Gordon Ramsay, Julia Child, Snoop Dogg, Eminem, Drake, Kendrick Lamar, Kanye West, Ye, Beyonce, Taylor Swift, Elon Musk, Donald Trump, Kamala Harris, Joe Biden, Barack Obama, Gucci Mane, and Jeezy perform together.",
+            [
+                "Gordon Ramsay",
+                "Julia Child",
+                "Snoop Dogg",
+                "Eminem",
+                "Drake",
+                "Kendrick Lamar",
+                "Kanye West",
+                "Ye",
+                "Beyonce",
+                "Taylor Swift",
+                "Elon Musk",
+                "Donald Trump",
+                "Kamala Harris",
+                "Joe Biden",
+                "Barack Obama",
+                "Gucci Mane",
+                "Jeezy",
+            ],
+            [
+                "celebrity master chef",
+                "television chef",
+                "laid-back hip-hop legend",
+                "fast-rhyming hip-hop superstar",
+                "melodic hip-hop star",
+                "visionary poetic hip-hop artist",
+                "music producer and fashion designer",
+                "avant-garde hip-hop artist",
+                "glamorous global pop queen superstar",
+                "famous pop superstar singer",
+                "tech entrepreneur",
+                "charismatic business executive",
+                "prominent political leader",
+                "senior statesman political leader",
+                "eloquent former statesman leader",
+                "trap music pioneer",
+                "southern trap hip-hop icon",
+            ],
+        ),
+    ],
+)
+def test_abstract_prompt_for_responsible_ai_expanded(
+    prompt: str, restricted_keywords: list[str], expected_snippets: list[str]
+) -> None:
+    abstracted = _abstract_prompt_for_responsible_ai(prompt)
+    import re
+
+    for kw in restricted_keywords:
+        pattern = rf"\b{re.escape(kw)}\b"
+        assert not re.search(pattern, abstracted, re.IGNORECASE), (
+            f"Restricted keyword '{kw}' found in abstracted prompt: {abstracted}"
+        )
+
+    for snippet in expected_snippets:
+        assert snippet.lower() in abstracted.lower(), (
+            f"Expected archetype snippet '{snippet}' not found in abstracted prompt: {abstracted}"
+        )
+
+
+def test_get_relaxed_safety_settings_sdk() -> None:
+    """Verify _get_relaxed_safety_settings returns 5 types.SafetySetting objects with BLOCK_NONE thresholds when genai SDK is available."""
+    settings = _get_relaxed_safety_settings()
+    assert settings is not None
+    assert len(settings) == 5
+
+    from google.genai import types
+
+    expected_categories = {
+        types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+    }
+
+    found_categories = set()
+    for setting in settings:
+        assert isinstance(setting, types.SafetySetting)
+        assert setting.threshold == types.HarmBlockThreshold.BLOCK_NONE
+        found_categories.add(setting.category)
+
+    assert found_categories == expected_categories
+
+
+def test_get_relaxed_safety_settings_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify _get_relaxed_safety_settings fallback when genai is not available."""
+    monkeypatch.setattr(omni_module, "genai", None)
+    settings = _get_relaxed_safety_settings()
+    assert settings is not None
+    assert len(settings) == 5
+
+    expected_categories = {
+        "HARM_CATEGORY_HARASSMENT",
+        "HARM_CATEGORY_HATE_SPEECH",
+        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "HARM_CATEGORY_DANGEROUS_CONTENT",
+        "HARM_CATEGORY_CIVIC_INTEGRITY",
+    }
+
+    found_categories = set()
+    for setting in settings:
+        assert isinstance(setting, dict)
+        assert setting.get("threshold") == "BLOCK_NONE"
+        found_categories.add(setting.get("category"))
+
+    assert found_categories == expected_categories
+
+
+def test_generate_live_omni_flash_video_passes_safety_settings(tmp_path: Any) -> None:
+    """Verify that _generate_live_omni_flash_video passes safety_settings in kwargs to interactions.create."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_test_456", output_video=mock_output_video
+    )
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "test_out.mp4")
+    success, inter_id, error = client._generate_live_omni_flash_video(
+        prompt="A magical wizard rap duel", target_rel_path=target_file
+    )
+
+    assert success is True
+    assert inter_id == "inter_test_456"
+    assert error is None
+
+    assert mock_interactions.create.called
+    call_kwargs = mock_interactions.create.call_args.kwargs
+    assert "safety_settings" in call_kwargs
+    assert call_kwargs["safety_settings"] == _get_relaxed_safety_settings()
