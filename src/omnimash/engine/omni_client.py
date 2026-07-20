@@ -612,7 +612,6 @@ class OmniFlashClient:
         kwargs: dict[str, Any] = {
             "model": "gemini-omni-flash-preview",
             "input": safe_input,
-            "safety_settings": _get_relaxed_safety_settings(),
         }
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id

@@ -484,8 +484,8 @@ def test_get_relaxed_safety_settings_fallback(monkeypatch: pytest.MonkeyPatch) -
     assert found_categories == expected_categories
 
 
-def test_generate_live_omni_flash_video_passes_safety_settings(tmp_path: Any) -> None:
-    """Verify that _generate_live_omni_flash_video passes safety_settings in kwargs to interactions.create."""
+def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
+    """Verify that _generate_live_omni_flash_video passes clean kwargs to interactions.create without unsupported safety_settings."""
     import base64
 
     client = OmniFlashClient(mock_mode=False)
@@ -511,5 +511,5 @@ def test_generate_live_omni_flash_video_passes_safety_settings(tmp_path: Any) ->
 
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
-    assert "safety_settings" in call_kwargs
-    assert call_kwargs["safety_settings"] == _get_relaxed_safety_settings()
+    assert call_kwargs["model"] == "gemini-omni-flash-preview"
+    assert "safety_settings" not in call_kwargs
