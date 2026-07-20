@@ -201,8 +201,8 @@ In **Act 1**, define the high-level creative vision and character bindings for y
 
 1. **Enter Visual Shorthand:** Type your open-ended parody concept (e.g., *"Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"*).
 2. **Deconstruct Concept:** Click **✨ Deconstruct Concept** (`POST /api/deconstruct-concept`). OmniMash parses the prompt into structured `MetaPromptTags`.
-3. **Configure Dynamic Character Roles:** Review and edit dynamic character roles (`Role A: Harry`, `Role B: Draco`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) to lock facial likeness and costume aesthetics across scenes.
-4. **Tune Meta-Prompt Tags:** Adjust aesthetic tag chips (`Cyberpunk Neon`, `90s Fisheye Lens`, `110 BPM Atlanta Trap Beat`).
+3. **Configure Dynamic Character Roles:** Review dynamic character roles (`Role A: Harry "Gucci"`, `Role B: Young Draco "Jeezy"`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) (`gs://reference-images-jt-trend-trawler/...`) to lock facial likeness and attire across scenes.
+4. **Tune Meta-Prompt Tags:** Review aesthetic tag chips (`2000s Atlanta Trap Disstrack`, `Diamond Lightning Bolt Chain`, `Heavy 808 Bass Lighting`, `Vintage Streetwear`) and audio beat (`140 BPM Heavy 808 Trap`).
 
 ---
 
@@ -214,9 +214,9 @@ In **Act 2**, sequence your multi-character storyline into structured scenes.
   <img src="imgs/ui_act2_storyboard_directing.jpg" alt="OmniMash Act 2: Fine-Tune & Storyboard Directing" width="100%" />
 </div>
 
-1. **Add Scene Directives:** Break your script into sequential scenes (`Scene 1: Courtyard Arrival`, `Scene 2: Mic Handoff`).
-2. **Assign Active Roles:** Toggle which character roles appear in each scene (`Role A`, `Role B`).
-3. **Write Actions & Dialogue:** Provide character actions and synced rap bars / dialogue lines (e.g., *[Draco]: "I been cooking potions since first year!"*).
+1. **Add Scene Directives:** Break your script into sequential scenes (`Scene 1: Standing over potion stoves with baking soda`, `Scene 2: Stepping into room with iced out diamond chain`).
+2. **Assign Active Roles:** Toggle active character roles for each scene (`Role A`, `Role B`).
+3. **Write Actions & Dialogue:** Provide character actions and synced rap bars / dialogue lines (e.g., *[Harry]: "I been cooking potions since first year, bruv!"* and *[Draco]: "This is Trap or Die, Potter! You ain’t never seen a brick!"*).
 4. **Inspect Compiled Storyboard Prompt:** Verify the live prompt compiler box on the right, structured with `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`.
 
 ---
@@ -231,10 +231,10 @@ In **Act 3**, render your 720p HD parody cut with native synced audio, monitor g
 
 1. **Generate Parody Cut:** Click **🎬 Generate Parody Cut** (`POST /api/generate`).
 2. **Monitor Generation Health:**
-   - **Generation Status Badge:** Look for the green `🟢 Live Gemini Omni Flash` status pill in the header.
-   - **Active Error Mitigation Banner:** If Vertex AI returns `401 UNAUTHENTICATED` (e.g., API keys not supported on Vertex endpoints), OmniMash automatically switches to the Google AI Studio Developer API client (`GOOGLE_API_KEY`) and retries with exponential backoff.
-3. **Play 720p Native Video:** Inspect the rendered 720p 24fps video with frame-accurate native voiceover and beat synchronization.
-4. **Branch Conversational Diffs:** Request iterative scene edits (e.g., *"Swap wand for microphone"*) to create non-linear branches in the **Version Tree DAG**.
+   - **Generation Status Badge:** Look for the green `🟢 Live Gemini Omni Flash (720p + Synced Audio)` status pill in the header.
+   - **Prioritized Developer API Client:** Google AI Studio routing is prioritized via `GOOGLE_API_KEY`, enabling pure native joint video and audio generation alongside stateful `previous_interaction_id` editing.
+3. **Play 720p Native Video:** Inspect the rendered 720p 24fps video with moving character rapping animations and synchronized 140 BPM background trap beats.
+4. **Branch Conversational Diffs:** Direct iterative scene edits via the Delta Prompt chat bar (e.g., *"Add disco strobe lights and iced-out diamond chain"*) to create non-linear branches in the **Version Tree DAG**.
 5. **Commit & Branch:** At edit depth $\ge 3$ (`COMMIT_RECOMMENDED`), click **Commit & Branch** (`POST /api/commit`) to flush token context decay and re-anchor from the committed video.
 
 ---
