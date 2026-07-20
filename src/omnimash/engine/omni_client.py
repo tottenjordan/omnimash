@@ -579,18 +579,14 @@ class OmniFlashClient:
                 if effective_key:
                     self._genai_client = genai.Client(
                         api_key=effective_key,
-                        http_options=types.HttpOptions(
-                            api_version="v1alpha", timeout=300000
-                        ),
+                        http_options=types.HttpOptions(timeout=300000),
                     )
                 else:
                     self._genai_client = genai.Client(
                         vertexai=True,
                         project=self.project,
                         location=self.location,
-                        http_options=types.HttpOptions(
-                            api_version="v1alpha", timeout=300000
-                        ),
+                        http_options=types.HttpOptions(timeout=300000),
                     )
             except Exception:
                 pass
@@ -625,9 +621,17 @@ class OmniFlashClient:
             )
 
             output_vid = getattr(interaction, "output_video", None)
+            if not output_vid:
+                outputs = getattr(interaction, "outputs", None)
+                if isinstance(outputs, (list, tuple)) and len(outputs) > 0:
+                    output_vid = outputs[0]
+
             if output_vid:
-                data = getattr(output_vid, "data", None) or getattr(
-                    output_vid, "video_bytes", None
+                data = (
+                    getattr(output_vid, "data", None)
+                    or getattr(output_vid, "video_bytes", None)
+                    or getattr(output_vid, "bytes", None)
+                    or getattr(output_vid, "video", None)
                 )
                 if data:
                     video_bytes = (
@@ -636,6 +640,11 @@ class OmniFlashClient:
                     os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
                     with open(target_rel_path, "wb") as f:
                         f.write(video_bytes)
+                    logger.info(
+                        "Successfully generated native Gemini Omni Flash MP4 to %s (size: %d bytes)",
+                        target_rel_path,
+                        len(video_bytes),
+                    )
                     return True, inter_id
         except Exception as exc:
             logger.warning("Vertex AI generation error: %s", exc)
