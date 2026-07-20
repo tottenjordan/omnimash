@@ -227,6 +227,13 @@ In **Act 2**, sequence your multi-character storyline into structured scenes.
 In **Act 3**, render your 720p HD parody cut with native synced audio, inspect the final generation prompt, control non-autoplay playback, export masters to GCS, extend scenes, and branch conversational edits.
 
 <div align="center">
+  <img src="imgs/live_parody_cut.gif" alt="Live Gemini Omni Flash 720p HD Parody Video Cut" width="100%" />
+  <p><em>🎬 <strong>Live Gemini Omni Flash 720p HD Render</strong> — Moving character rapping animations with native synchronized 140 BPM Atlanta trap audio generated directly from OmniMash.</em></p>
+</div>
+
+<br />
+
+<div align="center">
   <img src="imgs/ui_act3_screening_room.jpg" alt="OmniMash Act 3: The Screening Room & Branching" width="100%" />
 </div>
 
