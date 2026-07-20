@@ -519,7 +519,7 @@ class OmniFlashClient:
         self.api_key = api_key
         self.mock_mode = mock_mode
         self.project = os.environ.get("GOOGLE_CLOUD_PROJECT", "hybrid-vertex")
-        self.location = "us-central1"
+        self.location = os.environ.get("GEMINI_LOCATION", "global")
         self._genai_client = None
         self.storage = GcsStorageManager(
             bucket_name=bucket_name,
