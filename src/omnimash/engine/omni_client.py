@@ -643,6 +643,10 @@ class OmniFlashClient:
         previous_interaction_id: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
+        if self.mock_mode:
+            ensure_rendered_video(target_rel_path, prompt=prompt)
+            return True, previous_interaction_id, None
+
         if not self._genai_client or not hasattr(self._genai_client, "interactions"):
             msg = "Gemini client or interactions API not available"
             logger.warning("Generation aborted: %s", msg)

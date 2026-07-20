@@ -15,7 +15,7 @@ echo "=========================================================="
 # Build environment variables list from .env if it exists
 ENV_ARGS=()
 if [ -f .env ]; then
-  ENV_VARS=$(grep -v '^#' .env | grep '=' | tr '\n' ',' | sed 's/,$//')
+  ENV_VARS=$(grep -v '^#' .env | grep '=' | grep -v '^PORT=' | tr '\n' ',' | sed 's/,$//')
   if [ -n "$ENV_VARS" ]; then
     ENV_ARGS=(--set-env-vars "$ENV_VARS,PYTHONPATH=/app/src")
   fi
