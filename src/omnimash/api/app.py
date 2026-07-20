@@ -8,6 +8,11 @@ from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
+from omnimash.prompts.compiler import MetaPromptTags
+
+
+class ConceptDeconstructRequest(BaseModel):
+    concept: str
 
 
 class ResearchRequest(BaseModel):
@@ -23,7 +28,7 @@ class ExtractReferenceRequest(BaseModel):
 class GenerateRequest(BaseModel):
     user_id: str = "usr_default"
     project_id: str = "prj_default"
-    prompt: str
+    prompt: str = ""
     clip_index: int = 0
     parent_turn_id: str | None = None
     reference_url: str | None = None
@@ -33,6 +38,11 @@ class GenerateRequest(BaseModel):
     on_screen_text: str | None = None
     compiled_override: str | None = None
     session_name: str | None = None
+    concept: str | None = None
+    characters: list[dict] | None = None
+    scenes: list[dict] | None = None
+    aesthetic_tags: list[str] | None = None
+    environment_tag: str | None = None
 
 
 class CommitRequest(BaseModel):
@@ -1072,6 +1082,10 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     def get_dashboard() -> HTMLResponse:
         return HTMLResponse(content=UI_HTML)
 
+    @app.post("/api/deconstruct-concept", response_model=MetaPromptTags)
+    def deconstruct_concept(req: ConceptDeconstructRequest) -> MetaPromptTags:
+        return agent.deconstruct_concept(req.concept)
+
     @app.post("/api/generate", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
         res = agent.process_user_turn(
@@ -1087,6 +1101,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             on_screen_text=req.on_screen_text,
             compiled_override=req.compiled_override,
             session_name=req.session_name,
+            concept=req.concept,
+            characters=req.characters,
+            scenes=req.scenes,
+            aesthetic_tags=req.aesthetic_tags,
+            environment_tag=req.environment_tag,
         )
         return GenerateResponse(
             success=res.success,
@@ -1130,3 +1149,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
 
     return app
+
+
+app = create_app()

@@ -208,34 +208,41 @@ def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -
 
     # Tier 1: gTTS (Google Neural Text-to-Speech) for natural, fluid human speech
     try:
-        from gtts import gTTS
+        import socket
 
-        temp_mp3 = f"{speech_wav_path}.mp3"
-        tts = gTTS(clean_text, lang="en", tld="com")
-        tts.save(temp_mp3)
-        if os.path.exists(temp_mp3) and os.path.getsize(temp_mp3) > 1000:
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                temp_mp3,
-                "-ar",
-                "44100",
-                "-ac",
-                "2",
-                speech_wav_path,
-            ]
-            res = subprocess.run(cmd, capture_output=True, check=False)
-            if (
-                res.returncode == 0
-                and os.path.exists(speech_wav_path)
-                and os.path.getsize(speech_wav_path) > 1000
-            ):
-                try:
-                    os.remove(temp_mp3)
-                except Exception:
-                    pass
-                return True
+        orig_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(0.5)
+        try:
+            from gtts import gTTS
+
+            temp_mp3 = f"{speech_wav_path}.mp3"
+            tts = gTTS(clean_text, lang="en", tld="com")
+            tts.save(temp_mp3)
+            if os.path.exists(temp_mp3) and os.path.getsize(temp_mp3) > 1000:
+                cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    temp_mp3,
+                    "-ar",
+                    "44100",
+                    "-ac",
+                    "2",
+                    speech_wav_path,
+                ]
+                res = subprocess.run(cmd, capture_output=True, check=False)
+                if (
+                    res.returncode == 0
+                    and os.path.exists(speech_wav_path)
+                    and os.path.getsize(speech_wav_path) > 1000
+                ):
+                    try:
+                        os.remove(temp_mp3)
+                    except Exception:
+                        pass
+                    return True
+        finally:
+            socket.setdefaulttimeout(orig_timeout)
     except Exception:
         pass
 
@@ -349,6 +356,8 @@ def ensure_rendered_video(
     if not video_url.startswith("/static/"):
         return
     rel_path = video_url.lstrip("/")
+    if os.path.exists(rel_path) and os.path.getsize(rel_path) > 1000:
+        return
     os.makedirs(os.path.dirname(rel_path), exist_ok=True)
 
     # Extract voiceover / dialogue if not explicitly passed

@@ -4,11 +4,10 @@ from google.adk.agents import Agent
 
 from omnimash.engine.omni_client import OmniFlashClient
 from omnimash.ingestion.media_extractor import MediaExtractor
+from omnimash.prompts.compiler import CharacterRole, MetaPromptTags, SceneDirective
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
 from omnimash.security.guardrail import ModelArmorGuardrail
 from omnimash.state.session_manager import SessionManager
-
-
 from omnimash.storage.gcs import GcsStorageManager
 
 
@@ -34,11 +33,14 @@ class OmniMashAgent:
         self.media_extractor = MediaExtractor(mock_mode=mock_mode)
         self.storage = GcsStorageManager(mock_mode=mock_mode)
 
+    def deconstruct_concept(self, concept: str) -> MetaPromptTags:
+        return self.taxonomy.deconstruct_concept(concept)
+
     def process_user_turn(
         self,
         user_id: str,
         project_id: str,
-        prompt: str,
+        prompt: str = "",
         clip_index: int = 0,
         parent_turn_id: str | None = None,
         reference_url: str | None = None,
@@ -48,6 +50,11 @@ class OmniMashAgent:
         on_screen_text: str | None = None,
         compiled_override: str | None = None,
         session_name: str | None = None,
+        concept: str | None = None,
+        characters: list[dict] | None = None,
+        scenes: list[dict] | None = None,
+        aesthetic_tags: list[str] | None = None,
+        environment_tag: str | None = None,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
@@ -65,7 +72,8 @@ class OmniMashAgent:
             reference_analysis = asdict(report)
 
         # Step 1: Model Armor Gate
-        guard_res = self.guardrail.validate_prompt(prompt)
+        input_prompt = prompt or concept or ""
+        guard_res = self.guardrail.validate_prompt(input_prompt)
         if not guard_res.is_approved:
             return AgentTurnResponse(
                 success=False,
@@ -94,16 +102,57 @@ class OmniMashAgent:
                 audio_stem=audio_stem,
             )
         else:
-            meta_prompt = self.taxonomy.build_initial_prompt(
-                base_character=guard_res.sanitized_prompt,
-                style_preset=StylePreset.NINETIES_RAP_VIDEO,
-                custom_instructions="parody skit",
-                audio_stem=audio_stem,
-                voiceover=voiceover,
-                is_silent=is_silent,
-                on_screen_text=on_screen_text,
-                override_prompt=compiled_override,
-            )
+            if characters or scenes:
+                char_objs: list[CharacterRole] = []
+                if characters:
+                    for c in characters:
+                        if isinstance(c, CharacterRole):
+                            char_objs.append(c)
+                        elif isinstance(c, dict):
+                            char_objs.append(
+                                CharacterRole(
+                                    role_id=c.get("role_id", ""),
+                                    name=c.get("name", ""),
+                                    description=c.get("description", ""),
+                                    reference_url=c.get("reference_url"),
+                                )
+                            )
+                scene_objs: list[SceneDirective] = []
+                if scenes:
+                    for s in scenes:
+                        if isinstance(s, SceneDirective):
+                            scene_objs.append(s)
+                        elif isinstance(s, dict):
+                            scene_objs.append(
+                                SceneDirective(
+                                    scene_number=s.get("scene_number", 0),
+                                    active_roles=s.get("active_roles", []),
+                                    action=s.get("action", ""),
+                                    dialogue=s.get("dialogue", ""),
+                                )
+                            )
+                storyboard_prompt = self.taxonomy.compiler.compile_storyboard(
+                    concept=concept or guard_res.sanitized_prompt,
+                    characters=char_objs,
+                    scenes=scene_objs,
+                    aesthetic_tags=aesthetic_tags,
+                    environment_tag=environment_tag,
+                    audio_beat=audio_stem,
+                )
+                meta_prompt = (
+                    compiled_override if compiled_override else storyboard_prompt
+                )
+            else:
+                meta_prompt = self.taxonomy.build_initial_prompt(
+                    base_character=guard_res.sanitized_prompt,
+                    style_preset=StylePreset.NINETIES_RAP_VIDEO,
+                    custom_instructions="parody skit",
+                    audio_stem=audio_stem,
+                    voiceover=voiceover,
+                    is_silent=is_silent,
+                    on_screen_text=on_screen_text,
+                    override_prompt=compiled_override,
+                )
             raw_compiled_prompt = meta_prompt
             self.storage.save_session_prompt(
                 session.session_id, len(session.turns), meta_prompt
