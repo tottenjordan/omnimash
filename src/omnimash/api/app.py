@@ -60,6 +60,7 @@ class GenerateResponse(BaseModel):
     turn_id: str | None = None
     depth: int = 0
     error: str | None = None
+    generation_mode: str = "LIVE_OMNI_FLASH"
     raw_compiled_prompt: str | None = None
     reference_analysis: dict | None = None
 
@@ -1093,8 +1094,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         return agent.deconstruct_concept(req.concept)
 
     @app.post("/api/generate", response_model=GenerateResponse)
+    @app.post("/api/diff", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
-        res = agent.process_user_turn(
+        agent_turn = agent.process_user_turn(
             user_id=req.user_id,
             project_id=req.project_id,
             prompt=req.prompt,
@@ -1114,19 +1116,20 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             environment_tag=req.environment_tag,
         )
         return GenerateResponse(
-            success=res.success,
-            status=res.status_event,
-            video_url=res.video_url,
-            turn_id=res.turn_id,
-            depth=res.depth,
-            error=res.error_message,
-            raw_compiled_prompt=res.raw_compiled_prompt,
-            reference_analysis=res.reference_analysis,
+            success=agent_turn.success,
+            status=agent_turn.status_event,
+            video_url=agent_turn.video_url,
+            turn_id=agent_turn.turn_id,
+            depth=agent_turn.depth,
+            error=agent_turn.error_message,
+            generation_mode=agent_turn.generation_mode,
+            raw_compiled_prompt=agent_turn.raw_compiled_prompt,
+            reference_analysis=agent_turn.reference_analysis,
         )
 
     @app.post("/api/commit", response_model=GenerateResponse)
     def commit_and_branch(req: CommitRequest) -> GenerateResponse:
-        res = agent.commit_and_branch(
+        agent_turn = agent.commit_and_branch(
             user_id=req.user_id,
             project_id=req.project_id,
             turn_id=req.turn_id,
@@ -1134,14 +1137,15 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             session_name=req.session_name,
         )
         return GenerateResponse(
-            success=res.success,
-            status=res.status_event,
-            video_url=res.video_url,
-            turn_id=res.turn_id,
-            depth=res.depth,
-            error=res.error_message,
-            raw_compiled_prompt=res.raw_compiled_prompt,
-            reference_analysis=res.reference_analysis,
+            success=agent_turn.success,
+            status=agent_turn.status_event,
+            video_url=agent_turn.video_url,
+            turn_id=agent_turn.turn_id,
+            depth=agent_turn.depth,
+            error=agent_turn.error_message,
+            generation_mode=agent_turn.generation_mode,
+            raw_compiled_prompt=agent_turn.raw_compiled_prompt,
+            reference_analysis=agent_turn.reference_analysis,
         )
 
     @app.post("/api/research", response_model=ParodyResearchResult)

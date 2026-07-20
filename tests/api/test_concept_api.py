@@ -66,3 +66,42 @@ def test_generate_with_character_roles_and_scenes():
     data = res.json()
     assert data["success"] is True
     assert data["video_url"] is not None
+    assert "generation_mode" in data
+    assert data["generation_mode"] in ["LIVE_OMNI_FLASH", "LOCAL_PROCEDURAL_ANIMATION"]
+    assert "error" in data
+
+
+def test_generate_and_diff_endpoints_surface_error_and_generation_mode():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res_gen = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_test",
+            "project_id": "prj_test",
+            "prompt": "Snape 90s rap video",
+        },
+    )
+    assert res_gen.status_code == 200
+    gen_data = res_gen.json()
+    assert gen_data["success"] is True
+    assert "generation_mode" in gen_data
+    assert gen_data["generation_mode"] == "LIVE_OMNI_FLASH"
+    assert gen_data["error"] is None
+
+    turn_id = gen_data["turn_id"]
+    res_diff = client.post(
+        "/api/diff",
+        json={
+            "user_id": "usr_test",
+            "project_id": "prj_test",
+            "prompt": "Add gold chains",
+            "parent_turn_id": turn_id,
+        },
+    )
+    assert res_diff.status_code == 200
+    diff_data = res_diff.json()
+    assert diff_data["success"] is True
+    assert "generation_mode" in diff_data
+    assert diff_data["generation_mode"] == "LIVE_OMNI_FLASH"
+    assert diff_data["error"] is None

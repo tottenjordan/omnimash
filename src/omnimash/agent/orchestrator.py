@@ -17,6 +17,7 @@ class AgentTurnResponse:
     status_event: str
     video_url: str | None = None
     error_message: str | None = None
+    generation_mode: str = "LIVE_OMNI_FLASH"
     turn_id: str | None = None
     depth: int = 0
     raw_compiled_prompt: str | None = None
@@ -183,6 +184,8 @@ class OmniMashAgent:
             success=True,
             status_event=status_event,
             video_url=gen_res.video_url,
+            error_message=gen_res.error_message,
+            generation_mode=gen_res.generation_mode,
             turn_id=turn_node.turn_id,
             depth=turn_node.edit_depth_in_thread,
             raw_compiled_prompt=raw_compiled_prompt,
@@ -234,6 +237,8 @@ class OmniMashAgent:
             success=True,
             status_event="REANCHORED",
             video_url=gen_res.video_url,
+            error_message=gen_res.error_message,
+            generation_mode=gen_res.generation_mode,
             turn_id=new_node.turn_id,
             depth=0,
         )

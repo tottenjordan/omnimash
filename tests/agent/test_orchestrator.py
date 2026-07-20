@@ -12,6 +12,8 @@ def test_agent_initial_creation_flow():
     assert res.success is True
     assert res.video_url is not None
     assert res.status_event == "COMPLETED"
+    assert res.error_message is None
+    assert res.generation_mode == "LIVE_OMNI_FLASH"
 
 
 def test_agent_guardrail_rejection():
