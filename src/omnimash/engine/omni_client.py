@@ -603,6 +603,14 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         r"\bbarack\s*obama\b": "an eloquent former statesman leader in a crisp suit",
         r"\bgucci\s*mane\b": "a legendary trap music pioneer wearing diamond chains and designer sunglasses",
         r"\bjeezy\b": "a gravelly-voiced southern trap hip-hop icon in a leather jacket and snowman chain",
+        # Conflict & Action Smoothing for Parody Context
+        r"\bwizard\s*duel\b": "hip-hop wizard musical contest",
+        r"\bduel\b": "rap contest",
+        r"\bbattle\b": "parody showdown",
+        r"\bfight\b": "musical contest",
+        r"\bkill\b": "out-rap",
+        r"\bdestroy\b": "out-perform",
+        r"\battack\b": "challenge",
     }
 
     import re
@@ -695,6 +703,7 @@ class OmniFlashClient:
                 try:
                     self._dev_client = genai.Client(
                         api_key=effective_key,
+                        vertexai=False,
                         http_options=http_options,
                     )
                 except Exception as exc:
@@ -820,13 +829,26 @@ class OmniFlashClient:
                         "401 UNAUTHENTICATED on Vertex AI. Actively switching to Google AI Studio Developer API client."
                     )
                     self.switch_to_developer_api()
+                elif "404" in exc_str or "Publisher model" in exc_str:
+                    logger.warning(
+                        "Vertex AI endpoint unavailable (%s). Actively switching to Google AI Studio Developer API client.",
+                        exc_str,
+                    )
+                    self.switch_to_developer_api()
                 elif (
-                    "404" in exc_str
-                    or "429" in exc_str
-                    or "ResourceExhausted" in exc_str
+                    "safety_settings" in exc_str
+                    or "Unmarshaller" in exc_str
+                    or "ValidationError" in exc_str
+                    or "invalid_request" in exc_str
                 ):
                     logger.warning(
-                        "Retry attempt %d/%d after error (%s). Backoff delay: %.2fs",
+                        "Interactions API parameter error (%s). Removing unsupported safety_settings kwarg and retrying.",
+                        exc_str,
+                    )
+                    kwargs.pop("safety_settings", None)
+                elif "429" in exc_str or "ResourceExhausted" in exc_str:
+                    logger.warning(
+                        "Retry attempt %d/%d after rate limit error (%s). Backoff delay: %.2fs",
                         attempt,
                         max_attempts,
                         exc_str,
@@ -834,7 +856,7 @@ class OmniFlashClient:
                     )
                 else:
                     logger.warning(
-                        "Vertex AI generation error on attempt %d/%d: %s",
+                        "Omni Flash generation error on attempt %d/%d: %s",
                         attempt,
                         max_attempts,
                         exc_str,
