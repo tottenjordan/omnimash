@@ -53,6 +53,26 @@ class CommitRequest(BaseModel):
     session_name: str | None = None
 
 
+class SaveFinalRequest(BaseModel):
+    session_name: str | None = None
+    video_url: str
+    master_title: str
+
+
+class SaveFinalResponse(BaseModel):
+    success: bool
+    gcs_uri: str
+    message: str
+
+
+class ExtendSceneRequest(BaseModel):
+    session_name: str | None = None
+    turn_id: str | None = None
+    next_scene_action: str = ""
+    dialogue: str | None = None
+    active_roles: list[str] | None = None
+
+
 class GenerateResponse(BaseModel):
     success: bool
     status: str
@@ -1185,6 +1205,40 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             turn_id=req.turn_id,
             prompt=req.next_prompt,
             session_name=req.session_name,
+        )
+        return GenerateResponse(
+            success=agent_turn.success,
+            status=agent_turn.status_event,
+            video_url=agent_turn.video_url,
+            turn_id=agent_turn.turn_id,
+            depth=agent_turn.depth,
+            error=agent_turn.error_message,
+            generation_mode=agent_turn.generation_mode,
+            raw_compiled_prompt=agent_turn.raw_compiled_prompt,
+            reference_analysis=agent_turn.reference_analysis,
+        )
+
+    @app.post("/api/save-final", response_model=SaveFinalResponse)
+    def save_final(req: SaveFinalRequest) -> SaveFinalResponse:
+        _pub_url, gcs_uri = agent.save_final_master(
+            session_id=req.session_name,
+            video_url=req.video_url,
+            master_title=req.master_title,
+        )
+        return SaveFinalResponse(
+            success=True,
+            gcs_uri=gcs_uri,
+            message=f"Final master successfully saved to {gcs_uri}",
+        )
+
+    @app.post("/api/extend-scene", response_model=GenerateResponse)
+    def extend_scene(req: ExtendSceneRequest) -> GenerateResponse:
+        agent_turn = agent.extend_scene(
+            session_name=req.session_name,
+            turn_id=req.turn_id,
+            next_scene_action=req.next_scene_action,
+            dialogue=req.dialogue,
+            active_roles=req.active_roles,
         )
         return GenerateResponse(
             success=agent_turn.success,
