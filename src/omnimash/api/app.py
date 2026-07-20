@@ -87,68 +87,69 @@ UI_HTML = r"""<!DOCTYPE html>
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        const subjectArchetypes = [
-            { id: "harry_draco", name: "Harry & Draco (Trap-Warts)", icon: "🧙‍♂️", desc: "Gucci Harry vs. Jeezy Draco trap rivalry at Hogwarts", prompt: "Harry 'Gucci' Potter and Draco 'Jeezy' Malfoy in a rap video confrontation" },
-            { id: "snape", name: "Dark Wizard (Snape)", icon: "🧙", desc: "Severus Snape in gothic stone dungeon with heavy shadows", prompt: "Severus Snape in 90s rap video" },
-            { id: "scifi_hunter", name: "Sci-Fi Bounty Hunter", icon: "🚀", desc: "Armored bounty hunter in neon cantina", prompt: "Sci-Fi Bounty Hunter in futuristic neon cantina" },
-            { id: "painter", name: "Renaissance Painter", icon: "🎨", desc: "16th-century classical master in gilded studio", prompt: "Renaissance Painter in dramatic baroque lighting" },
-            { id: "custom", name: "Custom Subject Prompt", icon: "✍️", desc: "Define your own subject archetype or uploaded characters", prompt: "" }
-        ];
-
-        const aestheticSubcultures = [
-            { id: "trap_disstrack", name: "Atlanta Trap Disstrack", icon: "🔥", desc: "Dark 808 bass lighting, heavy laser smoke, iced-out drip", bpm: "140 BPM Heavy 808 Trap" },
-            { id: "90s_rap_video", name: "90s East Coast Rap", icon: "🎤", desc: "Fisheye lens, boom-bap beat, oversized shiny puffers", bpm: "120 BPM Boom-Bap" },
-            { id: "cyberpunk_drift", name: "Cyberpunk Drift", icon: "🏎️", desc: "Holographic neon glow, synthwave purple & cyan grading", bpm: "110 BPM Cyberpunk Synthwave" },
-            { id: "vhs_anime", name: "VHS Anime Lo-Fi", icon: "📼", desc: "Retro 4:3 VHS tape grain, analog scanlines, warm bloom", bpm: "85 BPM VHS Lo-Fi" },
-            { id: "nu_metal", name: "00s Nu-Metal Video", icon: "🎸", desc: "Fisheye low-angle, grunge distortion, aggressive cadence", bpm: "130 BPM Nu-Metal Groove" }
-        ];
-
-        const presetDripPool = [
-            "💎 Diamond Lightning Bolt Chain",
-            "🧥 Vintage Gucci Tracksuit",
-            "⛄ Slytherin Snowman Pendant",
-            "🎙️ Microphone Wand",
-            "🕶️ Shutter Shades",
-            "✨ Diamond Grillz",
-            "👑 Oversized Puffer Vest",
-            "⌚ Iced-Out Rolex Watch"
+        const exampleConcepts = [
+            "Gordon Ramsay vs Julia Child in a cyberpunk iron chef battle",
+            "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style",
+            "Severus Snape in a 90s East Coast boom-bap rap video",
+            "Cyborg Ninja vs Neon Samurai in an arcade showdown"
         ];
 
         function OmniMashApp() {
-            // Navigation Act State (1: The Clash, 2: The Fine-Tune, 3: The Director's Chair)
+            // Navigation Act State (1: The Concept & Cast Manager, 2: Fine-Tune & Storyboard Directing, 3: The Screening Room & Branching)
             const [activeAct, setActiveAct] = useState(1);
 
             // Session & Project State
-            const [sessionName, setSessionName] = useState("dripwarts_vol1");
+            const [sessionName, setSessionName] = useState("parody_session_1");
 
-            // Act 1: The Clash State
-            const [selectedSubjectId, setSelectedSubjectId] = useState("harry_draco");
-            const [customSubjectText, setCustomSubjectText] = useState("");
-            const [selectedAestheticId, setSelectedAestheticId] = useState("trap_disstrack");
-            const [referenceUrl, setReferenceUrl] = useState("https://www.youtube.com/watch?v=sample_trap_beat");
-            const [referenceAnalysis, setReferenceAnalysis] = useState(null);
-            const [parodyResearch, setParodyResearch] = useState(null);
-            const [researchLoading, setResearchLoading] = useState(false);
-            const [extractLoading, setExtractLoading] = useState(false);
+            // Act 1: The Concept & Cast Manager State
+            const [concept, setConcept] = useState("Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style");
+            const [deconstructLoading, setDeconstructLoading] = useState(false);
 
-            // Act 2: The Fine-Tune State
-            const [activeDrip, setActiveDrip] = useState([
-                "💎 Diamond Lightning Bolt Chain",
-                "🧥 Vintage Gucci Tracksuit",
-                "⛄ Slytherin Snowman Pendant",
-                "🎙️ Microphone Wand"
+            const [characters, setCharacters] = useState([
+                {
+                    role_id: "Role A",
+                    name: "Harry",
+                    description: "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
+                    reference_url: "https://example.com/harry.jpg"
+                },
+                {
+                    role_id: "Role B",
+                    name: "Draco",
+                    description: "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
+                    reference_url: "https://example.com/draco.jpg"
+                }
             ]);
-            const [customDripInput, setCustomDripInput] = useState("");
-            const [vibeIntensity, setVibeIntensity] = useState(75); // 0 (Gritty) to 100 (Glossy)
+
+            const [aestheticTags, setAestheticTags] = useState([
+                "2000s Atlanta Trap Disstrack",
+                "Diamond Lightning Bolt Chain",
+                "Heavy 808 Bass Lighting",
+                "Vintage Streetwear"
+            ]);
+            const [newTagInput, setNewTagInput] = useState("");
+
+            const [environmentTag, setEnvironmentTag] = useState("Gothic Hogwarts courtyard lit by neon stage lights and smoky haze");
+            const [cameraLightingTag, setCameraLightingTag] = useState("Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights");
             const [audioBeat, setAudioBeat] = useState("140 BPM Heavy 808 Trap");
-            const [voiceover, setVoiceover] = useState("Harry: \"I been cooking potions since first year. Burrr!\" / Draco: \"This is Trap or Die, Potter!\"");
-            const [isSilent, setIsSilent] = useState(false);
-            const [onScreenText, setOnScreenText] = useState("DRIPWARTS: HARRY VS. DRACO VOL. 1");
-            const [rawCompiledPrompt, setRawCompiledPrompt] = useState("");
-            const [isRawPayloadOpen, setIsRawPayloadOpen] = useState(true);
+
+            // Act 2: Fine-Tune & Storyboard Directing State
+            const [scenes, setScenes] = useState([
+                {
+                    scene_number: 1,
+                    active_roles: ["Role A"],
+                    action: "Arriving at foggy Hogwarts courtyard rapping into microphone wand",
+                    dialogue: "I been cooking potions since first year. Burrr!"
+                },
+                {
+                    scene_number: 2,
+                    active_roles: ["Role B"],
+                    action: "Stepping from shadows in high-gloss neon lighting with ice chain",
+                    dialogue: "This is Trap or Die, Potter! Let's get it!"
+                }
+            ]);
             const [copied, setCopied] = useState(false);
 
-            // Act 3: The Director's Chair State
+            // Act 3: The Screening Room & Branching State
             const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
             const [deltaPrompt, setDeltaPrompt] = useState("");
             const [parentTurnId, setParentTurnId] = useState("");
@@ -156,169 +157,198 @@ UI_HTML = r"""<!DOCTYPE html>
             const [status, setStatus] = useState("COMPLETED");
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
+            const [rawCompiledPrompt, setRawCompiledPrompt] = useState("");
 
             const [history, setHistory] = useState([
                 {
                     turnId: "turn_init",
-                    prompt: "Dripwarts: Harry Gucci Potter & Draco Jeezy Malfoy trailer",
+                    prompt: "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style",
                     status: "COMPLETED",
                     videoUrl: "/static/rendered/mock.mp4",
                     parent: null,
-                    lock: "Maintain exact Harry Gucci & Draco Jeezy face likeness, diamond lightning chain, Gucci tracksuit, and Hogwarts dungeon environment.",
-                    diff: "Initial 720p 10-second directorial cut generated from Act 1 & Act 2 setups."
+                    lock: "Maintain character likeness, Role A/B identities, and background environment.",
+                    diff: "Initial parody cut generated from Act 1 & Act 2 storyboard sequence."
                 }
             ]);
 
-            // Helper: Resolve active prompt string
-            const getActiveSubject = () => {
-                if (selectedSubjectId === "custom") return customSubjectText || "Custom cinematic character";
-                const arch = subjectArchetypes.find(s => s.id === selectedSubjectId);
-                return arch ? arch.prompt : "Harry 'Gucci' Potter and Draco 'Jeezy' Malfoy";
+            // Helper: Client-side Live Storyboard Prompt Compiler Preview
+            const compileStoryboardPreview = () => {
+                const roleLines = characters.map(c => {
+                    const ref = c.reference_url ? ` (Ref: ${c.reference_url})` : "";
+                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${ref}`;
+                }).join("\n");
+
+                const aestheticParts = [];
+                if (concept && concept.trim()) aestheticParts.push(`Concept: ${concept.trim()}`);
+                if (aestheticTags && aestheticTags.length > 0) aestheticParts.push(`Aesthetic Tags: ${aestheticTags.join(", ")}`);
+                if (environmentTag && environmentTag.trim()) aestheticParts.push(`Environment: ${environmentTag.trim()}`);
+                if (cameraLightingTag && cameraLightingTag.trim()) aestheticParts.push(`Camera/Lighting: ${cameraLightingTag.trim()}`);
+                if (audioBeat && audioBeat.trim()) aestheticParts.push(`Audio Beat: ${audioBeat.trim()}`);
+                const aestheticBlock = aestheticParts.length > 0 ? aestheticParts.join("\n") : "Default Aesthetic";
+
+                const sceneLines = scenes.map(s => {
+                    const roles = (s.active_roles && s.active_roles.length > 0) ? s.active_roles.join(", ") : "All Roles";
+                    const diag = (s.dialogue && s.dialogue.trim()) ? ` | Dialogue: "${s.dialogue.trim()}"` : "";
+                    return `- Scene ${s.scene_number} [${roles}]: ${s.action || "Action description"}${diag}`;
+                }).join("\n");
+
+                return `[ROLE DEFINITIONS]\n${roleLines || "- None"}\n\n[AESTHETIC INJECTION]\n${aestheticBlock}\n\n[STORYBOARD SEQUENCE]\n${sceneLines || "- No scenes"}`;
             };
 
-            const getVibeDescription = (val) => {
-                if (val <= 30) return "🌑 Gritty / Underground (Dark moody lighting, heavy laser smoke, 16mm raw grain)";
-                if (val <= 70) return "🎥 Balanced Cinematic (High-contrast MTV rap video lighting, balanced color grading)";
-                return "💎 High-Gloss Neon (Anamorphic lens flare, holographic bloom, polished commercial aesthetic)";
-            };
-
-            // 1-Click "Load Trap-Warts Concept" Loader
-            const handleLoadTrapWartsConcept = () => {
-                setSelectedSubjectId("harry_draco");
-                setSelectedAestheticId("trap_disstrack");
-                setSessionName("dripwarts_vol1");
-                setActiveDrip([
-                    "💎 Diamond Lightning Bolt Chain",
-                    "🧥 Vintage Gucci Tracksuit",
-                    "⛄ Slytherin Snowman Pendant",
-                    "🎙️ Microphone Wand",
-                    "🕶️ Shutter Shades"
-                ]);
-                setVibeIntensity(80);
-                setAudioBeat("140 BPM Heavy 808 Trap");
-                setVoiceover('Harry: "You talkin\' \'bout potions, Draco? I been cooking since first year. Burrr!" / Draco: "This is Trap or Die, Potter! Let\'s get it!"');
-                setOnScreenText("DRIPWARTS: HARRY VS. DRACO VOL. 1");
-                setIsSilent(false);
-                setParodyResearch({
-                    synopsis: "Dripwarts: Harry & The Brick Factory - A viral high-fashion rap trailer mashup of Hogwarts wizard rivalry with 2010s Atlanta trap music beef (Gucci vs. Jeezy).",
-                    suggested_props: ["Diamond Lightning Bolt Chain", "Vintage Gucci Tracksuit", "Slytherin Snowman Pendant", "Microphone Wand", "Shutter Shades"],
-                    suggested_vibe: "Dark moody 808 bass lighting, laser smoke, and high-gloss neon reflections",
-                    vibe_intensity: 80,
-                    suggested_audio: "140 BPM Heavy 808 Trap",
-                    suggested_dialogue: "Harry: \"I been cooking potions since first year. Burrr!\" / Draco: \"This is Trap or Die, Potter!\""
-                });
-            };
-
-            // Ingest Reference URL (POST /api/extract-reference)
-            const handleExtractReference = async () => {
-                if (!referenceUrl) return;
-                setExtractLoading(true);
+            // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
+            const handleDeconstructConcept = async (conceptOverride) => {
+                const targetConcept = conceptOverride || concept;
+                if (!targetConcept || !targetConcept.trim()) return;
+                setDeconstructLoading(true);
                 try {
-                    const res = await fetch("/api/extract-reference", {
+                    const res = await fetch("/api/deconstruct-concept", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ url: referenceUrl, session_name: sessionName })
+                        body: JSON.stringify({ concept: targetConcept })
                     });
                     const data = await res.json();
-                    setReferenceAnalysis(data);
-                } catch (err) {
-                    console.error("Reference extraction failed:", err);
-                } finally {
-                    setExtractLoading(false);
-                }
-            };
-
-            // Gemini Parody Research (POST /api/research)
-            const handleResearchClash = async () => {
-                setResearchLoading(true);
-                try {
-                    const subject = getActiveSubject();
-                    const aesthetic = aestheticSubcultures.find(a => a.id === selectedAestheticId)?.name || "Trap Disstrack";
-                    const res = await fetch("/api/research", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ subject, aesthetic })
-                    });
-                    const data = await res.json();
-                    setParodyResearch(data);
-                    if (data.suggested_props && data.suggested_props.length > 0) {
-                        setActiveDrip(data.suggested_props.map(p => p.startsWith("💎") || p.startsWith("🧥") ? p : `💎 ${p}`));
+                    if (data.characters && data.characters.length > 0) {
+                        setCharacters(data.characters);
+                        const newScenes = data.characters.map((char, idx) => ({
+                            scene_number: idx + 1,
+                            active_roles: [char.role_id],
+                            action: `${char.name || char.role_id} in action sequence`,
+                            dialogue: ""
+                        }));
+                        if (newScenes.length > 0) setScenes(newScenes);
                     }
-                    if (data.vibe_intensity) setVibeIntensity(data.vibe_intensity);
-                    if (data.suggested_audio) setAudioBeat(data.suggested_audio);
-                    if (data.suggested_dialogue) setVoiceover(data.suggested_dialogue);
+                    if (data.aesthetic_tags) setAestheticTags(data.aesthetic_tags);
+                    if (data.environment_tag) setEnvironmentTag(data.environment_tag);
+                    if (data.camera_lighting_tag) setCameraLightingTag(data.camera_lighting_tag);
+                    if (data.audio_beat) setAudioBeat(data.audio_beat);
                 } catch (err) {
-                    console.error("Parody research failed:", err);
+                    console.error("Deconstruction failed:", err);
                 } finally {
-                    setResearchLoading(false);
+                    setDeconstructLoading(false);
                 }
             };
 
-            const toggleDripProp = (prop) => {
-                if (activeDrip.includes(prop)) {
-                    setActiveDrip(activeDrip.filter(p => p !== prop));
-                } else {
-                    setActiveDrip([...activeDrip, prop]);
-                }
+            // Character Roles management
+            const addCharacterRole = () => {
+                const nextLetter = String.fromCharCode(65 + characters.length);
+                const newRole = {
+                    role_id: `Role ${nextLetter}`,
+                    name: `Character ${nextLetter}`,
+                    description: "Distinct cinematic character with expressive facial features and stylized attire",
+                    reference_url: ""
+                };
+                setCharacters([...characters, newRole]);
             };
 
-            const addCustomDrip = (e) => {
-                e.preventDefault();
-                if (customDripInput.trim().length > 0) {
-                    const newProp = `✨ ${customDripInput.trim()}`;
-                    if (!activeDrip.includes(newProp)) {
-                        setActiveDrip([...activeDrip, newProp]);
-                    }
-                    setCustomDripInput("");
-                }
+            const updateCharacter = (index, field, value) => {
+                const updated = [...characters];
+                updated[index] = { ...updated[index], [field]: value };
+                setCharacters(updated);
             };
 
-            // Generate Video Cut (POST /api/generate)
-            const handleGenerate = async (e) => {
+            const removeCharacter = (index) => {
+                if (characters.length <= 1) return;
+                const removedRoleId = characters[index].role_id;
+                const updated = characters.filter((_, i) => i !== index);
+                setCharacters(updated);
+                setScenes(scenes.map(s => ({
+                    ...s,
+                    active_roles: (s.active_roles || []).filter(r => r !== removedRoleId)
+                })));
+            };
+
+            // Aesthetic tags management
+            const handleAddAestheticTag = (e) => {
                 if (e) e.preventDefault();
+                if (newTagInput.trim() && !aestheticTags.includes(newTagInput.trim())) {
+                    setAestheticTags([...aestheticTags, newTagInput.trim()]);
+                    setNewTagInput("");
+                }
+            };
+
+            const removeAestheticTag = (tagToRemove) => {
+                setAestheticTags(aestheticTags.filter(t => t !== tagToRemove));
+            };
+
+            // Scenes management
+            const addScene = () => {
+                const nextNum = scenes.length + 1;
+                const newScene = {
+                    scene_number: nextNum,
+                    active_roles: [characters[0]?.role_id || "Role A"],
+                    action: "",
+                    dialogue: ""
+                };
+                setScenes([...scenes, newScene]);
+            };
+
+            const updateScene = (index, field, value) => {
+                const updated = [...scenes];
+                updated[index] = { ...updated[index], [field]: value };
+                setScenes(updated);
+            };
+
+            const toggleSceneRole = (sceneIndex, roleId) => {
+                const scene = scenes[sceneIndex];
+                const active = scene.active_roles || [];
+                const nextActive = active.includes(roleId)
+                    ? active.filter(r => r !== roleId)
+                    : [...active, roleId];
+                updateScene(sceneIndex, "active_roles", nextActive);
+            };
+
+            const removeScene = (index) => {
+                if (scenes.length <= 1) return;
+                const updated = scenes.filter((_, i) => i !== index).map((s, idx) => ({
+                    ...s,
+                    scene_number: idx + 1
+                }));
+                setScenes(updated);
+            };
+
+            // Act 3 Handler: Generate Parody Cut (POST /api/generate)
+            const handleGenerate = async (e) => {
+                if (e && e.preventDefault) e.preventDefault();
                 setLoading(true);
                 try {
-                    const subject = getActiveSubject();
-                    const aesthetic = aestheticSubcultures.find(a => a.id === selectedAestheticId)?.name || "Trap Disstrack";
-                    const promptText = deltaPrompt || `${subject} in a ${aesthetic} video`;
-
+                    const payload = {
+                        user_id: "usr_studio",
+                        project_id: "prj_director",
+                        prompt: deltaPrompt || concept,
+                        clip_index: 0,
+                        parent_turn_id: parentTurnId || null,
+                        session_name: sessionName,
+                        concept: concept,
+                        characters: characters,
+                        scenes: scenes,
+                        aesthetic_tags: aestheticTags,
+                        environment_tag: environmentTag,
+                        audio_stem: audioBeat
+                    };
                     const res = await fetch("/api/generate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            user_id: "usr_studio",
-                            project_id: "prj_director",
-                            prompt: promptText,
-                            clip_index: 0,
-                            parent_turn_id: parentTurnId || null,
-                            reference_url: referenceUrl || null,
-                            audio_stem: isSilent ? "mute" : audioBeat,
-                            voiceover: voiceover || null,
-                            is_silent: isSilent,
-                            on_screen_text: onScreenText || null,
-                            session_name: sessionName
-                        })
+                        body: JSON.stringify(payload)
                     });
                     const data = await res.json();
                     if (data.success) {
-                        if (data.reference_analysis) setReferenceAnalysis(data.reference_analysis);
                         if (data.raw_compiled_prompt) setRawCompiledPrompt(data.raw_compiled_prompt);
-                        
+
                         const newTurn = {
                             turnId: data.turn_id,
-                            prompt: promptText,
+                            prompt: deltaPrompt || concept,
                             status: data.status,
                             videoUrl: data.video_url,
                             parent: parentTurnId || null,
-                            lock: "Maintain subject face likeness, diamond chains, and background environment.",
-                            diff: deltaPrompt ? `Delta edit: ${deltaPrompt}` : `Initial directorial cut (${aesthetic})`
+                            lock: "Maintain character role likeness, aesthetic tags, and scene sequence.",
+                            diff: deltaPrompt ? `Conversational diff: ${deltaPrompt}` : `Parody cut from storyboard`
                         };
                         setHistory(prev => [...prev, newTurn]);
                         setCurrentVideo(data.video_url);
                         setParentTurnId(data.turn_id);
                         setStatus(data.status);
                         setDeltaPrompt("");
-                        setActiveAct(3); // Advance to Act 3 Director's Chair!
+                        setActiveAct(3);
                         if (data.status === "COMMIT_RECOMMENDED") {
                             setShowCommitModal(true);
                         }
@@ -330,7 +360,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
-            // Commit & Re-Anchor
+            // Commit & Re-Anchor Handler (POST /api/commit)
             const handleCommit = async () => {
                 setLoading(true);
                 try {
@@ -375,7 +405,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
             return (
                 <div className="flex flex-col min-h-screen bg-gray-950 text-gray-100">
-                    {/* Commit & Re-Anchor Warning Modal */}
+                    {/* Commit & Re-Anchor Modal */}
                     {isCommitModalVisible && (
                         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
                             <div className="bg-gray-900 border-2 border-amber-500/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
@@ -383,7 +413,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                     <span className="text-2xl">⚠️</span>
                                     <div>
                                         <h3 className="font-bold text-base text-amber-200">Commit &amp; Re-Anchor Required</h3>
-                                        <p className="text-xs text-amber-300/80 mt-0.5">Edit depth limit reached (Depth &ge; 3). Re-anchoring establishes a fresh keyframe baseline to prevent drift.</p>
+                                        <p className="text-xs text-amber-300/80 mt-0.5">Edit depth limit reached (Depth &ge; 3). Re-anchoring establishes a fresh keyframe baseline to prevent visual drift.</p>
                                     </div>
                                 </div>
                                 <div className="space-y-4 mb-6">
@@ -429,12 +459,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                     <h1 className="text-lg font-extrabold bg-gradient-to-r from-purple-400 via-pink-400 to-amber-400 bg-clip-text text-transparent">
                                         OMNIMASH • DIGITAL DIRECTOR'S STUDIO
                                     </h1>
-                                    <p className="text-[11px] text-gray-400">Anchor &amp; Inject Progressive Latent Engine</p>
+                                    <p className="text-[11px] text-gray-400">Flexible Parody Concept &amp; Character Roles Workflow (Gemini Omni Image Roles)</p>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Session / GCS Folder & Trap-Warts Loader */}
+                        {/* GCS Session Name */}
                         <div className="flex items-center space-x-3">
                             <div className="bg-black/60 border border-gray-800 rounded-lg px-3 py-1.5 flex items-center space-x-2">
                                 <span className="text-xs text-purple-400">🗂️ GCS Session:</span>
@@ -446,18 +476,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                     className="bg-transparent border-b border-gray-700 text-xs font-mono text-purple-200 focus:outline-none focus:border-purple-400 w-32"
                                 />
                             </div>
-                            <button
-                                type="button"
-                                onClick={handleLoadTrapWartsConcept}
-                                className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-95 text-white font-bold text-xs py-1.5 px-3.5 rounded-lg shadow flex items-center gap-1.5 transition transform hover:scale-105"
-                            >
-                                <span>⚡</span>
-                                <span>Load Trap-Warts Concept</span>
-                            </button>
                         </div>
                     </header>
 
-                    {/* 3-Act Stepper Navigation Bar */}
+                    {/* 3-Act Navigation Bar */}
                     <div className="bg-gray-900/60 border-b border-gray-800/80 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-6">
                         <button
                             onClick={() => setActiveAct(1)}
@@ -468,7 +490,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             }`}
                         >
                             <span className="text-base">🎭</span>
-                            <span>Act 1: The Clash</span>
+                            <span>Act 1: The Concept &amp; Cast Manager</span>
                             {activeAct > 1 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                         </button>
                         <span className="text-gray-700 font-bold">➔</span>
@@ -481,7 +503,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             }`}
                         >
                             <span className="text-base">🎛️</span>
-                            <span>Act 2: The Fine-Tune</span>
+                            <span>Act 2: Fine-Tune &amp; Storyboard Directing</span>
                             {activeAct > 2 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                         </button>
                         <span className="text-gray-700 font-bold">➔</span>
@@ -494,7 +516,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             }`}
                         >
                             <span className="text-base">🎬</span>
-                            <span>Act 3: The Director's Chair</span>
+                            <span>Act 3: The Screening Room &amp; Branching</span>
                         </button>
                     </div>
 
@@ -502,210 +524,243 @@ UI_HTML = r"""<!DOCTYPE html>
                     <main className="flex-1 max-w-7xl w-full mx-auto p-6 overflow-y-auto custom-scrollbar">
 
                         {/* ========================================================= */}
-                        {/* 🎭 ACT 1: THE CLASH (SPLIT-SCREEN SETUP)                   */}
+                        {/* 🎭 ACT 1: THE CONCEPT & CAST MANAGER                      */}
                         {/* ========================================================= */}
                         {activeAct === 1 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-purple-950/40 to-pink-950/40 border border-purple-800/50 rounded-2xl p-5">
                                     <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
                                         <span>🎭</span>
-                                        <span>Act 1: The Clash • Define Conflicting Universes</span>
+                                        <span>Act 1: The Concept &amp; Cast Manager</span>
                                     </h2>
                                     <p className="text-xs text-gray-400 mt-1">
-                                        Choose your Subject Anchor (left) and Aesthetic Injection (right) to anchor the joint audio-video latent space.
+                                        Enter an open-ended visual concept or parody prompt. Deconstruct it into dynamic character roles, aesthetic tags, and environmental parameters with Gemini Omni Image Roles.
                                     </p>
                                 </div>
 
-                                {/* Split-Screen Card Grids */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* Left Column: Subject Anchor Cards */}
-                                    <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-5 shadow-xl">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-sm font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
-                                                <span>🎯 [SUBJECT ANCHOR]</span>
-                                            </h3>
-                                            <span className="text-[11px] bg-pink-950/80 text-pink-300 px-2 py-0.5 rounded border border-pink-800/60">
-                                                Character Likeness
-                                            </span>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {subjectArchetypes.map(arch => (
-                                                <div
-                                                    key={arch.id}
-                                                    onClick={() => setSelectedSubjectId(arch.id)}
-                                                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                                                        selectedSubjectId === arch.id
-                                                            ? "bg-pink-950/40 border-pink-500 shadow-md shadow-pink-950/50"
-                                                            : "bg-gray-950/60 border-gray-800/80 hover:border-gray-700"
-                                                    }`}
+                                {/* 1. Visual Concept / Parody Prompt & Example Chips */}
+                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
+                                            <span>💡</span>
+                                            <span>Visual Concept / Parody Prompt</span>
+                                        </label>
+                                        <span className="text-[11px] bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800">
+                                            Open-Ended NLP Input
+                                        </span>
+                                    </div>
+                                    <textarea
+                                        rows={3}
+                                        value={concept}
+                                        onChange={(e) => setConcept(e.target.value)}
+                                        placeholder="e.g. Gordon Ramsay vs Julia Child in a cyberpunk iron chef battle..."
+                                        className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 font-mono"
+                                    />
+
+                                    {/* Example Chips */}
+                                    <div>
+                                        <span className="text-[11px] text-gray-400 font-medium block mb-2">⚡ Example Concept Chips (Click to load &amp; deconstruct):</span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {exampleConcepts.map((ex, i) => (
+                                                <button
+                                                    key={i}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setConcept(ex);
+                                                        handleDeconstructConcept(ex);
+                                                    }}
+                                                    className="bg-gray-950 border border-gray-800 hover:border-pink-500/70 text-gray-300 hover:text-pink-200 px-3 py-1.5 rounded-lg text-xs transition text-left"
                                                 >
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center space-x-3">
-                                                            <span className="text-2xl">{arch.icon}</span>
-                                                            <div>
-                                                                <h4 className="text-xs font-bold text-white">{arch.name}</h4>
-                                                                <p className="text-[11px] text-gray-400 mt-0.5">{arch.desc}</p>
-                                                            </div>
-                                                        </div>
-                                                        <input
-                                                            type="radio"
-                                                            checked={selectedSubjectId === arch.id}
-                                                            onChange={() => setSelectedSubjectId(arch.id)}
-                                                            className="text-pink-500 focus:ring-0"
-                                                        />
-                                                    </div>
-                                                    {arch.id === "custom" && selectedSubjectId === "custom" && (
-                                                        <div className="mt-3 pt-3 border-t border-gray-800">
-                                                            <input
-                                                                type="text"
-                                                                value={customSubjectText}
-                                                                onChange={(e) => setCustomSubjectText(e.target.value)}
-                                                                placeholder="e.g. 1920s jazz detective with trench coat..."
-                                                                className="w-full bg-black/80 border border-gray-700 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500"
-                                                            />
-                                                        </div>
+                                                    {ex}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end pt-1">
+                                        <button
+                                            type="button"
+                                            disabled={deconstructLoading || !concept.trim()}
+                                            onClick={() => handleDeconstructConcept()}
+                                            className="bg-gradient-to-r from-pink-600 via-purple-600 to-amber-500 hover:opacity-90 text-white font-bold text-xs py-2.5 px-6 rounded-xl shadow-lg flex items-center gap-2 transition disabled:opacity-50"
+                                        >
+                                            <span>✨</span>
+                                            <span>{deconstructLoading ? "Deconstructing Concept..." : "✨ Deconstruct Concept"}</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* 2. Dynamic Character Roles Manager */}
+                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                                <span>👥</span>
+                                                <span>Character Roles (Gemini Omni Image Roles Reference)</span>
+                                            </h3>
+                                            <p className="text-[11px] text-gray-400 mt-0.5">
+                                                Define character roles with visual descriptions and attached reference image URLs to maintain likeness.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={addCharacterRole}
+                                            className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                        >
+                                            <span>+ Add Character Role</span>
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {characters.map((char, idx) => (
+                                            <div key={idx} className="bg-gray-950 border border-gray-800/90 rounded-xl p-4 space-y-3 relative group">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold font-mono bg-pink-950 text-pink-300 px-2.5 py-1 rounded border border-pink-800/80">
+                                                        {char.role_id}
+                                                    </span>
+                                                    {characters.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeCharacter(idx)}
+                                                            className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 transition"
+                                                            title="Remove Character Role"
+                                                        >
+                                                            🗑️ Remove
+                                                        </button>
                                                     )}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Right Column: Aesthetic Injection Cards */}
-                                    <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-5 shadow-xl">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                                                <span>🎨 [AESTHETIC INJECTION]</span>
-                                            </h3>
-                                            <span className="text-[11px] bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded border border-purple-800/60">
-                                                Musical Subculture
-                                            </span>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {aestheticSubcultures.map(aes => (
-                                                <div
-                                                    key={aes.id}
-                                                    onClick={() => {
-                                                        setSelectedAestheticId(aes.id);
-                                                        setAudioBeat(aes.bpm);
-                                                    }}
-                                                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                                                        selectedAestheticId === aes.id
-                                                            ? "bg-purple-950/40 border-purple-500 shadow-md shadow-purple-950/50"
-                                                            : "bg-gray-950/60 border-gray-800/80 hover:border-gray-700"
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center space-x-3">
-                                                            <span className="text-2xl">{aes.icon}</span>
-                                                            <div>
-                                                                <h4 className="text-xs font-bold text-white">{aes.name}</h4>
-                                                                <p className="text-[11px] text-gray-400 mt-0.5">{aes.desc}</p>
-                                                            </div>
-                                                        </div>
-                                                        <input
-                                                            type="radio"
-                                                            checked={selectedAestheticId === aes.id}
-                                                            onChange={() => {
-                                                                setSelectedAestheticId(aes.id);
-                                                                setAudioBeat(aes.bpm);
-                                                            }}
-                                                            className="text-purple-500 focus:ring-0"
-                                                        />
-                                                    </div>
+                                                <div>
+                                                    <label className="block text-[11px] text-gray-400 mb-1">Character Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={char.name}
+                                                        onChange={(e) => updateCharacter(idx, "name", e.target.value)}
+                                                        placeholder="e.g. Harry"
+                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-medium"
+                                                    />
                                                 </div>
-                                            ))}
-                                        </div>
+                                                <div>
+                                                    <label className="block text-[11px] text-gray-400 mb-1">Visual Likeness &amp; Description</label>
+                                                    <textarea
+                                                        rows={2}
+                                                        value={char.description}
+                                                        onChange={(e) => updateCharacter(idx, "description", e.target.value)}
+                                                        placeholder="Visual description for prompt compiler..."
+                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] text-gray-400 mb-1">
+                                                        🖼️ Reference Image URL <span className="text-purple-400 text-[10px]">(Gemini Omni Image Role)</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={char.reference_url || ""}
+                                                        onChange={(e) => updateCharacter(idx, "reference_url", e.target.value)}
+                                                        placeholder="https://example.com/character_reference.jpg"
+                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
 
-                                {/* YouTube Reference URL & Extraction Panel */}
-                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
-                                    <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                        <span>🔍</span>
-                                        <span>Multimodal YouTube Reference &amp; Keyframe Ingestion</span>
-                                    </h3>
-                                    <div className="flex flex-col sm:flex-row items-center gap-3">
-                                        <input
-                                            type="text"
-                                            value={referenceUrl}
-                                            onChange={(e) => setReferenceUrl(e.target.value)}
-                                            placeholder="https://www.youtube.com/watch?v=..."
-                                            className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
-                                        />
-                                        <button
-                                            type="button"
-                                            disabled={extractLoading || !referenceUrl}
-                                            onClick={handleExtractReference}
-                                            className="w-full sm:w-auto bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-2.5 px-4 rounded-xl shadow flex items-center justify-center gap-2 transition disabled:opacity-50"
-                                        >
-                                            <span>🔍</span>
-                                            <span>{extractLoading ? "Extracting..." : "Extract Reference Assets"}</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={researchLoading}
-                                            onClick={handleResearchClash}
-                                            className="w-full sm:w-auto bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow flex items-center justify-center gap-2 transition disabled:opacity-50"
-                                        >
-                                            <span>🧠</span>
-                                            <span>{researchLoading ? "Researching..." : "Research Parody with Gemini 3.5"}</span>
-                                        </button>
-                                    </div>
-
-                                    {/* Ingested Analysis Card & Keyframes */}
-                                    {referenceAnalysis && (
-                                        <div className="mt-5 pt-5 border-t border-gray-800 space-y-4">
-                                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-xs font-bold text-purple-300">📊 {referenceAnalysis.video_title}</span>
-                                                    <span className="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded border border-purple-800">
-                                                        {referenceAnalysis.detected_bpm} BPM Detected
+                                {/* 3. Editable Meta-Prompt Tags, Environment & Audio Beat */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {/* Aesthetic Tags & Audio Beat */}
+                                    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                        <div>
+                                            <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                <span>🎨</span>
+                                                <span>Aesthetic Tags &amp; Style Signifiers</span>
+                                            </h3>
+                                            <div className="flex flex-wrap gap-2 mb-3">
+                                                {aestheticTags.map((tag, idx) => (
+                                                    <span
+                                                        key={idx}
+                                                        className="bg-pink-950/60 border border-pink-800/80 text-pink-200 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5"
+                                                    >
+                                                        <span>{tag}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeAestheticTag(tag)}
+                                                            className="text-pink-400 hover:text-white font-bold text-xs"
+                                                        >
+                                                            ×
+                                                        </button>
                                                     </span>
-                                                </div>
-                                                <div className="flex items-center space-x-1.5">
-                                                    <span className="text-[10px] text-gray-400">Palette:</span>
-                                                    {referenceAnalysis.dominant_colors.map((c, i) => (
-                                                        <span key={i} className="w-4 h-4 rounded-full border border-gray-700 shadow" style={{ backgroundColor: c }} title={c}></span>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                {referenceAnalysis.extracted_keyframes.map((kf, i) => (
-                                                    <div key={i} className="bg-gray-950 rounded-xl border border-gray-800 p-2.5 text-left">
-                                                        <div className="h-20 bg-gray-900 rounded-lg flex items-center justify-center text-xs text-gray-500 font-mono mb-2 border border-gray-800/80">
-                                                            🖼️ Frame @ {kf.timestamp}
-                                                        </div>
-                                                        <p className="text-[11px] text-gray-300 font-mono leading-tight">{kf.usage_annotation}</p>
-                                                    </div>
                                                 ))}
                                             </div>
+                                            <form onSubmit={handleAddAestheticTag} className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={newTagInput}
+                                                    onChange={(e) => setNewTagInput(e.target.value)}
+                                                    placeholder="Add custom aesthetic tag..."
+                                                    className="flex-1 bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500"
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    className="bg-gray-800 hover:bg-gray-700 text-xs text-pink-300 font-bold px-3 py-2 rounded-lg border border-gray-700"
+                                                >
+                                                    + Add Tag
+                                                </button>
+                                            </form>
                                         </div>
-                                    )}
 
-                                    {/* Gemini Parody Research Breakdown */}
-                                    {parodyResearch && (
-                                        <div className="mt-5 p-4 bg-purple-950/30 border border-purple-800/60 rounded-xl space-y-2">
-                                            <div className="flex items-center space-x-2 text-xs font-bold text-pink-300">
-                                                <span>✨ Gemini 3.5 Flash Parody Lore Breakdown:</span>
-                                            </div>
-                                            <p className="text-xs text-purple-200">{parodyResearch.synopsis}</p>
-                                            <div className="text-[11px] text-gray-300 flex flex-wrap gap-2 pt-1">
-                                                <span className="bg-black/60 px-2 py-0.5 rounded border border-purple-900 font-mono">Suggested Audio: {parodyResearch.suggested_audio}</span>
-                                                <span className="bg-black/60 px-2 py-0.5 rounded border border-purple-900 font-mono">Vibe: {parodyResearch.suggested_vibe}</span>
-                                            </div>
+                                        <div className="pt-3 border-t border-gray-800">
+                                            <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-1">
+                                                🎵 Audio Beat &amp; Music Genre
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={audioBeat}
+                                                onChange={(e) => setAudioBeat(e.target.value)}
+                                                placeholder="e.g. 140 BPM Heavy 808 Trap"
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                                            />
                                         </div>
-                                    )}
+                                    </div>
+
+                                    {/* Environment & Camera/Lighting */}
+                                    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">
+                                                🌍 Environment &amp; Background Setting
+                                            </label>
+                                            <textarea
+                                                rows={2}
+                                                value={environmentTag}
+                                                onChange={(e) => setEnvironmentTag(e.target.value)}
+                                                placeholder="e.g. Gothic Hogwarts courtyard lit by neon stage lights and smoky haze"
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">
+                                                🎥 Camera &amp; Lighting Styling
+                                            </label>
+                                            <textarea
+                                                rows={2}
+                                                value={cameraLightingTag}
+                                                onChange={(e) => setCameraLightingTag(e.target.value)}
+                                                placeholder="e.g. Low-angle 90s fisheye tracking shot with high-contrast neon rim lights"
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* Act 1 Bottom Navigation */}
+                                {/* Bottom Navigation for Act 1 */}
                                 <div className="flex justify-end pt-4">
                                     <button
                                         type="button"
                                         onClick={() => setActiveAct(2)}
                                         className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-90 text-white font-bold text-sm py-3 px-8 rounded-xl shadow-xl flex items-center gap-2 transition transform hover:scale-105"
                                     >
-                                        <span>Proceed to Act 2: Fine-Tune Directing</span>
+                                        <span>Proceed to Act 2: Fine-Tune &amp; Storyboard Directing</span>
                                         <span>➔</span>
                                     </button>
                                 </div>
@@ -713,160 +768,131 @@ UI_HTML = r"""<!DOCTYPE html>
                         )}
 
                         {/* ========================================================= */}
-                        {/* 🎛️ ACT 2: THE FINE-TUNE (DIRECTING CONTROLS)              */}
+                        {/* 🎛️ ACT 2: FINE-TUNE & STORYBOARD DIRECTING                */}
                         {/* ========================================================= */}
                         {activeAct === 2 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-pink-950/40 to-amber-950/40 border border-pink-800/50 rounded-2xl p-5">
                                     <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
                                         <span>🎛️</span>
-                                        <span>Act 2: The Fine-Tune • Direct Props, Camera Vibe &amp; Audio Synchronization</span>
+                                        <span>Act 2: Fine-Tune &amp; Storyboard Directing</span>
                                     </h2>
                                     <p className="text-xs text-gray-400 mt-1">
-                                        Customize specific wardrobe props ("Drip"), camera lighting vibe, audio beat loop, and spoken character dialogue.
+                                        Sequence multi-character scenes for a cohesive ~1-minute parody cut. Toggle active character roles and configure character action and spoken dialogue.
                                     </p>
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                                    {/* Left 7 Cols: Directorial Controls */}
-                                    <div className="lg:col-span-7 space-y-5">
-                                        {/* 1. The Drip Selector */}
-                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
-                                            <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                                <span>💎</span>
-                                                <span>The "Drip" Selector (Aesthetic Wardrobe &amp; Props)</span>
-                                            </h3>
-                                            <div className="flex flex-wrap gap-2 mb-3">
-                                                {presetDripPool.map((prop, i) => (
-                                                    <button
-                                                        key={i}
-                                                        type="button"
-                                                        onClick={() => toggleDripProp(prop)}
-                                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
-                                                            activeDrip.includes(prop)
-                                                                ? "bg-pink-600 text-white shadow-md shadow-pink-900/50"
-                                                                : "bg-gray-950 text-gray-400 border border-gray-800 hover:border-gray-700"
-                                                        }`}
-                                                    >
-                                                        <span>{prop}</span>
-                                                        {activeDrip.includes(prop) && <span>✓</span>}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <form onSubmit={addCustomDrip} className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={customDripInput}
-                                                    onChange={(e) => setCustomDripInput(e.target.value)}
-                                                    placeholder="Add custom drip accessory (e.g. 1996 Cartier shades)..."
-                                                    className="flex-1 bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500"
-                                                />
-                                                <button
-                                                    type="submit"
-                                                    className="bg-gray-800 hover:bg-gray-700 text-xs text-pink-300 font-bold px-3 py-2 rounded-lg border border-gray-700"
-                                                >
-                                                    + Add Drip
-                                                </button>
-                                            </form>
-                                        </div>
-
-                                        {/* 2. Vibe Slider (Lighting / Camera) */}
-                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                                                    <span>🎥</span>
-                                                    <span>Vibe Slider (Lighting &amp; Camera Grading)</span>
-                                                </h3>
-                                                <span className="text-xs font-mono font-bold text-amber-300">{vibeIntensity}%</span>
-                                            </div>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="100"
-                                                value={vibeIntensity}
-                                                onChange={(e) => setVibeIntensity(parseInt(e.target.value))}
-                                                className="w-full accent-amber-500 bg-gray-950 h-2 rounded-lg cursor-pointer"
-                                            />
-                                            <div className="flex justify-between text-[10px] text-gray-500 mt-1 font-mono">
-                                                <span>0% (Gritty / 16mm)</span>
-                                                <span>50% (Balanced MTV)</span>
-                                                <span>100% (High-Gloss Neon)</span>
-                                            </div>
-                                            <div className="mt-3 p-2.5 bg-black/60 border border-gray-800/80 rounded-xl text-xs text-amber-200 font-mono">
-                                                {getVibeDescription(vibeIntensity)}
-                                            </div>
-                                        </div>
-
-                                        {/* 3. Audio Beat Loop & Voiceover Directives */}
+                                    {/* Left 7 Cols: Multi-Scene Storyboard Editor */}
+                                    <div className="lg:col-span-7 space-y-4">
                                         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
-                                            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                                                <span>🎵</span>
-                                                <span>Audio Beat Loop &amp; Voiceover Overrides</span>
-                                            </h3>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                {["140 BPM Heavy 808 Trap", "120 BPM Boom-Bap", "110 BPM Cyberpunk Synthwave", "85 BPM VHS Lo-Fi"].map((beat, i) => (
-                                                    <button
-                                                        key={i}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setAudioBeat(beat);
-                                                            setIsSilent(false);
-                                                        }}
-                                                        className={`p-2.5 rounded-xl border text-left text-xs font-mono transition ${
-                                                            !isSilent && audioBeat === beat
-                                                                ? "bg-purple-950/60 border-purple-500 text-purple-200 shadow"
-                                                                : "bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700"
-                                                        }`}
-                                                    >
-                                                        🎵 {beat}
-                                                    </button>
+                                            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                                                <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>🎬</span>
+                                                    <span>Multi-Scene Storyboard Sequence (~1-Min Cut)</span>
+                                                </h3>
+                                                <button
+                                                    type="button"
+                                                    onClick={addScene}
+                                                    className="bg-pink-900/60 hover:bg-pink-800 text-pink-200 border border-pink-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                                >
+                                                    <span>+ Add Scene</span>
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                {scenes.map((scene, idx) => (
+                                                    <div key={idx} className="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-bold text-amber-300 font-mono bg-amber-950/80 px-2.5 py-0.5 rounded border border-amber-800">
+                                                                Scene #{scene.scene_number}
+                                                            </span>
+                                                            {scenes.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeScene(idx)}
+                                                                    className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 transition"
+                                                                    title="Remove Scene"
+                                                                >
+                                                                    🗑️ Remove Scene
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Active Roles Selector */}
+                                                        <div>
+                                                            <label className="block text-[11px] font-bold text-gray-400 mb-1.5">
+                                                                Active Character Roles in this Scene:
+                                                            </label>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {characters.map((char, cIdx) => {
+                                                                    const isSelected = (scene.active_roles || []).includes(char.role_id);
+                                                                    return (
+                                                                        <button
+                                                                            key={cIdx}
+                                                                            type="button"
+                                                                            onClick={() => toggleSceneRole(idx, char.role_id)}
+                                                                            className={`px-3 py-1 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                                                                                isSelected
+                                                                                    ? "bg-purple-600 text-white shadow-md shadow-purple-900/50"
+                                                                                    : "bg-gray-900 text-gray-400 border border-gray-800 hover:border-gray-700"
+                                                                            }`}
+                                                                        >
+                                                                            <span>{isSelected ? "✓" : "○"}</span>
+                                                                            <span>{char.role_id} ({char.name || "Char"})</span>
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Action Description */}
+                                                        <div>
+                                                            <label className="block text-[11px] text-gray-400 mb-1">
+                                                                Action Description
+                                                            </label>
+                                                            <textarea
+                                                                rows={2}
+                                                                value={scene.action}
+                                                                onChange={(e) => updateScene(idx, "action", e.target.value)}
+                                                                placeholder="e.g. Arriving at foggy courtyard rapping into microphone wand..."
+                                                                className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 font-mono"
+                                                            />
+                                                        </div>
+
+                                                        {/* Character Dialogue / Voiceover Line */}
+                                                        <div>
+                                                            <label className="block text-[11px] text-gray-400 mb-1">
+                                                                🎙️ Character Dialogue / Spoken Voiceover Line
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={scene.dialogue}
+                                                                onChange={(e) => updateScene(idx, "dialogue", e.target.value)}
+                                                                placeholder='e.g. Harry: "I been cooking potions since first year. Burrr!"'
+                                                                className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 ))}
-                                            </div>
-
-                                            <div className="flex items-center space-x-2 pt-1">
-                                                <input
-                                                    type="checkbox"
-                                                    id="silentToggle"
-                                                    checked={isSilent}
-                                                    onChange={(e) => setIsSilent(e.target.checked)}
-                                                    className="rounded text-purple-600 focus:ring-0"
-                                                />
-                                                <label htmlFor="silentToggle" className="text-xs text-gray-300">
-                                                    🔇 Override to Silent Video (No background music, no audio)
-                                                </label>
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-gray-300 mb-1">
-                                                    🎙️ Spoken Voiceover / Character Dialogue Turns
-                                                </label>
-                                                <textarea
-                                                    rows={2}
-                                                    value={voiceover}
-                                                    onChange={(e) => setVoiceover(e.target.value)}
-                                                    placeholder='e.g. Harry: "I been cooking potions..." / Draco: "This is Trap or Die!"'
-                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
-                                                />
-                                                <p className="text-[10px] text-purple-400/90 mt-1">
-                                                    🎚️ Automatic Beat Ducking: Background beat will be ducked to 18% volume for crystal-clear foreground speech.
-                                                </p>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Right 5 Cols: Live Compiled Prompt Preview */}
-                                    <div className="lg:col-span-5 space-y-5">
+                                    {/* Right 5 Cols: Live Compiled Prompt Preview & Generate */}
+                                    <div className="lg:col-span-5 space-y-4">
                                         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl flex flex-col h-full justify-between">
                                             <div>
                                                 <div className="flex items-center justify-between mb-3">
                                                     <h3 className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
                                                         <span>📋</span>
-                                                        <span>Compiled Anchor &amp; Inject Prompt</span>
+                                                        <span>Anchor &amp; Inject Storyboard Prompt Preview</span>
                                                     </h3>
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            if (navigator.clipboard) navigator.clipboard.writeText(rawCompiledPrompt || "Compiled prompt");
+                                                            const preview = compileStoryboardPreview();
+                                                            if (navigator.clipboard) navigator.clipboard.writeText(preview);
                                                             setCopied(true);
                                                             setTimeout(() => setCopied(false), 2000);
                                                         }}
@@ -876,35 +902,16 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     </button>
                                                 </div>
 
-                                                <div className="space-y-2 text-xs font-mono">
-                                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                                        <span className="text-pink-400 font-bold block mb-0.5">[SUBJECT ANCHOR]:</span>
-                                                        <span className="text-gray-300">{getActiveSubject()}</span>
-                                                    </div>
-                                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                                        <span className="text-purple-400 font-bold block mb-0.5">[AESTHETIC &amp; DRIP]:</span>
-                                                        <span className="text-gray-300">
-                                                            {aestheticSubcultures.find(a => a.id === selectedAestheticId)?.desc}, accessorized with {activeDrip.join(", ")}
-                                                        </span>
-                                                    </div>
-                                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                                        <span className="text-amber-400 font-bold block mb-0.5">[CAMERA &amp; VIBE]:</span>
-                                                        <span className="text-gray-300">{getVibeDescription(vibeIntensity)}</span>
-                                                    </div>
-                                                    <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800">
-                                                        <span className="text-blue-400 font-bold block mb-0.5">[AUDIO &amp; DIALOGUE]:</span>
-                                                        <span className="text-gray-300">
-                                                            {isSilent ? "Silent Video" : audioBeat}. {voiceover}
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                                <pre className="bg-gray-950 border border-gray-800 rounded-xl p-3 text-[11px] text-gray-300 font-mono whitespace-pre-wrap max-h-[420px] overflow-y-auto custom-scrollbar leading-relaxed">
+                                                    {compileStoryboardPreview()}
+                                                </pre>
                                             </div>
 
-                                            <div className="pt-6 flex items-center justify-between gap-3">
+                                            <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
                                                 <button
                                                     type="button"
                                                     onClick={() => setActiveAct(1)}
-                                                    className="px-4 py-2.5 rounded-xl border border-gray-800 text-xs text-gray-400 hover:text-white"
+                                                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-800 text-xs text-gray-400 hover:text-white"
                                                 >
                                                     ⮌ Back to Act 1
                                                 </button>
@@ -912,10 +919,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     type="button"
                                                     disabled={loading}
                                                     onClick={handleGenerate}
-                                                    className="flex-1 bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-90 text-white font-bold text-sm py-3 px-6 rounded-xl shadow-xl flex items-center justify-center gap-2 transition disabled:opacity-50"
+                                                    className="w-full sm:flex-1 bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-90 text-white font-bold text-xs py-3 px-6 rounded-xl shadow-xl flex items-center justify-center gap-2 transition disabled:opacity-50"
                                                 >
-                                                    <span>🚀</span>
-                                                    <span>{loading ? "Rendering Directorial Cut..." : "Generate Directorial Cut ➔"}</span>
+                                                    <span>🎬</span>
+                                                    <span>{loading ? "Rendering Parody Cut..." : "🎬 Generate Parody Cut ➔"}</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -925,7 +932,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         )}
 
                         {/* ========================================================= */}
-                        {/* 🎬 ACT 3: THE DIRECTOR'S CHAIR (ITERATION & TIMELINE)      */}
+                        {/* 🎬 ACT 3: THE SCREENING ROOM & BRANCHING                  */}
                         {/* ========================================================= */}
                         {activeAct === 3 && (
                             <div className="space-y-6">
@@ -933,10 +940,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                     <div>
                                         <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
                                             <span>🎬</span>
-                                            <span>Act 3: The Director's Chair • High-Resolution Playback &amp; Conversational Edits</span>
+                                            <span>Act 3: The Screening Room &amp; Branching</span>
                                         </h2>
                                         <p className="text-xs text-gray-400 mt-1">
-                                            Review the rendered 10-second cut and apply conversational diffs via the Gemini Enterprise Interactions API.
+                                            Review the rendered parody cut, inspect the version tree timeline, and apply conversational diffs.
                                         </p>
                                     </div>
                                     <button
@@ -944,12 +951,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                         onClick={() => setActiveAct(2)}
                                         className="bg-gray-900 border border-gray-700 text-xs text-amber-300 px-3 py-1.5 rounded-lg hover:bg-gray-800"
                                     >
-                                        🎛️ Adjust Fine-Tune Directing
+                                        🎛️ Adjust Storyboard Directing
                                     </button>
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                                    {/* Left 8 Cols: Central High-Res Video Player & Delta Chat Bar */}
+                                    {/* Left 8 Cols: Video Player & Delta Prompt */}
                                     <div className="lg:col-span-8 space-y-4">
                                         <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden shadow-2xl relative">
                                             <video
@@ -962,14 +969,14 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <div className="p-4 bg-gray-900/90 border-t border-gray-800 flex items-center justify-between">
                                                 <div className="flex items-center space-x-2 text-xs">
                                                     <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
-                                                    <span className="font-bold text-gray-300">Live Latent Cut</span>
+                                                    <span className="font-bold text-gray-300">Live Parody Cut</span>
                                                     <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono">
                                                         Turn: {parentTurnId || "turn_init"}
                                                     </span>
                                                 </div>
                                                 <a
                                                     href={currentVideo}
-                                                    download="omnimash_cut.mp4"
+                                                    download="omnimash_parody_cut.mp4"
                                                     className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1"
                                                 >
                                                     <span>⬇️ Download MP4</span>
@@ -977,14 +984,14 @@ UI_HTML = r"""<!DOCTYPE html>
                                             </div>
                                         </div>
 
-                                        {/* Direct the Scene Conversational Delta Chat Bar */}
+                                        {/* Conversational Delta Chat Bar */}
                                         <form onSubmit={handleGenerate} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl flex gap-3 items-center">
                                             <div className="text-xl">💬</div>
                                             <input
                                                 type="text"
                                                 value={deltaPrompt}
                                                 onChange={(e) => setDeltaPrompt(e.target.value)}
-                                                placeholder="Direct the scene (e.g. Make his sunglasses darker and add green laser smoke)..."
+                                                placeholder="Direct the scene (e.g. Make Role A's glasses darker and add laser smoke)..."
                                                 className="flex-1 bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 font-mono"
                                             />
                                             <button
@@ -998,15 +1005,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </form>
                                     </div>
 
-                                    {/* Right 4 Cols: Chronological Layer-Cake Edit History */}
+                                    {/* Right 4 Cols: Chronological Version Tree */}
                                     <div className="lg:col-span-4 bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl flex flex-col h-[560px]">
                                         <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
                                             <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
                                                 <span>🍰</span>
-                                                <span>Chronological Edit History</span>
+                                                <span>Version Tree &amp; Timeline</span>
                                             </h3>
                                             <span className="text-[10px] bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800">
-                                                Layer-Cake Timeline
+                                                Chronological Edit History
                                             </span>
                                         </div>
 
@@ -1029,7 +1036,6 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         <span className="bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">{turn.status}</span>
                                                     </div>
                                                     <p className="text-xs font-bold text-gray-200 mb-2">{turn.prompt}</p>
-
                                                     <div className="space-y-1.5 text-[10px] font-mono">
                                                         <div className="bg-black/60 p-1.5 rounded border border-gray-800/80 text-pink-300">
                                                             <span className="font-bold">🔒 Lock:</span> {turn.lock}
