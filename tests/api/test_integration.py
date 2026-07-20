@@ -309,3 +309,27 @@ def test_e2e_directors_studio_3_act_flow() -> None:
     )
     assert r2.status_code == 200
     assert r2.json()["success"] is True
+
+
+def test_dashboard_ui_html_features() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.get("/")
+    assert res.status_code == 200
+    html = res.text
+
+    # 1. Autoplay removed from video element
+    assert "autoPlay" not in html
+
+    # 2. Act 3 prompt viewer inspection box present
+    assert "Final Generation Prompt (Active Version)" in html
+
+    # 3. Act 1 character aesthetic tag manager present
+    assert "Character Style Signifiers" in html or "Character Aesthetic Tags" in html
+    assert "aesthetic_tags" in html
+
+    # 4. Act 3 Save Final Master and Extend Scene UI present
+    assert "Save Final Master to GCS" in html
+    assert "Extend Video / Next Scene" in html
+    assert "/api/save-final" in html
+    assert "/api/extend-scene" in html

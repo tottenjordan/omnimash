@@ -131,15 +131,18 @@ UI_HTML = r"""<!DOCTYPE html>
                     role_id: "Role A",
                     name: "Harry",
                     description: "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
-                    reference_url: "https://example.com/harry.jpg"
+                    reference_url: "https://example.com/harry.jpg",
+                    aesthetic_tags: ["Red Gucci Tracksuit", "Cartier Glasses"]
                 },
                 {
                     role_id: "Role B",
                     name: "Draco",
                     description: "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
-                    reference_url: "https://example.com/draco.jpg"
+                    reference_url: "https://example.com/draco.jpg",
+                    aesthetic_tags: ["Platinum Slicked Hair", "Diamond Iced-Out Chain"]
                 }
             ]);
+            const [charTagInputs, setCharTagInputs] = useState({});
 
             const [aestheticTags, setAestheticTags] = useState([
                 "2000s Atlanta Trap Disstrack",
@@ -180,7 +183,15 @@ UI_HTML = r"""<!DOCTYPE html>
             const [lastError, setLastError] = useState(null);
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
-            const [rawCompiledPrompt, setRawCompiledPrompt] = useState("");
+
+            const initialRawPrompt = `[ROLE DEFINITIONS]\n- Role A (Harry): Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: https://example.com/harry.jpg)\n- Role B (Draco): Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes [Style: Platinum Slicked Hair, Diamond Iced-Out Chain] (Ref: https://example.com/draco.jpg)\n\n[AESTHETIC INJECTION]\nConcept: Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style\nAesthetic Tags: 2000s Atlanta Trap Disstrack, Diamond Lightning Bolt Chain, Heavy 808 Bass Lighting, Vintage Streetwear\nEnvironment: Gothic Hogwarts courtyard lit by neon stage lights and smoky haze\nCamera/Lighting: Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights\nAudio Beat: 140 BPM Heavy 808 Trap\n\n[STORYBOARD SEQUENCE]\n- Scene 1 [Role A]: Arriving at foggy Hogwarts courtyard rapping into microphone wand | Dialogue: "I been cooking potions since first year. Burrr!"\n- Scene 2 [Role B]: Stepping from shadows in high-gloss neon lighting with ice chain | Dialogue: "This is Trap or Die, Potter! Let's get it!"`;
+
+            const [rawCompiledPrompt, setRawCompiledPrompt] = useState(initialRawPrompt);
+            const [masterTitle, setMasterTitle] = useState("official_rap_battle_master");
+            const [savedGcsUri, setSavedGcsUri] = useState(null);
+            const [showSaveModal, setShowSaveModal] = useState(false);
+            const [saveLoading, setSaveLoading] = useState(false);
+            const [extendLoading, setExtendLoading] = useState(false);
 
             const [history, setHistory] = useState([
                 {
@@ -190,15 +201,17 @@ UI_HTML = r"""<!DOCTYPE html>
                     videoUrl: "/static/rendered/mock.mp4",
                     parent: null,
                     lock: "Maintain character likeness, Role A/B identities, and background environment.",
-                    diff: "Initial parody cut generated from Act 1 & Act 2 storyboard sequence."
+                    diff: "Initial parody cut generated from Act 1 & Act 2 storyboard sequence.",
+                    rawCompiledPrompt: initialRawPrompt
                 }
             ]);
 
             // Helper: Client-side Live Storyboard Prompt Compiler Preview
             const compileStoryboardPreview = () => {
                 const roleLines = characters.map(c => {
+                    const style = (c.aesthetic_tags && c.aesthetic_tags.length > 0) ? ` [Style: ${c.aesthetic_tags.join(", ")}]` : "";
                     const ref = c.reference_url ? ` (Ref: ${c.reference_url})` : "";
-                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${ref}`;
+                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${style}${ref}`;
                 }).join("\n");
 
                 const aestheticParts = [];
@@ -231,8 +244,12 @@ UI_HTML = r"""<!DOCTYPE html>
                     });
                     const data = await res.json();
                     if (data.characters && data.characters.length > 0) {
-                        setCharacters(data.characters);
-                        const newScenes = data.characters.map((char, idx) => ({
+                        const formattedChars = data.characters.map(c => ({
+                            ...c,
+                            aesthetic_tags: c.aesthetic_tags || []
+                        }));
+                        setCharacters(formattedChars);
+                        const newScenes = formattedChars.map((char, idx) => ({
                             scene_number: idx + 1,
                             active_roles: [char.role_id],
                             action: `${char.name || char.role_id} in action sequence`,
@@ -258,7 +275,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     role_id: `Role ${nextLetter}`,
                     name: `Character ${nextLetter}`,
                     description: "Distinct cinematic character with expressive facial features and stylized attire",
-                    reference_url: ""
+                    reference_url: "",
+                    aesthetic_tags: []
                 };
                 setCharacters([...characters, newRole]);
             };
@@ -267,6 +285,21 @@ UI_HTML = r"""<!DOCTYPE html>
                 const updated = [...characters];
                 updated[index] = { ...updated[index], [field]: value };
                 setCharacters(updated);
+            };
+
+            const addCharAestheticTag = (charIndex) => {
+                const inputVal = (charTagInputs[charIndex] || "").trim();
+                if (!inputVal) return;
+                const currentTags = characters[charIndex].aesthetic_tags || [];
+                if (!currentTags.includes(inputVal)) {
+                    updateCharacter(charIndex, "aesthetic_tags", [...currentTags, inputVal]);
+                }
+                setCharTagInputs(prev => ({ ...prev, [charIndex]: "" }));
+            };
+
+            const removeCharAestheticTag = (charIndex, tagToRemove) => {
+                const currentTags = characters[charIndex].aesthetic_tags || [];
+                updateCharacter(charIndex, "aesthetic_tags", currentTags.filter(t => t !== tagToRemove));
             };
 
             const removeCharacter = (index) => {
@@ -358,7 +391,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data.generation_mode) setGenerationMode(data.generation_mode);
                     setLastError(data.error || null);
                     if (data.success) {
-                        if (data.raw_compiled_prompt) setRawCompiledPrompt(data.raw_compiled_prompt);
+                        const compiled = data.raw_compiled_prompt || compileStoryboardPreview();
+                        if (compiled) setRawCompiledPrompt(compiled);
 
                         const newTurn = {
                             turnId: data.turn_id,
@@ -367,7 +401,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             videoUrl: data.video_url,
                             parent: parentTurnId || null,
                             lock: "Maintain character role likeness, aesthetic tags, and scene sequence.",
-                            diff: deltaPrompt ? `Conversational diff: ${deltaPrompt}` : `Parody cut from storyboard`
+                            diff: deltaPrompt ? `Conversational diff: ${deltaPrompt}` : `Parody cut from storyboard`,
+                            rawCompiledPrompt: compiled
                         };
                         setHistory(prev => [...prev, newTurn]);
                         setCurrentVideo(data.video_url);
@@ -407,6 +442,9 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data.generation_mode) setGenerationMode(data.generation_mode);
                     setLastError(data.error || null);
                     if (data.success) {
+                        const compiled = data.raw_compiled_prompt || rawCompiledPrompt;
+                        if (compiled) setRawCompiledPrompt(compiled);
+
                         const newTurn = {
                             turnId: data.turn_id,
                             prompt: nextPrompt,
@@ -414,7 +452,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             videoUrl: data.video_url,
                             parent: parentTurnId || null,
                             lock: "New baseline re-anchored keyframe lock established.",
-                            diff: `Checkpoint commit: ${nextPrompt}`
+                            diff: `Checkpoint commit: ${nextPrompt}`,
+                            rawCompiledPrompt: compiled
                         };
                         setHistory(prev => [...prev, newTurn]);
                         setCurrentVideo(data.video_url);
@@ -428,6 +467,89 @@ UI_HTML = r"""<!DOCTYPE html>
                     setLastError(err.message || String(err));
                 } finally {
                     setLoading(false);
+                }
+            };
+
+            // Save Final Master Handler (POST /api/save-final)
+            const handleSaveFinal = async () => {
+                setSaveLoading(true);
+                try {
+                    const res = await fetch("/api/save-final", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName,
+                            video_url: currentVideo,
+                            master_title: masterTitle || "final_master"
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success && data.gcs_uri) {
+                        setSavedGcsUri(data.gcs_uri);
+                        setShowSaveModal(false);
+                    } else if (data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    console.error("Save final master failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setSaveLoading(false);
+                }
+            };
+
+            // Extend Scene Handler (POST /api/extend-scene)
+            const handleExtendScene = async () => {
+                setExtendLoading(true);
+                try {
+                    const nextSceneNum = scenes.length + 1;
+                    const nextAction = `Scene ${nextSceneNum} continuation sequence`;
+                    const res = await fetch("/api/extend-scene", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName,
+                            turn_id: parentTurnId || null,
+                            next_scene_action: nextAction,
+                            dialogue: "",
+                            active_roles: [characters[0]?.role_id || "Role A"]
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.generation_mode) setGenerationMode(data.generation_mode);
+                    if (data.success) {
+                        const compiled = data.raw_compiled_prompt || compileStoryboardPreview();
+                        if (compiled) setRawCompiledPrompt(compiled);
+                        const newTurn = {
+                            turnId: data.turn_id,
+                            prompt: nextAction,
+                            status: data.status,
+                            videoUrl: data.video_url,
+                            parent: parentTurnId || null,
+                            lock: "Extended scene sequence lock.",
+                            diff: `Extended Scene #${nextSceneNum}`,
+                            rawCompiledPrompt: compiled
+                        };
+                        setHistory(prev => [...prev, newTurn]);
+                        if (data.video_url) setCurrentVideo(data.video_url);
+                        setParentTurnId(data.turn_id);
+                        setStatus(data.status);
+
+                        const newScene = {
+                            scene_number: nextSceneNum,
+                            active_roles: [characters[0]?.role_id || "Role A"],
+                            action: nextAction,
+                            dialogue: ""
+                        };
+                        setScenes([...scenes, newScene]);
+                        setActiveAct(2);
+                    }
+                } catch (err) {
+                    console.error("Extend scene failed:", err);
+                    addScene();
+                    setActiveAct(2);
+                } finally {
+                    setExtendLoading(false);
                 }
             };
 
@@ -474,6 +596,51 @@ UI_HTML = r"""<!DOCTYPE html>
                                     >
                                         <span>⚓</span>
                                         <span>{loading ? "Committing..." : "Commit & Re-Anchor"}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Save Final Master Modal */}
+                    {showSaveModal && (
+                        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                            <div className="bg-gray-900 border-2 border-amber-500/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+                                <div className="flex items-center space-x-3 bg-amber-950/80 border border-amber-500/50 rounded-xl p-4 mb-5 text-amber-300">
+                                    <span className="text-2xl">💾</span>
+                                    <div>
+                                        <h3 className="font-bold text-base text-amber-200">Save Final Master to GCS</h3>
+                                        <p className="text-xs text-amber-300/80 mt-0.5">Persist this rendered parody cut to dedicated production GCS final master vault storage.</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-4 mb-6">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">Master Title</label>
+                                        <input
+                                            type="text"
+                                            value={masterTitle}
+                                            onChange={(e) => setMasterTitle(e.target.value)}
+                                            placeholder="e.g. official_rap_battle_master"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-end space-x-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSaveModal(false)}
+                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={saveLoading || !masterTitle.trim()}
+                                        onClick={handleSaveFinal}
+                                        className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 text-black font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                    >
+                                        <span>💾</span>
+                                        <span>{saveLoading ? "Saving..." : "Save Final Master to GCS"}</span>
                                     </button>
                                 </div>
                             </div>
@@ -679,6 +846,57 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                     />
                                                 </div>
+
+                                                {/* Character Style Signifiers (Aesthetic Tags) Chip Manager */}
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-pink-400 uppercase tracking-wider mb-1">
+                                                        🎨 Character Style Signifiers (Aesthetic Tags)
+                                                    </label>
+                                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                                        {(char.aesthetic_tags || []).map((tag, tIdx) => (
+                                                            <span
+                                                                key={tIdx}
+                                                                className="bg-purple-950/70 border border-purple-800/80 text-purple-200 text-xs px-2.5 py-0.5 rounded-lg flex items-center gap-1.5"
+                                                            >
+                                                                <span>{tag}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeCharAestheticTag(idx, tag)}
+                                                                    className="text-purple-400 hover:text-white font-bold text-xs"
+                                                                    title="Remove Style Tag"
+                                                                >
+                                                                    ×
+                                                                </button>
+                                                            </span>
+                                                        ))}
+                                                        {(!char.aesthetic_tags || char.aesthetic_tags.length === 0) && (
+                                                            <span className="text-[10px] text-gray-500 italic">No specific character style tags</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex gap-1.5">
+                                                        <input
+                                                            type="text"
+                                                            value={charTagInputs[idx] || ""}
+                                                            onChange={(e) => setCharTagInputs({ ...charTagInputs, [idx]: e.target.value })}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === "Enter") {
+                                                                    e.preventDefault();
+                                                                    addCharAestheticTag(idx);
+                                                                }
+                                                            }}
+                                                            placeholder="e.g. Red Gucci Tracksuit, Cartier Glasses..."
+                                                            className="flex-1 bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => addCharAestheticTag(idx)}
+                                                            className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs px-3 py-1.5 rounded-lg shadow transition"
+                                                        >
+                                                            + Add Style
+                                                        </button>
+                                                    </div>
+                                                </div>
+
                                                 <div>
                                                     <label className="block text-[11px] text-gray-400 mb-1">
                                                         🖼️ Reference Image URL <span className="text-purple-400 text-[10px]">(Gemini Omni Image Role)</span>
@@ -1026,18 +1244,37 @@ UI_HTML = r"""<!DOCTYPE html>
                                     </div>
                                 )}
 
+                                {/* GCS Export Success Banner */}
+                                {savedGcsUri && (
+                                    <div className="bg-green-950/60 border-2 border-green-500/70 rounded-2xl p-4 shadow-xl text-green-200 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-2xl">💾</span>
+                                            <div>
+                                                <h4 className="font-bold text-xs text-green-300 uppercase tracking-wider">Final Master Saved to GCS</h4>
+                                                <p className="text-xs font-mono text-green-200/90 mt-0.5 break-all">{savedGcsUri}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSavedGcsUri(null)}
+                                            className="text-green-400 hover:text-white text-xs font-bold px-2 py-1 rounded bg-green-900/60 border border-green-700"
+                                        >
+                                            ✕ Dismiss
+                                        </button>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                                    {/* Left 8 Cols: Video Player & Delta Prompt */}
+                                    {/* Left 8 Cols: Video Player, Action Toolbar, Prompt Viewer, & Delta Prompt */}
                                     <div className="lg:col-span-8 space-y-4">
                                         <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden shadow-2xl relative">
                                             <video
                                                 src={currentVideo}
                                                 controls
-                                                autoPlay
                                                 loop
                                                 className="w-full aspect-video object-contain bg-black"
                                             />
-                                            <div className="p-4 bg-gray-900/90 border-t border-gray-800 flex items-center justify-between">
+                                            <div className="p-4 bg-gray-900/90 border-t border-gray-800 flex flex-wrap items-center justify-between gap-3">
                                                 <div className="flex items-center space-x-2 text-xs">
                                                     <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
                                                     <span className="font-bold text-gray-300">Live Parody Cut</span>
@@ -1045,14 +1282,49 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         Turn: {parentTurnId || "turn_init"}
                                                     </span>
                                                 </div>
-                                                <a
-                                                    href={currentVideo}
-                                                    download="omnimash_parody_cut.mp4"
-                                                    className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1"
-                                                >
-                                                    <span>⬇️ Download MP4</span>
-                                                </a>
+                                                <div className="flex items-center space-x-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowSaveModal(true)}
+                                                        className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                    >
+                                                        <span>💾</span>
+                                                        <span>Save Final Master to GCS</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={extendLoading}
+                                                        onClick={handleExtendScene}
+                                                        className="text-xs bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition disabled:opacity-50"
+                                                    >
+                                                        <span>➕</span>
+                                                        <span>{extendLoading ? "Extending..." : "Extend Video / Next Scene"}</span>
+                                                    </button>
+                                                    <a
+                                                        href={currentVideo}
+                                                        download="omnimash_parody_cut.mp4"
+                                                        className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1"
+                                                    >
+                                                        <span>⬇️ Download MP4</span>
+                                                    </a>
+                                                </div>
                                             </div>
+                                        </div>
+
+                                        {/* 🧠 Final Generation Prompt (Active Version) */}
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>🧠</span>
+                                                    <span>Final Generation Prompt (Active Version)</span>
+                                                </h3>
+                                                <span className="text-[10px] bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800 font-mono">
+                                                    Gemini Omni Directives
+                                                </span>
+                                            </div>
+                                            <pre className="bg-gray-950 border border-gray-800 rounded-xl p-3 text-[11px] text-gray-300 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar leading-relaxed">
+                                                {rawCompiledPrompt || "No compiled prompt available for active version."}
+                                            </pre>
                                         </div>
 
                                         {/* Conversational Delta Chat Bar */}
@@ -1077,7 +1349,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                     </div>
 
                                     {/* Right 4 Cols: Chronological Version Tree */}
-                                    <div className="lg:col-span-4 bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl flex flex-col h-[560px]">
+                                    <div className="lg:col-span-4 bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl flex flex-col h-[640px]">
                                         <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
                                             <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
                                                 <span>🍰</span>
@@ -1095,6 +1367,9 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     onClick={() => {
                                                         setCurrentVideo(turn.videoUrl);
                                                         setParentTurnId(turn.turnId);
+                                                        if (turn.rawCompiledPrompt) {
+                                                            setRawCompiledPrompt(turn.rawCompiledPrompt);
+                                                        }
                                                     }}
                                                     className={`p-3 rounded-xl border text-left cursor-pointer transition ${
                                                         parentTurnId === turn.turnId
