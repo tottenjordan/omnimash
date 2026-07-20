@@ -63,6 +63,9 @@ def get_html(act_num: int, content_body: str) -> str:
                 </div>
             </div>
             <div class="flex items-center space-x-3">
+                <button class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-xl px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+                    <span>🔄 New Project / Start Over</span>
+                </button>
                 <div class="flex items-center gap-2 bg-gray-950 border border-green-800/80 px-3 py-1.5 rounded-xl shadow-inner">
                     <span class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
                     <span class="text-xs font-bold text-green-400 font-mono">🟢 Live Gemini Omni Flash (720p + Synced Audio)</span>
@@ -134,10 +137,14 @@ act1_content = """
                     </div>
                 </div>
                 <div class="bg-gray-950 p-3 rounded-xl border border-gray-800 space-y-1.5">
-                    <span class="text-[10px] font-mono font-bold text-amber-400 uppercase">ENVIRONMENT &amp; AUDIO BEAT</span>
+                    <span class="text-[10px] font-mono font-bold text-amber-400 uppercase">ENVIRONMENT &amp; AUDIO DIRECTION</span>
                     <div class="space-y-1 text-[11px] text-gray-300">
                         <p><strong class="text-gray-400">Environment:</strong> Abandoned house with potion stoves</p>
                         <p><strong class="text-gray-400">Audio Beat:</strong> <span class="bg-amber-950 text-amber-300 px-1.5 py-0.5 rounded font-mono text-[10px] border border-amber-800">140 BPM Heavy 808 Trap</span></p>
+                        <div class="pt-1">
+                            <label class="block text-[9.5px] font-mono font-bold text-pink-400 uppercase tracking-wider mb-0.5">🎙️ Vocal Delivery / Voiceover Style</label>
+                            <input type="text" readonly value="High-energy back-and-forth rap battle delivery with synchronized lip-sync" class="w-full bg-gray-900 border border-gray-800 rounded-lg p-1.5 text-[10px] text-pink-200 font-mono shadow-inner" />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -162,7 +169,11 @@ act1_content = """
                     <div class="text-[10px] font-mono bg-gray-900 p-1.5 rounded text-gray-400 truncate border border-gray-800">
                         Ref: gs://reference-images-jt-trend-trawler/harry_drip.jpeg
                     </div>
-                    <div class="pt-2 border-t border-gray-800/80 space-y-1.5">
+                    <div class="space-y-1">
+                        <label class="block text-[9.5px] font-mono font-bold text-amber-400 uppercase tracking-wider">🎙️ Voice Style &amp; Accent</label>
+                        <input type="text" readonly value="Fast-paced confident Atlanta rap flow with autotune" class="w-full bg-gray-900 border border-gray-800 rounded-lg p-1.5 text-[10px] text-amber-200 font-mono shadow-inner" />
+                    </div>
+                    <div class="pt-1 border-t border-gray-800/80 space-y-1.5">
                         <span class="text-[9.5px] font-mono font-bold text-pink-400 uppercase tracking-wider block">🎨 Style Signifiers (Aesthetic Tags)</span>
                         <div class="flex flex-wrap gap-1.5">
                             <span class="bg-purple-950/90 text-purple-200 border border-purple-800 text-[10px] px-2 py-0.5 rounded font-mono">Red Gucci Tracksuit</span>
@@ -185,7 +196,11 @@ act1_content = """
                     <div class="text-[10px] font-mono bg-gray-900 p-1.5 rounded text-gray-400 truncate border border-gray-800">
                         Ref: gs://reference-images-jt-trend-trawler/draco.jpeg
                     </div>
-                    <div class="pt-2 border-t border-gray-800/80 space-y-1.5">
+                    <div class="space-y-1">
+                        <label class="block text-[9.5px] font-mono font-bold text-purple-400 uppercase tracking-wider">🎙️ Voice Style &amp; Accent</label>
+                        <input type="text" readonly value="Pompous, cynical British drawl with aggressive rap cadence" class="w-full bg-gray-900 border border-gray-800 rounded-lg p-1.5 text-[10px] text-purple-200 font-mono shadow-inner" />
+                    </div>
+                    <div class="pt-1 border-t border-gray-800/80 space-y-1.5">
                         <span class="text-[9.5px] font-mono font-bold text-pink-400 uppercase tracking-wider block">🎨 Style Signifiers (Aesthetic Tags)</span>
                         <div class="flex flex-wrap gap-1.5">
                             <span class="bg-purple-950/90 text-purple-200 border border-purple-800 text-[10px] px-2 py-0.5 rounded font-mono">Platinum Slicked Hair</span>
@@ -279,7 +294,12 @@ act2_content = """
 Concept: Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style
 Aesthetic Tags: 2000s Atlanta Trap Disstrack, Heavy 808 Bass Lighting, Vintage Streetwear
 Environment: Abandoned urban house with working potion stoves
-Audio Beat: 140 BPM Heavy 808 Trap
+
+[AUDIO & VOCAL DIRECTION]
+Background Beat: 140 BPM Heavy 808 Trap (ducked at 15% volume under dialogue)
+Voice Style (Role A): Fast-paced confident Atlanta rap flow with autotune
+Voice Style (Role B): Pompous, cynical British drawl with aggressive rap cadence
+Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync
 
 [STORYBOARD SEQUENCE]
 - Scene 1 [Role A]: Standing over potion stove cooking potions with baking soda. | Dialogue: "I been cooking potions since first year, bruv!"
@@ -325,7 +345,7 @@ act3_content = """
                     Gemini Omni Directives
                 </span>
             </div>
-            <pre class="bg-gray-950 p-2.5 rounded-xl border border-gray-800 text-[10px] font-mono text-gray-300 overflow-y-auto whitespace-pre-wrap max-h-24 custom-scrollbar leading-relaxed">
+            <pre class="bg-gray-950 p-2.5 rounded-xl border border-gray-800 text-[10px] font-mono text-gray-300 overflow-y-auto whitespace-pre-wrap max-h-28 custom-scrollbar leading-relaxed">
 [ROLE DEFINITIONS]
 - Role A (Harry "Gucci"): Harry "Gucci", round Cartier glasses, red Gucci tracksuit [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: gs://reference-images-jt-trend-trawler/harry_drip.jpeg)
 - Role B (Young Draco "Jeezy"): Young Draco "Jeezy", platinum hair, green velvet blazer [Style: Platinum Slicked Hair, Diamond Iced-Out Chain] (Ref: gs://reference-images-jt-trend-trawler/draco.jpeg)
@@ -333,7 +353,13 @@ act3_content = """
 [AESTHETIC INJECTION]
 Concept: Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style
 Aesthetic Tags: 2000s Atlanta Trap Disstrack, Heavy 808 Bass Lighting, Vintage Streetwear
-Environment: Abandoned urban house with working potion stoves | Audio Beat: 140 BPM Heavy 808 Trap
+Environment: Abandoned urban house with working potion stoves
+
+[AUDIO & VOCAL DIRECTION]
+Background Beat: 140 BPM Heavy 808 Trap (ducked at 15% volume under dialogue)
+Voice Style (Role A): Fast-paced confident Atlanta rap flow with autotune
+Voice Style (Role B): Pompous, cynical British drawl with aggressive rap cadence
+Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync
 
 [STORYBOARD SEQUENCE]
 - Scene 1 [Role A]: Standing over potion stove cooking potions with baking soda. | Dialogue: "I been cooking potions since first year, bruv!"
@@ -424,6 +450,7 @@ for img_target, html_code in html_files.items():
     im.save(img_target, "JPEG", quality=92)
 
     artifact_dirs = [
+        "/usr/local/google/home/jordantotten/.gemini/jetski/brain/3560c909-b993-4b35-8d92-8ae1ffa85ea1",
         "/usr/local/google/home/jordantotten/.gemini/jetski/brain/4b2ceabd-0603-4e86-9966-e874e937e9b7",
         "/usr/local/google/home/jordantotten/.gemini/jetski/brain/0157fe8d-a743-41ec-9ab2-3e2221f21102",
     ]

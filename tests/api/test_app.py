@@ -94,3 +94,58 @@ def test_save_final_master_and_extend_scene_endpoints():
     data_extend = res_extend.json()
     assert data_extend["success"] is True
     assert data_extend["video_url"] is not None
+
+
+def test_api_generate_and_extend_scene_with_vocal_delivery_and_voice_style():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    gen_res = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_vocal",
+            "project_id": "prj_vocal",
+            "concept": "Harry rap battle",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Harry",
+                    "description": "Young wizard",
+                    "voice_style": "Melodic autotune trap flow",
+                }
+            ],
+            "scenes": [
+                {
+                    "scene_number": 1,
+                    "active_roles": ["Role A"],
+                    "action": "Cooking potions",
+                }
+            ],
+            "vocal_delivery": "Dynamic studio vocal projection",
+            "clip_index": 0,
+        },
+    )
+    assert gen_res.status_code == 200
+    gen_data = gen_res.json()
+    assert gen_data["success"] is True
+    assert (
+        "Voice Style (Role A): Melodic autotune trap flow"
+        in gen_data["raw_compiled_prompt"]
+    )
+    assert (
+        "Vocal Delivery: Dynamic studio vocal projection"
+        in gen_data["raw_compiled_prompt"]
+    )
+
+    turn_id = gen_data["turn_id"]
+    res_extend = client.post(
+        "/api/extend-scene",
+        json={
+            "session_name": "vocal_session_1",
+            "turn_id": turn_id,
+            "next_scene_action": "Harry drops mic",
+            "vocal_delivery": "Echoing reverberant vocal fadeout",
+        },
+    )
+    assert res_extend.status_code == 200
+    assert res_extend.json()["success"] is True

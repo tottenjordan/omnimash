@@ -1,7 +1,9 @@
 from omnimash.prompts.compiler import (
+    CharacterRole,
     CompiledDeltaPrompt,
     CompiledPromptParts,
     PromptCompiler,
+    SceneDirective,
 )
 from omnimash.prompts.taxonomy import StylePreset
 
@@ -143,4 +145,61 @@ def test_character_role_specific_aesthetic_tags():
     assert (
         "- Role A (Harry): Wizard with round glasses [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: gs://bucket/harry.jpg)"
         in prompt
+    )
+
+
+def test_compile_storyboard_with_audio_and_vocal_direction():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Harry",
+            description="Harry Potter, young wizard",
+            aesthetic_tags=["Red Gucci Tracksuit", "Cartier Glasses"],
+            reference_url="gs://bucket/harry.jpg",
+            voice_style="Fast-paced confident Atlanta rap flow with autotune",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Draco",
+            description="Draco Malfoy, rival wizard",
+            aesthetic_tags=["Platinum Slicked Hair"],
+            reference_url="gs://bucket/draco.jpg",
+            voice_style="Pompous, cynical British drawl with aggressive cadence",
+        ),
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A"],
+            action="Standing over potion stove",
+            dialogue="I been cooking potions since first year. Burrr!",
+        )
+    ]
+    compiled = compiler.compile_storyboard(
+        concept="Harry vs Draco rap battle",
+        characters=chars,
+        scenes=scenes,
+        aesthetic_tags=["2000s Atlanta Trap Disstrack"],
+        environment_tag="Hogwarts courtyard",
+        audio_beat="140 BPM Heavy 808 Trap",
+        vocal_delivery="High-energy back-and-forth rap battle delivery with synchronized lip-sync",
+    )
+
+    assert "[AUDIO & VOCAL DIRECTION]" in compiled
+    assert (
+        "Background Beat: 140 BPM Heavy 808 Trap (ducked at 15% volume under dialogue)"
+        in compiled
+    )
+    assert (
+        "Voice Style (Role A): Fast-paced confident Atlanta rap flow with autotune"
+        in compiled
+    )
+    assert (
+        "Voice Style (Role B): Pompous, cynical British drawl with aggressive cadence"
+        in compiled
+    )
+    assert (
+        "Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync"
+        in compiled
     )

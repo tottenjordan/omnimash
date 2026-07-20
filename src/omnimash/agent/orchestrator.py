@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+from typing import Any
 
 from google.adk.agents import Agent
 
@@ -52,10 +53,11 @@ class OmniMashAgent:
         compiled_override: str | None = None,
         session_name: str | None = None,
         concept: str | None = None,
-        characters: list[dict] | None = None,
+        characters: list[Any] | None = None,
         scenes: list[dict] | None = None,
         aesthetic_tags: list[str] | None = None,
         environment_tag: str | None = None,
+        vocal_delivery: str | None = None,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
@@ -117,6 +119,30 @@ class OmniMashAgent:
                                     description=c.get("description", ""),
                                     reference_url=c.get("reference_url"),
                                     aesthetic_tags=c.get("aesthetic_tags", []),
+                                    voice_style=c.get("voice_style", ""),
+                                )
+                            )
+                        elif hasattr(c, "model_dump"):
+                            cd = c.model_dump()
+                            char_objs.append(
+                                CharacterRole(
+                                    role_id=cd.get("role_id", ""),
+                                    name=cd.get("name", ""),
+                                    description=cd.get("description", ""),
+                                    reference_url=cd.get("reference_url"),
+                                    aesthetic_tags=cd.get("aesthetic_tags", []),
+                                    voice_style=cd.get("voice_style", ""),
+                                )
+                            )
+                        elif hasattr(c, "role_id"):
+                            char_objs.append(
+                                CharacterRole(
+                                    role_id=getattr(c, "role_id", ""),
+                                    name=getattr(c, "name", ""),
+                                    description=getattr(c, "description", ""),
+                                    reference_url=getattr(c, "reference_url", None),
+                                    aesthetic_tags=getattr(c, "aesthetic_tags", []),
+                                    voice_style=getattr(c, "voice_style", ""),
                                 )
                             )
                 scene_objs: list[SceneDirective] = []
@@ -140,6 +166,7 @@ class OmniMashAgent:
                     aesthetic_tags=aesthetic_tags,
                     environment_tag=environment_tag,
                     audio_beat=audio_stem,
+                    vocal_delivery=vocal_delivery,
                 )
                 meta_prompt = (
                     compiled_override if compiled_override else storyboard_prompt
@@ -265,6 +292,7 @@ class OmniMashAgent:
         active_roles: list[str] | None = None,
         user_id: str = "usr_default",
         project_id: str = "prj_default",
+        vocal_delivery: str | None = None,
     ) -> AgentTurnResponse:
         prompt_parts = []
         if active_roles:
@@ -284,6 +312,7 @@ class OmniMashAgent:
             parent_turn_id=turn_id,
             session_name=session_name,
             voiceover=dialogue,
+            vocal_delivery=vocal_delivery,
         )
 
 

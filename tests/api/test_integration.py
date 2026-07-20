@@ -333,3 +333,11 @@ def test_dashboard_ui_html_features() -> None:
     assert "Extend Video / Next Scene" in html
     assert "/api/save-final" in html
     assert "/api/extend-scene" in html
+
+    # 5. Act 1 Voice style and vocal delivery controls present
+    assert "Voice Style & Accent" in html
+    assert "Vocal Delivery / Voiceover Style" in html
+    assert "[AUDIO & VOCAL DIRECTION]" in html
+
+    # 6. Top header 1-click New Project / Start Over reset button present
+    assert "New Project" in html or "Start Over" in html
