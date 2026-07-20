@@ -79,6 +79,7 @@ class CharacterRole:
     name: str
     description: str
     reference_url: str | None = None
+    aesthetic_tags: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -239,9 +240,14 @@ class PromptCompiler:
     ) -> str:
         role_lines: list[str] = []
         for char in characters:
+            style_str = (
+                f" [Style: {', '.join(char.aesthetic_tags)}]"
+                if char.aesthetic_tags
+                else ""
+            )
             ref_str = f" (Ref: {char.reference_url})" if char.reference_url else ""
             role_lines.append(
-                f"- {char.role_id} ({char.name}): {char.description}{ref_str}"
+                f"- {char.role_id} ({char.name}): {char.description}{style_str}{ref_str}"
             )
         roles_block = "\n".join(role_lines) if role_lines else "- None"
 
@@ -280,6 +286,74 @@ class PromptCompiler:
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         """Parses open-ended parody concept shorthand into structured MetaPromptTags with CharacterRoles, Aesthetic Tags, Environment, Camera/Lighting, and Audio Beat."""
         lower = concept.lower().strip()
+
+        def get_char_tags(k: str) -> list[str]:
+            if any(t in lower for t in ("trap", "atlanta", "808", "rap", "hip-hop")):
+                tag_map = {
+                    "harry": ["Red Gucci Tracksuit", "Cartier Glasses"],
+                    "draco": ["Platinum Slicked Hair", "Diamond Iced-Out Chain"],
+                    "snape": ["Black Puffer Jacket", "Cuban Link Chain"],
+                    "dumbledore": ["Oversized Silk Robes", "Half-Moon Cartier Glasses"],
+                    "voldemort": ["Chalk-White Techwear", "Diamond Snake Medallion"],
+                    "ramsay": ["Diamond Chef Knife Chain", "Designer White Streetwear"],
+                    "julia": ["Vintage Pearl Medallion", "Retro Silk Apron"],
+                    "samurai": ["Diamond Katana Chain", "Streetwear Samurai Armor"],
+                    "ninja": ["Iced-Out Ninja Mask", "Tactical Techwear"],
+                }
+                return tag_map.get(k, ["Vintage Streetwear", "Diamond Chain"])
+            elif any(
+                t in lower
+                for t in (
+                    "cyberpunk",
+                    "neon",
+                    "futuristic",
+                    "iron chef",
+                    "samurai",
+                    "ninja",
+                    "arcade",
+                )
+            ):
+                tag_map = {
+                    "harry": [
+                        "Holographic Wire-Rim Glasses",
+                        "LED-Lined Techwear Robes",
+                    ],
+                    "draco": ["Silver Techwear Coat", "Holographic Visor"],
+                    "snape": ["High-Collar Dark Techwear", "Holographic Cyber Coat"],
+                    "dumbledore": ["Neon-Embroidered Robes", "Holographic Spectacles"],
+                    "voldemort": ["Chrome Cyber Armor", "Serpentine Neon Glow"],
+                    "ramsay": ["Holographic Chef Jacket", "Laser Thermal Blade"],
+                    "julia": ["Cybernetic Apron", "Holographic Visor"],
+                    "samurai": ["Glowing LED Armor", "Energy Katana"],
+                    "ninja": ["Chrome Cyber Mask", "Stealth Holographic Visor"],
+                }
+                return tag_map.get(k, ["Futuristic Techwear", "Holographic Visor"])
+            elif any(t in lower for t in ("anime", "vhs", "lo-fi")):
+                tag_map = {
+                    "harry": ["Cel-Shaded Wire-Rim Glasses", "Retro Anime Robes"],
+                    "draco": ["Cel-Shaded Platinum Hair", "Silver-Trimmed Uniform"],
+                    "snape": ["Cel-Shaded Dark Cloak", "Analog Grain Filter"],
+                    "dumbledore": ["Vintage Cel-Shaded Robes", "Flowing Silver Beard"],
+                    "voldemort": ["Chalk-White Cel-Shading", "Serpentine Aura"],
+                    "ramsay": ["Cel-Shaded Chef Coat", "Flame Aura"],
+                    "julia": ["Retro Cel-Shaded Apron", "Vintage Kitchen Attire"],
+                    "samurai": ["Cel-Shaded Samurai Armor", "Energy Katana"],
+                    "ninja": ["Cel-Shaded Ninja Garb", "Stealth Visor"],
+                }
+                return tag_map.get(k, ["Cel-Shaded Styling", "Retro Headband"])
+            else:
+                tag_map = {
+                    "harry": ["Red Gucci Tracksuit", "Cartier Glasses"],
+                    "draco": ["Tailored Silver-Trimmed Robes", "Platinum Slicked Hair"],
+                    "snape": ["Flowing Black Cloak", "Severe Dark Attire"],
+                    "dumbledore": ["Ornate Wizard Robes", "Half-Moon Spectacles"],
+                    "voldemort": ["Chalk-White Silk Robes", "Serpentine Aura"],
+                    "ramsay": ["Crisp White Chef Jacket", "Fiery Apron"],
+                    "julia": ["Classic Vintage Apron", "Warm Retro Styling"],
+                    "samurai": ["Glowing LED Armor", "Energy Katana"],
+                    "ninja": ["Chrome Cyber Mask", "Stealth Visor"],
+                }
+                return tag_map.get(k, ["Stylized Wardrobe", "Cinematic Attire"])
 
         # 1. Character Extraction
         chars: list[CharacterRole] = []
@@ -333,6 +407,7 @@ class PromptCompiler:
                         role_id=role_labels[min(idx, len(role_labels) - 1)],
                         name=name,
                         description=desc,
+                        aesthetic_tags=get_char_tags(k),
                     )
                 )
         else:
@@ -346,6 +421,7 @@ class PromptCompiler:
                         role_id="Role A",
                         name=name_a.title(),
                         description=f"{name_a.title()}, a distinct cinematic character with sharp expressive features",
+                        aesthetic_tags=get_char_tags(name_a.lower()),
                     )
                 )
                 chars.append(
@@ -353,6 +429,7 @@ class PromptCompiler:
                         role_id="Role B",
                         name=name_b.title(),
                         description=f"{name_b.title()}, a compelling rival character with bold visual presence",
+                        aesthetic_tags=get_char_tags(name_b.lower()),
                     )
                 )
             else:
@@ -361,6 +438,7 @@ class PromptCompiler:
                         role_id="Role A",
                         name="Lead Subject",
                         description="A distinct cinematic character with expressive facial features and stylized attire",
+                        aesthetic_tags=get_char_tags("lead"),
                     )
                 )
 

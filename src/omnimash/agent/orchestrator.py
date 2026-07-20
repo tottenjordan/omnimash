@@ -116,6 +116,7 @@ class OmniMashAgent:
                                     name=c.get("name", ""),
                                     description=c.get("description", ""),
                                     reference_url=c.get("reference_url"),
+                                    aesthetic_tags=c.get("aesthetic_tags", []),
                                 )
                             )
                 scene_objs: list[SceneDirective] = []

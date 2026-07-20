@@ -114,3 +114,33 @@ def test_compiler_vibe_slider_and_drip_props():
     assert "Diamond Lightning Bolt Chain" in prompt
     assert "Vintage Gucci Tracksuit" in prompt
     assert "High-gloss neon lighting" in prompt or "anamorphic" in prompt
+
+
+def test_character_role_specific_aesthetic_tags():
+    from omnimash.prompts.compiler import CharacterRole, PromptCompiler, SceneDirective
+
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Harry",
+            description="Wizard with round glasses",
+            reference_url="gs://bucket/harry.jpg",
+            aesthetic_tags=["Red Gucci Tracksuit", "Cartier Glasses"],
+        )
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1, active_roles=["Role A"], action="Cooking potions"
+        )
+    ]
+    prompt = compiler.compile_storyboard(
+        concept="Harry Trap",
+        characters=chars,
+        scenes=scenes,
+    )
+    assert "[Style: Red Gucci Tracksuit, Cartier Glasses]" in prompt
+    assert (
+        "- Role A (Harry): Wizard with round glasses [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: gs://bucket/harry.jpg)"
+        in prompt
+    )
