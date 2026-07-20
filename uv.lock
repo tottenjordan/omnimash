@@ -678,19 +678,6 @@ wheels = [
 ]
 
 [[package]]
-name = "gtts"
-version = "2.5.4"
-source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
-dependencies = [
-    { name = "click" },
-    { name = "requests" },
-]
-sdist = { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/gtts/gtts-2.5.4.tar.gz", hash = "sha256:f5737b585f6442f677dbe8773424fd50697c75bdf3e36443585e30a8d48c1884" }
-wheels = [
-    { url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/gtts/gTTS-2.5.4-py3-none-any.whl", hash = "sha256:5dd579377f9f5546893bc26315ab1f846933dc27a054764b168f141065ca8436" },
-]
-
-[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" }
@@ -796,7 +783,6 @@ dependencies = [
     { name = "google-cloud-aiplatform" },
     { name = "google-cloud-storage" },
     { name = "google-genai" },
-    { name = "gtts" },
     { name = "pillow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -821,7 +807,6 @@ requires-dist = [
     { name = "google-cloud-aiplatform", specifier = ">=1.161.0" },
     { name = "google-cloud-storage", specifier = ">=3.13.0" },
     { name = "google-genai", specifier = ">=2.12.1" },
-    { name = "gtts", specifier = ">=2.5.4" },
     { name = "pillow", specifier = ">=11.0.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },

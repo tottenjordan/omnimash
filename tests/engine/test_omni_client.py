@@ -15,25 +15,21 @@ from omnimash.engine.omni_client import (
 import omnimash.engine.omni_client as omni_module
 
 
-@pytest.fixture(autouse=True)
-def mock_gtts_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Mock gTTS network calls in tests for instant, deterministic test execution."""
-    monkeypatch.setattr("gtts.gTTS.save", lambda self, path: None, raising=False)
-
-
-def test_zero_veo_references() -> None:
-    """Verify that _generate_live_veo_video method and Veo model references are completely removed."""
+def test_zero_veo_or_tts_references() -> None:
+    """Verify that Veo and external TTS references are completely removed."""
     assert not hasattr(OmniFlashClient, "_generate_live_veo_video")
     src = inspect.getsource(omni_module)
     assert "veo-2.0-generate-001" not in src
     assert "generate_live_veo_video" not in src
-    assert "Veo" not in src
+    assert "gtts" not in src
+    assert "gTTS" not in src
+    assert "flite" not in src
 
 
 def test_dual_strategy_client_initialization_both_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify OmniFlashClient initializes both Developer API and Vertex AI clients when both are available."""
+    """Verify OmniFlashClient initializes both Developer API and Vertex AI clients and prefers Developer API when API key is present."""
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj-dual")
     monkeypatch.setenv("GEMINI_LOCATION", "us-central1")
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-api-key")
@@ -62,8 +58,8 @@ def test_dual_strategy_client_initialization_both_configured(
         assert vertex_init.get("project") == "test-proj-dual"
         assert vertex_init.get("location") == "us-central1"
 
-        # Verify primary genai client is set to Vertex AI by default
-        assert client._genai_client == client._vertex_client
+        # Verify primary genai client is set to Developer API by default when API key is provided
+        assert client._genai_client == client._dev_client
 
 
 def test_dual_strategy_client_initialization_dev_only(
@@ -127,6 +123,8 @@ def test_switch_to_developer_api(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with patch("google.genai.Client", side_effect=mock_client_factory):
         client = OmniFlashClient(mock_mode=False)
+        # Set active client to vertex to test manual or error-triggered switch
+        client._genai_client = client._vertex_client
         assert client._genai_client == client._vertex_client
         switched = client.switch_to_developer_api()
         assert switched is True

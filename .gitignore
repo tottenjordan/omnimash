@@ -22,6 +22,8 @@ adc.json
 # Generated media artifacts (persisted in Google Cloud Storage)
 static/rendered/*
 !static/rendered/.gitkeep
+static/sessions/*
+!static/sessions/.gitkeep
 *.mp4
 *.wav
 *.mov
