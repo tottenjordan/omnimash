@@ -20,12 +20,12 @@
 
 > AI Parody & Mashup Video Studio inspired by viral sensations like **[Dripwarts](https://www.youtube.com/@Onirostudios)** (*DumbleDior*, *Snape Dawg*, *Harry Potter*). Powered by **`gemini-omni-flash-preview`** (unified multimodal video, native synced audio, and conversational diffs in 720p), **Gemini Omni Image Roles** ([Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles)), and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
 
-**OmniMash** runs a flexible multimodal generation and conversational diff pipeline: it ingests open-ended visual concepts, deconstructs them via NLP into editable `MetaPromptTags`, binds dynamic Character Roles (`Role A`, `Role B`) to reference images via **Gemini Omni Image Roles**, compiles multi-scene storyboards into structured prompt blocks (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`), generates 10-second 720p clips with native audio via **Gemini Omni Flash**, branches edits non-linearly across a **Session Version Tree DAG**, and flushes context decay via **Commit & Branch Checkpointing**.
+**OmniMash** runs a flexible multimodal generation and conversational diff pipeline: it ingests open-ended visual concepts, deconstructs them via NLP into editable `MetaPromptTags`, binds dynamic Character Roles (`Role A`, `Role B`) to reference images via **Gemini Omni Image Roles**, compiles multi-scene storyboards into structured prompt blocks (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`), generates 10-second 720p clips with native audio via **Gemini Omni Flash**, branches edits non-linearly across a **Session Version Tree DAG**, and flushes context decay via **Commit & Branch Checkpointing**.
 
 | Stage | Module | What it does |
 | :--- | :--- | :--- |
 | 1 | 🛡️ **`omnimash.security`** | **Model Armor Gateway:** Pre-gates prompts for RAI violations (hate speech, dangerous content) and prompt injection/jailbreak attempts. |
-| 2 | 🪄 **`omnimash.prompts`** | **Prompt Compiler & Deconstruction Engine:** Parses open-ended concepts (`POST /api/deconstruct-concept`), defines dynamic `CharacterRole` bindings (`Role A`, `Role B`) with attached reference images, and compiles multi-scene storyboards into `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`. |
+| 2 | 🪄 **`omnimash.prompts`** | **Prompt Compiler & Deconstruction Engine:** Parses open-ended concepts (`POST /api/deconstruct-concept`), defines dynamic `CharacterRole` bindings (`Role A`, `Role B`) with attached reference images, and compiles multi-scene storyboards into `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`. |
 | 3 | 🌳 **`omnimash.state`** | **Version Tree DAG & Checkpoints:** Manages non-linear clip branching (`TurnNode`, `ProjectSession`) and tracks thread edit depth ($\ge 3$) to signal `COMMIT_RECOMMENDED`. |
 | 4 | 🎬 **`omnimash.engine`** | **Gemini Omni Flash Client:** Drives the `Interactions API` with SynthID/C2PA watermarking, multi-character image role references, and base video re-anchoring on thread commits. |
 | 5 | 🎞️ **`omnimash.stitching` & `omnimash.api`** | **FFmpeg Concatenation & FastAPI UI:** Assembles 10s clips into 30–60s master videos and serves the interactive Next.js/React 3-Act Digital Director's Studio dashboard. |
@@ -90,7 +90,7 @@ OmniMash transforms open-ended parody concepts and character reference links int
    - Attaches high-resolution reference image URLs to character roles per the [Gemini Omni Image Roles API](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) to lock facial likeness and attire.
 
 2. **🧠 Multi-Scene Storyboard & Prompt Compiler (`PromptCompiler`)**:
-   - **Storyboard Sequence Compilation:** Compiles multi-character scene directives into `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`.
+   - **Storyboard Sequence Compilation:** Compiles multi-character scene directives into `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`.
    - **Conversational Diffs:** Enforces `[PRESERVATION LOCK]` to freeze character likeness and background while targeting `[ISOLATED DIFF]` to prevent facial drift across turns.
 
 3. **✨ Gemini Omni Flash Engine (`gemini-omni-flash-preview`)**:
@@ -128,7 +128,7 @@ graph TD
 
     subgraph PromptEngine["Storyboard Compiler & Multimodal Engine"]
         SessionState -->|2. Storyboard Compilation| Compiler["PromptCompiler.compile_storyboard()"]
-        Compiler --> StoryboardPrompt["[ROLE DEFINITIONS] + [AESTHETIC INJECTION] + [STORYBOARD SEQUENCE]"]
+        Compiler --> StoryboardPrompt["[ROLE DEFINITIONS] + [AESTHETIC INJECTION] + [AUDIO & VOCAL DIRECTION] + [STORYBOARD SEQUENCE]"]
         SessionState --> TaxDelta["Conversational Delta Prompt"]
         
         StoryboardPrompt --> Omni["Gemini Omni Flash Client (Image Roles Attached)"]
@@ -193,7 +193,7 @@ Open your browser to `http://localhost:8080` (or access the live production inst
 
 ### Step 2: Act 1 — The Concept & Cast Manager
 
-In **Act 1**, define the high-level creative vision, dynamic character bindings, and character-specific aesthetic style signifiers for your parody video.
+In **Act 1**, define the high-level creative vision, dynamic character bindings, character-specific voice styles & accents, and global audio direction for your parody video.
 
 <div align="center">
   <img src="imgs/ui_act1_concept_and_cast.jpg" alt="OmniMash Act 1: The Concept & Cast Manager" width="100%" />
@@ -202,8 +202,8 @@ In **Act 1**, define the high-level creative vision, dynamic character bindings,
 1. **Enter Visual Shorthand:** Type your open-ended parody concept (e.g., *"Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"*).
 2. **Deconstruct Concept:** Click **✨ Deconstruct Concept** (`POST /api/deconstruct-concept`). OmniMash parses the prompt into structured `MetaPromptTags`.
 3. **Configure Dynamic Character Roles & Reference Images:** Review dynamic character roles (`Role A: Harry "Gucci"`, `Role B: Young Draco "Jeezy"`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) (`gs://reference-images-jt-trend-trawler/...`) to lock facial likeness across scenes.
-4. **Manage Character-Specific Aesthetic Tags & Style Signifiers:** Refine granular character-level style tags inside each Character Role card (e.g., `Red Gucci Tracksuit`, `Cartier Glasses` for Role A; `Platinum Slicked Hair`, `Diamond Iced-Out Chain` for Role B). The prompt compiler binds these tags as `[Style: ...]` directly to character role definitions to anchor individual attire and jewelry across scene changes.
-5. **Tune Global Meta-Prompt Tags:** Review scene-wide aesthetic tag chips (`2000s Atlanta Trap Disstrack`, `Heavy 808 Bass Lighting`, `Vintage Streetwear`) and audio beat (`140 BPM Heavy 808 Trap`).
+4. **Manage Character-Specific Style Signifiers & 🎙️ Voice Style & Accent:** Refine granular character-level style tags and dedicated **🎙️ Voice Style & Accent** inputs inside each Character Role card (e.g., `Red Gucci Tracksuit`, `Cartier Glasses`, and `Fast-paced confident Atlanta rap flow with autotune` for Role A; `Platinum Slicked Hair`, `Diamond Iced-Out Chain`, and `Pompous, cynical British drawl with aggressive rap cadence` for Role B). The prompt compiler binds these tags into character definitions and the `[AUDIO & VOCAL DIRECTION]` block to anchor attire and vocal delivery across scenes.
+5. **Tune Global Meta-Prompt Tags & 🎙️ Vocal Delivery:** Review scene-wide aesthetic tag chips (`2000s Atlanta Trap Disstrack`, `Heavy 808 Bass Lighting`), audio beat (`140 BPM Heavy 808 Trap`), and the dedicated **🎙️ Vocal Delivery / Voiceover Style** global control (`High-energy back-and-forth rap battle delivery with synchronized lip-sync`).
 
 ---
 
@@ -218,7 +218,7 @@ In **Act 2**, sequence your multi-character storyline into structured scenes.
 1. **Add Scene Directives:** Break your script into sequential scenes (`Scene 1: Standing over potion stoves with baking soda`, `Scene 2: Stepping into room with iced out diamond chain`).
 2. **Assign Active Roles:** Toggle active character roles for each scene (`Role A`, `Role B`).
 3. **Write Actions & Dialogue:** Provide character actions and synced rap bars / dialogue lines (e.g., *[Harry]: "I been cooking potions since first year, bruv!"* and *[Draco]: "This is Trap or Die, Potter! You ain’t never seen a brick!"*).
-4. **Inspect Compiled Storyboard Prompt:** Verify the live prompt compiler box on the right, structured with `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`.
+4. **Inspect Compiled Storyboard Prompt:** Verify the live prompt compiler box on the right, structured with `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]` matching the official Gemini Omni Prompt Guide.
 
 ---
 
@@ -242,7 +242,7 @@ In **Act 3**, render your 720p HD parody cut with native synced audio, inspect t
    - **Generation Status Badge:** Look for the green `🟢 Live Gemini Omni Flash (720p + Synced Audio)` status pill in the header.
    - **Prioritized Developer API Client:** Google AI Studio routing is prioritized via `GOOGLE_API_KEY`, enabling pure native joint video and audio generation alongside stateful `previous_interaction_id` editing.
 3. **Inspect 720p Native Video with Non-Autoplay Control:** Inspect the rendered 720p 24fps video with moving character rapping animations and synchronized 140 BPM background trap beats. Videos do not autoplay on render, giving the director full manual playback and scrubber control.
-4. **Inspect Final Generation Prompt:** Review the **🧠 Final Generation Prompt (Active Version)** inspection pane below the video player. This viewer exposes the exact `rawCompiledPrompt` (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`) sent to Gemini Omni Flash for the currently selected version. Selecting any historical turn from the Version Tree updates the prompt viewer dynamically in real time.
+4. **Inspect Final Generation Prompt:** Review the **🧠 Final Generation Prompt (Active Version)** inspection pane below the video player. This viewer exposes the exact `rawCompiledPrompt` (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`) sent to Gemini Omni Flash for the currently selected version. Selecting any historical turn from the Version Tree updates the prompt viewer dynamically in real time.
 5. **Save Final Master to GCS:** Click **💾 Save Final Master to GCS** (`POST /api/save-final`) to copy and export the active 720p video master from intermediate storage to a permanent Google Cloud Storage bucket (`final_masters/<session_name>_<master_title>.mp4`).
 6. **Extend Video / Next Scene:** Click **➕ Extend Video / Next Scene** (`POST /api/extend-scene`) to seamlessly continue narrative progression. This locks the active character identities and keyframe baselines and transitions back to Act 2 with a new appended storyboard scene card ready for dialogue directing.
 7. **Branch Conversational Diffs:** Direct iterative scene edits via the Delta Prompt chat bar (e.g., *"Add disco strobe lights and iced-out diamond chain"*) to create non-linear branches in the **Version Tree DAG**.
@@ -377,9 +377,9 @@ curl -X POST http://localhost:8000/api/commit \
 
 The built-in single-page web dashboard (React 18 + Tailwind CSS) implements the **3-Act Digital Director's Studio**:
 
-- **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), dynamic Character Roles manager (`Role A`, `Role B`) with attached Gemini Omni Image Role reference image URLs and character-specific style signifiers (aesthetic tags), and interactive global Meta-Prompt Tag chips.
-- **Act 2: Fine-Tune & Storyboard Directing:** Multi-scene storyboard sequence editor, active role selectors (`["Role A"]`, `["Role B"]`), action directives, turn-by-turn dialogue, and real-time live compiled storyboard prompt preview (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[STORYBOARD SEQUENCE]`).
-- **Act 3: The Screening Room & Branching:** 720p native video player with non-autoplay playback controls and SynthID C2PA provenance indicators, Generation Status pill badge (`🟢 Live Gemini Omni Flash` vs `🟠 Procedural Fallback Animation`), Active Error Mitigation banner, live Final Generation Prompt inspection pane (`rawCompiledPrompt`), "Save Final Master to GCS" export modal (`POST /api/save-final`), "Extend Video / Next Scene" storyboard continuation (`POST /api/extend-scene`), interactive Version Tree DAG explorer, conversational delta prompting, and depth $\ge 3$ commit & re-anchor modal.
+- **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), dynamic Character Roles manager (`Role A`, `Role B`) with attached Gemini Omni Image Role reference image URLs, dedicated **🎙️ Voice Style & Accent** inputs per character card, character-specific style signifiers, and the **🎙️ Vocal Delivery / Voiceover Style** global control.
+- **Act 2: Fine-Tune & Storyboard Directing:** Multi-scene storyboard sequence editor, active role selectors (`["Role A"]`, `["Role B"]`), action directives, turn-by-turn dialogue, and real-time live compiled storyboard prompt preview (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`).
+- **Act 3: The Screening Room & Branching:** 720p native video player with non-autoplay playback controls and SynthID C2PA provenance indicators, Generation Status pill badge (`🟢 Live Gemini Omni Flash` vs `🟠 Procedural Fallback Animation`), Active Error Mitigation banner, live Final Generation Prompt inspection pane (`rawCompiledPrompt` with structured `[AUDIO & VOCAL DIRECTION]`), "Save Final Master to GCS" export modal (`POST /api/save-final`), "Extend Video / Next Scene" storyboard continuation (`POST /api/extend-scene`), interactive Version Tree DAG explorer, conversational delta prompting, and depth $\ge 3$ commit & re-anchor modal.
 
 ---
 
