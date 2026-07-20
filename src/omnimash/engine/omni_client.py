@@ -26,6 +26,8 @@ class GenerationResult:
     gcs_uri: str | None = None
     duration_seconds: int = 10
     synth_id_watermark: str = "SYNTHID_C2PA_VERIFIED"
+    error_message: str | None = None
+    generation_mode: str = "LIVE_OMNI_FLASH"
 
 
 def _generate_dynamic_audio_wav(
@@ -561,9 +563,13 @@ class OmniFlashClient:
         api_key: str | None = None,
         mock_mode: bool = True,
         bucket_name: str | None = None,
+        retry_delay: float | None = None,
     ):
         self.api_key = api_key
         self.mock_mode = mock_mode
+        self.retry_delay = (
+            retry_delay if retry_delay is not None else (0.0 if mock_mode else 0.5)
+        )
         self.project = os.environ.get(
             "GOOGLE_CLOUD_PROJECT",
             getattr(settings, "google_cloud_project", "hybrid-vertex"),
@@ -635,59 +641,123 @@ class OmniFlashClient:
         prompt: str,
         target_rel_path: str,
         previous_interaction_id: str | None = None,
-    ) -> tuple[bool, str | None]:
-        """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing."""
+    ) -> tuple[bool, str | None, str | None]:
+        """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if not self._genai_client or not hasattr(self._genai_client, "interactions"):
-            return False, None
-        try:
-            logger.info(
-                "Requesting Gemini Omni Flash video generation for prompt: %s", prompt
-            )
-            safe_input = _abstract_prompt_for_responsible_ai(prompt)
-            logger.info(
-                "Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input
-            )
-            kwargs: dict[str, Any] = {
-                "model": "gemini-omni-flash-preview",
-                "input": safe_input,
-            }
-            if previous_interaction_id:
-                kwargs["previous_interaction_id"] = previous_interaction_id
+            msg = "Gemini client or interactions API not available"
+            logger.warning("Generation aborted: %s", msg)
+            return False, None, msg
 
-            interaction = self._genai_client.interactions.create(**kwargs)
-            inter_id = getattr(interaction, "id", None) or getattr(
-                interaction, "interaction_id", None
-            )
+        max_attempts = 3
+        delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
+        last_error: str | None = None
 
-            output_vid = getattr(interaction, "output_video", None)
-            if not output_vid:
-                outputs = getattr(interaction, "outputs", None)
-                if isinstance(outputs, (list, tuple)) and len(outputs) > 0:
-                    output_vid = outputs[0]
+        safe_input = _abstract_prompt_for_responsible_ai(prompt)
+        logger.info(
+            "Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input
+        )
+        kwargs: dict[str, Any] = {
+            "model": "gemini-omni-flash-preview",
+            "input": safe_input,
+        }
+        if previous_interaction_id:
+            kwargs["previous_interaction_id"] = previous_interaction_id
 
-            if output_vid:
-                data = (
-                    getattr(output_vid, "data", None)
-                    or getattr(output_vid, "video_bytes", None)
-                    or getattr(output_vid, "bytes", None)
-                    or getattr(output_vid, "video", None)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                logger.info(
+                    "Requesting Gemini Omni Flash video generation (attempt %d/%d) for prompt: %s",
+                    attempt,
+                    max_attempts,
+                    prompt,
                 )
-                if data:
-                    video_bytes = (
-                        base64.b64decode(data) if isinstance(data, str) else data
+                if not self._genai_client or not hasattr(
+                    self._genai_client, "interactions"
+                ):
+                    last_error = "Gemini client or interactions API not available"
+                    break
+
+                interaction = self._genai_client.interactions.create(**kwargs)
+                inter_id = getattr(interaction, "id", None) or getattr(
+                    interaction, "interaction_id", None
+                )
+
+                output_vid = getattr(interaction, "output_video", None)
+                if not output_vid:
+                    outputs = getattr(interaction, "outputs", None)
+                    if isinstance(outputs, (list, tuple)) and len(outputs) > 0:
+                        output_vid = outputs[0]
+
+                if output_vid:
+                    data = (
+                        getattr(output_vid, "data", None)
+                        or getattr(output_vid, "video_bytes", None)
+                        or getattr(output_vid, "bytes", None)
+                        or getattr(output_vid, "video", None)
                     )
-                    os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
-                    with open(target_rel_path, "wb") as f:
-                        f.write(video_bytes)
-                    logger.info(
-                        "Successfully generated native Gemini Omni Flash MP4 to %s (size: %d bytes)",
-                        target_rel_path,
-                        len(video_bytes),
+                    if data:
+                        video_bytes = (
+                            base64.b64decode(data) if isinstance(data, str) else data
+                        )
+                        os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
+                        with open(target_rel_path, "wb") as f:
+                            f.write(video_bytes)
+                        logger.info(
+                            "Successfully generated native Gemini Omni Flash MP4 to %s (size: %d bytes)",
+                            target_rel_path,
+                            len(video_bytes),
+                        )
+                        return True, inter_id, None
+
+                last_error = (
+                    "Gemini Omni Flash returned interaction without video output data"
+                )
+                logger.warning(last_error)
+            except Exception as exc:
+                exc_str = str(exc)
+                last_error = exc_str
+
+                if (
+                    "401" in exc_str
+                    or "UNAUTHENTICATED" in exc_str
+                    or "API keys are not supported" in exc_str
+                ):
+                    logger.warning(
+                        "401 UNAUTHENTICATED on Vertex AI. Actively switching to Google AI Studio Developer API client."
                     )
-                    return True, inter_id
-        except Exception as exc:
-            logger.warning("Vertex AI generation error: %s", exc)
-        return False, None
+                    self.switch_to_developer_api()
+                elif (
+                    "404" in exc_str
+                    or "429" in exc_str
+                    or "ResourceExhausted" in exc_str
+                ):
+                    logger.warning(
+                        "Retry attempt %d/%d after error (%s). Backoff delay: %.2fs",
+                        attempt,
+                        max_attempts,
+                        exc_str,
+                        delay,
+                    )
+                else:
+                    logger.warning(
+                        "Vertex AI generation error on attempt %d/%d: %s",
+                        attempt,
+                        max_attempts,
+                        exc_str,
+                    )
+
+                if attempt < max_attempts:
+                    if delay > 0 and not (
+                        "401" in exc_str
+                        or "UNAUTHENTICATED" in exc_str
+                        or "API keys are not supported" in exc_str
+                    ):
+                        import time
+
+                        time.sleep(delay)
+                    delay *= 2
+
+        return False, None, last_error
 
     def generate_clip(
         self,
@@ -702,10 +772,14 @@ class OmniFlashClient:
         rel_path = url.lstrip("/")
 
         # 1. Primary: Gemini Omni Flash via Interactions API (Native Video + Audio + Reasoning)
-        success, inter_id = self._generate_live_omni_flash_video(prompt, rel_path)
+        success, inter_id, error_message = self._generate_live_omni_flash_video(
+            prompt, rel_path
+        )
 
         # 2. Fallback: Local prompt-rendered animated video
+        generation_mode = "LIVE_OMNI_FLASH"
         if not success:
+            generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
             ensure_rendered_video(
                 url,
                 prompt=prompt,
@@ -725,6 +799,8 @@ class OmniFlashClient:
             interaction_thread_id=inter_id or thread_id,
             video_url=url,
             gcs_uri=gcs_uri,
+            error_message=error_message if not success else None,
+            generation_mode=generation_mode,
         )
 
     def apply_interaction_diff(
@@ -740,12 +816,14 @@ class OmniFlashClient:
         rel_path = url.lstrip("/")
 
         # 1. Primary: Gemini Omni Flash stateful conversational diff via previous_interaction_id
-        success, _ = self._generate_live_omni_flash_video(
+        success, inter_id, error_message = self._generate_live_omni_flash_video(
             diff_prompt, rel_path, previous_interaction_id=interaction_thread_id
         )
 
         # 2. Fallback: Local prompt-rendered animated video
+        generation_mode = "LIVE_OMNI_FLASH"
         if not success:
+            generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
             ensure_rendered_video(
                 url,
                 prompt=diff_prompt,
@@ -762,9 +840,11 @@ class OmniFlashClient:
         gcs_uri = self.storage.get_gcs_uri(gcs_blob)
 
         return GenerationResult(
-            interaction_thread_id=interaction_thread_id,
+            interaction_thread_id=inter_id or interaction_thread_id,
             video_url=url,
             gcs_uri=gcs_uri,
+            error_message=error_message if not success else None,
+            generation_mode=generation_mode,
         )
 
     def start_thread_from_video(
@@ -781,8 +861,12 @@ class OmniFlashClient:
         rel_path = url.lstrip("/")
 
         prompt = initial_prompt or "Reanchored video turn"
-        success, inter_id = self._generate_live_omni_flash_video(prompt, rel_path)
+        success, inter_id, error_message = self._generate_live_omni_flash_video(
+            prompt, rel_path
+        )
+        generation_mode = "LIVE_OMNI_FLASH"
         if not success:
+            generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
             ensure_rendered_video(
                 url,
                 prompt=prompt,
@@ -802,4 +886,6 @@ class OmniFlashClient:
             interaction_thread_id=inter_id or thread_id,
             video_url=url,
             gcs_uri=gcs_uri,
+            error_message=error_message if not success else None,
+            generation_mode=generation_mode,
         )
