@@ -151,14 +151,16 @@ UI_HTML = r"""<!DOCTYPE html>
                     name: "Harry",
                     description: "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
                     reference_url: "https://example.com/harry.jpg",
-                    aesthetic_tags: ["Red Gucci Tracksuit", "Cartier Glasses"]
+                    aesthetic_tags: ["Red Gucci Tracksuit", "Cartier Glasses"],
+                    voice_style: "Fast-paced confident Atlanta rap flow with autotune"
                 },
                 {
                     role_id: "Role B",
                     name: "Draco",
                     description: "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
                     reference_url: "https://example.com/draco.jpg",
-                    aesthetic_tags: ["Platinum Slicked Hair", "Diamond Iced-Out Chain"]
+                    aesthetic_tags: ["Platinum Slicked Hair", "Diamond Iced-Out Chain"],
+                    voice_style: "Pompous, cynical British drawl with aggressive rap cadence"
                 }
             ]);
             const [charTagInputs, setCharTagInputs] = useState({});
@@ -174,6 +176,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [environmentTag, setEnvironmentTag] = useState("Gothic Hogwarts courtyard lit by neon stage lights and smoky haze");
             const [cameraLightingTag, setCameraLightingTag] = useState("Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights");
             const [audioBeat, setAudioBeat] = useState("140 BPM Heavy 808 Trap");
+            const [vocalDelivery, setVocalDelivery] = useState("High-energy back-and-forth rap battle delivery with synchronized lip-sync");
 
             // Act 2: Fine-Tune & Storyboard Directing State
             const [scenes, setScenes] = useState([
@@ -203,7 +206,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
 
-            const initialRawPrompt = `[ROLE DEFINITIONS]\n- Role A (Harry): Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: https://example.com/harry.jpg)\n- Role B (Draco): Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes [Style: Platinum Slicked Hair, Diamond Iced-Out Chain] (Ref: https://example.com/draco.jpg)\n\n[AESTHETIC INJECTION]\nConcept: Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style\nAesthetic Tags: 2000s Atlanta Trap Disstrack, Diamond Lightning Bolt Chain, Heavy 808 Bass Lighting, Vintage Streetwear\nEnvironment: Gothic Hogwarts courtyard lit by neon stage lights and smoky haze\nCamera/Lighting: Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights\nAudio Beat: 140 BPM Heavy 808 Trap\n\n[STORYBOARD SEQUENCE]\n- Scene 1 [Role A]: Arriving at foggy Hogwarts courtyard rapping into microphone wand | Dialogue: "I been cooking potions since first year. Burrr!"\n- Scene 2 [Role B]: Stepping from shadows in high-gloss neon lighting with ice chain | Dialogue: "This is Trap or Die, Potter! Let's get it!"`;
+            const initialRawPrompt = `[ROLE DEFINITIONS]\n- Role A (Harry): Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: https://example.com/harry.jpg)\n- Role B (Draco): Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes [Style: Platinum Slicked Hair, Diamond Iced-Out Chain] (Ref: https://example.com/draco.jpg)\n\n[AESTHETIC INJECTION]\nConcept: Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style\nAesthetic Tags: 2000s Atlanta Trap Disstrack, Diamond Lightning Bolt Chain, Heavy 808 Bass Lighting, Vintage Streetwear\nEnvironment: Gothic Hogwarts courtyard lit by neon stage lights and smoky haze\nCamera/Lighting: Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights\n\n[AUDIO & VOCAL DIRECTION]\nBackground Beat: 140 BPM Heavy 808 Trap (ducked at 15% volume under dialogue)\nVoice Style (Role A): Fast-paced confident Atlanta rap flow with autotune\nVoice Style (Role B): Pompous, cynical British drawl with aggressive rap cadence\nVocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync\n\n[STORYBOARD SEQUENCE]\n- Scene 1 [Role A]: Arriving at foggy Hogwarts courtyard rapping into microphone wand | Dialogue: "I been cooking potions since first year. Burrr!"\n- Scene 2 [Role B]: Stepping from shadows in high-gloss neon lighting with ice chain | Dialogue: "This is Trap or Die, Potter! Let's get it!"`;
 
             const [rawCompiledPrompt, setRawCompiledPrompt] = useState(initialRawPrompt);
             const [masterTitle, setMasterTitle] = useState("official_rap_battle_master");
@@ -238,8 +241,21 @@ UI_HTML = r"""<!DOCTYPE html>
                 if (aestheticTags && aestheticTags.length > 0) aestheticParts.push(`Aesthetic Tags: ${aestheticTags.join(", ")}`);
                 if (environmentTag && environmentTag.trim()) aestheticParts.push(`Environment: ${environmentTag.trim()}`);
                 if (cameraLightingTag && cameraLightingTag.trim()) aestheticParts.push(`Camera/Lighting: ${cameraLightingTag.trim()}`);
-                if (audioBeat && audioBeat.trim()) aestheticParts.push(`Audio Beat: ${audioBeat.trim()}`);
                 const aestheticBlock = aestheticParts.length > 0 ? aestheticParts.join("\n") : "Default Aesthetic";
+
+                const audioParts = [];
+                if (audioBeat && audioBeat.trim()) {
+                    audioParts.push(`Background Beat: ${audioBeat.trim()} (ducked at 15% volume under dialogue)`);
+                }
+                characters.forEach(c => {
+                    if (c.voice_style && c.voice_style.trim()) {
+                        audioParts.push(`Voice Style (${c.role_id}): ${c.voice_style.trim()}`);
+                    }
+                });
+                if (vocalDelivery && vocalDelivery.trim()) {
+                    audioParts.push(`Vocal Delivery: ${vocalDelivery.trim()}`);
+                }
+                const audioBlock = audioParts.length > 0 ? audioParts.join("\n") : "Default Audio & Voice Direction";
 
                 const sceneLines = scenes.map(s => {
                     const roles = (s.active_roles && s.active_roles.length > 0) ? s.active_roles.join(", ") : "All Roles";
@@ -247,7 +263,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     return `- Scene ${s.scene_number} [${roles}]: ${s.action || "Action description"}${diag}`;
                 }).join("\n");
 
-                return `[ROLE DEFINITIONS]\n${roleLines || "- None"}\n\n[AESTHETIC INJECTION]\n${aestheticBlock}\n\n[STORYBOARD SEQUENCE]\n${sceneLines || "- No scenes"}`;
+                return `[ROLE DEFINITIONS]\n${roleLines || "- None"}\n\n[AESTHETIC INJECTION]\n${aestheticBlock}\n\n[AUDIO & VOCAL DIRECTION]\n${audioBlock}\n\n[STORYBOARD SEQUENCE]\n${sceneLines || "- No scenes"}`;
             };
 
             // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
@@ -265,7 +281,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data.characters && data.characters.length > 0) {
                         const formattedChars = data.characters.map(c => ({
                             ...c,
-                            aesthetic_tags: c.aesthetic_tags || []
+                            aesthetic_tags: c.aesthetic_tags || [],
+                            voice_style: c.voice_style || ""
                         }));
                         setCharacters(formattedChars);
                         const newScenes = formattedChars.map((char, idx) => ({
@@ -280,6 +297,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data.environment_tag) setEnvironmentTag(data.environment_tag);
                     if (data.camera_lighting_tag) setCameraLightingTag(data.camera_lighting_tag);
                     if (data.audio_beat) setAudioBeat(data.audio_beat);
+                    if (data.vocal_delivery) setVocalDelivery(data.vocal_delivery);
                 } catch (err) {
                     console.error("Deconstruction failed:", err);
                 } finally {
@@ -295,7 +313,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     name: `Character ${nextLetter}`,
                     description: "Distinct cinematic character with expressive facial features and stylized attire",
                     reference_url: "",
-                    aesthetic_tags: []
+                    aesthetic_tags: [],
+                    voice_style: ""
                 };
                 setCharacters([...characters, newRole]);
             };
@@ -398,7 +417,8 @@ UI_HTML = r"""<!DOCTYPE html>
                         scenes: scenes,
                         aesthetic_tags: aestheticTags,
                         environment_tag: environmentTag,
-                        audio_stem: audioBeat
+                        audio_stem: audioBeat,
+                        vocal_delivery: vocalDelivery
                     };
                     const endpoint = parentTurnId ? "/api/diff" : "/api/generate";
                     const res = await fetch(endpoint, {
@@ -531,7 +551,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             turn_id: parentTurnId || null,
                             next_scene_action: nextAction,
                             dialogue: "",
-                            active_roles: [characters[0]?.role_id || "Role A"]
+                            active_roles: [characters[0]?.role_id || "Role A"],
+                            vocal_delivery: vocalDelivery
                         })
                     });
                     const data = await res.json();
@@ -918,6 +939,19 @@ UI_HTML = r"""<!DOCTYPE html>
 
                                                 <div>
                                                     <label className="block text-[11px] text-gray-400 mb-1">
+                                                        🎙️ Voice Style & Accent
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={char.voice_style || ""}
+                                                        onChange={(e) => updateCharacter(idx, "voice_style", e.target.value)}
+                                                        placeholder="e.g. Fast-paced confident Atlanta rap flow with autotune..."
+                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[11px] text-gray-400 mb-1">
                                                         🖼️ Reference Image URL <span className="text-purple-400 text-[10px]">(Gemini Omni Image Role)</span>
                                                     </label>
                                                     <input
@@ -986,6 +1020,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 onChange={(e) => setAudioBeat(e.target.value)}
                                                 placeholder="e.g. 140 BPM Heavy 808 Trap"
                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                                            />
+                                        </div>
+
+                                        <div className="pt-3 border-t border-gray-800">
+                                            <label className="block text-xs font-bold text-pink-400 uppercase tracking-wider mb-1">
+                                                🎙️ Vocal Delivery / Voiceover Style
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={vocalDelivery}
+                                                onChange={(e) => setVocalDelivery(e.target.value)}
+                                                placeholder="e.g. High-energy back-and-forth rap battle delivery with synchronized lip-sync"
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-pink-500"
                                             />
                                         </div>
                                     </div>
