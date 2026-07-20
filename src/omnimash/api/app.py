@@ -8,7 +8,24 @@ from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
-from omnimash.prompts.compiler import MetaPromptTags
+
+
+class CharacterRoleModel(BaseModel):
+    role_id: str
+    name: str = ""
+    description: str = ""
+    reference_url: str | None = None
+    aesthetic_tags: list[str] = []
+    voice_style: str = ""
+
+
+class DeconstructResponse(BaseModel):
+    characters: list[CharacterRoleModel] = []
+    aesthetic_tags: list[str] = []
+    environment_tag: str = ""
+    camera_lighting_tag: str = ""
+    audio_beat: str = ""
+    vocal_delivery: str = ""
 
 
 class ConceptDeconstructRequest(BaseModel):
@@ -39,10 +56,11 @@ class GenerateRequest(BaseModel):
     compiled_override: str | None = None
     session_name: str | None = None
     concept: str | None = None
-    characters: list[dict] | None = None
+    characters: list[CharacterRoleModel | dict] | None = None
     scenes: list[dict] | None = None
     aesthetic_tags: list[str] | None = None
     environment_tag: str | None = None
+    vocal_delivery: str = ""
 
 
 class CommitRequest(BaseModel):
@@ -71,6 +89,7 @@ class ExtendSceneRequest(BaseModel):
     next_scene_action: str = ""
     dialogue: str | None = None
     active_roles: list[str] | None = None
+    vocal_delivery: str = ""
 
 
 class GenerateResponse(BaseModel):
@@ -1434,9 +1453,27 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     def get_dashboard() -> HTMLResponse:
         return HTMLResponse(content=UI_HTML)
 
-    @app.post("/api/deconstruct-concept", response_model=MetaPromptTags)
-    def deconstruct_concept(req: ConceptDeconstructRequest) -> MetaPromptTags:
-        return agent.deconstruct_concept(req.concept)
+    @app.post("/api/deconstruct-concept", response_model=DeconstructResponse)
+    def deconstruct_concept(req: ConceptDeconstructRequest) -> DeconstructResponse:
+        tags = agent.deconstruct_concept(req.concept)
+        return DeconstructResponse(
+            characters=[
+                CharacterRoleModel(
+                    role_id=c.role_id,
+                    name=c.name,
+                    description=c.description,
+                    reference_url=c.reference_url,
+                    aesthetic_tags=c.aesthetic_tags,
+                    voice_style=c.voice_style,
+                )
+                for c in tags.characters
+            ],
+            aesthetic_tags=tags.aesthetic_tags,
+            environment_tag=tags.environment_tag,
+            camera_lighting_tag=tags.camera_lighting_tag,
+            audio_beat=tags.audio_beat,
+            vocal_delivery=tags.vocal_delivery,
+        )
 
     @app.post("/api/generate", response_model=GenerateResponse)
     @app.post("/api/diff", response_model=GenerateResponse)
@@ -1459,6 +1496,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             scenes=req.scenes,
             aesthetic_tags=req.aesthetic_tags,
             environment_tag=req.environment_tag,
+            vocal_delivery=req.vocal_delivery,
         )
         return GenerateResponse(
             success=agent_turn.success,
@@ -1514,6 +1552,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             next_scene_action=req.next_scene_action,
             dialogue=req.dialogue,
             active_roles=req.active_roles,
+            vocal_delivery=req.vocal_delivery,
         )
         return GenerateResponse(
             success=agent_turn.success,

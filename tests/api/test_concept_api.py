@@ -18,6 +18,55 @@ def test_deconstruct_concept_endpoint():
     assert "environment_tag" in data
     assert "camera_lighting_tag" in data
     assert "audio_beat" in data
+    assert "vocal_delivery" in data
+    assert data["vocal_delivery"] != ""
+    for char in data["characters"]:
+        assert "voice_style" in char
+    assert any(c["voice_style"] != "" for c in data["characters"])
+
+
+def test_generate_endpoint_accepts_vocal_delivery_and_character_voice_style():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_test",
+            "project_id": "prj_test",
+            "concept": "Harry vs Draco trap battle",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Harry",
+                    "description": "Young wizard with round glasses",
+                    "reference_url": "https://example.com/harry.jpg",
+                    "aesthetic_tags": ["Red Gucci Tracksuit"],
+                    "voice_style": "Fast-paced Atlanta trap flow",
+                }
+            ],
+            "scenes": [
+                {
+                    "scene_number": 1,
+                    "active_roles": ["Role A"],
+                    "action": "Rapping into microphone wand",
+                    "dialogue": "I been cooking potions!",
+                }
+            ],
+            "vocal_delivery": "Punchy synchronized rap cadence",
+            "clip_index": 0,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["raw_compiled_prompt"] is not None
+    assert (
+        "Voice Style (Role A): Fast-paced Atlanta trap flow"
+        in data["raw_compiled_prompt"]
+    )
+    assert (
+        "Vocal Delivery: Punchy synchronized rap cadence" in data["raw_compiled_prompt"]
+    )
 
 
 def test_generate_with_character_roles_and_scenes():
