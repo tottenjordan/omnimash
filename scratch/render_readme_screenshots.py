@@ -63,6 +63,9 @@ def get_html(act_num: int, content_body: str) -> str:
                 </div>
             </div>
             <div class="flex items-center space-x-3">
+                <button class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-xl px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+                    <span>🔄 New Project / Start Over</span>
+                </button>
                 <div class="flex items-center gap-2 bg-gray-950 border border-green-800/80 px-3 py-1.5 rounded-xl shadow-inner">
                     <span class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
                     <span class="text-xs font-bold text-green-400 font-mono">🟢 Live Gemini Omni Flash (720p + Synced Audio)</span>

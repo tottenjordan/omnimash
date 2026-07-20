@@ -593,7 +593,26 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
+            // Helper: Reset Studio / Start Over
+            const handleResetStudio = () => {
+                setSessionName(`session_${Date.now().toString().slice(-4)}`);
+                setConcept("");
+                setCharacters([]);
+                setAestheticTags([]);
+                setEnvironmentTag("");
+                setCameraLightingTag("");
+                setAudioBeat("");
+                setVocalDelivery("");
+                setScenes([]);
+                setHistory([]);
+                setParentTurnId("");
+                setDeltaPrompt("");
+                setRawCompiledPrompt("Ready for new concept deconstruction.");
+                setActiveAct(1);
+            };
+
             const isCommitModalVisible = status === "COMMIT_RECOMMENDED" || showCommitModal;
+
 
             return (
                 <div className="flex flex-col min-h-screen bg-gray-950 text-gray-100">
@@ -701,8 +720,14 @@ UI_HTML = r"""<!DOCTYPE html>
                             </div>
                         </div>
 
-                        {/* GCS Session Name */}
+                        {/* GCS Session Name & Reset Studio */}
                         <div className="flex items-center space-x-3">
+                            <button
+                                onClick={handleResetStudio}
+                                className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                            >
+                                <span>🔄 New Project / Start Over</span>
+                            </button>
                             <div className="bg-black/60 border border-gray-800 rounded-lg px-3 py-1.5 flex items-center space-x-2">
                                 <span className="text-xs text-purple-400">🗂️ GCS Session:</span>
                                 <input

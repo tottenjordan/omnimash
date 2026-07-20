@@ -338,3 +338,6 @@ def test_dashboard_ui_html_features() -> None:
     assert "Voice Style & Accent" in html
     assert "Vocal Delivery / Voiceover Style" in html
     assert "[AUDIO & VOCAL DIRECTION]" in html
+
+    # 6. Top header 1-click New Project / Start Over reset button present
+    assert "New Project" in html or "Start Over" in html
