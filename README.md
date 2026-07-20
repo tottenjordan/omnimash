@@ -361,32 +361,9 @@ uv run ty check .
 ├── CODE_STANDARDS.md          # Mandatory tooling rules (uv, ruff, ty, pytest)
 ├── Dockerfile                 # Production Cloud Run container image
 ├── docs
-│   ├── diagrams               # Architecture diagrams & topology guides
-│   │   ├── frontend_api_topology.md
-│   │   ├── frontend_api_topology.png
-│   │   ├── gcp_deployment_patterns.md
-│   │   ├── gcp_deployment_patterns.png
-│   │   ├── multimodal_ingestion_stitching.md
-│   │   ├── multimodal_ingestion_stitching.png
-│   │   ├── omnimash_agent_architecture.md
-│   │   ├── omnimash_agent_architecture.png
-│   │   ├── omnimash_master_architecture.png
-│   │   ├── README.md
-│   │   └── version_tree_dag_lifecycle.md
-│   │   └── version_tree_dag_lifecycle.png
-│   ├── notes                  # Non-derivable session knowledge & quirks
-│   │   ├── architecture_omnimash.md
-│   │   ├── context_decay_commit_branch.md
-│   │   ├── digital_directors_studio_3_act_workflow.md
-│   │   ├── prompt_compiler_anchor_inject.md
-│   │   ├── README.md
-│   │   ├── request_lifecycle.md
-│   │   └── subagent_workflow_quirks.md
-│   └── plans                  # Subagent-driven TDD implementation plans
-│       ├── 2026-07-18-omnimash-context-window-commit-branch.md
-│       ├── 2026-07-18-omnimash-core-architecture.md
-│       ├── 2026-07-18-omnimash-prompt-compiler-anchor-inject.md
-│       └── 2026-07-20-flexible-parody-workflow-and-character-roles.md
+│   ├── diagrams/              # Architecture diagrams & topology guides
+│   ├── notes/                 # Non-derivable session knowledge & quirks
+│   └── plans/                 # Subagent-driven TDD implementation plans
 ├── GEMINI.md                  # AI agent workflow instructions
 ├── imgs
 │   └── omnimash_banner.png    # High-resolution Dripwarts project banner
@@ -415,27 +392,13 @@ uv run ty check .
 │       └── state              # Version Tree DAG & thread depth manager
 │           └── session_manager.py
 └── tests
-    ├── agent
-    │   └── test_orchestrator.py
-    ├── api
-    │   ├── test_app.py
-    │   ├── test_concept_api.py
-    │   └── test_integration.py
-    ├── engine
-    │   └── test_omni_client.py
-    ├── ingestion
-    │   └── test_media_extractor.py
-    ├── prompts
-    │   ├── test_character_roles.py
-    │   ├── test_compiler.py
-    │   ├── test_deconstruct.py
-    │   └── test_taxonomy.py
-    ├── security
-    │   └── test_guardrail.py
-    ├── state
-    │   └── test_session_manager.py
-    ├── stitching
-    │   └── test_stitcher.py
-    ├── test_foundation.py
-    └── test_main.py
+    ├── agent/                 # Agent orchestrator unit tests
+    ├── api/                   # FastAPI route & UI endpoint tests
+    ├── engine/                # Omni Flash & exponential retry tests
+    ├── ingestion/             # Reference media extractor tests
+    ├── prompts/               # Character Roles & storyboard compiler tests
+    ├── security/              # Model Armor guardrail tests
+    ├── state/                 # Version Tree DAG & session tests
+    ├── stitching/             # FFmpeg video stitcher tests
+    └── storage/               # GCS session artifact storage tests
 ```
