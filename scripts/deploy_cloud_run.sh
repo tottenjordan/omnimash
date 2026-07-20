@@ -12,6 +12,17 @@ echo "   Region:  $REGION"
 echo "   Service: $SERVICE_NAME"
 echo "=========================================================="
 
+# Build environment variables list from .env if it exists
+ENV_ARGS=()
+if [ -f .env ]; then
+  ENV_VARS=$(grep -v '^#' .env | grep '=' | tr '\n' ',' | sed 's/,$//')
+  if [ -n "$ENV_VARS" ]; then
+    ENV_ARGS=(--set-env-vars "$ENV_VARS,PYTHONPATH=/app/src")
+  fi
+else
+  ENV_ARGS=(--set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",GOOGLE_CLOUD_LOCATION="$REGION",GEMINI_LOCATION="global",PYTHONPATH="/app/src")
+fi
+
 gcloud run deploy "$SERVICE_NAME" \
   --source . \
   --project "$PROJECT_ID" \
@@ -20,7 +31,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --port 8080 \
   --memory 2Gi \
   --cpu 2 \
-  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",GOOGLE_CLOUD_LOCATION="$REGION",GEMINI_LOCATION="global",PYTHONPATH="/app/src"
+  "${ENV_ARGS[@]}"
 
 echo ""
 echo "✅ Deployment command submitted to Cloud Run!"

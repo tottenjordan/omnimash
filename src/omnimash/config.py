@@ -8,6 +8,7 @@ class OmniMashSettings(BaseSettings):
     google_cloud_region: str = "global"
     gemini_location: str = "global"
     omnimash_gcs_bucket: str | None = None
+    google_api_key: str | None = None
     gemini_api_key: str | None = None
     model_armor_template_id: str = "omnimash-safety-filter"
     mock_mode: bool = True
