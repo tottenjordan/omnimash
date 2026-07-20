@@ -73,6 +73,31 @@ class CompiledDeltaPrompt:
         )
 
 
+@dataclass
+class CharacterRole:
+    role_id: str
+    name: str
+    description: str
+    reference_url: str | None = None
+
+
+@dataclass
+class SceneDirective:
+    scene_number: int
+    active_roles: list[str]
+    action: str
+    dialogue: str = ""
+
+
+@dataclass
+class MetaPromptTags:
+    characters: list[CharacterRole] = field(default_factory=list)
+    aesthetic_tags: list[str] = field(default_factory=list)
+    environment_tag: str = ""
+    camera_lighting_tag: str = ""
+    audio_beat: str = ""
+
+
 CHARACTER_LORE_ANCHORS: dict[str, str] = {
     "snape": "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
     "dumbledore": "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
@@ -201,4 +226,53 @@ class PromptCompiler:
         return CompiledDeltaPrompt(
             preservation_lock=preservation_lock,
             isolated_diff=isolated_diff,
+        )
+
+    def compile_storyboard(
+        self,
+        concept: str,
+        characters: list[CharacterRole],
+        scenes: list[SceneDirective],
+        aesthetic_tags: list[str] | None = None,
+        environment_tag: str | None = None,
+        audio_beat: str | None = None,
+    ) -> str:
+        role_lines: list[str] = []
+        for char in characters:
+            ref_str = f" (Ref: {char.reference_url})" if char.reference_url else ""
+            role_lines.append(
+                f"- {char.role_id} ({char.name}): {char.description}{ref_str}"
+            )
+        roles_block = "\n".join(role_lines) if role_lines else "- None"
+
+        aesthetic_parts: list[str] = []
+        if concept and concept.strip():
+            aesthetic_parts.append(f"Concept: {concept.strip()}")
+        if aesthetic_tags:
+            aesthetic_parts.append(f"Aesthetic Tags: {', '.join(aesthetic_tags)}")
+        if environment_tag and environment_tag.strip():
+            aesthetic_parts.append(f"Environment: {environment_tag.strip()}")
+        if audio_beat and audio_beat.strip():
+            aesthetic_parts.append(f"Audio Beat: {audio_beat.strip()}")
+        aesthetic_block = (
+            "\n".join(aesthetic_parts) if aesthetic_parts else "Default Aesthetic"
+        )
+
+        scene_lines: list[str] = []
+        for scene in scenes:
+            roles_str = ", ".join(scene.active_roles)
+            diag_str = (
+                f' | Dialogue: "{scene.dialogue}"'
+                if scene.dialogue and scene.dialogue.strip()
+                else ""
+            )
+            scene_lines.append(
+                f"- Scene {scene.scene_number} [{roles_str}]: {scene.action}{diag_str}"
+            )
+        scenes_block = "\n".join(scene_lines) if scene_lines else "- No scenes"
+
+        return (
+            f"[ROLE DEFINITIONS]\n{roles_block}\n\n"
+            f"[AESTHETIC INJECTION]\n{aesthetic_block}\n\n"
+            f"[STORYBOARD SEQUENCE]\n{scenes_block}"
         )
