@@ -6,6 +6,7 @@ from enum import Enum
 from omnimash.prompts.compiler import (
     AESTHETIC_SIGNIFIERS,
     CompiledPromptParts,
+    MetaPromptTags,
     PromptCompiler,
 )
 
@@ -90,3 +91,6 @@ class PromptTaxonomyEngine:
             "Apply conversational diff to the existing video latent space using Lock & Isolate: "
             f"{compiled_delta.to_delta_prompt()}"
         )
+
+    def deconstruct_concept(self, concept: str) -> MetaPromptTags:
+        return self.compiler.deconstruct_concept(concept)

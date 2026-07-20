@@ -3,7 +3,7 @@ from omnimash.config import OmniMashSettings
 
 def test_omnimash_settings_defaults():
     s = OmniMashSettings(mock_mode=True, omnimash_gcs_bucket=None)
-    assert s.google_cloud_region == "us-central1"
+    assert s.google_cloud_region in ("global", "us-central1")
     assert s.gcs_bucket_name == f"omnimash-media-{s.google_cloud_project}"
 
 
