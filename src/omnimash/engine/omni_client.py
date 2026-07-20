@@ -4,7 +4,6 @@ import math
 import os
 import struct
 import subprocess
-import time
 from typing import Any
 import uuid
 import wave
@@ -565,9 +564,16 @@ class OmniFlashClient:
     ):
         self.api_key = api_key
         self.mock_mode = mock_mode
-        self.project = os.environ.get("GOOGLE_CLOUD_PROJECT", "hybrid-vertex")
-        self.location = os.environ.get("GEMINI_LOCATION", "global")
-        self._genai_client = None
+        self.project = os.environ.get(
+            "GOOGLE_CLOUD_PROJECT",
+            getattr(settings, "google_cloud_project", "hybrid-vertex"),
+        )
+        self.location = os.environ.get(
+            "GEMINI_LOCATION", getattr(settings, "gemini_location", "global")
+        )
+        self._dev_client: Any = None
+        self._vertex_client: Any = None
+        self._genai_client: Any = None
         self.storage = GcsStorageManager(
             bucket_name=bucket_name,
             project_id=self.project,
@@ -576,29 +582,53 @@ class OmniFlashClient:
 
         effective_key = (
             self.api_key
-            or settings.google_api_key
-            or settings.gemini_api_key
-            or os.environ.get("GOOGLE_API_KEY")
-            or os.environ.get("GEMINI_API_KEY")
+            if self.api_key is not None
+            else (
+                os.environ.get("GEMINI_API_KEY")
+                or os.environ.get("GOOGLE_API_KEY")
+                or getattr(settings, "gemini_api_key", None)
+                or getattr(settings, "google_api_key", None)
+            )
         )
         if not self.mock_mode and genai:
-            try:
-                from google.genai import types
+            from google.genai import types
 
-                if effective_key:
-                    self._genai_client = genai.Client(
+            http_options = types.HttpOptions(timeout=300000)
+
+            # Strategy 1: Google AI Studio Developer API Client (API Key)
+            if effective_key:
+                try:
+                    self._dev_client = genai.Client(
                         api_key=effective_key,
-                        http_options=types.HttpOptions(timeout=300000),
+                        http_options=http_options,
                     )
-                else:
-                    self._genai_client = genai.Client(
-                        vertexai=True,
-                        project=self.project,
-                        location=self.location,
-                        http_options=types.HttpOptions(timeout=300000),
-                    )
-            except Exception:
-                pass
+                except Exception as exc:
+                    logger.warning("Failed to initialize Developer API client: %s", exc)
+
+            # Strategy 2: Vertex AI ADC Token Client
+            try:
+                self._vertex_client = genai.Client(
+                    vertexai=True,
+                    project=self.project,
+                    location=self.location,
+                    http_options=http_options,
+                )
+            except Exception as exc:
+                logger.warning("Failed to initialize Vertex AI client: %s", exc)
+
+            # Default active client: prefer Vertex AI client, fallback to Developer API client
+            self._genai_client = self._vertex_client or self._dev_client
+
+    @property
+    def _api_key_client(self) -> Any:
+        return self._dev_client
+
+    def switch_to_developer_api(self) -> bool:
+        """Switches active client to Developer API client."""
+        if self._dev_client:
+            self._genai_client = self._dev_client
+            return True
+        return False
 
     def _generate_live_omni_flash_video(
         self,
@@ -659,82 +689,6 @@ class OmniFlashClient:
             logger.warning("Vertex AI generation error: %s", exc)
         return False, None
 
-    def _generate_live_veo_video(self, prompt: str, target_rel_path: str) -> bool:
-        """Fallback to Veo (veo-2.0-generate-001) for single-shot video generation with frame-accurate audio-video sync."""
-        if not self._genai_client:
-            return False
-        try:
-            safe_prompt = _abstract_prompt_for_responsible_ai(prompt)
-            logger.info(
-                "Requesting Veo video generation for abstracted prompt: %s", safe_prompt
-            )
-            op = self._genai_client.models.generate_videos(
-                model="veo-2.0-generate-001",
-                prompt=safe_prompt,
-            )
-            for _ in range(25):
-                time.sleep(3)
-                op = self._genai_client.operations.get(operation=op)
-                if op.done:
-                    break
-
-            if op.done and op.response and op.response.generated_videos:
-                vid = op.response.generated_videos[0].video
-                if hasattr(vid, "video_bytes") and vid.video_bytes:
-                    os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
-                    temp_raw_veo = f"{target_rel_path}.raw.mp4"
-                    with open(temp_raw_veo, "wb") as f:
-                        f.write(vid.video_bytes)
-
-                    # Synthesize dynamic audio track and mux with frame-accurate sync
-                    wav_path = "static/rendered/temp_speech.wav"
-                    try:
-                        ensure_rendered_video(target_rel_path, prompt=prompt)
-                        wav_path = "static/rendered/temp_speech.wav"
-                    except Exception:
-                        pass
-
-                    if os.path.exists(wav_path):
-                        cmd = [
-                            "ffmpeg",
-                            "-y",
-                            "-i",
-                            temp_raw_veo,
-                            "-i",
-                            wav_path,
-                            "-filter_complex",
-                            "[0:v]fps=24,setpts=PTS-STARTPTS[v];[1:a]aresample=async=1:first_pts=0[a]",
-                            "-map",
-                            "[v]",
-                            "-map",
-                            "[a]",
-                            "-r",
-                            "24",
-                            "-c:v",
-                            "libx264",
-                            "-pix_fmt",
-                            "yuv420p",
-                            "-c:a",
-                            "aac",
-                            "-b:a",
-                            "192k",
-                            "-shortest",
-                            "-movflags",
-                            "+faststart",
-                            target_rel_path,
-                        ]
-                        res = subprocess.run(cmd, capture_output=True, check=False)
-                        if res.returncode == 0:
-                            if os.path.exists(temp_raw_veo):
-                                os.remove(temp_raw_veo)
-                            return True
-
-                    os.replace(temp_raw_veo, target_rel_path)
-                    return True
-        except Exception as exc:
-            logger.warning("Vertex AI generation error: %s", exc)
-        return False
-
     def generate_clip(
         self,
         prompt: str,
@@ -750,11 +704,7 @@ class OmniFlashClient:
         # 1. Primary: Gemini Omni Flash via Interactions API (Native Video + Audio + Reasoning)
         success, inter_id = self._generate_live_omni_flash_video(prompt, rel_path)
 
-        # 2. Secondary Fallback: Veo single-shot video generation with audio muxing
-        if not success:
-            success = self._generate_live_veo_video(prompt, rel_path)
-
-        # 3. Tertiary Fallback: Local prompt-rendered animated video
+        # 2. Fallback: Local prompt-rendered animated video
         if not success:
             ensure_rendered_video(
                 url,
@@ -794,11 +744,7 @@ class OmniFlashClient:
             diff_prompt, rel_path, previous_interaction_id=interaction_thread_id
         )
 
-        # 2. Secondary Fallback: Veo
-        if not success:
-            success = self._generate_live_veo_video(diff_prompt, rel_path)
-
-        # 3. Tertiary Fallback: Local prompt-rendered animated video
+        # 2. Fallback: Local prompt-rendered animated video
         if not success:
             ensure_rendered_video(
                 url,
@@ -836,8 +782,6 @@ class OmniFlashClient:
 
         prompt = initial_prompt or "Reanchored video turn"
         success, inter_id = self._generate_live_omni_flash_video(prompt, rel_path)
-        if not success:
-            success = self._generate_live_veo_video(prompt, rel_path)
         if not success:
             ensure_rendered_video(
                 url,
