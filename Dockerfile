@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     fonts-dejavu-core \
     fonts-freefont-ttf \
+    flite \
+    espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast Python package management
