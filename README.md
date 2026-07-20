@@ -193,7 +193,7 @@ Open your browser to `http://localhost:8080` (or access the live production inst
 
 ### Step 2: Act 1 — The Concept & Cast Manager
 
-In **Act 1**, define the high-level creative vision and character bindings for your parody video.
+In **Act 1**, define the high-level creative vision, dynamic character bindings, and character-specific aesthetic style signifiers for your parody video.
 
 <div align="center">
   <img src="imgs/ui_act1_concept_and_cast.jpg" alt="OmniMash Act 1: The Concept & Cast Manager" width="100%" />
@@ -201,8 +201,9 @@ In **Act 1**, define the high-level creative vision and character bindings for y
 
 1. **Enter Visual Shorthand:** Type your open-ended parody concept (e.g., *"Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"*).
 2. **Deconstruct Concept:** Click **✨ Deconstruct Concept** (`POST /api/deconstruct-concept`). OmniMash parses the prompt into structured `MetaPromptTags`.
-3. **Configure Dynamic Character Roles:** Review dynamic character roles (`Role A: Harry "Gucci"`, `Role B: Young Draco "Jeezy"`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) (`gs://reference-images-jt-trend-trawler/...`) to lock facial likeness and attire across scenes.
-4. **Tune Meta-Prompt Tags:** Review aesthetic tag chips (`2000s Atlanta Trap Disstrack`, `Diamond Lightning Bolt Chain`, `Heavy 808 Bass Lighting`, `Vintage Streetwear`) and audio beat (`140 BPM Heavy 808 Trap`).
+3. **Configure Dynamic Character Roles & Reference Images:** Review dynamic character roles (`Role A: Harry "Gucci"`, `Role B: Young Draco "Jeezy"`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) (`gs://reference-images-jt-trend-trawler/...`) to lock facial likeness across scenes.
+4. **Manage Character-Specific Aesthetic Tags & Style Signifiers:** Refine granular character-level style tags inside each Character Role card (e.g., `Red Gucci Tracksuit`, `Cartier Glasses` for Role A; `Platinum Slicked Hair`, `Diamond Iced-Out Chain` for Role B). The prompt compiler binds these tags as `[Style: ...]` directly to character role definitions to anchor individual attire and jewelry across scene changes.
+5. **Tune Global Meta-Prompt Tags:** Review scene-wide aesthetic tag chips (`2000s Atlanta Trap Disstrack`, `Heavy 808 Bass Lighting`, `Vintage Streetwear`) and audio beat (`140 BPM Heavy 808 Trap`).
 
 ---
 
@@ -223,7 +224,7 @@ In **Act 2**, sequence your multi-character storyline into structured scenes.
 
 ### Step 4: Act 3 — The Screening Room & Branching
 
-In **Act 3**, render your 720p HD parody cut with native synced audio, monitor generation health, and branch conversational edits.
+In **Act 3**, render your 720p HD parody cut with native synced audio, inspect the final generation prompt, control non-autoplay playback, export masters to GCS, extend scenes, and branch conversational edits.
 
 <div align="center">
   <img src="imgs/ui_act3_screening_room.jpg" alt="OmniMash Act 3: The Screening Room & Branching" width="100%" />
@@ -233,9 +234,12 @@ In **Act 3**, render your 720p HD parody cut with native synced audio, monitor g
 2. **Monitor Generation Health:**
    - **Generation Status Badge:** Look for the green `🟢 Live Gemini Omni Flash (720p + Synced Audio)` status pill in the header.
    - **Prioritized Developer API Client:** Google AI Studio routing is prioritized via `GOOGLE_API_KEY`, enabling pure native joint video and audio generation alongside stateful `previous_interaction_id` editing.
-3. **Play 720p Native Video:** Inspect the rendered 720p 24fps video with moving character rapping animations and synchronized 140 BPM background trap beats.
-4. **Branch Conversational Diffs:** Direct iterative scene edits via the Delta Prompt chat bar (e.g., *"Add disco strobe lights and iced-out diamond chain"*) to create non-linear branches in the **Version Tree DAG**.
-5. **Commit & Branch:** At edit depth $\ge 3$ (`COMMIT_RECOMMENDED`), click **Commit & Branch** (`POST /api/commit`) to flush token context decay and re-anchor from the committed video.
+3. **Inspect 720p Native Video with Non-Autoplay Control:** Inspect the rendered 720p 24fps video with moving character rapping animations and synchronized 140 BPM background trap beats. Videos do not autoplay on render, giving the director full manual playback and scrubber control.
+4. **Inspect Final Generation Prompt:** Review the **🧠 Final Generation Prompt (Active Version)** inspection pane below the video player. This viewer exposes the exact `rawCompiledPrompt` (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`) sent to Gemini Omni Flash for the currently selected version. Selecting any historical turn from the Version Tree updates the prompt viewer dynamically in real time.
+5. **Save Final Master to GCS:** Click **💾 Save Final Master to GCS** (`POST /api/save-final`) to copy and export the active 720p video master from intermediate storage to a permanent Google Cloud Storage bucket (`final_masters/<session_name>_<master_title>.mp4`).
+6. **Extend Video / Next Scene:** Click **➕ Extend Video / Next Scene** (`POST /api/extend-scene`) to seamlessly continue narrative progression. This locks the active character identities and keyframe baselines and transitions back to Act 2 with a new appended storyboard scene card ready for dialogue directing.
+7. **Branch Conversational Diffs:** Direct iterative scene edits via the Delta Prompt chat bar (e.g., *"Add disco strobe lights and iced-out diamond chain"*) to create non-linear branches in the **Version Tree DAG**.
+8. **Commit & Branch:** At edit depth $\ge 3$ (`COMMIT_RECOMMENDED`), click **Commit & Branch** (`POST /api/commit`) to flush token context decay and re-anchor from the committed video.
 
 ---
 
@@ -366,9 +370,9 @@ curl -X POST http://localhost:8000/api/commit \
 
 The built-in single-page web dashboard (React 18 + Tailwind CSS) implements the **3-Act Digital Director's Studio**:
 
-- **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), dynamic Character Roles manager (`Role A`, `Role B`) with attached Gemini Omni Image Role reference image URLs, and interactive Meta-Prompt Tag chips.
+- **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), dynamic Character Roles manager (`Role A`, `Role B`) with attached Gemini Omni Image Role reference image URLs and character-specific style signifiers (aesthetic tags), and interactive global Meta-Prompt Tag chips.
 - **Act 2: Fine-Tune & Storyboard Directing:** Multi-scene storyboard sequence editor, active role selectors (`["Role A"]`, `["Role B"]`), action directives, turn-by-turn dialogue, and real-time live compiled storyboard prompt preview (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[STORYBOARD SEQUENCE]`).
-- **Act 3: The Screening Room & Branching:** 720p native video player with SynthID C2PA provenance indicators, Generation Status pill badge (`🟢 Live Gemini Omni Flash` vs `🟠 Procedural Fallback Animation`), Active Error Mitigation banner, interactive Version Tree DAG explorer, conversational delta prompting, and depth $\ge 3$ commit & re-anchor modal.
+- **Act 3: The Screening Room & Branching:** 720p native video player with non-autoplay playback controls and SynthID C2PA provenance indicators, Generation Status pill badge (`🟢 Live Gemini Omni Flash` vs `🟠 Procedural Fallback Animation`), Active Error Mitigation banner, live Final Generation Prompt inspection pane (`rawCompiledPrompt`), "Save Final Master to GCS" export modal (`POST /api/save-final`), "Extend Video / Next Scene" storyboard continuation (`POST /api/extend-scene`), interactive Version Tree DAG explorer, conversational delta prompting, and depth $\ge 3$ commit & re-anchor modal.
 
 ---
 
