@@ -41,3 +41,12 @@ This document outlines the mandatory engineering standards, tooling rules, and d
 
 ## ☁️ Cloud Resources & Deployment Policy
 - **Explicit Approval Required for Redeployments**: Never redeploy any cloud resources (e.g. Cloud Run deployments via `./scripts/deploy_cloud_run.sh` or `gcloud run deploy`, Cloud Storage modifications, or Vertex AI Agent Engine deployments) without explicit, direct user approval.
+
+---
+
+## 🤖 Gemini Model Locations & Cloud Environment Variables
+- **Gemini 3 Models (`global` location)**: All Gemini 3 generation models (`gemini-3.5-flash`, `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite`, `gemini-omni-flash-preview`) MUST use the `"global"` location for Vertex GenAI and Google GenAI model endpoints.
+- **Gemini 2.X Models (Regional location)**: All Gemini 2.X models use a regional location (e.g., `us-central1`).
+- **Environment Variable Conventions**:
+  - `GOOGLE_CLOUD_LOCATION=global`: Specifically designates the Vertex GenAI / Google GenAI model endpoint location for Gemini 3 / Omni models.
+  - `GCP_REGION=us-central1`: Specifically designates the default cloud region for all other Google Cloud infrastructure resources (BigQuery, Cloud Storage, Pub/Sub, Cloud Run Functions, Agent Engine).

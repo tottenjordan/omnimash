@@ -5,7 +5,9 @@ class OmniMashSettings(BaseSettings):
     """Centralized, type-safe application settings loaded automatically from environment and .env."""
 
     google_cloud_project: str = "hybrid-vertex"
-    google_cloud_region: str = "global"
+    gcp_region: str = "us-central1"
+    google_cloud_region: str = "us-central1"
+    google_cloud_location: str = "global"
     gemini_location: str = "global"
     omnimash_gcs_bucket: str | None = None
     google_api_key: str | None = None
