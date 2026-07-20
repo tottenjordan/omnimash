@@ -276,3 +276,173 @@ class PromptCompiler:
             f"[AESTHETIC INJECTION]\n{aesthetic_block}\n\n"
             f"[STORYBOARD SEQUENCE]\n{scenes_block}"
         )
+
+    def deconstruct_concept(self, concept: str) -> MetaPromptTags:
+        """Parses open-ended parody concept shorthand into structured MetaPromptTags with CharacterRoles, Aesthetic Tags, Environment, Camera/Lighting, and Audio Beat."""
+        lower = concept.lower().strip()
+
+        # 1. Character Extraction
+        chars: list[CharacterRole] = []
+        role_labels = ["Role A", "Role B", "Role C", "Role D"]
+
+        known_lore: dict[str, tuple[str, str]] = {
+            "harry": (
+                "Harry",
+                "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
+            ),
+            "draco": (
+                "Draco",
+                "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
+            ),
+            "snape": (
+                "Severus Snape",
+                "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
+            ),
+            "dumbledore": (
+                "Albus Dumbledore",
+                "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
+            ),
+            "voldemort": (
+                "Lord Voldemort",
+                "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
+            ),
+            "ramsay": (
+                "Gordon Ramsay",
+                "Gordon Ramsay, a fiery celebrity chef with sharp blond hair, intense focused gaze, and crisp white chef jacket",
+            ),
+            "julia": (
+                "Julia Child",
+                "Julia Child, an iconic tall cheerful culinary master with curly brown hair, expressive warm smile, and classic vintage apron",
+            ),
+            "samurai": (
+                "Neon Samurai",
+                "Neon Samurai, a stoic warrior in glowing LED armor with a razor-sharp energy katana",
+            ),
+            "ninja": (
+                "Cyborg Ninja",
+                "Cyborg Ninja, an agile cybernetic assassin with chrome mask and stealth holographic visor",
+            ),
+        }
+
+        matched_keys = [k for k in known_lore if k in lower]
+        if matched_keys:
+            for idx, k in enumerate(matched_keys):
+                name, desc = known_lore[k]
+                chars.append(
+                    CharacterRole(
+                        role_id=role_labels[min(idx, len(role_labels) - 1)],
+                        name=name,
+                        description=desc,
+                    )
+                )
+        else:
+            if " vs " in lower or " versus " in lower:
+                splitter = " vs " if " vs " in lower else " versus "
+                parts = concept.split(splitter)
+                name_a = parts[0].strip().split(" in ")[0].strip()
+                name_b = parts[1].strip().split(" in ")[0].strip()
+                chars.append(
+                    CharacterRole(
+                        role_id="Role A",
+                        name=name_a.title(),
+                        description=f"{name_a.title()}, a distinct cinematic character with sharp expressive features",
+                    )
+                )
+                chars.append(
+                    CharacterRole(
+                        role_id="Role B",
+                        name=name_b.title(),
+                        description=f"{name_b.title()}, a compelling rival character with bold visual presence",
+                    )
+                )
+            else:
+                chars.append(
+                    CharacterRole(
+                        role_id="Role A",
+                        name="Lead Subject",
+                        description="A distinct cinematic character with expressive facial features and stylized attire",
+                    )
+                )
+
+        # 2. Aesthetic / Style Tags Extraction
+        if (
+            "trap" in lower
+            or "atlanta" in lower
+            or "808" in lower
+            or "rap" in lower
+            or "hip-hop" in lower
+        ):
+            aesthetic_tags = [
+                "2000s Atlanta Trap Disstrack",
+                "Diamond Lightning Bolt Chain",
+                "Vintage Streetwear",
+                "Heavy 808 Bass Lighting",
+            ]
+            audio_beat = "140 BPM Heavy 808 Trap"
+            env_tag = (
+                "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze"
+                if (
+                    "harry" in lower
+                    or "draco" in lower
+                    or "hogwarts" in lower
+                    or "snape" in lower
+                )
+                else "Urban street alley with neon stage lights and atmospheric fog"
+            )
+            cam_tag = "Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights"
+        elif (
+            "cyberpunk" in lower
+            or "neon" in lower
+            or "futuristic" in lower
+            or "iron chef" in lower
+            or "samurai" in lower
+            or "ninja" in lower
+            or "arcade" in lower
+        ):
+            aesthetic_tags = [
+                "Cyberpunk Glow",
+                "Neon Cyan & Purple Color Grading",
+                "Futuristic Techwear",
+                "Anamorphic Lens Flare",
+            ]
+            audio_beat = "110 BPM Cyberpunk Synthwave Groove"
+            env_tag = (
+                "Futuristic neon kitchen colosseum with holographic spectator screens"
+                if (
+                    "chef" in lower
+                    or "ramsay" in lower
+                    or "julia" in lower
+                    or "kitchen" in lower
+                )
+                else "Neon-lit cyberpunk arcade showdown arena"
+            )
+            cam_tag = "Anamorphic widescreen tracking shot with high-gloss neon reflections and holographic bloom"
+        elif "anime" in lower or "vhs" in lower or "lo-fi" in lower:
+            aesthetic_tags = [
+                "Retro VHS Anime Lo-Fi",
+                "Analog Scanlines",
+                "Warm Nostalgic Bloom",
+                "Cel-Shaded Styling",
+            ]
+            audio_beat = "85 BPM VHS Lo-Fi City Pop"
+            env_tag = "Retro 80s anime cityscape bathed in sunset pastel lighting"
+            cam_tag = (
+                "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
+            )
+        else:
+            aesthetic_tags = [
+                "High-Contrast Cinematic Parody",
+                "Stylized Wardrobe",
+                "Dramatic Lighting",
+            ]
+            audio_beat = "120 BPM Cinematic Beat"
+            env_tag = "Atmospheric stage set with dramatic directional lighting and smoke effects"
+            cam_tag = "Cinematic 16:9 tracking shot with balanced ambient lighting and crisp depth of field"
+
+        return MetaPromptTags(
+            characters=chars,
+            aesthetic_tags=aesthetic_tags,
+            environment_tag=env_tag,
+            camera_lighting_tag=cam_tag,
+            audio_beat=audio_beat,
+        )
