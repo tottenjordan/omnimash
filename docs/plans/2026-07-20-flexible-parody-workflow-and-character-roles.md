@@ -4,9 +4,9 @@
 
 **Goal:** Enable users to create ~1-minute parody videos from any open-ended visual and aesthetic concept using a linear 3-Act workflow, dynamic meta-prompt tag deconstruction, multi-character definition with Gemini Omni Image Roles, and multi-scene storyboarding.
 
-**Architecture:** Replace hardcoded presets with an open-ended "Visual Concept / Parody Prompt" widget. The Prompt Compiler expands user shorthand into editable Meta-Prompt Tags (Characters, Aesthetic, Environment, Camera, Lighting, Audio). Characters are defined with explicit Role tags (`Role A`, `Role B`) bound to reference images per the Gemini Omni API specification (`https://ai.google.dev/gemini-api/docs/omni#set-image-roles`). The linear Act workflow sequences multi-character scenes into a cohesive ~1-minute parody cut, maintaining responsible AI name abstraction, gTTS neural vocals, and razor-sharp TrueType subtitles.
+**Architecture:** Replace hardcoded presets with an open-ended "Visual Concept / Parody Prompt" widget. The Prompt Compiler expands user shorthand into editable Meta-Prompt Tags (Characters, Aesthetic, Environment, Camera, Lighting, Audio). Characters are defined with explicit Role tags (`Role A`, `Role B`) bound to reference images per the Gemini Omni API specification (`https://ai.google.dev/gemini-api/docs/omni#set-image-roles`). The linear Act workflow sequences multi-character scenes into a cohesive ~1-minute parody cut, using Gemini Omni Flash for native joint 720p video and synchronized character audio generation.
 
-**Tech Stack:** FastAPI, React 18 / Tailwind CSS, Google GenAI SDK (`gemini-omni-flash-preview` / Vertex AI), Pydantic v2, pytest.
+**Tech Stack:** FastAPI, React 18 / Tailwind CSS, Google GenAI SDK (`gemini-omni-flash-preview` / Developer API), Pydantic v2, pytest.
 
 ---
 
@@ -43,9 +43,7 @@ flowchart TD
         J --> K[POST /api/generate]
         K --> L[Responsible AI Abstraction Layer]
         L --> M[Gemini Omni Flash Interactions API]
-        M --> N[🎥 Native MP4 Video Generation]
-        L --> O[🗣️ gTTS Neural Spoken Vocals]
-        L --> P[🔤 TrueType Vector Subtitles]
+        M --> N[🎥 Native Multimodal MP4 (Joint Video + Audio)]
     end
 ```
 
@@ -207,7 +205,7 @@ git commit -m "feat(api): add /api/deconstruct-concept and multi-character gener
 3. **Act 2: Storyboard Sequence & Fine-Tuning**:
    - Multi-scene storyboard editor (~1-minute sequence).
    - Assign character roles to scenes.
-   - Dialogue editor per character with live gTTS vocal and subtitle preview.
+   - Dialogue editor per character for multi-scene storyboard synchronization.
    - Live Anchor & Inject + Image Roles compiled prompt preview.
 4. **Act 3: The Director's Chair**:
    - Native Gemini Omni Flash MP4 player, timeline history, and conversational delta prompt editor.

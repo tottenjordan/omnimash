@@ -191,159 +191,34 @@ def _generate_dynamic_audio_wav(
     return bpm
 
 
-def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -> bool:
-    """Synthesizes natural, human-quality spoken voiceover and character dialogue into a 44.1kHz WAV using gTTS (Google Neural TTS), with fallback to flite/espeak-ng."""
-    if not voiceover_text or not voiceover_text.strip():
-        return False
+def extract_clean_dialogue_summary(prompt: str) -> str:
+    """Extracts clean character dialogue quotes or short scene summaries from structured prompts for offline simulation subtitles."""
+    if not prompt:
+        return "AI Parody Storyboard Preview"
+    import re
 
-    raw_text = voiceover_text.strip()
-    clean_text = raw_text.replace("'", "").replace('"', "")
-    clean_text = clean_text.replace(":", " says: ").replace("/", ". ")
-    clean_text = " ".join(clean_text.split())
+    dialogues = re.findall(r'Dialogue:\s*"([^"]+)"', prompt, re.IGNORECASE)
+    if dialogues:
+        return " ".join(dialogues)
 
-    if not clean_text:
-        return False
+    quotes = re.findall(r'"([^"]{4,})"', prompt)
+    if quotes:
+        return " ".join(quotes)
 
-    if dirname := os.path.dirname(speech_wav_path):
-        os.makedirs(dirname, exist_ok=True)
+    actions = re.findall(r"Action:\s*([^\n]+)", prompt, re.IGNORECASE)
+    if actions:
+        return actions[0][:100]
 
-    # Tier 1: gTTS (Google Neural Text-to-Speech) for natural, fluid human speech
-    try:
-        import socket
-
-        orig_timeout = socket.getdefaulttimeout()
-        socket.setdefaulttimeout(0.5)
-        try:
-            from gtts import gTTS
-
-            temp_mp3 = f"{speech_wav_path}.mp3"
-            tts = gTTS(clean_text, lang="en", tld="com")
-            tts.save(temp_mp3)
-            if os.path.exists(temp_mp3) and os.path.getsize(temp_mp3) > 1000:
-                cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    temp_mp3,
-                    "-ar",
-                    "44100",
-                    "-ac",
-                    "2",
-                    speech_wav_path,
-                ]
-                res = subprocess.run(cmd, capture_output=True, check=False)
-                if (
-                    res.returncode == 0
-                    and os.path.exists(speech_wav_path)
-                    and os.path.getsize(speech_wav_path) > 1000
-                ):
-                    try:
-                        os.remove(temp_mp3)
-                    except Exception:
-                        pass
-                    return True
-        finally:
-            socket.setdefaulttimeout(orig_timeout)
-    except Exception:
-        pass
-
-    # Tier 2: System flite CLI binary
-    try:
-        res = subprocess.run(
-            ["flite", "-t", clean_text, "-o", speech_wav_path],
-            capture_output=True,
-            check=False,
+    cleaned = re.sub(r"\[[A-Z\s_]+\]", "", prompt)
+    lines = [
+        line.strip()
+        for line in cleaned.splitlines()
+        if line.strip()
+        and not line.strip().startswith(
+            ("Role ", "Active Roles:", "Environment:", "Aesthetic:")
         )
-        if (
-            res.returncode == 0
-            and os.path.exists(speech_wav_path)
-            and os.path.getsize(speech_wav_path) > 1000
-        ):
-            return True
-    except Exception:
-        pass
-
-    # Tier 3: System espeak-ng / espeak CLI binary
-    try:
-        for cmd_name in ["espeak-ng", "espeak"]:
-            res = subprocess.run(
-                [cmd_name, "-w", speech_wav_path, clean_text],
-                capture_output=True,
-                check=False,
-            )
-            if (
-                res.returncode == 0
-                and os.path.exists(speech_wav_path)
-                and os.path.getsize(speech_wav_path) > 1000
-            ):
-                return True
-    except Exception:
-        pass
-
-    # Tier 4: FFmpeg flite filter with textfile
-    txt_path = f"{speech_wav_path}.txt"
-    try:
-        with open(txt_path, "w", encoding="utf-8") as tf:
-            tf.write(clean_text)
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            f"flite=textfile={txt_path}:voice=kal16",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            speech_wav_path,
-        ]
-        res = subprocess.run(cmd, capture_output=True, check=False)
-        if (
-            res.returncode == 0
-            and os.path.exists(speech_wav_path)
-            and os.path.getsize(speech_wav_path) > 1000
-        ):
-            return True
-    except Exception:
-        pass
-
-    # Tier 5: Native Python Formant Speech Synthesizer fallback
-    try:
-        sample_rate = 44100
-        duration = 8
-        total_samples = sample_rate * duration
-        audio_data = []
-        words = clean_text.split()
-        num_words = max(1, len(words))
-
-        for i in range(total_samples):
-            t = i / sample_rate
-            word_idx = int(t * 2.5) % num_words
-            cur_word = words[word_idx].lower()
-
-            is_speaker_1 = "harry" in cur_word or word_idx % 4 in [0, 1]
-            base_pitch = 160.0 if is_speaker_1 else 220.0
-
-            syllable_t = (t * 5.0) % 1.0
-            vocal_env = math.sin(math.pi * syllable_t) if syllable_t < 0.8 else 0.0
-
-            f1 = math.sin(2 * math.pi * base_pitch * t)
-            f2 = 0.5 * math.sin(2 * math.pi * (base_pitch * 3) * t)
-            f3 = 0.25 * math.sin(2 * math.pi * 1500 * t)
-
-            vocal_sample = (f1 + f2 + f3) * vocal_env * 0.7
-            vocal_sample = max(-1.0, min(1.0, vocal_sample))
-            audio_data.append(int(vocal_sample * 32767))
-
-        with wave.open(speech_wav_path, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(sample_rate)
-            wf.writeframes(struct.pack(f"<{len(audio_data)}h", *audio_data))
-        return True
-    except Exception:
-        return False
+    ]
+    return " ".join(lines)[:100] or "AI Parody Storyboard Preview"
 
 
 def ensure_rendered_video(
@@ -362,43 +237,19 @@ def ensure_rendered_video(
     os.makedirs(os.path.dirname(rel_path), exist_ok=True)
 
     # Extract voiceover / dialogue if not explicitly passed
-    effective_voiceover = voiceover
-    if not effective_voiceover and prompt:
-        import re
-
-        vo_match = re.search(
-            r"(?:Voiceover|Dialogue between subjects):\s*([^\n\.]+)",
-            prompt,
-            re.IGNORECASE,
-        )
-        if vo_match:
-            effective_voiceover = vo_match.group(1).strip()
-        elif ":" in prompt and '"' in prompt:
-            effective_voiceover = prompt
-
     effective_silent = (
         is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
     )
 
-    wav_speech_path = "static/rendered/temp_speech.wav"
     wav_silent_path = "static/rendered/temp_silent.wav"
-
+    _generate_dynamic_audio_wav(
+        wav_silent_path, prompt=prompt, is_silent=effective_silent
+    )
     target_audio_wav = wav_silent_path
-    if not effective_silent and effective_voiceover:
-        if _synthesize_spoken_dialogue_wav(wav_speech_path, effective_voiceover):
-            target_audio_wav = wav_speech_path
-        else:
-            _generate_dynamic_audio_wav(wav_silent_path, is_silent=True)
-            target_audio_wav = wav_silent_path
-    else:
-        _generate_dynamic_audio_wav(wav_silent_path, is_silent=True)
-        target_audio_wav = wav_silent_path
 
     clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
     clean_subtitles = (
-        (effective_voiceover or "Natural Dialogue Speech Sync")
-        .replace("'", "")
-        .replace('"', "")[:100]
+        extract_clean_dialogue_summary(prompt).replace("'", "").replace('"', "")[:100]
     )
 
     # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
@@ -720,8 +571,8 @@ class OmniFlashClient:
             except Exception as exc:
                 logger.warning("Failed to initialize Vertex AI client: %s", exc)
 
-            # Default active client: prefer Vertex AI client, fallback to Developer API client
-            self._genai_client = self._vertex_client or self._dev_client
+            # Default active client: prefer Developer API client (API key) if available, otherwise Vertex AI client
+            self._genai_client = self._dev_client or self._vertex_client
 
     @property
     def _api_key_client(self) -> Any:
