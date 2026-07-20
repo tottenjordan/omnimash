@@ -9,6 +9,7 @@ from typing import Any
 import uuid
 import wave
 from dataclasses import dataclass
+from omnimash.config import settings
 from omnimash.storage.gcs import GcsStorageManager
 
 logger = logging.getLogger("omnimash.engine")
@@ -564,18 +565,33 @@ class OmniFlashClient:
             mock_mode=self.mock_mode,
         )
 
+        effective_key = (
+            self.api_key
+            or settings.google_api_key
+            or settings.gemini_api_key
+            or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("GEMINI_API_KEY")
+        )
         if not self.mock_mode and genai:
             try:
                 from google.genai import types
 
-                self._genai_client = genai.Client(
-                    vertexai=True,
-                    project=self.project,
-                    location=self.location,
-                    http_options=types.HttpOptions(
-                        api_version="v1alpha", timeout=300000
-                    ),
-                )
+                if effective_key:
+                    self._genai_client = genai.Client(
+                        api_key=effective_key,
+                        http_options=types.HttpOptions(
+                            api_version="v1alpha", timeout=300000
+                        ),
+                    )
+                else:
+                    self._genai_client = genai.Client(
+                        vertexai=True,
+                        project=self.project,
+                        location=self.location,
+                        http_options=types.HttpOptions(
+                            api_version="v1alpha", timeout=300000
+                        ),
+                    )
             except Exception:
                 pass
 
