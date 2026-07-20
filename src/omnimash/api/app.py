@@ -1060,6 +1060,14 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+    from omnimash.engine.omni_client import ensure_rendered_video
+
+    ensure_rendered_video(
+        "/static/rendered/mock.mp4",
+        prompt="Trapwarts trailer",
+        voiceover='Harry: "You talkin bout potions Draco? I been cooking since first year. Burrr!" / Draco: "This is Trap or Die Potter! Let us get it!"',
+    )
+
     @app.get("/", response_class=HTMLResponse)
     def get_dashboard() -> HTMLResponse:
         return HTMLResponse(content=UI_HTML)
