@@ -309,4 +309,3 @@ def test_e2e_directors_studio_3_act_flow() -> None:
     )
     assert r2.status_code == 200
     assert r2.json()["success"] is True
-

@@ -190,7 +190,7 @@ def _generate_dynamic_audio_wav(
 
 
 def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -> bool:
-    """Synthesizes crystal-clear spoken voiceover or character dialogue into a 44.1kHz WAV using flite CLI, espeak-ng CLI, or native formant synthesis."""
+    """Synthesizes natural, human-quality spoken voiceover and character dialogue into a 44.1kHz WAV using gTTS (Google Neural TTS), with fallback to flite/espeak-ng."""
     if not voiceover_text or not voiceover_text.strip():
         return False
 
@@ -205,7 +205,40 @@ def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -
     if dirname := os.path.dirname(speech_wav_path):
         os.makedirs(dirname, exist_ok=True)
 
-    # 1. Try system flite CLI binary
+    # Tier 1: gTTS (Google Neural Text-to-Speech) for natural, fluid human speech
+    try:
+        from gtts import gTTS
+
+        temp_mp3 = f"{speech_wav_path}.mp3"
+        tts = gTTS(clean_text, lang="en", tld="com")
+        tts.save(temp_mp3)
+        if os.path.exists(temp_mp3) and os.path.getsize(temp_mp3) > 1000:
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                temp_mp3,
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                speech_wav_path,
+            ]
+            res = subprocess.run(cmd, capture_output=True, check=False)
+            if (
+                res.returncode == 0
+                and os.path.exists(speech_wav_path)
+                and os.path.getsize(speech_wav_path) > 1000
+            ):
+                try:
+                    os.remove(temp_mp3)
+                except Exception:
+                    pass
+                return True
+    except Exception:
+        pass
+
+    # Tier 2: System flite CLI binary
     try:
         res = subprocess.run(
             ["flite", "-t", clean_text, "-o", speech_wav_path],
@@ -221,7 +254,7 @@ def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -
     except Exception:
         pass
 
-    # 2. Try system espeak-ng / espeak CLI binary
+    # Tier 3: System espeak-ng / espeak CLI binary
     try:
         for cmd_name in ["espeak-ng", "espeak"]:
             res = subprocess.run(
@@ -238,7 +271,7 @@ def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -
     except Exception:
         pass
 
-    # 3. Try FFmpeg flite filter with textfile
+    # Tier 4: FFmpeg flite filter with textfile
     txt_path = f"{speech_wav_path}.txt"
     try:
         with open(txt_path, "w", encoding="utf-8") as tf:
@@ -266,7 +299,7 @@ def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -
     except Exception:
         pass
 
-    # 4. Resilient Pure Python Rhythmic Formant Speech Synthesizer (0% music, pure vocal dialogue pulses)
+    # Tier 5: Native Python Formant Speech Synthesizer fallback
     try:
         sample_rate = 44100
         duration = 8
@@ -280,15 +313,12 @@ def _synthesize_spoken_dialogue_wav(speech_wav_path: str, voiceover_text: str) -
             word_idx = int(t * 2.5) % num_words
             cur_word = words[word_idx].lower()
 
-            # Character pitch variation based on speaker
             is_speaker_1 = "harry" in cur_word or word_idx % 4 in [0, 1]
             base_pitch = 160.0 if is_speaker_1 else 220.0
 
-            # Syllable cadence & speech envelope
             syllable_t = (t * 5.0) % 1.0
             vocal_env = math.sin(math.pi * syllable_t) if syllable_t < 0.8 else 0.0
 
-            # Formant bands (F1: 500Hz, F2: 1500Hz, F3: 2500Hz)
             f1 = math.sin(2 * math.pi * base_pitch * t)
             f2 = 0.5 * math.sin(2 * math.pi * (base_pitch * 3) * t)
             f3 = 0.25 * math.sin(2 * math.pi * 1500 * t)
@@ -314,7 +344,7 @@ def ensure_rendered_video(
     is_silent: bool = False,
     audio_stem: str | None = None,
 ) -> None:
-    """Ensures a valid playable 720p 24fps MP4 with pure spoken voiceover dialogue or clean silence (background music removed)."""
+    """Ensures a valid playable 720p 24fps MP4 with natural human speech and crisp vector TrueType subtitles."""
     if not video_url.startswith("/static/"):
         return
     rel_path = video_url.lstrip("/")
@@ -354,10 +384,45 @@ def ensure_rendered_video(
         target_audio_wav = wav_silent_path
 
     clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
+    clean_subtitles = (
+        (effective_voiceover or "Natural Dialogue Speech Sync")
+        .replace("'", "")
+        .replace('"', "")[:100]
+    )
+
+    # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
+    txt_prompt_path = "static/rendered/temp_prompt.txt"
+    txt_sub_path = "static/rendered/temp_subtitles.txt"
+    with open(txt_prompt_path, "w", encoding="utf-8") as f:
+        f.write(f"PROMPT: {clean_prompt}")
+    with open(txt_sub_path, "w", encoding="utf-8") as f:
+        f.write(f"🗣️ {clean_subtitles}")
+
+    # Discover crisp vector TrueType font
+    font_arg = ""
+    font_candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for fc in font_candidates:
+        if os.path.exists(fc):
+            font_arg = f":fontfile={fc}"
+            break
+
     banner_img = "imgs/omnimash_banner.png"
 
     if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
         try:
+            filter_str = (
+                f"[0:v]scale=1280:720,zoompan=z='min(1.04+0.02*abs(sin(2*PI*0.5*in_time)),1.12)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,"
+                f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
+                f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
+                f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
+                f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
+                f"drawtext=textfile={txt_prompt_path}{font_arg}:fontcolor=0x94A3B8:fontsize=18:x=90:y=h-135,"
+                f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95[v]; [1:a]aresample=async=1:first_pts=0[a]"
+            )
             cmd = [
                 "ffmpeg",
                 "-y",
@@ -368,7 +433,7 @@ def ensure_rendered_video(
                 "-i",
                 target_audio_wav,
                 "-filter_complex",
-                f"[0:v]scale=1280:720,zoompan=z='min(1.05+0.02*abs(sin(2*PI*0.5*in_time)),1.15)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO':fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,drawtext=text='PROMPT: {clean_prompt}':fontcolor=white:fontsize=24:x=30:y=h-75,drawtext=text='🎙️ Pure Spoken Dialogue Mode • 720p 24fps Voice Audio Sync':fontcolor=0x34A853:fontsize=18:x=30:y=h-35[v]; [1:a]aresample=async=1:first_pts=0[a]",
+                filter_str,
                 "-map",
                 "[v]",
                 "-map",
@@ -377,6 +442,10 @@ def ensure_rendered_video(
                 "24",
                 "-c:v",
                 "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "18",
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
@@ -394,19 +463,26 @@ def ensure_rendered_video(
         except Exception:
             pass
 
-    # Fallback MP4 generation with animated procedural visualizer filter
+    # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
     try:
         audio_inputs = (
             ["-i", target_audio_wav]
             if os.path.exists(target_audio_wav)
             else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
         )
+        filter_str = (
+            f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
+            f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
+            f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
+            f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
+            f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]"
+        )
         cmd = [
             "ffmpeg",
             "-y",
             *audio_inputs,
             "-filter_complex",
-            "[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,drawbox=y=0:color=black@0.6:width=iw:height=60:t=fill,drawbox=y=ih-100:color=black@0.75:width=iw:height=100:t=fill,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]",
+            filter_str,
             "-map",
             "[v]",
             "-map",
@@ -415,6 +491,10 @@ def ensure_rendered_video(
             "24",
             "-c:v",
             "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "18",
             "-pix_fmt",
             "yuv420p",
             "-c:a",
@@ -424,11 +504,7 @@ def ensure_rendered_video(
             "+faststart",
             rel_path,
         ]
-        subprocess.run(
-            cmd,
-            capture_output=True,
-            check=False,
-        )
+        subprocess.run(cmd, capture_output=True, check=False)
     except Exception:
         pass
 
