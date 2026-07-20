@@ -76,3 +76,16 @@ def test_deconstruct_open_ended_custom_concept():
     assert len(tags.environment_tag) > 0
     assert len(tags.camera_lighting_tag) > 0
     assert len(tags.audio_beat) > 0
+
+
+def test_deconstruct_concept_populates_voice_styles():
+    compiler = PromptCompiler()
+    tags = compiler.deconstruct_concept(
+        "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"
+    )
+    assert len(tags.characters) >= 2
+    assert any(
+        "trap" in c.voice_style.lower() or "rap" in c.voice_style.lower()
+        for c in tags.characters
+    )
+    assert tags.vocal_delivery != ""

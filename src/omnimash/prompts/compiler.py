@@ -80,6 +80,7 @@ class CharacterRole:
     description: str
     reference_url: str | None = None
     aesthetic_tags: list[str] = field(default_factory=list)
+    voice_style: str = ""
 
 
 @dataclass
@@ -97,6 +98,7 @@ class MetaPromptTags:
     environment_tag: str = ""
     camera_lighting_tag: str = ""
     audio_beat: str = ""
+    vocal_delivery: str = ""
 
 
 CHARACTER_LORE_ANCHORS: dict[str, str] = {
@@ -237,6 +239,7 @@ class PromptCompiler:
         aesthetic_tags: list[str] | None = None,
         environment_tag: str | None = None,
         audio_beat: str | None = None,
+        vocal_delivery: str | None = None,
     ) -> str:
         role_lines: list[str] = []
         for char in characters:
@@ -258,10 +261,24 @@ class PromptCompiler:
             aesthetic_parts.append(f"Aesthetic Tags: {', '.join(aesthetic_tags)}")
         if environment_tag and environment_tag.strip():
             aesthetic_parts.append(f"Environment: {environment_tag.strip()}")
-        if audio_beat and audio_beat.strip():
-            aesthetic_parts.append(f"Audio Beat: {audio_beat.strip()}")
         aesthetic_block = (
             "\n".join(aesthetic_parts) if aesthetic_parts else "Default Aesthetic"
+        )
+
+        audio_parts: list[str] = []
+        if audio_beat and audio_beat.strip():
+            audio_parts.append(
+                f"Background Beat: {audio_beat.strip()} (ducked at 15% volume under dialogue)"
+            )
+        for char in characters:
+            if char.voice_style and char.voice_style.strip():
+                audio_parts.append(
+                    f"Voice Style ({char.role_id}): {char.voice_style.strip()}"
+                )
+        if vocal_delivery and vocal_delivery.strip():
+            audio_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
+        audio_block = (
+            "\n".join(audio_parts) if audio_parts else "Default Audio & Voice Direction"
         )
 
         scene_lines: list[str] = []
@@ -280,11 +297,12 @@ class PromptCompiler:
         return (
             f"[ROLE DEFINITIONS]\n{roles_block}\n\n"
             f"[AESTHETIC INJECTION]\n{aesthetic_block}\n\n"
+            f"[AUDIO & VOCAL DIRECTION]\n{audio_block}\n\n"
             f"[STORYBOARD SEQUENCE]\n{scenes_block}"
         )
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
-        """Parses open-ended parody concept shorthand into structured MetaPromptTags with CharacterRoles, Aesthetic Tags, Environment, Camera/Lighting, and Audio Beat."""
+        """Parses open-ended parody concept shorthand into structured MetaPromptTags with CharacterRoles, Aesthetic Tags, Environment, Camera/Lighting, Audio Beat, and Vocal Delivery."""
         lower = concept.lower().strip()
 
         def get_char_tags(k: str) -> list[str]:
@@ -355,6 +373,79 @@ class PromptCompiler:
                 }
                 return tag_map.get(k, ["Stylized Wardrobe", "Cinematic Attire"])
 
+        def get_char_voice(k: str) -> str:
+            if any(t in lower for t in ("trap", "atlanta", "808", "rap", "hip-hop")):
+                voice_map = {
+                    "harry": "Fast-paced confident Atlanta rap flow with autotune",
+                    "draco": "Pompous, cynical British drawl with aggressive rap cadence",
+                    "snape": "Deep sarcastic monotone rap cadence with heavy bass resonance",
+                    "dumbledore": "Smooth authoritative elder rap flow with melodic reverb",
+                    "voldemort": "Hissing raspy dark trap cadence with sinister whisper",
+                    "ramsay": "Aggressive rapid-fire British rap delivery with fiery staccato",
+                    "julia": "Cheerful rhythmic vintage cadence with operatic flair",
+                    "samurai": "Stoic disciplined hip-hop cadence with sharp precision",
+                    "ninja": "Fast whisper-rap flow with rhythmic syncopation",
+                }
+                return voice_map.get(
+                    k, "Fast-paced rhythmic rap cadence with confident delivery"
+                )
+            elif any(
+                t in lower
+                for t in (
+                    "cyberpunk",
+                    "neon",
+                    "futuristic",
+                    "iron chef",
+                    "samurai",
+                    "ninja",
+                    "arcade",
+                )
+            ):
+                voice_map = {
+                    "harry": "Youthful tech-filtered voice with energetic synthesized cadence",
+                    "draco": "Cold aristocratic drawl with subtle robotic modulation",
+                    "snape": "Deep resonant cyborg baritone with metallic vocoder edge",
+                    "dumbledore": "Resonant holographic elder voice with ethereal synth harmonic",
+                    "voldemort": "Sinister digital rasp with glitchy pitch shift",
+                    "ramsay": "High-intensity barking commands with sharp electronic vocoding",
+                    "julia": "Warm vintage tone with cheerful cybernetic filter",
+                    "samurai": "Stoic synthesized warrior cadence with crisp electronic articulation",
+                    "ninja": "Stealth filtered whisper with robotic modulation",
+                }
+                return voice_map.get(
+                    k, "Futuristic vocoded speech with crisp electronic articulation"
+                )
+            elif any(t in lower for t in ("anime", "vhs", "lo-fi")):
+                voice_map = {
+                    "harry": "Energetic youthful anime protagonist voice with passionate delivery",
+                    "draco": "Smug aristocratic rival voice with dramatic anime inflection",
+                    "snape": "Brooding dramatic antagonist voice with slow deliberate pacing",
+                    "dumbledore": "Wise eccentric mentor voice with warm melodic phrasing",
+                    "voldemort": "Theatrical villainous rasp with dramatic echo",
+                    "ramsay": "Fiery competitive anime chef delivery with explosive shouts",
+                    "julia": "Whimsical motherly culinary host voice with cheerful vintage lilt",
+                    "samurai": "Deep honorable warrior voice with classic anime dub inflection",
+                    "ninja": "Quiet masked assassin voice with sharp dramatic whispers",
+                }
+                return voice_map.get(
+                    k, "Expressive retro anime dub voice with dramatic flair"
+                )
+            else:
+                voice_map = {
+                    "harry": "Youthful British accent with determined heroic cadence",
+                    "draco": "Aristocratic British drawl with sneering sarcastic tone",
+                    "snape": "Deep cynical British drawl with slow menacing pauses",
+                    "dumbledore": "Gentle whimsical British elder voice with grandfatherly warmth",
+                    "voldemort": "Cold sibilant whisper with chilling theatrical intensity",
+                    "ramsay": "Fiery passionate British chef voice with explosive intensity",
+                    "julia": "High-pitched cheerful mid-Atlantic accent with warm enthusiastic lilt",
+                    "samurai": "Stoic grounded warrior voice with focused intensity",
+                    "ninja": "Hushed tactical voice with crisp deliberate phrasing",
+                }
+                return voice_map.get(
+                    k, "Cinematic theatrical voice with distinct expressive delivery"
+                )
+
         # 1. Character Extraction
         chars: list[CharacterRole] = []
         role_labels = ["Role A", "Role B", "Role C", "Role D"]
@@ -408,6 +499,7 @@ class PromptCompiler:
                         name=name,
                         description=desc,
                         aesthetic_tags=get_char_tags(k),
+                        voice_style=get_char_voice(k),
                     )
                 )
         else:
@@ -422,6 +514,7 @@ class PromptCompiler:
                         name=name_a.title(),
                         description=f"{name_a.title()}, a distinct cinematic character with sharp expressive features",
                         aesthetic_tags=get_char_tags(name_a.lower()),
+                        voice_style=get_char_voice(name_a.lower()),
                     )
                 )
                 chars.append(
@@ -430,6 +523,7 @@ class PromptCompiler:
                         name=name_b.title(),
                         description=f"{name_b.title()}, a compelling rival character with bold visual presence",
                         aesthetic_tags=get_char_tags(name_b.lower()),
+                        voice_style=get_char_voice(name_b.lower()),
                     )
                 )
             else:
@@ -439,6 +533,7 @@ class PromptCompiler:
                         name="Lead Subject",
                         description="A distinct cinematic character with expressive facial features and stylized attire",
                         aesthetic_tags=get_char_tags("lead"),
+                        voice_style=get_char_voice("lead"),
                     )
                 )
 
@@ -457,6 +552,7 @@ class PromptCompiler:
                 "Heavy 808 Bass Lighting",
             ]
             audio_beat = "140 BPM Heavy 808 Trap"
+            vocal_delivery = "High-energy back-and-forth rap battle delivery with synchronized lip-sync and punchy cadence"
             env_tag = (
                 "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze"
                 if (
@@ -484,6 +580,7 @@ class PromptCompiler:
                 "Anamorphic Lens Flare",
             ]
             audio_beat = "110 BPM Cyberpunk Synthwave Groove"
+            vocal_delivery = "Futuristic vocoded dialogue with sharp synthesized delivery and spatial reverb"
             env_tag = (
                 "Futuristic neon kitchen colosseum with holographic spectator screens"
                 if (
@@ -503,6 +600,7 @@ class PromptCompiler:
                 "Cel-Shaded Styling",
             ]
             audio_beat = "85 BPM VHS Lo-Fi City Pop"
+            vocal_delivery = "Expressive 80s anime dub voiceover with dramatic dynamic range and emotional emphasis"
             env_tag = "Retro 80s anime cityscape bathed in sunset pastel lighting"
             cam_tag = (
                 "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
@@ -514,6 +612,7 @@ class PromptCompiler:
                 "Dramatic Lighting",
             ]
             audio_beat = "120 BPM Cinematic Beat"
+            vocal_delivery = "Crisp cinematic dialogue with natural conversational timing and clear studio projection"
             env_tag = "Atmospheric stage set with dramatic directional lighting and smoke effects"
             cam_tag = "Cinematic 16:9 tracking shot with balanced ambient lighting and crisp depth of field"
 
@@ -523,4 +622,5 @@ class PromptCompiler:
             environment_tag=env_tag,
             camera_lighting_tag=cam_tag,
             audio_beat=audio_beat,
+            vocal_delivery=vocal_delivery,
         )
