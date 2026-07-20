@@ -116,6 +116,7 @@ class OmniMashAgent:
                                     name=c.get("name", ""),
                                     description=c.get("description", ""),
                                     reference_url=c.get("reference_url"),
+                                    aesthetic_tags=c.get("aesthetic_tags", []),
                                 )
                             )
                 scene_objs: list[SceneDirective] = []
@@ -241,6 +242,48 @@ class OmniMashAgent:
             generation_mode=gen_res.generation_mode,
             turn_id=new_node.turn_id,
             depth=0,
+        )
+
+    def save_final_master(
+        self,
+        session_id: str | None,
+        video_url: str,
+        master_title: str,
+    ) -> tuple[str, str]:
+        return self.storage.save_final_master(
+            session_id=session_id,
+            source_rel_path=video_url,
+            master_title=master_title,
+        )
+
+    def extend_scene(
+        self,
+        session_name: str | None = None,
+        turn_id: str | None = None,
+        next_scene_action: str = "",
+        dialogue: str | None = None,
+        active_roles: list[str] | None = None,
+        user_id: str = "usr_default",
+        project_id: str = "prj_default",
+    ) -> AgentTurnResponse:
+        prompt_parts = []
+        if active_roles:
+            roles_str = ", ".join(active_roles)
+            prompt_parts.append(f"[{roles_str}]")
+        if next_scene_action:
+            prompt_parts.append(next_scene_action)
+        if dialogue:
+            prompt_parts.append(f'Dialogue: "{dialogue}"')
+
+        combined_prompt = " ".join(prompt_parts) if prompt_parts else next_scene_action
+
+        return self.process_user_turn(
+            user_id=user_id,
+            project_id=project_id,
+            prompt=combined_prompt or next_scene_action,
+            parent_turn_id=turn_id,
+            session_name=session_name,
+            voiceover=dialogue,
         )
 
 

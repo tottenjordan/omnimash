@@ -198,3 +198,44 @@ class GcsStorageManager:
                 pass
 
         return None
+
+    def save_final_master(
+        self,
+        session_id: str | None,
+        source_rel_path: str,
+        master_title: str,
+    ) -> tuple[str, str]:
+        """Copies or uploads video files to sessions/{session_id}/final_masters/{master_title}.mp4 in GCS."""
+        clean_title = (
+            master_title if master_title.endswith(".mp4") else f"{master_title}.mp4"
+        )
+        dest_blob_path = self.build_session_blob_path(
+            session_id, "final_masters", clean_title
+        ).lstrip("/")
+        public_url = self.get_public_url(dest_blob_path)
+        gcs_uri = self.get_gcs_uri(dest_blob_path)
+
+        if not self.mock_mode and self._bucket:
+            try:
+                local_path = source_rel_path
+                if local_path.startswith("/static/"):
+                    local_path = os.path.join(os.getcwd(), local_path.lstrip("/"))
+                elif not os.path.isabs(local_path) and os.path.exists(
+                    os.path.join(os.getcwd(), local_path)
+                ):
+                    local_path = os.path.join(os.getcwd(), local_path)
+
+                if os.path.exists(local_path):
+                    blob = self._bucket.blob(dest_blob_path)
+                    blob.upload_from_filename(local_path, content_type="video/mp4")
+                else:
+                    src_blob_name = source_rel_path.replace(
+                        f"gs://{self.bucket_name}/", ""
+                    ).lstrip("/")
+                    src_blob = self._bucket.blob(src_blob_name)
+                    if src_blob.exists():
+                        self._bucket.copy_blob(src_blob, self._bucket, dest_blob_path)
+            except Exception:
+                pass
+
+        return public_url, gcs_uri
