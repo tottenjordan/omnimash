@@ -4,8 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class OmniMashSettings(BaseSettings):
     """Centralized, type-safe application settings loaded automatically from environment and .env."""
 
-    google_cloud_project: str = "your-gcp-project-id"
-    google_cloud_region: str = "us-central1"
+    google_cloud_project: str = "hybrid-vertex"
+    google_cloud_region: str = "global"
+    gemini_location: str = "global"
     omnimash_gcs_bucket: str | None = None
     gemini_api_key: str | None = None
     model_armor_template_id: str = "omnimash-safety-filter"

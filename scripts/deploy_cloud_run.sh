@@ -20,7 +20,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --port 8080 \
   --memory 2Gi \
   --cpu 2 \
-  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",GOOGLE_CLOUD_LOCATION="$REGION",PYTHONPATH="/app/src"
+  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",GOOGLE_CLOUD_LOCATION="$REGION",GEMINI_LOCATION="global",PYTHONPATH="/app/src"
 
 echo ""
 echo "✅ Deployment command submitted to Cloud Run!"
