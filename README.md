@@ -54,6 +54,7 @@ OmniMash works like an AI music video mixing studio:
 ## Table of Contents
 - [Architecture](#architecture)
 - [Diagrams & Reference Architectures](#diagrams--reference-architectures)
+- [Getting Started & User Journey](#-getting-started--user-journey)
 - [Quickstart](#quickstart)
 - [Usage](#usage)
 - [Web UI Dashboard](#web-ui-dashboard)
@@ -168,6 +169,73 @@ Detailed subsystem architectures and workflow outlines are available in [docs/di
 | 🌳 [Version Tree DAG & State Lifecycle](docs/diagrams/version_tree_dag_lifecycle.md) | `omnimash.state` | Non-linear conversational diff branching, thread depth tracking ($\ge 3$), ⚓ Checkpoint Anchor Badges, and fresh thread re-anchoring. |
 | 🎬 [Multimodal Ingestion & Video Stitching](docs/diagrams/multimodal_ingestion_stitching.md) | `ingestion` & `stitching` | 4-stage pipeline: YouTube asset extraction (`yt-dlp`), storyboard prompt compilation, Omni Flash clip rendering with commit checkpoints, and FFmpeg multi-clip concatenation. |
 | 🌐 [Frontend API & SSE Streaming Topology](docs/diagrams/frontend_api_topology.md) | `api` & Web UI | FastAPI async endpoints (`POST /api/deconstruct-concept`, `POST /api/generate`, `POST /api/commit`), dynamic Character Roles, and React 18 single-page dashboard. |
+
+---
+
+## 🚀 Getting Started & User Journey
+
+Follow this visual step-by-step walkthrough to launch OmniMash and create full-length AI parody videos using the **3-Act Digital Director's Studio**.
+
+---
+
+### Step 1: Launch the Studio Locally
+
+Start the FastAPI application and embedded React 18 single-page dashboard using `uv`:
+
+```bash
+# Start local development server on port 8080
+uv run uvicorn omnimash.api.app:app --host 0.0.0.0 --port 8080
+```
+
+Open your browser to `http://localhost:8080` (or access the live production instance at [https://omnimash-934903580331.us-central1.run.app](https://omnimash-934903580331.us-central1.run.app)).
+
+---
+
+### Step 2: Act 1 — The Concept & Cast Manager
+
+In **Act 1**, define the high-level creative vision and character bindings for your parody video.
+
+<div align="center">
+  <img src="imgs/ui_act1_concept_and_cast.jpg" alt="OmniMash Act 1: The Concept & Cast Manager" width="100%" />
+</div>
+
+1. **Enter Visual Shorthand:** Type your open-ended parody concept (e.g., *"Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"*).
+2. **Deconstruct Concept:** Click **✨ Deconstruct Concept** (`POST /api/deconstruct-concept`). OmniMash parses the prompt into structured `MetaPromptTags`.
+3. **Configure Dynamic Character Roles:** Review and edit dynamic character roles (`Role A: Harry`, `Role B: Draco`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) to lock facial likeness and costume aesthetics across scenes.
+4. **Tune Meta-Prompt Tags:** Adjust aesthetic tag chips (`Cyberpunk Neon`, `90s Fisheye Lens`, `110 BPM Atlanta Trap Beat`).
+
+---
+
+### Step 3: Act 2 — Fine-Tune & Storyboard Directing
+
+In **Act 2**, sequence your multi-character storyline into structured scenes.
+
+<div align="center">
+  <img src="imgs/ui_act2_storyboard_directing.jpg" alt="OmniMash Act 2: Fine-Tune & Storyboard Directing" width="100%" />
+</div>
+
+1. **Add Scene Directives:** Break your script into sequential scenes (`Scene 1: Courtyard Arrival`, `Scene 2: Mic Handoff`).
+2. **Assign Active Roles:** Toggle which character roles appear in each scene (`Role A`, `Role B`).
+3. **Write Actions & Dialogue:** Provide character actions and synced rap bars / dialogue lines (e.g., *[Draco]: "I been cooking potions since first year!"*).
+4. **Inspect Compiled Storyboard Prompt:** Verify the live prompt compiler box on the right, structured with `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`.
+
+---
+
+### Step 4: Act 3 — The Screening Room & Branching
+
+In **Act 3**, render your 720p HD parody cut with native synced audio, monitor generation health, and branch conversational edits.
+
+<div align="center">
+  <img src="imgs/ui_act3_screening_room.jpg" alt="OmniMash Act 3: The Screening Room & Branching" width="100%" />
+</div>
+
+1. **Generate Parody Cut:** Click **🎬 Generate Parody Cut** (`POST /api/generate`).
+2. **Monitor Generation Health:**
+   - **Generation Status Badge:** Look for the green `🟢 Live Gemini Omni Flash` status pill in the header.
+   - **Active Error Mitigation Banner:** If Vertex AI returns `401 UNAUTHENTICATED` (e.g., API keys not supported on Vertex endpoints), OmniMash automatically switches to the Google AI Studio Developer API client (`GOOGLE_API_KEY`) and retries with exponential backoff.
+3. **Play 720p Native Video:** Inspect the rendered 720p 24fps video with frame-accurate native voiceover and beat synchronization.
+4. **Branch Conversational Diffs:** Request iterative scene edits (e.g., *"Swap wand for microphone"*) to create non-linear branches in the **Version Tree DAG**.
+5. **Commit & Branch:** At edit depth $\ge 3$ (`COMMIT_RECOMMENDED`), click **Commit & Branch** (`POST /api/commit`) to flush token context decay and re-anchor from the committed video.
 
 ---
 
@@ -300,7 +368,17 @@ The built-in single-page web dashboard (React 18 + Tailwind CSS) implements the 
 
 - **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), dynamic Character Roles manager (`Role A`, `Role B`) with attached Gemini Omni Image Role reference image URLs, and interactive Meta-Prompt Tag chips.
 - **Act 2: Fine-Tune & Storyboard Directing:** Multi-scene storyboard sequence editor, active role selectors (`["Role A"]`, `["Role B"]`), action directives, turn-by-turn dialogue, and real-time live compiled storyboard prompt preview (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[STORYBOARD SEQUENCE]`).
-- **Act 3: The Screening Room & Branching:** 720p native video player with SynthID C2PA provenance indicators, interactive Version Tree DAG explorer, conversational delta prompting, and depth $\ge 3$ commit & re-anchor modal.
+- **Act 3: The Screening Room & Branching:** 720p native video player with SynthID C2PA provenance indicators, Generation Status pill badge (`🟢 Live Gemini Omni Flash` vs `🟠 Procedural Fallback Animation`), Active Error Mitigation banner, interactive Version Tree DAG explorer, conversational delta prompting, and depth $\ge 3$ commit & re-anchor modal.
+
+---
+
+## 🛡️ Gemini Omni Flash Zero-Veo Policy & Error Mitigation
+
+- **Zero-Veo Policy:** OmniMash exclusively targets `gemini-omni-flash-preview` for native joint video and audio synthesis and conversational editing. Legacy Veo fallback models have been completely eliminated.
+- **Dual-Strategy Client Authentication:** Automatically initializes Google AI Studio Developer API (`GOOGLE_API_KEY`) and Vertex AI ADC (`GOOGLE_CLOUD_PROJECT`, `GEMINI_LOCATION`) clients.
+- **Active Error Mitigation (401 UNAUTHENTICATED):** When Vertex AI returns a `401 UNAUTHENTICATED` (e.g. API keys not supported on Vertex endpoints), `OmniFlashClient` logs the mitigation event, seamlessly invokes `switch_to_developer_api()`, and retries generation using the Developer API client.
+- **3-Attempt Exponential Backoff:** Automatically retries transient errors (`429 Rate Limit`, `404 Endpoint Mismatch`, `ResourceExhausted`) with exponential backoff delays.
+- **Full Error & Mode Surfacing:** All generation errors and execution modes (`LIVE_OMNI_FLASH` vs `LOCAL_PROCEDURAL_ANIMATION`) are surfaced directly through API responses and rendered in the React dashboard.
 
 ---
 
@@ -351,32 +429,9 @@ uv run ty check .
 ├── CODE_STANDARDS.md          # Mandatory tooling rules (uv, ruff, ty, pytest)
 ├── Dockerfile                 # Production Cloud Run container image
 ├── docs
-│   ├── diagrams               # Architecture diagrams & topology guides
-│   │   ├── frontend_api_topology.md
-│   │   ├── frontend_api_topology.png
-│   │   ├── gcp_deployment_patterns.md
-│   │   ├── gcp_deployment_patterns.png
-│   │   ├── multimodal_ingestion_stitching.md
-│   │   ├── multimodal_ingestion_stitching.png
-│   │   ├── omnimash_agent_architecture.md
-│   │   ├── omnimash_agent_architecture.png
-│   │   ├── omnimash_master_architecture.png
-│   │   ├── README.md
-│   │   └── version_tree_dag_lifecycle.md
-│   │   └── version_tree_dag_lifecycle.png
-│   ├── notes                  # Non-derivable session knowledge & quirks
-│   │   ├── architecture_omnimash.md
-│   │   ├── context_decay_commit_branch.md
-│   │   ├── digital_directors_studio_3_act_workflow.md
-│   │   ├── prompt_compiler_anchor_inject.md
-│   │   ├── README.md
-│   │   ├── request_lifecycle.md
-│   │   └── subagent_workflow_quirks.md
-│   └── plans                  # Subagent-driven TDD implementation plans
-│       ├── 2026-07-18-omnimash-context-window-commit-branch.md
-│       ├── 2026-07-18-omnimash-core-architecture.md
-│       ├── 2026-07-18-omnimash-prompt-compiler-anchor-inject.md
-│       └── 2026-07-20-flexible-parody-workflow-and-character-roles.md
+│   ├── diagrams/              # Architecture diagrams & topology guides
+│   ├── notes/                 # Non-derivable session knowledge & quirks
+│   └── plans/                 # Subagent-driven TDD implementation plans
 ├── GEMINI.md                  # AI agent workflow instructions
 ├── imgs
 │   └── omnimash_banner.png    # High-resolution Dripwarts project banner
@@ -405,27 +460,13 @@ uv run ty check .
 │       └── state              # Version Tree DAG & thread depth manager
 │           └── session_manager.py
 └── tests
-    ├── agent
-    │   └── test_orchestrator.py
-    ├── api
-    │   ├── test_app.py
-    │   ├── test_concept_api.py
-    │   └── test_integration.py
-    ├── engine
-    │   └── test_omni_client.py
-    ├── ingestion
-    │   └── test_media_extractor.py
-    ├── prompts
-    │   ├── test_character_roles.py
-    │   ├── test_compiler.py
-    │   ├── test_deconstruct.py
-    │   └── test_taxonomy.py
-    ├── security
-    │   └── test_guardrail.py
-    ├── state
-    │   └── test_session_manager.py
-    ├── stitching
-    │   └── test_stitcher.py
-    ├── test_foundation.py
-    └── test_main.py
+    ├── agent/                 # Agent orchestrator unit tests
+    ├── api/                   # FastAPI route & UI endpoint tests
+    ├── engine/                # Omni Flash & exponential retry tests
+    ├── ingestion/             # Reference media extractor tests
+    ├── prompts/               # Character Roles & storyboard compiler tests
+    ├── security/              # Model Armor guardrail tests
+    ├── state/                 # Version Tree DAG & session tests
+    ├── stitching/             # FFmpeg video stitcher tests
+    └── storage/               # GCS session artifact storage tests
 ```

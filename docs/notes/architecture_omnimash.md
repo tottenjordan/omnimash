@@ -41,8 +41,10 @@ graph TD
 - **Agent Gateway**: Interfaces with external media sources or image/audio retrieval if the user provides external reference images or beat stems.
 
 ### 2. Multimodal Generation & Conversational Editing (`google-genai`)
-- **Model**: `gemini-omni-flash-preview` (unified multimodal space for text, image, audio, and video).
+- **Model**: `gemini-omni-flash-preview` (unified multimodal space for text, image, audio, and video). Zero-Veo policy guarantees no Veo fallbacks.
 - **Interactions API**: Enables conversational delta edits (e.g., "turn the robe into a leather bomber jacket", "add a trap beat drop") without regenerating the clip from scratch.
+- **Dual-Strategy Client & Active Error Mitigation**: Initializes Google AI Studio Developer API and Vertex AI ADC clients; automatically mitigates Vertex AI 401 UNAUTHENTICATED errors by switching to Developer API client at runtime.
+- **Exponential Backoff Retries**: Automatically retries 429 rate limit and 404 endpoint mismatch errors up to 3 times.
 - **Constraints**: 720p resolution, max 10 seconds per native clip generation.
 
 ### 3. Style-Blending Prompt Taxonomy

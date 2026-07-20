@@ -60,6 +60,7 @@ class GenerateResponse(BaseModel):
     turn_id: str | None = None
     depth: int = 0
     error: str | None = None
+    generation_mode: str = "LIVE_OMNI_FLASH"
     raw_compiled_prompt: str | None = None
     reference_analysis: dict | None = None
 
@@ -155,6 +156,8 @@ UI_HTML = r"""<!DOCTYPE html>
             const [parentTurnId, setParentTurnId] = useState("");
             const [loading, setLoading] = useState(false);
             const [status, setStatus] = useState("COMPLETED");
+            const [generationMode, setGenerationMode] = useState("LIVE_OMNI_FLASH");
+            const [lastError, setLastError] = useState(null);
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
             const [rawCompiledPrompt, setRawCompiledPrompt] = useState("");
@@ -306,7 +309,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 setScenes(updated);
             };
 
-            // Act 3 Handler: Generate Parody Cut (POST /api/generate)
+            // Act 3 Handler: Generate Parody Cut (POST /api/generate or POST /api/diff)
             const handleGenerate = async (e) => {
                 if (e && e.preventDefault) e.preventDefault();
                 setLoading(true);
@@ -325,12 +328,15 @@ UI_HTML = r"""<!DOCTYPE html>
                         environment_tag: environmentTag,
                         audio_stem: audioBeat
                     };
-                    const res = await fetch("/api/generate", {
+                    const endpoint = parentTurnId ? "/api/diff" : "/api/generate";
+                    const res = await fetch(endpoint, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(payload)
                     });
                     const data = await res.json();
+                    if (data.generation_mode) setGenerationMode(data.generation_mode);
+                    setLastError(data.error || null);
                     if (data.success) {
                         if (data.raw_compiled_prompt) setRawCompiledPrompt(data.raw_compiled_prompt);
 
@@ -355,6 +361,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     }
                 } catch (err) {
                     console.error("Generation failed:", err);
+                    setLastError(err.message || String(err));
                 } finally {
                     setLoading(false);
                 }
@@ -377,6 +384,8 @@ UI_HTML = r"""<!DOCTYPE html>
                         })
                     });
                     const data = await res.json();
+                    if (data.generation_mode) setGenerationMode(data.generation_mode);
+                    setLastError(data.error || null);
                     if (data.success) {
                         const newTurn = {
                             turnId: data.turn_id,
@@ -396,6 +405,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     }
                 } catch (err) {
                     console.error("Commit failed:", err);
+                    setLastError(err.message || String(err));
                 } finally {
                     setLoading(false);
                 }
@@ -938,10 +948,24 @@ UI_HTML = r"""<!DOCTYPE html>
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-amber-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
                                     <div>
-                                        <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
-                                            <span>🎬</span>
-                                            <span>Act 3: The Screening Room &amp; Branching</span>
-                                        </h2>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
+                                                <span>🎬</span>
+                                                <span>Act 3: The Screening Room &amp; Branching</span>
+                                            </h2>
+                                            {/* Generation Status Pill Badge */}
+                                            {generationMode === "LIVE_OMNI_FLASH" ? (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-950/90 text-green-400 border border-green-700/80 shadow-md">
+                                                    <span>🟢</span>
+                                                    <span>Live Gemini Omni Flash</span>
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-950/90 text-amber-400 border border-amber-700/80 shadow-md">
+                                                    <span>🟠</span>
+                                                    <span>Procedural Fallback Animation</span>
+                                                </span>
+                                            )}
+                                        </div>
                                         <p className="text-xs text-gray-400 mt-1">
                                             Review the rendered parody cut, inspect the version tree timeline, and apply conversational diffs.
                                         </p>
@@ -954,6 +978,33 @@ UI_HTML = r"""<!DOCTYPE html>
                                         🎛️ Adjust Storyboard Directing
                                     </button>
                                 </div>
+
+                                {/* Active Error Mitigation Banner */}
+                                {lastError && (
+                                    <div className="bg-red-950/40 border-2 border-red-500/70 rounded-2xl p-4 shadow-xl text-red-200 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 font-bold text-red-300 text-xs uppercase tracking-wider">
+                                                <span className="text-base">⚠️</span>
+                                                <span>Active Error Mitigation Banner</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setLastError(null)}
+                                                className="text-red-400 hover:text-red-200 text-xs font-bold px-2 py-0.5 rounded border border-red-800/80 bg-red-950 hover:bg-red-900"
+                                            >
+                                                ✕ Dismiss
+                                            </button>
+                                        </div>
+                                        <div className="bg-black/60 border border-red-900/80 rounded-xl p-3 text-xs font-mono text-red-300 break-words whitespace-pre-wrap">
+                                            <span className="text-red-400 font-bold block mb-1">Gemini Omni Flash Error / Trace:</span>
+                                            {lastError}
+                                        </div>
+                                        <p className="text-[11px] text-amber-300/90 font-medium flex items-center gap-1.5 pt-0.5">
+                                            <span>🛡️</span>
+                                            <span>Automated exponential backoff retries &amp; Developer API auth switch executed.</span>
+                                        </p>
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                                     {/* Left 8 Cols: Video Player & Delta Prompt */}
@@ -1093,8 +1144,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         return agent.deconstruct_concept(req.concept)
 
     @app.post("/api/generate", response_model=GenerateResponse)
+    @app.post("/api/diff", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
-        res = agent.process_user_turn(
+        agent_turn = agent.process_user_turn(
             user_id=req.user_id,
             project_id=req.project_id,
             prompt=req.prompt,
@@ -1114,19 +1166,20 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             environment_tag=req.environment_tag,
         )
         return GenerateResponse(
-            success=res.success,
-            status=res.status_event,
-            video_url=res.video_url,
-            turn_id=res.turn_id,
-            depth=res.depth,
-            error=res.error_message,
-            raw_compiled_prompt=res.raw_compiled_prompt,
-            reference_analysis=res.reference_analysis,
+            success=agent_turn.success,
+            status=agent_turn.status_event,
+            video_url=agent_turn.video_url,
+            turn_id=agent_turn.turn_id,
+            depth=agent_turn.depth,
+            error=agent_turn.error_message,
+            generation_mode=agent_turn.generation_mode,
+            raw_compiled_prompt=agent_turn.raw_compiled_prompt,
+            reference_analysis=agent_turn.reference_analysis,
         )
 
     @app.post("/api/commit", response_model=GenerateResponse)
     def commit_and_branch(req: CommitRequest) -> GenerateResponse:
-        res = agent.commit_and_branch(
+        agent_turn = agent.commit_and_branch(
             user_id=req.user_id,
             project_id=req.project_id,
             turn_id=req.turn_id,
@@ -1134,14 +1187,15 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             session_name=req.session_name,
         )
         return GenerateResponse(
-            success=res.success,
-            status=res.status_event,
-            video_url=res.video_url,
-            turn_id=res.turn_id,
-            depth=res.depth,
-            error=res.error_message,
-            raw_compiled_prompt=res.raw_compiled_prompt,
-            reference_analysis=res.reference_analysis,
+            success=agent_turn.success,
+            status=agent_turn.status_event,
+            video_url=agent_turn.video_url,
+            turn_id=agent_turn.turn_id,
+            depth=agent_turn.depth,
+            error=agent_turn.error_message,
+            generation_mode=agent_turn.generation_mode,
+            raw_compiled_prompt=agent_turn.raw_compiled_prompt,
+            reference_analysis=agent_turn.reference_analysis,
         )
 
     @app.post("/api/research", response_model=ParodyResearchResult)
