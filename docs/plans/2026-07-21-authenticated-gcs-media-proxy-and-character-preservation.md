@@ -1,21 +1,28 @@
-# Authenticated GCS Media Proxy & Full Character State Preservation Implementation Plan
+# Authenticated GCS Media Proxy, Character State Preservation & Clean Display Names Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 
-1. Enable directors to use convenient `gs://...` URIs (e.g., `gs://omnimash-media-hybrid-vertex/saved_characters/harry_drip.jpeg`) for character reference images while ensuring they render crisp and 100% reliably in browser `<img>` tags via an authenticated backend media proxy (`GET /api/media-proxy?uri=gs://...`) without needing public bucket permissions.
-2. Ensure full character state preservation (`name`, `description`, `reference_url`, `voice_style`, `aesthetic_tags`) across both Global Vault presets (`library/characters/<slug>.json`) and Per-Session Cast Rosters (`sessions/{session_name}/characters/roster.json`).
+1. **Fix Saved Character Display Names (`src/omnimash/api/app.py`)**: Remove the auto-injection logic that appended character style signifiers (`aesthetic_tags[0]`) in quotes into saved character chip names, ensuring saved character display names strictly show the character's clean `name` attribute.
+2. **Authenticated GCS Media Proxy (`GET /api/media-proxy?uri=gs://...`)**: Enable directors to use convenient `gs://...` URIs (e.g., `gs://omnimash-media-hybrid-vertex/saved_characters/harry_drip.jpeg`) for character reference images while ensuring they render crisp and 100% reliably in browser `<img>` tags via an authenticated backend media proxy without needing public bucket permissions.
+3. **Full Character State Preservation**: Ensure complete character state preservation (`name`, `description`, `reference_url`, `voice_style`, `aesthetic_tags`) across both Global Vault presets (`library/characters/<slug>.json`) and Per-Session Cast Rosters (`sessions/{session_name}/characters/roster.json`).
 
 **Architecture:**
-1. **Authenticated GCS Media Proxy (`src/omnimash/storage/gcs.py` & `src/omnimash/api/app.py`)**:
-   - **GCS Storage Manager**: Add `download_blob_bytes(self, gs_uri: str) -> tuple[bytes, str]` to fetch binary data and content type using authenticated `google.cloud.storage.Client` credentials.
-   - **FastAPI Proxy Endpoint**: Add `GET /api/media-proxy?uri=gs://...` to stream image bytes to the client with `Cache-Control: public, max-age=86400` headers.
-   - **React Studio UI**: Update `getDisplayableRefUrl(url)` in `UI_HTML` to return `/api/media-proxy?uri=${encodeURIComponent(url)}` for `gs://` links.
-2. **Full Character Field Serialization & Restoration (`src/omnimash/storage/gcs.py` & `src/omnimash/api/app.py`)**:
-   - Verify that `save_vault_character` and `save_session_roster` persist all 5 character attributes (`name`, `description`, `reference_url`, `voice_style`, `aesthetic_tags`).
-   - Update React `handleLoadVaultCharacter` and `handleLoadSessionRoster` to populate all 5 character card state fields when loading presets or restoring cast rosters.
-3. **Integration & API Tests (`tests/storage/test_gcs.py`, `tests/api/test_app.py`, `tests/api/test_integration.py`)**:
-   - Add test cases verifying proxy streaming for `gs://` URIs and full character attribute persistence.
+1. **Clean Character Display Name Formatting (`src/omnimash/api/app.py`)**:
+   - In `UI_HTML` Character Vault toolbar rendering, update chip label generation:
+     ```javascript
+     const chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
+     ```
+     (Removing the `if (!c.name.includes('"')) chipText = `${c.name} "${c.aesthetic_tags[0]}"`` override).
+2. **Authenticated GCS Media Proxy (`src/omnimash/storage/gcs.py` & `src/omnimash/api/app.py`)**:
+   - Add `download_blob_bytes(self, gs_uri: str) -> tuple[bytes, str]` to `GcsStorageManager` using authenticated `google.cloud.storage.Client` credentials.
+   - Add `GET /api/media-proxy?uri=gs://...` endpoint returning streaming `Response` objects with `Cache-Control: public, max-age=86400` headers.
+   - Update `getDisplayableRefUrl(url)` in `UI_HTML` to return `/api/media-proxy?uri=${encodeURIComponent(url)}` for `gs://` links.
+3. **Full Character Field Serialization & Restoration (`src/omnimash/storage/gcs.py` & `src/omnimash/api/app.py`)**:
+   - Verify `save_vault_character` and `save_session_roster` persist all 5 character attributes (`name`, `description`, `reference_url`, `voice_style`, `aesthetic_tags`).
+   - Update React `handleLoadVaultCharacter` and `handleLoadSessionRoster` to restore all 5 character card state fields when loading presets or restoring cast rosters.
+4. **Integration & API Tests**:
+   - Update test cases in `tests/storage/test_gcs.py`, `tests/api/test_app.py`, and `tests/api/test_integration.py`.
 
 **Tech Stack:** Python 3.12, FastAPI, React 18, Google Cloud Storage Client SDK, pytest, uv, ruff, ty.
 
@@ -24,9 +31,10 @@
 ## User Review Required
 
 > [!IMPORTANT]
-> **Key User Experience Highlights**:
-> 1. **Convenient `gs://` URIs**: Type any `gs://bucket/path.jpg` URI. The backend `/api/media-proxy` streams the image directly to the browser using authenticated service account credentials without requiring public bucket ACLs.
-> 2. **Complete Character Preservation**: Saving a character card to the Vault or saving a session roster preserves 100% of the character's description, reference image, voice style, and aesthetic signifiers.
+> **Key Fixes & Enhancements**:
+> 1. **Clean Display Names**: Character preset chips will show strictly the character's clean `name` without appending style signifiers in quotes.
+> 2. **Convenient `gs://` URIs**: Type any `gs://bucket/path.jpg` URI. The backend `/api/media-proxy` streams the image directly to the browser using authenticated service account credentials.
+> 3. **Complete Character Preservation**: Saving a character card to the Vault or saving a session roster preserves 100% of the character's description, reference image, voice style, and aesthetic signifiers.
 
 ---
 
@@ -82,6 +90,10 @@ def media_proxy(uri: str) -> Response:
         headers={"Cache-Control": "public, max-age=86400"},
     )
 ```
+- Update `chipText` generation in `UI_HTML`:
+```javascript
+const chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
+```
 - Update `getDisplayableRefUrl` in `UI_HTML`:
 ```javascript
 const getDisplayableRefUrl = (url) => {
@@ -102,7 +114,7 @@ const handleLoadVaultCharacter = (c) => {
         description: c.description || "",
         reference_url: c.reference_url || null,
         voice_style: c.voice_style || "",
-        aesthetic_tags: c.aesthetic_tags || []
+        aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
     };
     setCharacters([...characters, newRole]);
 };
@@ -112,13 +124,14 @@ const handleLoadVaultCharacter = (c) => {
 
 ## Bite-Sized Execution Tasks
 
-### Task 1: Implement download_blob_bytes in GCS Manager & Storage Tests
-- Update `src/omnimash/storage/gcs.py` with `download_blob_bytes`.
-- Add test assertions in `tests/storage/test_gcs.py`.
+### Task 1: Fix Display Name Chip Logic & Implement download_blob_bytes in GCS Manager
+- Update `chipText` formatting in `src/omnimash/api/app.py`.
+- Add `download_blob_bytes` in `src/omnimash/storage/gcs.py`.
+- Add test cases in `tests/storage/test_gcs.py`.
 - Run `uv run pytest tests/storage/test_gcs.py`.
 
 ### Task 2: Add /api/media-proxy Endpoint & Update UI Loading Handlers in app.py
-- Add `/api/media-proxy` endpoint and update `getDisplayableRefUrl` and `handleLoadVaultCharacter` in `src/omnimash/api/app.py`.
+- Add `/api/media-proxy` route and update `getDisplayableRefUrl` and `handleLoadVaultCharacter` in `src/omnimash/api/app.py`.
 - Add test assertions in `tests/api/test_app.py` and `tests/api/test_integration.py`.
 - Run `uv run pytest tests/api/test_app.py tests/api/test_integration.py`.
 
@@ -136,6 +149,6 @@ const handleLoadVaultCharacter = (c) => {
 
 ### Manual Verification
 1. Run local dev server (`uv run python -m omnimash.api.app`).
-2. Attach `gs://omnimash-media-hybrid-vertex/saved_characters/harry_drip.jpeg` to a character role in Act 1.
-3. Observe image preview thumbnail rendering crisp and clean in the Character Role card and Character Vault chip toolbar.
-4. Click **Save to Vault**, clear character cards, click the Vault chip, and verify all description text, reference image, voice style, and aesthetic tags are completely restored!
+2. Create character card named `Harry` with aesthetic tag `Red Gucci Tracksuit`. Click **Save to Vault**.
+3. Observe Vault preset chip label display strictly as `+ Harry` (without appending `"Red Gucci Tracksuit"` in quotes).
+4. Attach `gs://omnimash-media-hybrid-vertex/saved_characters/harry_drip.jpeg` and verify image renders crisp via `/api/media-proxy`!
