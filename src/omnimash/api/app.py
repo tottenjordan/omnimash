@@ -167,6 +167,15 @@ UI_HTML = r"""<!DOCTYPE html>
             return url;
         };
 
+        const getNextAvailableRoleId = (charList) => {
+            const used = new Set((charList || []).map(c => c && c.role_id).filter(Boolean));
+            for (let i = 0; i < 26; i++) {
+                const candidate = `Role ${String.fromCharCode(65 + i)}`;
+                if (!used.has(candidate)) return candidate;
+            }
+            return `Role ${(charList || []).length + 1}`;
+        };
+
         const exampleConcepts = [
             "Gordon Ramsay vs Julia Child in a cyberpunk iron chef battle",
             "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style",
@@ -392,9 +401,9 @@ UI_HTML = r"""<!DOCTYPE html>
             };
 
             const handleLoadVaultCharacter = (c) => {
-                const nextLetter = String.fromCharCode(65 + characters.length);
+                const roleId = getNextAvailableRoleId(characters);
                 const newRole = {
-                    role_id: `Role ${nextLetter}`,
+                    role_id: roleId,
                     name: c.name || "",
                     description: c.description || "",
                     reference_url: c.reference_url || "",
@@ -425,14 +434,18 @@ UI_HTML = r"""<!DOCTYPE html>
                     const res = await fetch(`/api/characters/roster?session_name=${encodeURIComponent(sessionName)}`);
                     const data = await res.json();
                     if (data && data.characters) {
-                        const restored = data.characters.map((c, idx) => ({
-                            role_id: c.role_id || `Role ${String.fromCharCode(65 + idx)}`,
-                            name: c.name || "",
-                            description: c.description || "",
-                            reference_url: c.reference_url || "",
-                            voice_style: c.voice_style || "",
-                            aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
-                        }));
+                        const restored = [];
+                        for (const c of data.characters) {
+                            const roleId = c.role_id || getNextAvailableRoleId(restored);
+                            restored.push({
+                                role_id: roleId,
+                                name: c.name || "",
+                                description: c.description || "",
+                                reference_url: c.reference_url || "",
+                                voice_style: c.voice_style || "",
+                                aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
+                            });
+                        }
                         setCharacters(restored);
                     }
                 } catch (err) {
@@ -442,10 +455,11 @@ UI_HTML = r"""<!DOCTYPE html>
 
             // Character Roles management
             const addCharacterRole = () => {
-                const nextLetter = String.fromCharCode(65 + characters.length);
+                const roleId = getNextAvailableRoleId(characters);
+                const letter = roleId.replace("Role ", "");
                 const newRole = {
-                    role_id: `Role ${nextLetter}`,
-                    name: `Character ${nextLetter}`,
+                    role_id: roleId,
+                    name: `Character ${letter}`,
                     description: "Distinct cinematic character with expressive facial features and stylized attire",
                     reference_url: "",
                     aesthetic_tags: [],
