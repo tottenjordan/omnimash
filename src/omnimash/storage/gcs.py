@@ -467,3 +467,25 @@ class GcsStorageManager:
                 pass
 
         return self._mock_rosters.get(session_id)
+
+    def list_session_ids(self) -> list[str]:
+        """Returns list of session IDs found in storage or default mock session IDs."""
+        default_sessions = ["parody_session_1", "session_8492", "dripwarts_battle"]
+        if self.mock_mode or not self._bucket or not self._client:
+            return default_sessions
+
+        try:
+            blobs = self._client.list_blobs(
+                self.bucket_name, prefix="sessions/", delimiter="/"
+            )
+            for _ in blobs:
+                pass
+            session_ids: list[str] = []
+            prefixes = getattr(blobs, "prefixes", set())
+            for prefix in prefixes:
+                clean = prefix.removeprefix("sessions/").strip("/")
+                if clean:
+                    session_ids.append(clean)
+            return session_ids if session_ids else default_sessions
+        except Exception:
+            return default_sessions

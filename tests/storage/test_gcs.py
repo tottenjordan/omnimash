@@ -174,3 +174,32 @@ def test_download_blob_bytes():
     data, content_type = gcs.download_blob_bytes("gs://test-bucket/path/to/image.jpg")
     assert data == b"mock_image_bytes"
     assert content_type == "image/jpeg"
+
+
+def test_list_session_ids():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    session_ids = gcs.list_session_ids()
+    assert isinstance(session_ids, list)
+    assert "parody_session_1" in session_ids
+
+    class DummyBlobs:
+        prefixes = {
+            "sessions/parody_session_1/",
+            "sessions/session_8492/",
+            "sessions/dripwarts_battle/",
+        }
+
+        def __iter__(self):
+            return iter([])
+
+    class DummyClient:
+        def list_blobs(self, bucket_name, prefix, delimiter):
+            assert prefix == "sessions/"
+            assert delimiter == "/"
+            return DummyBlobs()
+
+    live_gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=False)
+    live_gcs._client = DummyClient()
+    live_gcs._bucket = object()
+    live_ids = live_gcs.list_session_ids()
+    assert set(live_ids) == {"parody_session_1", "session_8492", "dripwarts_battle"}
