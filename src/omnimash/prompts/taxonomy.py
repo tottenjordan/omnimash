@@ -27,8 +27,8 @@ class StylePreset(str, Enum):
 
 
 class PromptTaxonomyEngine:
-    def __init__(self) -> None:
-        self.compiler = PromptCompiler()
+    def __init__(self, mock_mode: bool = True) -> None:
+        self.compiler = PromptCompiler(mock_mode=mock_mode)
 
     def get_preset_contribution(self, preset: StylePreset | str) -> PresetContribution:
         preset_key = str(preset.value if hasattr(preset, "value") else preset)

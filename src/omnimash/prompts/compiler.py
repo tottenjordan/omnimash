@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
+import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from omnimash.config import settings
 
 if TYPE_CHECKING:
     from omnimash.prompts.taxonomy import StylePreset
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -137,6 +145,150 @@ AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
 
 
 class PromptCompiler:
+    def __init__(self, mock_mode: bool = False) -> None:
+        self.mock_mode = mock_mode
+        self._pro_global_client: Any = None
+        self._flash_regional_client: Any = None
+        if not self.mock_mode:
+            self._init_deconstructor_clients()
+
+    def _init_deconstructor_clients(self) -> None:
+        try:
+            from google import genai
+        except ImportError:
+            logger.warning(
+                "google-genai SDK not available; deconstructor client initialization skipped."
+            )
+            return
+
+        api_key = (
+            os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or getattr(settings, "gemini_api_key", None)
+            or getattr(settings, "google_api_key", None)
+        )
+        project = os.environ.get(
+            "GOOGLE_CLOUD_PROJECT",
+            getattr(settings, "google_cloud_project", "hybrid-vertex"),
+        )
+
+        try:
+            if api_key:
+                self._pro_global_client = genai.Client(api_key=api_key)
+            else:
+                self._pro_global_client = genai.Client(
+                    vertexai=True,
+                    project=project,
+                    location="global",
+                )
+        except Exception as exc:
+            logger.warning("Failed to initialize Tier 1 Pro Global client: %s", exc)
+
+        try:
+            if api_key:
+                self._flash_regional_client = genai.Client(api_key=api_key)
+            else:
+                self._flash_regional_client = genai.Client(
+                    vertexai=True,
+                    project=project,
+                    location="us-central1",
+                )
+        except Exception as exc:
+            logger.warning("Failed to initialize Tier 2 Flash Regional client: %s", exc)
+
+    def _try_gemini_deconstruction(
+        self, client: Any, model_name: str, concept: str, tier_name: str
+    ) -> MetaPromptTags | None:
+        if not client:
+            return None
+
+        prompt_text = (
+            f"Deconstruct the following video parody concept into structured prompt tags:\n"
+            f'Concept: "{concept}"\n\n'
+            f"Return ONLY a valid JSON object matching this exact schema:\n"
+            f"{{\n"
+            f'  "characters": [\n'
+            f"    {{\n"
+            f'      "role_id": "Role A",\n'
+            f'      "name": "Character Name",\n'
+            f'      "description": "Visual description of character",\n'
+            f'      "aesthetic_tags": ["tag1", "tag2"],\n'
+            f'      "voice_style": "Voice style description"\n'
+            f"    }}\n"
+            f"  ],\n"
+            f'  "aesthetic_tags": ["tag1", "tag2"],\n'
+            f'  "environment_tag": "Environment description",\n'
+            f'  "camera_lighting_tag": "Camera & lighting description",\n'
+            f'  "audio_beat": "Audio beat description",\n'
+            f'  "vocal_delivery": "Vocal delivery description"\n'
+            f"}}\n"
+        )
+
+        for attempt in range(1, 4):
+            try:
+                try:
+                    from google.genai import types
+
+                    config = types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.7,
+                    )
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt_text,
+                        config=config,
+                    )
+                except Exception:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt_text,
+                    )
+
+                raw_text = getattr(response, "text", "") or ""
+                clean_text = raw_text.strip()
+                if clean_text.startswith("```json"):
+                    clean_text = clean_text[7:]
+                if clean_text.startswith("```"):
+                    clean_text = clean_text[3:]
+                if clean_text.endswith("```"):
+                    clean_text = clean_text[:-3]
+                clean_text = clean_text.strip()
+
+                data = json.loads(clean_text)
+
+                chars: list[CharacterRole] = []
+                for c_data in data.get("characters", []):
+                    chars.append(
+                        CharacterRole(
+                            role_id=c_data.get("role_id", "Role A"),
+                            name=c_data.get("name", ""),
+                            description=c_data.get("description", ""),
+                            reference_url=c_data.get("reference_url"),
+                            aesthetic_tags=c_data.get("aesthetic_tags", []),
+                            voice_style=c_data.get("voice_style", ""),
+                        )
+                    )
+
+                return MetaPromptTags(
+                    characters=chars,
+                    aesthetic_tags=data.get("aesthetic_tags", []),
+                    environment_tag=data.get("environment_tag", ""),
+                    camera_lighting_tag=data.get("camera_lighting_tag", ""),
+                    audio_beat=data.get("audio_beat", ""),
+                    vocal_delivery=data.get("vocal_delivery", ""),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "%s (%s) attempt %d/3 failed (Quota/Limit/Error): %s",
+                    tier_name,
+                    model_name,
+                    attempt,
+                    exc,
+                )
+                if attempt < 3:
+                    time.sleep(2 ** (attempt - 1))
+        return None
+
     def compile(
         self,
         raw_prompt: str,
@@ -302,6 +454,36 @@ class PromptCompiler:
         )
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
+        """Parses concept using 3-tier deconstructor engine."""
+        if self.mock_mode:
+            return self._deconstruct_fallback(concept)
+
+        if self._pro_global_client:
+            res = self._try_gemini_deconstruction(
+                client=self._pro_global_client,
+                model_name="gemini-3.1-pro-preview",
+                concept=concept,
+                tier_name="Tier 1 Pro Global",
+            )
+            if res is not None:
+                return res
+
+        if self._flash_regional_client:
+            res = self._try_gemini_deconstruction(
+                client=self._flash_regional_client,
+                model_name="gemini-2.5-flash",
+                concept=concept,
+                tier_name="Tier 2 Flash Regional",
+            )
+            if res is not None:
+                return res
+
+        logger.info(
+            "Tier 1 & Tier 2 deconstruction unavailable or failed. Using Tier 3 heuristic fallback."
+        )
+        return self._deconstruct_fallback(concept)
+
+    def _deconstruct_fallback(self, concept: str) -> MetaPromptTags:
         """Parses open-ended parody concept shorthand into structured MetaPromptTags with CharacterRoles, Aesthetic Tags, Environment, Camera/Lighting, Audio Beat, and Vocal Delivery."""
         lower = concept.lower().strip()
 

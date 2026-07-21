@@ -3,7 +3,7 @@ from omnimash.prompts.taxonomy import PromptTaxonomyEngine
 
 
 def test_deconstruct_concept_shorthand():
-    compiler = PromptCompiler()
+    compiler = PromptCompiler(mock_mode=True)
     concept = "Gordon Ramsay vs Julia Child in a cyberpunk iron chef battle"
     tags = compiler.deconstruct_concept(concept)
 
@@ -25,7 +25,7 @@ def test_deconstruct_concept_shorthand():
 
 
 def test_deconstruct_concept_rap_battle():
-    compiler = PromptCompiler()
+    compiler = PromptCompiler(mock_mode=True)
     concept = "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"
     tags = compiler.deconstruct_concept(concept)
 
@@ -48,7 +48,7 @@ def test_deconstruct_concept_rap_battle():
 
 
 def test_taxonomy_engine_deconstruct_concept():
-    engine = PromptTaxonomyEngine()
+    engine = PromptTaxonomyEngine(mock_mode=True)
     concept = "Severus Snape in a 90s rap video"
     tags = engine.deconstruct_concept(concept)
 
@@ -65,7 +65,7 @@ def test_taxonomy_engine_deconstruct_concept():
 
 
 def test_deconstruct_open_ended_custom_concept():
-    compiler = PromptCompiler()
+    compiler = PromptCompiler(mock_mode=True)
     concept = "A neon samurai vs a cyborg ninja in an arcade showdown"
     tags = compiler.deconstruct_concept(concept)
 
@@ -79,7 +79,7 @@ def test_deconstruct_open_ended_custom_concept():
 
 
 def test_deconstruct_concept_populates_voice_styles():
-    compiler = PromptCompiler()
+    compiler = PromptCompiler(mock_mode=True)
     tags = compiler.deconstruct_concept(
         "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"
     )

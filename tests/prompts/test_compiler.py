@@ -203,3 +203,101 @@ def test_compile_storyboard_with_audio_and_vocal_direction():
         "Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync"
         in compiled
     )
+
+
+def test_deconstruct_concept_3_tier_fallback():
+    from unittest.mock import MagicMock, patch
+
+    from omnimash.config import settings
+    from omnimash.prompts.compiler import MetaPromptTags, PromptCompiler
+
+    # 1. Verify mock_mode=True bypasses client init and uses fallback
+    compiler_mock = PromptCompiler(mock_mode=True)
+    assert compiler_mock.mock_mode is True
+    assert compiler_mock._pro_global_client is None
+    assert compiler_mock._flash_regional_client is None
+
+    tags_mock = compiler_mock.deconstruct_concept(
+        "Harry Potter vs Draco Malfoy rap battle"
+    )
+    assert isinstance(tags_mock, MetaPromptTags)
+    assert len(tags_mock.characters) >= 2
+
+    # 2. Verify client initialization under mock_mode=False
+    with (
+        patch.dict("os.environ", {"GEMINI_API_KEY": "", "GOOGLE_API_KEY": ""}),
+        patch.object(settings, "gemini_api_key", None),
+        patch.object(settings, "google_api_key", None),
+        patch("google.genai.Client") as mock_genai_client_cls,
+    ):
+        mock_pro_client = MagicMock()
+        mock_flash_client = MagicMock()
+        mock_genai_client_cls.side_effect = [mock_pro_client, mock_flash_client]
+
+        compiler = PromptCompiler(mock_mode=False)
+        assert compiler._pro_global_client == mock_pro_client
+        assert compiler._flash_regional_client == mock_flash_client
+
+        # Verify call args for global vs us-central1
+        assert mock_genai_client_cls.call_count == 2
+        call1_kwargs = mock_genai_client_cls.call_args_list[0].kwargs
+        call2_kwargs = mock_genai_client_cls.call_args_list[1].kwargs
+        assert call1_kwargs.get("location") == "global"
+        assert call1_kwargs.get("vertexai") is True
+        assert call2_kwargs.get("location") == "us-central1"
+        assert call2_kwargs.get("vertexai") is True
+
+        # 3. Test Tier 1 success parsing structured JSON
+        json_payload = """{
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Harry Potter",
+                    "description": "Young wizard with scar",
+                    "aesthetic_tags": ["Red Gucci Tracksuit"],
+                    "voice_style": "Atlanta rap flow"
+                }
+            ],
+            "aesthetic_tags": ["Atlanta Trap"],
+            "environment_tag": "Hogwarts dungeon",
+            "camera_lighting_tag": "Fisheye low angle",
+            "audio_beat": "140 BPM Trap",
+            "vocal_delivery": "Fast rap battle"
+        }"""
+        mock_pro_response = MagicMock()
+        mock_pro_response.text = json_payload
+        mock_pro_client.models.generate_content.return_value = mock_pro_response
+
+        tags_t1 = compiler.deconstruct_concept("Harry Potter in trap video")
+        assert tags_t1.characters[0].name == "Harry Potter"
+        assert tags_t1.environment_tag == "Hogwarts dungeon"
+        assert tags_t1.audio_beat == "140 BPM Trap"
+        mock_pro_client.models.generate_content.assert_called_once()
+
+        # 4. Test Tier 1 failure -> Tier 2 fallback success
+        mock_pro_client.models.generate_content.reset_mock()
+        mock_pro_client.models.generate_content.side_effect = RuntimeError(
+            "Quota exceeded on Pro"
+        )
+
+        mock_flash_response = MagicMock()
+        mock_flash_response.text = json_payload.replace(
+            "Hogwarts dungeon", "Flash regional stage"
+        )
+        mock_flash_client.models.generate_content.return_value = mock_flash_response
+
+        tags_t2 = compiler.deconstruct_concept("Harry Potter in trap video")
+        assert tags_t2.environment_tag == "Flash regional stage"
+        mock_flash_client.models.generate_content.assert_called_once()
+
+        # 5. Test Tier 1 failure & Tier 2 failure -> Tier 3 fallback
+        mock_pro_client.models.generate_content.side_effect = RuntimeError("Pro error")
+        mock_flash_client.models.generate_content.side_effect = RuntimeError(
+            "Flash error"
+        )
+
+        tags_t3 = compiler.deconstruct_concept(
+            "Harry Potter vs Draco Malfoy rap battle"
+        )
+        assert isinstance(tags_t3, MetaPromptTags)
+        assert len(tags_t3.characters) >= 2
