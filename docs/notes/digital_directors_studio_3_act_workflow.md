@@ -23,8 +23,9 @@ The **Digital Director's Studio** replaces generic chat interfaces with a struct
 * **Goal**: Sequence and direct multi-scene storyboards before rendering the final video cut.
 * **Multi-Scene Storyboard Editor**:
   * Sequence individual scenes (Scene 1, Scene 2, Scene 3, etc.) for a cohesive ~1-minute parody narrative.
+  * **Directing Modes (`[ Guided Mode | 📜 Screenplay Mode ]`)**: Toggle between **Guided Mode** (structured action & dialogue inputs) and **Screenplay Mode** (natural screenplay script text `Character: (Action/Audio) "Dialogue"`).
   * **Active Role Selectors**: Assign specific character roles (`Role A`, `Role B`) to each scene in the storyboard.
-  * **Action Directives**: Define specific physical actions and cinematographic movements per scene (e.g. *"Arriving at foggy courtyard rapping into microphone wand"*).
+  * **Action Directives & Screenplay Scripts**: Define physical actions, audio FX cues, and cinematographic movements per scene (e.g. *"Arriving at foggy courtyard rapping into microphone wand"* or script text).
   * **Turn-by-Turn Dialogue**: Direct character dialogue and speech per scene (e.g. *"I been cooking potions since first year. Burrr!"*), supporting neural spoken voice synthesis and subtitles.
 * **Live Storyboard Prompt Preview**: Real-time compiled prompt view structured across `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`.
 

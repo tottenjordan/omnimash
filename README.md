@@ -293,9 +293,10 @@ In **Act 2**, sequence your multi-character storyline into structured scenes.
 </div>
 
 1. **Add Scene Directives:** Break your script into sequential scenes (`Scene 1: Standing over potion stoves with baking soda`, `Scene 2: Stepping into room with iced out diamond chain`).
-2. **Assign Active Roles:** Toggle active character roles for each scene (`Role A`, `Role B`).
-3. **Write Actions & Dialogue:** Provide character actions and synced rap bars / dialogue lines (e.g., *[Harry]: "I been cooking potions since first year, bruv!"* and *[Draco]: "This is Trap or Die, Potter! You ain’t never seen a brick!"*).
-4. **Inspect Compiled Storyboard Prompt:** Verify the live prompt compiler box on the right, structured with `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]` matching the official Gemini Omni Prompt Guide.
+2. **Select Directing Mode:** Toggle between **Guided Mode** (`[ Guided Mode | 📜 Screenplay Mode ]`) for structured action & dialogue fields, or **Screenplay Mode** to write raw script text: `Character: (Action description. Audio cue.) "Dialogue"`.
+3. **Assign Active Roles:** Toggle active character roles for each scene (`Role A`, `Role B`).
+4. **Write Actions & Dialogue / Screenplay Scripts:** Provide character actions and synced rap bars in Guided Mode or full screenplay scripts (e.g. `Harry: (Takes wand. Subwoofers rumble). "How many Galleons?"`).
+5. **Inspect Compiled Storyboard Prompt:** Verify the live prompt compiler box on the right, structured with `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]` matching the official Gemini Omni Prompt Guide.
 
 ---
 
