@@ -707,21 +707,67 @@ class PromptCompiler:
                 )
         if vocal_delivery and vocal_delivery.strip():
             audio_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
-        audio_block = (
-            "\n".join(audio_parts) if audio_parts else "Default Audio & Voice Direction"
-        )
 
         scene_lines: list[str] = []
         for scene in scenes:
-            roles_str = ", ".join(scene.active_roles)
-            diag_str = (
-                f' | Dialogue: "{scene.dialogue}"'
-                if scene.dialogue and scene.dialogue.strip()
-                else ""
+            scene_num = (
+                scene.get("scene_number")
+                if isinstance(scene, dict)
+                else getattr(scene, "scene_number", None)
             )
-            scene_lines.append(
-                f"- Scene {scene.scene_number} [{roles_str}]: {scene.action}{diag_str}"
+            raw_roles = (
+                scene.get("active_roles", [])
+                if isinstance(scene, dict)
+                else getattr(scene, "active_roles", [])
             )
+            roles_list: list[str] = (
+                [str(r) for r in raw_roles]
+                if isinstance(raw_roles, (list, tuple))
+                else []
+            )
+            roles_str = ", ".join(roles_list)
+
+            sp_text = (
+                scene.get("screenplay_text")
+                if isinstance(scene, dict)
+                else getattr(scene, "screenplay_text", None)
+            )
+
+            if sp_text and isinstance(sp_text, str) and sp_text.strip():
+                parsed = parse_screenplay_script(sp_text, characters=characters)
+                if parsed.get("audio_cues"):
+                    audio_parts.append(
+                        f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}"
+                    )
+                indented_script = "\n".join(
+                    f"  {line}" for line in sp_text.strip().splitlines()
+                )
+                scene_lines.append(
+                    f"- Scene {scene_num} [{roles_str}] (Screenplay Script):\n{indented_script}"
+                )
+            else:
+                action = (
+                    scene.get("action", "")
+                    if isinstance(scene, dict)
+                    else getattr(scene, "action", "")
+                )
+                dialogue = (
+                    scene.get("dialogue", "")
+                    if isinstance(scene, dict)
+                    else getattr(scene, "dialogue", "")
+                )
+                diag_str = (
+                    f' | Dialogue: "{dialogue}"'
+                    if dialogue and str(dialogue).strip()
+                    else ""
+                )
+                scene_lines.append(
+                    f"- Scene {scene_num} [{roles_str}]: {action}{diag_str}"
+                )
+
+        audio_block = (
+            "\n".join(audio_parts) if audio_parts else "Default Audio & Voice Direction"
+        )
         scenes_block = "\n".join(scene_lines) if scene_lines else "- No scenes"
 
         return (

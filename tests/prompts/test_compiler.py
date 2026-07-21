@@ -416,3 +416,44 @@ def test_compile_multi_role_prompt_with_clean_image_role_tags():
     assert "gs://bucket/harry.jpg" not in compiled
     assert "http://example.com/ollivander.jpg" not in compiled
     assert "(Ref:" not in compiled
+
+
+def test_compile_multi_role_prompt_with_screenplay_text():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Snape",
+            description="Gaunt wizard",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Harry",
+            description="Young wizard",
+        ),
+    ]
+    sp_text = (
+        'Snape: (Standing in the dungeon. Low bass rumble.) "Silence, Potter!"\n'
+        'Harry: (Bopping head to 120 BPM beat.) "No!"'
+    )
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A", "Role B"],
+            action="Confrontation in dungeon",
+            screenplay_text=sp_text,
+        )
+    ]
+    prompt = compiler.compile_multi_role_prompt(
+        concept="Dungeon confrontation",
+        characters=chars,
+        scenes=scenes,
+    )
+
+    assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in prompt
+    assert (
+        '  Snape: (Standing in the dungeon. Low bass rumble.) "Silence, Potter!"'
+        in prompt
+    )
+    assert '  Harry: (Bopping head to 120 BPM beat.) "No!"' in prompt
+    assert "Scene 1 Audio Cues:" in prompt
