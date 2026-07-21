@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -162,7 +162,7 @@ UI_HTML = r"""<!DOCTYPE html>
         const getDisplayableRefUrl = (url) => {
             if (!url) return "";
             if (url.startsWith("gs://")) {
-                return url.replace("gs://", "https://storage.googleapis.com/");
+                return `/api/media-proxy?uri=${encodeURIComponent(url)}`;
             }
             return url;
         };
@@ -329,6 +329,8 @@ UI_HTML = r"""<!DOCTYPE html>
             const handleDeconstructConcept = async (conceptOverride) => {
                 const targetConcept = conceptOverride || concept;
                 if (!targetConcept || !targetConcept.trim()) return;
+                setParentTurnId(null);
+                setRawCompiledPrompt("");
                 setDeconstructLoading(true);
                 try {
                     const res = await fetch("/api/deconstruct-concept", {
@@ -389,18 +391,19 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
-            const handleLoadVaultCharacter = (vaultChar) => {
+            const handleLoadVaultCharacter = (c) => {
                 const nextLetter = String.fromCharCode(65 + characters.length);
                 const newRole = {
                     role_id: `Role ${nextLetter}`,
-                    name: vaultChar.name || "",
-                    description: vaultChar.description || "",
-                    reference_url: vaultChar.reference_url || "",
-                    aesthetic_tags: vaultChar.aesthetic_tags || [],
-                    voice_style: vaultChar.voice_style || ""
+                    name: c.name || "",
+                    description: c.description || "",
+                    reference_url: c.reference_url || "",
+                    voice_style: c.voice_style || "",
+                    aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
                 };
                 setCharacters([...characters, newRole]);
             };
+
 
             const handleSaveSessionRoster = async () => {
                 try {
@@ -422,7 +425,15 @@ UI_HTML = r"""<!DOCTYPE html>
                     const res = await fetch(`/api/characters/roster?session_name=${encodeURIComponent(sessionName)}`);
                     const data = await res.json();
                     if (data && data.characters) {
-                        setCharacters(data.characters);
+                        const restored = data.characters.map((c, idx) => ({
+                            role_id: c.role_id || `Role ${String.fromCharCode(65 + idx)}`,
+                            name: c.name || "",
+                            description: c.description || "",
+                            reference_url: c.reference_url || "",
+                            voice_style: c.voice_style || "",
+                            aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
+                        }));
+                        setCharacters(restored);
                     }
                 } catch (err) {
                     console.error("Load session roster failed:", err);
@@ -758,9 +769,9 @@ UI_HTML = r"""<!DOCTYPE html>
                 setVocalDelivery("");
                 setScenes([]);
                 setHistory([]);
-                setParentTurnId("");
+                setParentTurnId(null);
                 setDeltaPrompt("");
-                setRawCompiledPrompt("Ready for new concept deconstruction.");
+                setRawCompiledPrompt("");
                 setActiveAct(1);
             };
 
@@ -1145,10 +1156,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
                                             {savedVaultCharacters.map((c, vIdx) => {
-                                                let chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
-                                                if (c.name && !c.name.includes('"') && c.aesthetic_tags && c.aesthetic_tags.length > 0) {
-                                                    chipText = `${c.name} "${c.aesthetic_tags[0]}"`;
-                                                }
+                                                const chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
                                                 return (
                                                     <button
                                                         key={vIdx}
@@ -1859,7 +1867,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     ensure_rendered_video(
         "/static/rendered/mock.mp4",
         prompt="Trapwarts trailer",
-        voiceover='Harry: "You talkin bout potions Draco? I been cooking since first year. Burrr!" / Draco: "This is Trap or Die Potter! Let us get it!"',
     )
 
     @app.get("/", response_class=HTMLResponse)
@@ -2083,6 +2090,25 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             for c in (raw_roster or [])
         ]
         return CharacterListResponse(characters=characters)
+
+    @app.get("/api/media-proxy")
+    def media_proxy(uri: str) -> Response:
+        if not uri or not uri.startswith("gs://"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid GCS URI. Must start with gs://",
+            )
+        data, content_type = agent.storage.download_blob_bytes(uri)
+        if not data:
+            raise HTTPException(
+                status_code=404,
+                detail="Media object not found or empty",
+            )
+        return Response(
+            content=data,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
 
     return app
 

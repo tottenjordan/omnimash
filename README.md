@@ -206,6 +206,40 @@ Detailed subsystem architectures and workflow outlines are available in [docs/di
 
 ---
 
+### 🗂️ Google Cloud Storage (GCS) Directory Hierarchy & Asset Storage
+
+OmniMash organizes persistent media, character presets, session cast rosters, and exported master videos across a clean, multi-tier Google Cloud Storage hierarchy:
+
+```text
+gs://omnimash-media-hybrid-vertex/
+│
+├── 🏛️ library/characters/                 <-- GLOBAL VAULT (Root of Bucket)
+│   ├── harry_gucci.json                  - Global reusable character presets
+│   ├── young_draco_jeezy.json            - Shared across ALL sessions & projects
+│   └── cyborg_gordon_ramsay.json
+│
+├── 🖼️ saved_characters/                  <-- GLOBAL REFERENCE IMAGES (Root of Bucket)
+│   ├── harry_drip.jpeg                   - Character reference images attached to roles
+│   ├── draco.jpeg                        - Served via authenticated /api/media-proxy
+│   └── gordon_ramsay.jpeg
+│
+└── 🗂️ sessions/                          <-- PER-SESSION WORKSPACES
+    └── {session_id}/                     (e.g., session_8492)
+        ├── 👤 characters/
+        │   └── roster.json               - Project-specific cast roster snapshot
+        ├── 🎬 intermediate/
+        │   ├── turn0_clip.mp4            - 10s individual turn renders
+        │   └── turn1_diff.mp4
+        └── 🏆 final_masters/
+            └── stitched_master.mp4       - Multi-clip concatenated final exports
+```
+
+- **Global Character Vault (`library/characters/`):** Stores reusable character definition presets (`name`, `description`, `reference_url`, `voice_style`, `aesthetic_tags`) at the bucket root, shared across all project sessions.
+- **Global Reference Images (`saved_characters/`):** Holds character facial reference images accessible via the authenticated `/api/media-proxy` backend streaming route.
+- **Per-Session Workspaces (`sessions/{session_id}/`):** Isolates session cast snapshots (`characters/roster.json`), intermediate 10s turn clips (`intermediate/`), and finalized multi-clip concatenated renders (`final_masters/`).
+
+---
+
 ## 🚀 Getting Started & User Journey
 
 Follow this visual step-by-step walkthrough to launch OmniMash and create full-length AI parody videos using the **3-Act Digital Director's Studio**.
@@ -235,9 +269,14 @@ In **Act 1**, define the high-level creative vision, dynamic character bindings,
 
 1. **1-Click Studio Reset Control:** Use the 🔄 **"New Project / Start Over"** button in the top navigation header toolbar at any time to instantly wipe current concept state, character bindings, aesthetic tags, and storyboard scenes, generating a fresh session ID and blank studio workspace.
 2. **Enter Visual Shorthand:** Type your open-ended parody concept (e.g., *"Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"*).
-3. **Deconstruct Concept:** Click **✨ Deconstruct Concept** (`POST /api/deconstruct-concept`). OmniMash parses the prompt into structured `MetaPromptTags`.
-4. **🏛️ Character Vault & Saved Library Toolbar:** Access the 🏛️ **Character Vault & Saved Library** toolbar above the character cards to instantly load pre-saved character presets (`+ Harry "Gucci"`, `+ Young Draco "Jeezy"`, `+ Cyborg Gordon Ramsay`, `+ Neon Julia Child`) into your active cast with 1 click, complete with miniature avatar image thumbnails next to each preset chip.
-5. **Configure Dynamic Character Roles & Reference Images:** Review dynamic character roles (`Role A: Harry "Gucci"`, `Role B: Young Draco "Jeezy"`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) (`gs://reference-images-jt-trend-trawler/...`) to lock facial likeness across scenes, featuring live character reference image preview rendering inside dedicated `Linked Image Role` thumbnail containers on each Character Role card.
+3. **Deconstruct Concept:** Click **✨ Deconstruct Concept** (`POST /api/deconstruct-concept`). OmniMash's upfront NLP concept parser automatically deconstructs your 1-sentence idea into structured, editable building blocks:
+   - **👥 Dynamic Character Roles (`Role A`, `Role B`, etc.):** Extracts character names (*Harry*, *Draco*), populates physical likeness descriptions (*"Harry Potter, a young wizard with round wire-rim glasses..."*), binds character-specific style signifiers (*Red Gucci Tracksuit*, *Cartier Glasses*), and assigns dedicated **🎙️ Voice Style & Accent** instructions (*Fast-paced confident Atlanta rap flow with autotune* vs *Pompous British drawl*).
+   - **🎨 Global Aesthetic & Style Signifiers:** Extracts overall video genre and visual style tags (*2000s Atlanta Trap Disstrack*).
+   - **🏛️ Environment & Setting Tag:** Builds location and atmosphere descriptors (*Gothic Hogwarts courtyard lit by neon stage lights and smoky haze*).
+   - **🎥 Camera & Lighting Directive:** Generates camera movement and rim lighting (*Low-angle 90s fisheye tracking shot with green and purple neon rim lights*).
+   - **🥁 Background Audio Beat & 🎙️ Vocal Delivery:** Configures background tempo (*140 BPM Heavy 808 Trap*) and global delivery style (*Rhythmic aggressive rap delivery*).
+4. **🏛️ Character Vault & Saved Library Toolbar:** Access the 🏛️ **Character Vault & Saved Library** toolbar above the character cards to instantly load pre-saved character presets (`+ Harry`, `+ Young Draco`, `+ Cyborg Gordon Ramsay`, `+ Neon Julia Child`) into your active cast with 1 click, complete with miniature avatar image thumbnails next to each preset chip.
+5. **Configure Dynamic Character Roles & Reference Images:** Review dynamic character roles (`Role A: Harry`, `Role B: Young Draco`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) (`gs://reference-images-jt-trend-trawler/...`) to lock facial likeness across scenes, featuring live character reference image preview rendering inside dedicated `Linked Image Role` thumbnail containers on each Character Role card.
 6. **💾 Save to Vault Card Buttons:** Click 💾 **"Save to Vault"** on any individual Character Role card to persist its name, description, reference image URL, voice style, and style tags into your persistent Character Vault library for future sessions.
 7. **💾 Save Cast Roster / 📂 Restore Cast Session Controls:** Use the 💾 **"Save Cast Roster"** and 📂 **"Restore Cast"** buttons in the Character Roles header toolbar to snapshot or restore the full multi-character cast ensemble for the current project session.
 8. **Manage Character-Specific Style Signifiers & 🎙️ Voice Style & Accent:** Refine granular character-level style tags and dedicated **🎙️ Voice Style & Accent** inputs inside each Character Role card (e.g., `Red Gucci Tracksuit`, `Cartier Glasses`, and `Fast-paced confident Atlanta rap flow with autotune` for Role A; `Platinum Slicked Hair`, `Diamond Iced-Out Chain`, and `Pompous, cynical British drawl with aggressive rap cadence` for Role B). The prompt compiler binds these tags into character definitions and the `[AUDIO & VOCAL DIRECTION]` block to anchor attire and vocal delivery across scenes.
