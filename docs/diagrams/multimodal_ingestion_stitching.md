@@ -35,8 +35,12 @@ graph LR
     end
 
     subgraph StitchingPhase["4. Stitching Phase"]
-        Clip0 --> Stitcher["VideoStitcher (FFmpeg)"]
-        Stitcher --> Master["Master Stitched MP4 Video (30s-60s)"]
+        Clip0 -->|"POST /api/save-final"| Stitcher["VideoStitcher (FFmpeg)"]
+        HistoryClips["Selected Timeline Clips from History"] -->|"POST /api/stitch-clips"| CustomStitcher["VideoStitcher (FFmpeg Custom Selection)"]
+        Stitcher --> Master["Default Stitched Master MP4 Video (30s-60s)"]
+        CustomStitcher --> CustomMaster["Custom Stitched Master MP4 Video (Selected Clips)"]
+        Master --> GCS["GCS final_masters Storage"]
+        CustomMaster --> GCS
     end
 ```
 
@@ -51,6 +55,8 @@ graph LR
 - **Prompt Compiler (`omnimash.prompts.compiler`):**
   - Translates character lore into physical descriptors preventing latent space averaging.
 
-- **FFmpeg Concatenation Engine (`omnimash.stitching.stitcher`):**
-  - Collects active clips from the `ProjectSession` timeline.
-  - Applies seamless video crossfades, audio beat-matching, and codec normalization (`libx264` + `aac` in 720p).
+- **FFmpeg Concatenation Engine & Custom Selection (`omnimash.stitching.stitcher` & `POST /api/stitch-clips`):**
+  - Collects active clips from the `ProjectSession` timeline or receives custom clip URL selections via `POST /api/stitch-clips` (`StitchClipsRequest`).
+  - Applies seamless video crossfades, audio beat-matching, and codec normalization (`libx264` + `aac` in 720p with `aresample=async=1:first_pts=0` PTS frame locking).
+  - Persists master exports to session-scoped GCS paths (`sessions/{session_id}/final_masters/{master_title}.mp4`).
+
