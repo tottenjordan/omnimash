@@ -167,6 +167,20 @@ UI_HTML = r"""<!DOCTYPE html>
             // Session & Project State
             const [sessionName, setSessionName] = useState("parody_session_1");
 
+            // Act 1: Character Vault & Saved Cast State
+            const [savedVaultCharacters, setSavedVaultCharacters] = useState([]);
+
+            useEffect(() => {
+                fetch("/api/characters")
+                    .then((res) => res.json())
+                    .then((data) => {
+                        if (data && data.characters) {
+                            setSavedVaultCharacters(data.characters);
+                        }
+                    })
+                    .catch((err) => console.error("Failed to load vault characters:", err));
+            }, []);
+
             // Act 1: The Concept & Cast Manager State
             const [concept, setConcept] = useState("Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style");
             const [deconstructLoading, setDeconstructLoading] = useState(false);
@@ -328,6 +342,71 @@ UI_HTML = r"""<!DOCTYPE html>
                     console.error("Deconstruction failed:", err);
                 } finally {
                     setDeconstructLoading(false);
+                }
+            };
+
+            // Character Vault & Saved Cast Management
+            const handleSaveCharacterToVault = async (char) => {
+                try {
+                    const res = await fetch("/api/characters/save", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            character: char,
+                            session_name: sessionName,
+                            is_library: true
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        const listRes = await fetch("/api/characters");
+                        const listData = await listRes.json();
+                        if (listData && listData.characters) {
+                            setSavedVaultCharacters(listData.characters);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Save character to vault failed:", err);
+                }
+            };
+
+            const handleLoadVaultCharacter = (vaultChar) => {
+                const nextLetter = String.fromCharCode(65 + characters.length);
+                const newRole = {
+                    role_id: `Role ${nextLetter}`,
+                    name: vaultChar.name || "",
+                    description: vaultChar.description || "",
+                    reference_url: vaultChar.reference_url || "",
+                    aesthetic_tags: vaultChar.aesthetic_tags || [],
+                    voice_style: vaultChar.voice_style || ""
+                };
+                setCharacters([...characters, newRole]);
+            };
+
+            const handleSaveSessionRoster = async () => {
+                try {
+                    await fetch("/api/characters/save-roster", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName,
+                            characters: characters
+                        })
+                    });
+                } catch (err) {
+                    console.error("Save session roster failed:", err);
+                }
+            };
+
+            const handleLoadSessionRoster = async () => {
+                try {
+                    const res = await fetch(`/api/characters/roster?session_name=${encodeURIComponent(sessionName)}`);
+                    const data = await res.json();
+                    if (data && data.characters) {
+                        setCharacters(data.characters);
+                    }
+                } catch (err) {
+                    console.error("Load session roster failed:", err);
                 }
             };
 
@@ -880,7 +959,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
                                 {/* 2. Dynamic Character Roles Manager */}
                                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
                                         <div>
                                             <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
                                                 <span>👥</span>
@@ -890,13 +969,71 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 Define character roles with visual descriptions and attached reference image URLs to maintain likeness.
                                             </p>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={addCharacterRole}
-                                            className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
-                                        >
-                                            <span>+ Add Character Role</span>
-                                        </button>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveSessionRoster}
+                                                className="bg-gray-950 hover:bg-gray-800 text-purple-300 hover:text-purple-200 border border-purple-900/60 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                title="Save current cast roster to session"
+                                            >
+                                                <span>💾</span>
+                                                <span>Save Cast Roster</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleLoadSessionRoster}
+                                                className="bg-gray-950 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                title="Restore saved cast roster for this session"
+                                            >
+                                                <span>📂</span>
+                                                <span>Restore Cast</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={addCharacterRole}
+                                                className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                            >
+                                                <span>+ Add Character Role</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 🏛️ Character Vault & Saved Library */}
+                                    <div className="bg-gray-950/80 border border-purple-900/50 rounded-xl p-3.5 space-y-2.5">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                                                <span>🏛️</span>
+                                                <span>Character Vault &amp; Saved Library</span>
+                                            </label>
+                                            <span className="text-[10px] text-gray-400 font-mono">
+                                                {savedVaultCharacters.length} Preset(s) Available
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {savedVaultCharacters.map((c, vIdx) => {
+                                                let chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
+                                                if (c.name && !c.name.includes('"') && c.aesthetic_tags && c.aesthetic_tags.length > 0) {
+                                                    chipText = `${c.name} "${c.aesthetic_tags[0]}"`;
+                                                }
+                                                return (
+                                                    <button
+                                                        key={vIdx}
+                                                        type="button"
+                                                        onClick={() => handleLoadVaultCharacter(c)}
+                                                        className="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 hover:border-purple-500 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                                                        title={`Click to load ${c.name || c.role_id} into roster`}
+                                                    >
+                                                        <span>+</span>
+                                                        <span>{chipText}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                            {savedVaultCharacters.length === 0 && (
+                                                <span className="text-xs text-gray-500 italic py-1">
+                                                    No characters in vault yet. Save character roles below to build your library.
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -906,16 +1043,27 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     <span className="text-xs font-bold font-mono bg-pink-950 text-pink-300 px-2.5 py-1 rounded border border-pink-800/80">
                                                         {char.role_id}
                                                     </span>
-                                                    {characters.length > 1 && (
+                                                    <div className="flex items-center space-x-2">
                                                         <button
                                                             type="button"
-                                                            onClick={() => removeCharacter(idx)}
-                                                            className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 transition"
-                                                            title="Remove Character Role"
+                                                            onClick={() => handleSaveCharacterToVault(char)}
+                                                            className="bg-gray-900 hover:bg-purple-950 text-purple-300 hover:text-purple-200 border border-purple-900/60 hover:border-purple-700 text-xs px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 shadow-sm font-medium"
+                                                            title="Save character to vault library"
                                                         >
-                                                            🗑️ Remove
+                                                            <span>💾</span>
+                                                            <span>Save to Vault</span>
                                                         </button>
-                                                    )}
+                                                        {characters.length > 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeCharacter(idx)}
+                                                                className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 transition"
+                                                                title="Remove Character Role"
+                                                            >
+                                                                🗑️ Remove
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <label className="block text-[11px] text-gray-400 mb-1">Character Name</label>

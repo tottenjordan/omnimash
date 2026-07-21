@@ -341,3 +341,8 @@ def test_dashboard_ui_html_features() -> None:
 
     # 6. Top header 1-click New Project / Start Over reset button present
     assert "New Project" in html or "Start Over" in html
+
+    # 7. Character Vault & Saved Library features present
+    assert "Character Vault" in html
+    assert "Save to Vault" in html
+    assert "Save Cast Roster" in html
