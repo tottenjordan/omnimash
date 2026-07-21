@@ -734,9 +734,15 @@ class OmniFlashClient:
         voiceover: str | None = None,
         is_silent: bool = False,
         audio_stem: str | None = None,
+        turn_index: int | None = None,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
-        url = f"/static/rendered/{thread_id}_turn0.mp4"
+        filename = (
+            f"turn_{turn_index}_video.mp4"
+            if turn_index is not None
+            else f"{thread_id}_turn0.mp4"
+        )
+        url = f"/static/rendered/{filename}"
         rel_path = url.lstrip("/")
 
         # 1. Primary: Gemini Omni Flash via Interactions API (Native Video + Audio + Reasoning)
@@ -779,8 +785,14 @@ class OmniFlashClient:
         voiceover: str | None = None,
         is_silent: bool = False,
         audio_stem: str | None = None,
+        turn_index: int | None = None,
     ) -> GenerationResult:
-        url = f"/static/rendered/{interaction_thread_id}_turn_diff.mp4"
+        filename = (
+            f"turn_{turn_index}_video.mp4"
+            if turn_index is not None
+            else f"{interaction_thread_id}_turn_diff.mp4"
+        )
+        url = f"/static/rendered/{filename}"
         rel_path = url.lstrip("/")
 
         # 1. Primary: Gemini Omni Flash stateful conversational diff via previous_interaction_id

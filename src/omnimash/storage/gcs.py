@@ -289,11 +289,13 @@ class GcsStorageManager:
         session_id: str | None,
         source_rel_path: str,
         master_title: str,
+        prompt_data: dict[str, Any] | str | None = None,
     ) -> tuple[str, str]:
         """Copies or uploads video files to sessions/{session_id}/final_masters/{master_title}.mp4 in GCS."""
-        clean_title = (
-            master_title if master_title.endswith(".mp4") else f"{master_title}.mp4"
+        title_base = (
+            master_title[:-4] if master_title.endswith(".mp4") else master_title
         )
+        clean_title = f"{title_base}.mp4"
         dest_blob_path = self.build_session_blob_path(
             session_id, "final_masters", clean_title
         ).lstrip("/")
@@ -322,6 +324,22 @@ class GcsStorageManager:
                         self._bucket.copy_blob(src_blob, self._bucket, dest_blob_path)
             except Exception:
                 pass
+
+        if prompt_data is not None:
+            prompt_filename = f"{title_base}_prompt.json"
+            prompt_blob_path = self.build_session_blob_path(
+                session_id, "final_masters", prompt_filename
+            )
+            content = (
+                json.dumps(prompt_data, indent=2)
+                if isinstance(prompt_data, dict)
+                else json.dumps({"prompt": prompt_data}, indent=2)
+            )
+            self.upload_bytes(
+                content.encode("utf-8"),
+                prompt_blob_path,
+                content_type="application/json",
+            )
 
         return public_url, gcs_uri
 

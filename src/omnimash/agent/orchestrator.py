@@ -88,6 +88,7 @@ class OmniMashAgent:
             )
 
         # Step 2: Check if initial generation or conversational diff
+        turn_index = len(session.turns)
         if parent_turn_id and parent_turn_id in session.turns:
             parent_turn = session.turns[parent_turn_id]
             delta_prompt = self.taxonomy.build_delta_prompt(
@@ -97,12 +98,13 @@ class OmniMashAgent:
             )
             raw_compiled_prompt = delta_prompt
             self.storage.save_session_prompt(
-                session.session_id, len(session.turns), delta_prompt
+                session.session_id, turn_index, delta_prompt
             )
-            gen_res = self.omni_client.apply_interaction_diff(
-                parent_turn.interaction_thread_id,
-                delta_prompt,
+            gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
+                turn_index=turn_index,
+                prompt=delta_prompt,
+                parent_thread_id=parent_turn.interaction_thread_id,
                 voiceover=voiceover,
                 is_silent=is_silent,
                 audio_stem=audio_stem,
@@ -187,11 +189,13 @@ class OmniMashAgent:
                 )
             raw_compiled_prompt = meta_prompt
             self.storage.save_session_prompt(
-                session.session_id, len(session.turns), meta_prompt
+                session.session_id, turn_index, meta_prompt
             )
-            gen_res = self.omni_client.generate_clip(
-                meta_prompt,
+            gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
+                turn_index=turn_index,
+                prompt=meta_prompt,
+                parent_thread_id=None,
                 voiceover=voiceover,
                 is_silent=is_silent,
                 audio_stem=audio_stem,
@@ -274,6 +278,35 @@ class OmniMashAgent:
             depth=0,
         )
 
+    def _execute_turn_generation(
+        self,
+        session_id: str | None,
+        turn_index: int,
+        prompt: str,
+        parent_thread_id: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
+        audio_stem: str | None = None,
+    ) -> Any:
+        if parent_thread_id:
+            return self.omni_client.apply_interaction_diff(
+                parent_thread_id,
+                prompt,
+                session_id=session_id,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
+                turn_index=turn_index,
+            )
+        return self.omni_client.generate_clip(
+            prompt,
+            session_id=session_id,
+            voiceover=voiceover,
+            is_silent=is_silent,
+            audio_stem=audio_stem,
+            turn_index=turn_index,
+        )
+
     def _get_session(self, session_id: str | None) -> Any | None:
         if not session_id:
             return None
@@ -291,6 +324,7 @@ class OmniMashAgent:
         self,
         session_name: str | None,
         master_title: str,
+        raw_compiled_prompt: str | None = None,
     ) -> tuple[str, str]:
         session = self._get_session(session_name)
         clip_paths: list[str] = []
@@ -304,6 +338,7 @@ class OmniMashAgent:
             session_id=session_name,
             source_rel_path=stitched_path,
             master_title=master_title,
+            prompt_data=raw_compiled_prompt,
         )
 
     def save_final_master(
@@ -312,6 +347,7 @@ class OmniMashAgent:
         video_url: str = "",
         master_title: str = "",
         session_name: str | None = None,
+        raw_compiled_prompt: str | None = None,
     ) -> tuple[str, str]:
         s_id = session_id if session_id is not None else session_name
         session = self._get_session(s_id)
@@ -321,11 +357,13 @@ class OmniMashAgent:
                 return self.stitch_session_master(
                     session_name=s_id,
                     master_title=master_title,
+                    raw_compiled_prompt=raw_compiled_prompt,
                 )
         return self.storage.save_final_master(
             session_id=s_id,
             source_rel_path=video_url,
             master_title=master_title,
+            prompt_data=raw_compiled_prompt,
         )
 
     def extend_scene(
