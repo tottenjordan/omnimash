@@ -222,6 +222,38 @@ class GcsStorageManager:
         except Exception:
             return (b"", "image/jpeg")
 
+    def load_bytes(self, gs_uri_or_path: str) -> tuple[bytes, str]:
+        """Loads binary bytes and content_type from a GCS URI or local filesystem path."""
+        if isinstance(gs_uri_or_path, str) and gs_uri_or_path.startswith("gs://"):
+            return self.download_blob_bytes(gs_uri_or_path)
+
+        if isinstance(gs_uri_or_path, str):
+            path = (
+                gs_uri_or_path
+                if os.path.exists(gs_uri_or_path)
+                else gs_uri_or_path.lstrip("/")
+            )
+            if os.path.exists(path):
+                try:
+                    with open(path, "rb") as f:
+                        data = f.read()
+                    mime = (
+                        "image/png" if path.lower().endswith(".png") else "image/jpeg"
+                    )
+                    return (data, mime)
+                except Exception:
+                    pass
+
+        if self.mock_mode:
+            mime = (
+                "image/png"
+                if str(gs_uri_or_path).lower().endswith(".png")
+                else "image/jpeg"
+            )
+            return (b"mock_image_bytes", mime)
+
+        return (b"", "image/jpeg")
+
     def save_session_prompt(
         self,
         session_id: str,
