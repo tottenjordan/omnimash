@@ -9,6 +9,7 @@ import uuid
 import wave
 from dataclasses import dataclass
 from omnimash.config import settings
+from omnimash.prompts.compiler import CharacterRole
 from omnimash.storage.gcs import GcsStorageManager
 
 logger = logging.getLogger("omnimash.engine")
@@ -587,11 +588,96 @@ class OmniFlashClient:
             return True
         return False
 
+    def _load_reference_images_as_input(
+        self,
+        session_id: str | None,
+        characters: list[CharacterRole] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Loads reference images for characters, base64-encoding them into Gemini multimodal input dicts."""
+        if not characters:
+            return []
+
+        image_objects: list[dict[str, Any]] = []
+        for char in characters:
+            ref_url = (
+                getattr(char, "reference_url", None)
+                if not isinstance(char, dict)
+                else char.get("reference_url")
+            )
+            if not ref_url or not isinstance(ref_url, str):
+                continue
+
+            img_bytes: bytes = b""
+            mime_type: str = "image/jpeg"
+
+            if hasattr(self.storage, "load_bytes"):
+                try:
+                    res = self.storage.load_bytes(ref_url)
+                    if isinstance(res, tuple):
+                        img_bytes, mime_type = res[0], res[1] or mime_type
+                    elif isinstance(res, bytes):
+                        img_bytes = res
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to load reference image via storage.load_bytes for %s: %s",
+                        ref_url,
+                        exc,
+                    )
+
+            if (
+                not img_bytes
+                and hasattr(self.storage, "download_blob_bytes")
+                and ref_url.startswith("gs://")
+            ):
+                try:
+                    img_bytes, downloaded_mime = self.storage.download_blob_bytes(
+                        ref_url
+                    )
+                    if downloaded_mime:
+                        mime_type = downloaded_mime
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to download blob bytes for %s: %s", ref_url, exc
+                    )
+
+            if not img_bytes and (
+                os.path.exists(ref_url) or os.path.exists(ref_url.lstrip("/"))
+            ):
+                path = ref_url if os.path.exists(ref_url) else ref_url.lstrip("/")
+                try:
+                    with open(path, "rb") as f:
+                        img_bytes = f.read()
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to read local reference image file %s: %s", path, exc
+                    )
+
+            if img_bytes:
+                if ref_url.lower().endswith(".png"):
+                    mime_type = "image/png"
+                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(
+                    ".jpeg"
+                ):
+                    mime_type = "image/jpeg"
+
+                b64_str = base64.b64encode(img_bytes).decode("utf-8")
+                image_objects.append(
+                    {
+                        "type": "image",
+                        "data": b64_str,
+                        "mime_type": mime_type,
+                    }
+                )
+
+        return image_objects
+
     def _generate_live_omni_flash_video(
         self,
         prompt: str,
         target_rel_path: str,
         previous_interaction_id: str | None = None,
+        characters: list[CharacterRole] | None = None,
+        session_id: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -611,10 +697,23 @@ class OmniFlashClient:
         logger.info(
             "Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input
         )
-        kwargs: dict[str, Any] = {
-            "model": "gemini-omni-flash-preview",
-            "input": safe_input,
-        }
+        image_objects = self._load_reference_images_as_input(
+            session_id=session_id, characters=characters
+        )
+        if image_objects:
+            inputs: list[dict[str, Any]] = [
+                *image_objects,
+                {"type": "text", "text": safe_input},
+            ]
+            kwargs: dict[str, Any] = {
+                "model": "gemini-omni-flash-preview",
+                "input": inputs,
+            }
+        else:
+            kwargs = {
+                "model": "gemini-omni-flash-preview",
+                "input": safe_input,
+            }
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id
 
@@ -735,6 +834,7 @@ class OmniFlashClient:
         is_silent: bool = False,
         audio_stem: str | None = None,
         turn_index: int | None = None,
+        characters: list[CharacterRole] | None = None,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -747,7 +847,7 @@ class OmniFlashClient:
 
         # 1. Primary: Gemini Omni Flash via Interactions API (Native Video + Audio + Reasoning)
         success, inter_id, error_message = self._generate_live_omni_flash_video(
-            prompt, rel_path
+            prompt, rel_path, characters=characters, session_id=session_id
         )
 
         # 2. Fallback: Local prompt-rendered animated video
@@ -786,6 +886,7 @@ class OmniFlashClient:
         is_silent: bool = False,
         audio_stem: str | None = None,
         turn_index: int | None = None,
+        characters: list[CharacterRole] | None = None,
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -797,7 +898,11 @@ class OmniFlashClient:
 
         # 1. Primary: Gemini Omni Flash stateful conversational diff via previous_interaction_id
         success, inter_id, error_message = self._generate_live_omni_flash_video(
-            diff_prompt, rel_path, previous_interaction_id=interaction_thread_id
+            diff_prompt,
+            rel_path,
+            previous_interaction_id=interaction_thread_id,
+            characters=characters,
+            session_id=session_id,
         )
 
         # 2. Fallback: Local prompt-rendered animated video
@@ -835,6 +940,7 @@ class OmniFlashClient:
         voiceover: str | None = None,
         is_silent: bool = False,
         audio_stem: str | None = None,
+        characters: list[CharacterRole] | None = None,
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
@@ -842,7 +948,7 @@ class OmniFlashClient:
 
         prompt = initial_prompt or "Reanchored video turn"
         success, inter_id, error_message = self._generate_live_omni_flash_video(
-            prompt, rel_path
+            prompt, rel_path, characters=characters, session_id=session_id
         )
         generation_mode = "LIVE_OMNI_FLASH"
         if not success:

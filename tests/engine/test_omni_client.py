@@ -531,3 +531,111 @@ def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
     call_kwargs = mock_interactions.create.call_args.kwargs
     assert call_kwargs["model"] == "gemini-omni-flash-preview"
     assert "safety_settings" not in call_kwargs
+
+
+def test_load_reference_images_as_input_returns_base64_objects() -> None:
+    """Verify that _load_reference_images_as_input returns base64 image objects for characters with reference_url."""
+    import base64
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=True)
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Harry Potter",
+        reference_url="gs://test-bucket/harry.png",
+    )
+    char2 = CharacterRole(
+        role_id="Role B",
+        name="Draco",
+        description="Draco Malfoy",
+        reference_url=None,
+    )
+    char3 = CharacterRole(
+        role_id="Role C",
+        name="Snape",
+        description="Severus Snape",
+        reference_url="gs://test-bucket/snape.jpg",
+    )
+
+    with patch.object(
+        client.storage,
+        "download_blob_bytes",
+        side_effect=lambda url: (
+            (b"fake_png_data", "image/png")
+            if "png" in url
+            else (b"fake_jpg_data", "image/jpeg")
+        ),
+    ):
+        imgs = client._load_reference_images_as_input(
+            session_id="session_123", characters=[char1, char2, char3]
+        )
+
+    assert len(imgs) == 2
+    assert imgs[0] == {
+        "type": "image",
+        "data": base64.b64encode(b"fake_png_data").decode("utf-8"),
+        "mime_type": "image/png",
+    }
+    assert imgs[1] == {
+        "type": "image",
+        "data": base64.b64encode(b"fake_jpg_data").decode("utf-8"),
+        "mime_type": "image/jpeg",
+    }
+
+
+def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
+    """Verify _generate_live_omni_flash_video calls interactions.create with multimodal input array containing image and text objects."""
+    import base64
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_test_789", output_video=mock_output_video
+    )
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    char = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Harry Potter",
+        reference_url="gs://test-bucket/harry.png",
+    )
+
+    with patch.object(
+        client.storage,
+        "download_blob_bytes",
+        return_value=(b"fake_image_bytes", "image/png"),
+    ):
+        target_file = str(tmp_path / "test_multimodal_out.mp4")
+        success, inter_id, error = client._generate_live_omni_flash_video(
+            prompt="Harry Potter in a rap battle",
+            target_rel_path=target_file,
+            characters=[char],
+            session_id="session_456",
+        )
+
+    assert success is True
+    assert inter_id == "inter_test_789"
+    assert error is None
+
+    assert mock_interactions.create.called
+    call_kwargs = mock_interactions.create.call_args.kwargs
+    assert call_kwargs["model"] == "gemini-omni-flash-preview"
+
+    input_arg = call_kwargs["input"]
+    assert isinstance(input_arg, list)
+    assert len(input_arg) == 2
+    assert input_arg[0] == {
+        "type": "image",
+        "data": base64.b64encode(b"fake_image_bytes").decode("utf-8"),
+        "mime_type": "image/png",
+    }
+    assert input_arg[1]["type"] == "text"
+    assert "young wizard" in input_arg[1]["text"]

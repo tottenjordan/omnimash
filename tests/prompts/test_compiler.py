@@ -144,9 +144,10 @@ def test_character_role_specific_aesthetic_tags():
     )
     assert "[Style: Red Gucci Tracksuit, Cartier Glasses]" in prompt
     assert (
-        "- Role A (Harry): Wizard with round glasses [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: gs://bucket/harry.jpg)"
+        "- Role A (Harry): Wizard with round glasses [Style: Red Gucci Tracksuit, Cartier Glasses]"
         in prompt
     )
+    assert "- [IMAGE 1]: Reference image for Role A (Harry)." in prompt
 
 
 def test_compile_storyboard_with_audio_and_vocal_direction():
@@ -366,3 +367,52 @@ def test_compile_prompt_with_screenplay_text():
 
     assert "Stepping out from shadows" in prompt
     assert "Always" in prompt
+
+
+def test_compile_multi_role_prompt_with_clean_image_role_tags():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Harry",
+            description="Young wizard with round glasses",
+            reference_url="gs://bucket/harry.jpg",
+            aesthetic_tags=["Red Gucci Tracksuit"],
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Ollivander",
+            description="Elder wandmaker",
+            reference_url="http://example.com/ollivander.jpg",
+            aesthetic_tags=["Vintage Apron"],
+        ),
+        CharacterRole(
+            role_id="Role C",
+            name="Voldemort",
+            description="Pale serpentine figure",
+            reference_url=None,
+        ),
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A", "Role B"],
+            action="Examining wands in shop",
+        )
+    ]
+
+    compiled = compiler.compile_multi_role_prompt(
+        concept="Harry and Ollivander",
+        characters=chars,
+        scenes=scenes,
+    )
+
+    assert compiled.startswith("[IMAGE ROLES]\n")
+    assert "- [IMAGE 1]: Reference image for Role A (Harry)." in compiled
+    assert "- [IMAGE 2]: Reference image for Role B (Ollivander)." in compiled
+    assert "[ROLE DEFINITIONS]" in compiled
+    assert compiled.index("[IMAGE ROLES]") < compiled.index("[ROLE DEFINITIONS]")
+
+    assert "gs://bucket/harry.jpg" not in compiled
+    assert "http://example.com/ollivander.jpg" not in compiled
+    assert "(Ref:" not in compiled
