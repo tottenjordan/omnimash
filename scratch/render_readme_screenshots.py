@@ -187,16 +187,20 @@ act1_content = """
                     <span class="text-[10px] text-gray-400 font-mono">4 Preset(s) Available</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5">
-                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm font-medium">
+                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-sm font-medium">
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><rect width='40' height='40' rx='20' fill='%23dc2626'/><circle cx='20' cy='16' r='9' fill='%23fca5a5'/><path d='M 10 35 C 10 25, 30 25, 30 35 Z' fill='%23991b1b'/></svg>" class="w-4 h-4 rounded-full object-cover border border-purple-400/50" />
                         <span>+</span><span>Harry "Gucci"</span>
                     </button>
-                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm font-medium">
+                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-sm font-medium">
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><rect width='40' height='40' rx='20' fill='%2315803d'/><circle cx='20' cy='16' r='9' fill='%23fde68a'/><path d='M 10 35 C 10 25, 30 25, 30 35 Z' fill='%23166534'/></svg>" class="w-4 h-4 rounded-full object-cover border border-purple-400/50" />
                         <span>+</span><span>Young Draco "Jeezy"</span>
                     </button>
-                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm font-medium">
+                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-sm font-medium">
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><rect width='40' height='40' rx='20' fill='%234338ca'/><circle cx='20' cy='16' r='9' fill='%23fed7aa'/><path d='M 10 35 C 10 25, 30 25, 30 35 Z' fill='%23312e81'/></svg>" class="w-4 h-4 rounded-full object-cover border border-purple-400/50" />
                         <span>+</span><span>Cyborg Gordon Ramsay</span>
                     </button>
-                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm font-medium">
+                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-sm font-medium">
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><rect width='40' height='40' rx='20' fill='%23c026d3'/><circle cx='20' cy='16' r='9' fill='%23fbcfe8'/><path d='M 10 35 C 10 25, 30 25, 30 35 Z' fill='%2386198f'/></svg>" class="w-4 h-4 rounded-full object-cover border border-purple-400/50" />
                         <span>+</span><span>Neon Julia Child</span>
                     </button>
                 </div>
@@ -219,8 +223,12 @@ act1_content = """
                             Round gold Cartier glasses, untidy jet-black hair, red Gucci tracksuit, and distinct lightning scar.
                         </p>
                     </div>
-                    <div class="text-[10px] font-mono bg-gray-900 p-1.5 rounded text-gray-400 truncate border border-gray-800">
-                        Ref: gs://reference-images-jt-trend-trawler/harry_drip.jpeg
+                    <div class="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2">
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><rect width='80' height='80' rx='16' fill='%23dc2626'/><circle cx='40' cy='32' r='18' fill='%23fca5a5'/><circle cx='33' cy='30' r='5' fill='none' stroke='%23f59e0b' stroke-width='2'/><circle cx='47' cy='30' r='5' fill='none' stroke='%23f59e0b' stroke-width='2'/><line x1='38' y1='30' x2='42' y2='30' stroke='%23f59e0b' stroke-width='2'/><path d='M 28 20 Q 40 12 52 20 Z' fill='%2318181b'/><path d='M 20 65 C 20 48, 60 48, 60 65 Z' fill='%23991b1b'/></svg>" alt="Harry" class="w-10 h-10 object-cover rounded-lg border border-purple-500/50 flex-shrink-0" />
+                        <div class="overflow-hidden min-w-0">
+                            <span class="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">Linked Image Role</span>
+                            <span class="text-[10px] text-gray-400 font-mono truncate block">gs://reference-images-jt-trend-trawler/harry_drip.jpeg</span>
+                        </div>
                     </div>
                     <div class="space-y-1">
                         <label class="block text-[9.5px] font-mono font-bold text-amber-400 uppercase tracking-wider">🎙️ Voice Style &amp; Accent</label>
@@ -251,8 +259,12 @@ act1_content = """
                             Platinum slicked-back hair, green velvet blazer over black turtleneck, and iced-out diamond chain.
                         </p>
                     </div>
-                    <div class="text-[10px] font-mono bg-gray-900 p-1.5 rounded text-gray-400 truncate border border-gray-800">
-                        Ref: gs://reference-images-jt-trend-trawler/draco.jpeg
+                    <div class="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2">
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><rect width='80' height='80' rx='16' fill='%2315803d'/><circle cx='40' cy='32' r='18' fill='%23fde68a'/><path d='M 24 24 Q 40 10 56 24 Z' fill='%23fef08a'/><path d='M 20 65 C 20 48, 60 48, 60 65 Z' fill='%23166534'/><polygon points='40,48 44,54 40,60 36,54' fill='%2338bdf8'/></svg>" alt="Draco" class="w-10 h-10 object-cover rounded-lg border border-purple-500/50 flex-shrink-0" />
+                        <div class="overflow-hidden min-w-0">
+                            <span class="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">Linked Image Role</span>
+                            <span class="text-[10px] text-gray-400 font-mono truncate block">gs://reference-images-jt-trend-trawler/draco.jpeg</span>
+                        </div>
                     </div>
                     <div class="space-y-1">
                         <label class="block text-[9.5px] font-mono font-bold text-purple-400 uppercase tracking-wider">🎙️ Voice Style &amp; Accent</label>
