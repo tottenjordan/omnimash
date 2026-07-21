@@ -1541,6 +1541,26 @@ UI_HTML = r"""<!DOCTYPE html>
                                     <p className="text-xs text-gray-400 mt-1">
                                         Direct individual 10-second video shots using Guided Mode or Screenplay Scripting.
                                     </p>
+                                    <details className="mt-2 bg-gray-900/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-300">
+                                        <summary className="font-bold text-purple-400 cursor-pointer flex items-center gap-1.5 select-none">
+                                            <span>💡</span>
+                                            <span>Guided Mode vs. Screenplay Mode Guide (Click to expand)</span>
+                                        </summary>
+                                        <div className="mt-2 pt-2 border-t border-gray-800 grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-300">
+                                            <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
+                                                <span className="font-bold text-purple-300">🎛️ Guided Mode (Default)</span>
+                                                <p className="text-[11px] text-gray-400">
+                                                    Quick 10-second shot setup. Use separate fields for visual action and spoken dialogue. Compiles into clean single-line storyboard directives.
+                                                </p>
+                                            </div>
+                                            <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 space-y-1">
+                                                <span className="font-bold text-pink-300">📜 Screenplay Mode</span>
+                                                <p className="text-[11px] text-gray-400">
+                                                    Write multi-line script directives: <code className="text-pink-400">Character: (Action description. Audio cue.) "Dialogue"</code>. Parses visual actions, audio FX stems, and dialogue quotes automatically.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </details>
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

@@ -204,7 +204,7 @@ class OmniMashAgent:
 
         # Step 3: Persist Turn in Session Version Tree
         proxy_video_url = self._get_media_proxy_video_url(
-            session.session_id, turn_index, gen_res.video_url
+            getattr(gen_res, "gcs_uri", None), gen_res.video_url
         )
         turn_node = self.session_manager.add_turn(
             session_id=session.session_id,
@@ -263,9 +263,8 @@ class OmniMashAgent:
             initial_prompt=guard_res.sanitized_prompt,
             session_id=session.session_id,
         )
-        turn_index = len(session.turns)
         proxy_video_url = self._get_media_proxy_video_url(
-            session.session_id, turn_index, gen_res.video_url
+            getattr(gen_res, "gcs_uri", None), gen_res.video_url
         )
         new_node = self.session_manager.add_turn(
             session_id=session.session_id,
@@ -286,14 +285,8 @@ class OmniMashAgent:
             depth=0,
         )
 
-    def _get_media_proxy_video_url(
-        self, session_id: str | None, turn_index: int, default_url: str
-    ) -> str:
-        if session_id:
-            gcs_uri = (
-                f"gs://{self.storage.bucket_name}/sessions/{session_id}/"
-                f"intermediate/turn_{turn_index}_video.mp4"
-            )
+    def _get_media_proxy_video_url(self, gcs_uri: str | None, default_url: str) -> str:
+        if gcs_uri and gcs_uri.startswith("gs://"):
             return f"/api/media-proxy?uri={urllib.parse.quote(gcs_uri, safe='')}"
         return default_url
 
