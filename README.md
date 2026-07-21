@@ -53,6 +53,7 @@ OmniMash works like an AI music video mixing studio:
 
 ## Table of Contents
 - [Architecture](#architecture)
+  - [Multi-Scene 30–60s Master Video Assembly Architecture](#-multi-scene-3060s-master-video-assembly-architecture)
 - [Diagrams & Reference Architectures](#diagrams--reference-architectures)
 - [Getting Started & User Journey](#-getting-started--user-journey)
 - [Quickstart](#quickstart)
@@ -71,6 +72,25 @@ OmniMash is built on Google's **ADK (Agent Development Kit)** and the **Gemini E
 <div align="center">
   <img src="docs/diagrams/omnimash_master_architecture.png" alt="OmniMash Master Architecture & Pipeline Diagram (PaperBanana Style)" width="100%" />
 </div>
+
+### 🎬 Multi-Scene 30–60s Master Video Assembly Architecture
+
+To overcome the **10-second per-clip single-turn limit** of Gemini Omni Flash and Veo video models, OmniMash implements a **3-Stage Hybrid Orchestration Workflow** that sequentially generates, anchors, and stitches multi-scene clips into a unified 30–60s master parody video with continuous audio and consistent character visual fidelity:
+
+#### 🏛️ The 3-Stage Hybrid Orchestration Workflow
+
+1. **Stage 1: Upfront NLP Concept Deconstruction (Gemini 3.5 / 3.6 Flash)**
+   - Deconstructs open-ended prompt shorthand (`POST /api/deconstruct-concept`) into a multi-scene storyboard sequence (`Scene 1`, `Scene 2`, `Scene 3...`).
+   - Resolves dynamic `CharacterRole` definitions (`Role A`, `Role B`), global aesthetic tags, environment settings, and continuous background audio parameters (e.g., 140 BPM Heavy 808 Trap beat).
+
+2. **Stage 2: Turn-by-Turn Scene Generation & Anchor Locking (`gemini-omni-flash-preview`)**
+   - Renders each 10-second scene turn-by-turn via `POST /api/extend-scene`.
+   - Preserves character visual likeness and attire across scenes by attaching persistent Cloud Storage reference image URLs (`gs://...`) per the [Gemini Omni Image Roles API](https://ai.google.dev/gemini-api/docs/omni#set-image-roles).
+   - Locks character-specific voice styles, accents, and vocal delivery instructions to prevent AI amnesia and vocal drift across consecutive scenes.
+
+3. **Stage 3: FFmpeg Multi-Clip Concatenation & Master Export (`MediaStitcher` / `VideoStitcher`)**
+   - Triggered via `POST /api/save-final` to stitch sequential 10s MP4 clips and continuous 140 BPM audio stems into a unified 30–60s master video MP4.
+   - Saves master exports directly to GCS at `sessions/{session_id}/final_masters/{master_title}.mp4` using `VideoStitcher` / `MediaStitcher` with `aresample=async=1:first_pts=0` and presentation timestamp (PTS) frame locking.
 
 ---
 
