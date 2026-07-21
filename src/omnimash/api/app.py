@@ -773,8 +773,8 @@ UI_HTML = r"""<!DOCTYPE html>
                                 <div className="flex items-center space-x-3 bg-amber-950/80 border border-amber-500/50 rounded-xl p-4 mb-5 text-amber-300">
                                     <span className="text-2xl">💾</span>
                                     <div>
-                                        <h3 className="font-bold text-base text-amber-200">Save Final Master to GCS</h3>
-                                        <p className="text-xs text-amber-300/80 mt-0.5">Persist this rendered parody cut to dedicated production GCS final master vault storage.</p>
+                                        <h3 className="font-bold text-base text-amber-200">Stitch & Save Master (30–60s) to GCS</h3>
+                                        <p className="text-xs text-amber-300/80 mt-0.5">OmniMash will automatically concatenate all 10-second scene clips and audio stems generated in this session into a single 30–60s master MP4 file exported to Google Cloud Storage.</p>
                                     </div>
                                 </div>
                                 <div className="space-y-4 mb-6">
@@ -804,7 +804,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 text-black font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50"
                                     >
                                         <span>💾</span>
-                                        <span>{saveLoading ? "Saving..." : "Save Final Master to GCS"}</span>
+                                        <span>{saveLoading ? "Stitching & Saving..." : "Stitch & Save Master (30–60s) to GCS"}</span>
                                     </button>
                                 </div>
                             </div>
@@ -1554,7 +1554,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
                                                     >
                                                         <span>💾</span>
-                                                        <span>Save Final Master to GCS</span>
+                                                        <span>Stitch & Save Master (30–60s) to GCS</span>
                                                     </button>
                                                     <button
                                                         type="button"

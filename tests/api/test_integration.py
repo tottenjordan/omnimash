@@ -329,7 +329,7 @@ def test_dashboard_ui_html_features() -> None:
     assert "aesthetic_tags" in html
 
     # 4. Act 3 Save Final Master and Extend Scene UI present
-    assert "Save Final Master to GCS" in html
+    assert "Stitch & Save Master" in html
     assert "Extend Video / Next Scene" in html
     assert "/api/save-final" in html
     assert "/api/extend-scene" in html
