@@ -1,4 +1,5 @@
 import re
+import urllib.parse
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -202,12 +203,15 @@ class OmniMashAgent:
             )
 
         # Step 3: Persist Turn in Session Version Tree
+        proxy_video_url = self._get_media_proxy_video_url(
+            getattr(gen_res, "gcs_uri", None), gen_res.video_url
+        )
         turn_node = self.session_manager.add_turn(
             session_id=session.session_id,
             clip_index=clip_index,
             prompt=guard_res.sanitized_prompt,
             interaction_thread_id=gen_res.interaction_thread_id,
-            video_url=gen_res.video_url,
+            video_url=proxy_video_url,
             parent_turn_id=parent_turn_id,
         )
 
@@ -218,7 +222,7 @@ class OmniMashAgent:
         return AgentTurnResponse(
             success=True,
             status_event=status_event,
-            video_url=gen_res.video_url,
+            video_url=proxy_video_url,
             error_message=gen_res.error_message,
             generation_mode=gen_res.generation_mode,
             turn_id=turn_node.turn_id,
@@ -259,24 +263,32 @@ class OmniMashAgent:
             initial_prompt=guard_res.sanitized_prompt,
             session_id=session.session_id,
         )
+        proxy_video_url = self._get_media_proxy_video_url(
+            getattr(gen_res, "gcs_uri", None), gen_res.video_url
+        )
         new_node = self.session_manager.add_turn(
             session_id=session.session_id,
             clip_index=committed_turn.clip_index,
             prompt=guard_res.sanitized_prompt,
             interaction_thread_id=gen_res.interaction_thread_id,
-            video_url=gen_res.video_url,
+            video_url=proxy_video_url,
             parent_turn_id=turn_id,
             is_checkpoint=True,
         )
         return AgentTurnResponse(
             success=True,
             status_event="REANCHORED",
-            video_url=gen_res.video_url,
+            video_url=proxy_video_url,
             error_message=gen_res.error_message,
             generation_mode=gen_res.generation_mode,
             turn_id=new_node.turn_id,
             depth=0,
         )
+
+    def _get_media_proxy_video_url(self, gcs_uri: str | None, default_url: str) -> str:
+        if gcs_uri and gcs_uri.startswith("gs://"):
+            return f"/api/media-proxy?uri={urllib.parse.quote(gcs_uri, safe='')}"
+        return default_url
 
     def _execute_turn_generation(
         self,

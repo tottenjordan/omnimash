@@ -173,3 +173,16 @@ def test_orchestrator_intermediate_turn_video_naming():
     assert res1.success is True
     assert res1.video_url is not None
     assert "turn_1_video.mp4" in res1.video_url
+
+
+def test_orchestrator_returns_gcs_media_proxy_video_url():
+    agent = OmniMashAgent(mock_mode=True)
+    res = agent.process_user_turn(
+        user_id="user_1",
+        project_id="proj_1",
+        prompt="Make Snape in 90s rap video",
+        clip_index=0,
+    )
+    assert res.success is True
+    assert res.video_url is not None
+    assert res.video_url.startswith("/api/media-proxy?uri=gs%3A%2F%2F")
