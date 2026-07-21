@@ -33,7 +33,7 @@ class OmniMashAgent:
         self.guardrail = ModelArmorGuardrail(mock_mode=mock_mode)
         self.session_manager = SessionManager()
         self.omni_client = OmniFlashClient(mock_mode=mock_mode)
-        self.taxonomy = PromptTaxonomyEngine()
+        self.taxonomy = PromptTaxonomyEngine(mock_mode=mock_mode)
         self.media_extractor = MediaExtractor(mock_mode=mock_mode)
         self.storage = GcsStorageManager(mock_mode=mock_mode)
         self.stitcher = VideoStitcher(mock_mode=mock_mode)
