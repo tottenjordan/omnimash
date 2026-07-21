@@ -261,15 +261,19 @@ UI_HTML = r"""<!DOCTYPE html>
             const [scenes, setScenes] = useState([
                 {
                     scene_number: 1,
+                    mode: "guided",
                     active_roles: ["Role A"],
                     action: "Arriving at foggy Hogwarts courtyard rapping into microphone wand",
-                    dialogue: "I been cooking potions since first year. Burrr!"
+                    dialogue: "I been cooking potions since first year. Burrr!",
+                    screenplay_script: ""
                 },
                 {
                     scene_number: 2,
+                    mode: "guided",
                     active_roles: ["Role B"],
                     action: "Stepping from shadows in high-gloss neon lighting with ice chain",
-                    dialogue: "This is Trap or Die, Potter! Let's get it!"
+                    dialogue: "This is Trap or Die, Potter! Let's get it!",
+                    screenplay_script: ""
                 }
             ]);
             const [copied, setCopied] = useState(false);
@@ -343,6 +347,9 @@ UI_HTML = r"""<!DOCTYPE html>
 
                 const sceneLines = scenes.map(s => {
                     const roles = (s.active_roles && s.active_roles.length > 0) ? s.active_roles.join(", ") : "All Roles";
+                    if (s.mode === "screenplay" && s.screenplay_script && s.screenplay_script.trim()) {
+                        return `- Scene ${s.scene_number} [${roles}] (Screenplay): ${s.screenplay_script.trim()}`;
+                    }
                     const diag = (s.dialogue && s.dialogue.trim()) ? ` | Dialogue: "${s.dialogue.trim()}"` : "";
                     return `- Scene ${s.scene_number} [${roles}]: ${s.action || "Action description"}${diag}`;
                 }).join("\n");
@@ -535,9 +542,11 @@ UI_HTML = r"""<!DOCTYPE html>
                 const nextNum = scenes.length + 1;
                 const newScene = {
                     scene_number: nextNum,
+                    mode: "guided",
                     active_roles: [characters[0]?.role_id || "Role A"],
                     action: "",
-                    dialogue: ""
+                    dialogue: "",
+                    screenplay_script: ""
                 };
                 setScenes([...scenes, newScene]);
             };
@@ -1079,7 +1088,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             }`}
                         >
                             <span className="text-base">🎭</span>
-                            <span>Act 1: The Concept &amp; Cast Manager</span>
+                            <span>Act 1: Global Production Context (Applies to All Shots)</span>
                             {activeAct > 1 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                         </button>
                         <span className="text-gray-700 font-bold">➔</span>
@@ -1092,7 +1101,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             }`}
                         >
                             <span className="text-base">🎛️</span>
-                            <span>Act 2: Fine-Tune &amp; Storyboard Directing</span>
+                            <span>Act 2: Storyboard &amp; Shot Director (10-Second Video Clips)</span>
                             {activeAct > 2 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                         </button>
                         <span className="text-gray-700 font-bold">➔</span>
@@ -1120,10 +1129,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                 <div className="bg-gradient-to-r from-purple-950/40 to-pink-950/40 border border-purple-800/50 rounded-2xl p-5">
                                     <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
                                         <span>🎭</span>
-                                        <span>Act 1: The Concept &amp; Cast Manager</span>
+                                        <span>Act 1: Global Production Context (Applies to All Shots)</span>
                                     </h2>
                                     <p className="text-xs text-gray-400 mt-1">
-                                        Enter an open-ended visual concept or parody prompt. Deconstruct it into dynamic character roles, aesthetic tags, and environmental parameters with Gemini Omni Image Roles.
+                                        Set character likeness, outfits, voice styles, and global parody environment once. Shared across all 10s video clips.
                                     </p>
                                 </div>
 
@@ -1512,7 +1521,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         onClick={() => setActiveAct(2)}
                                         className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-90 text-white font-bold text-sm py-3 px-8 rounded-xl shadow-xl flex items-center gap-2 transition transform hover:scale-105"
                                     >
-                                        <span>Proceed to Act 2: Fine-Tune &amp; Storyboard Directing</span>
+                                        <span>Proceed to Act 2: Storyboard &amp; Shot Director (10-Second Video Clips)</span>
                                         <span>➔</span>
                                     </button>
                                 </div>
@@ -1520,17 +1529,17 @@ UI_HTML = r"""<!DOCTYPE html>
                         )}
 
                         {/* ========================================================= */}
-                        {/* 🎛️ ACT 2: FINE-TUNE & STORYBOARD DIRECTING                */}
+                        {/* 🎛️ ACT 2: STORYBOARD & SHOT DIRECTOR (10-SECOND VIDEO CLIPS) */}
                         {/* ========================================================= */}
                         {activeAct === 2 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-pink-950/40 to-amber-950/40 border border-pink-800/50 rounded-2xl p-5">
                                     <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
                                         <span>🎛️</span>
-                                        <span>Act 2: Fine-Tune &amp; Storyboard Directing</span>
+                                        <span>Act 2: Storyboard &amp; Shot Director (10-Second Video Clips)</span>
                                     </h2>
                                     <p className="text-xs text-gray-400 mt-1">
-                                        Sequence multi-character scenes for a cohesive ~1-minute parody cut. Toggle active character roles and configure character action and spoken dialogue.
+                                        Direct individual 10-second video shots using Guided Mode or Screenplay Scripting.
                                     </p>
                                 </div>
 
@@ -1559,16 +1568,43 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <span className="text-xs font-bold text-amber-300 font-mono bg-amber-950/80 px-2.5 py-0.5 rounded border border-amber-800">
                                                                 Scene #{scene.scene_number}
                                                             </span>
-                                                            {scenes.length > 1 && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => removeScene(idx)}
-                                                                    className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 transition"
-                                                                    title="Remove Scene"
-                                                                >
-                                                                    🗑️ Remove Scene
-                                                                </button>
-                                                            )}
+                                                            <div className="flex items-center space-x-2">
+                                                                <div className="bg-gray-900 border border-gray-800 rounded-lg p-0.5 flex items-center">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => updateScene(idx, "mode", "guided")}
+                                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                                                                            (scene.mode || "guided") === "guided"
+                                                                                ? "bg-purple-600 text-white shadow"
+                                                                                : "text-gray-400 hover:text-gray-200"
+                                                                        }`}
+                                                                    >
+                                                                        Guided Mode
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => updateScene(idx, "mode", "screenplay")}
+                                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 ${
+                                                                            scene.mode === "screenplay"
+                                                                                ? "bg-purple-600 text-white shadow"
+                                                                                : "text-gray-400 hover:text-gray-200"
+                                                                        }`}
+                                                                    >
+                                                                        <span>📜</span>
+                                                                        <span>Screenplay Mode</span>
+                                                                    </button>
+                                                                </div>
+                                                                {scenes.length > 1 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeScene(idx)}
+                                                                        className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 transition"
+                                                                        title="Remove Scene"
+                                                                    >
+                                                                        🗑️ Remove Scene
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </div>
 
                                                         {/* Active Roles Selector */}
@@ -1598,33 +1634,55 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             </div>
                                                         </div>
 
-                                                        {/* Action Description */}
-                                                        <div>
-                                                            <label className="block text-[11px] text-gray-400 mb-1">
-                                                                Action Description
-                                                            </label>
-                                                            <textarea
-                                                                rows={2}
-                                                                value={scene.action}
-                                                                onChange={(e) => updateScene(idx, "action", e.target.value)}
-                                                                placeholder="e.g. Arriving at foggy courtyard rapping into microphone wand..."
-                                                                className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 font-mono"
-                                                            />
-                                                        </div>
+                                                        {(scene.mode || "guided") === "guided" ? (
+                                                            <>
+                                                                {/* Action Description */}
+                                                                <div>
+                                                                    <label className="block text-[11px] text-gray-400 mb-1">
+                                                                        Action Description
+                                                                    </label>
+                                                                    <textarea
+                                                                        rows={2}
+                                                                        value={scene.action || ""}
+                                                                        onChange={(e) => updateScene(idx, "action", e.target.value)}
+                                                                        placeholder="e.g. Arriving at foggy courtyard rapping into microphone wand..."
+                                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 font-mono"
+                                                                    />
+                                                                </div>
 
-                                                        {/* Character Dialogue / Voiceover Line */}
-                                                        <div>
-                                                            <label className="block text-[11px] text-gray-400 mb-1">
-                                                                🎙️ Character Dialogue / Spoken Voiceover Line
-                                                            </label>
-                                                            <input
-                                                                type="text"
-                                                                value={scene.dialogue}
-                                                                onChange={(e) => updateScene(idx, "dialogue", e.target.value)}
-                                                                placeholder='e.g. Harry: "I been cooking potions since first year. Burrr!"'
-                                                                className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-[11px]"
-                                                            />
-                                                        </div>
+                                                                {/* Character Dialogue / Voiceover Line */}
+                                                                <div>
+                                                                    <label className="block text-[11px] text-gray-400 mb-1">
+                                                                        🎙️ Character Dialogue / Spoken Voiceover Line
+                                                                    </label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={scene.dialogue || ""}
+                                                                        onChange={(e) => updateScene(idx, "dialogue", e.target.value)}
+                                                                        placeholder='e.g. Harry: "I been cooking potions since first year. Burrr!"'
+                                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                    />
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-1">
+                                                                    <label className="block text-[11px] text-gray-400">
+                                                                        📜 Screenplay Script
+                                                                    </label>
+                                                                    <span className="text-[10px] text-purple-400 font-mono">
+                                                                        Supports Character: (Action) "Dialogue"
+                                                                    </span>
+                                                                </div>
+                                                                <textarea
+                                                                    rows={3}
+                                                                    value={scene.screenplay_script || ""}
+                                                                    onChange={(e) => updateScene(idx, "screenplay_script", e.target.value)}
+                                                                    placeholder='Character: (Action) "Dialogue"'
+                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
+                                                                />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>

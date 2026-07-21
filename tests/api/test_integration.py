@@ -368,3 +368,17 @@ def test_dashboard_ui_html_features() -> None:
     assert "availableSessions" in html
     assert "+ New Session" in html
     assert "handleCreateNewSession" in html
+
+    # 12. Act 1 & Act 2 UI Scope Clarification & Screenplay Mode Toggle
+    assert "Global Production Context (Applies to All Shots)" in html
+    assert (
+        "Set character likeness, outfits, voice styles, and global parody environment once. Shared across all 10s video clips."
+        in html
+    )
+    assert "Shot Director (10-Second Video Clips)" in html
+    assert (
+        "Direct individual 10-second video shots using Guided Mode or Screenplay Scripting."
+        in html
+    )
+    assert "Screenplay Mode" in html
+    assert 'Character: (Action) "Dialogue"' in html
