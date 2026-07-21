@@ -1153,10 +1153,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
                                             {savedVaultCharacters.map((c, vIdx) => {
-                                                let chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
-                                                if (c.name && !c.name.includes('"') && c.aesthetic_tags && c.aesthetic_tags.length > 0) {
-                                                    chipText = `${c.name} "${c.aesthetic_tags[0]}"`;
-                                                }
+                                                const chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
                                                 return (
                                                     <button
                                                         key={vIdx}
