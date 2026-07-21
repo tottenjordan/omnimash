@@ -31,6 +31,10 @@ class SaveCharacterResponse(BaseModel):
     message: str = ""
 
 
+class SessionListResponse(BaseModel):
+    sessions: list[str]
+
+
 class CharacterListResponse(BaseModel):
     characters: list[CharacterRoleModel] = []
 
@@ -189,6 +193,18 @@ UI_HTML = r"""<!DOCTYPE html>
 
             // Session & Project State
             const [sessionName, setSessionName] = useState("parody_session_1");
+            const [availableSessions, setAvailableSessions] = useState([]);
+
+            useEffect(() => {
+                fetch("/api/sessions")
+                    .then((res) => res.json())
+                    .then((data) => {
+                        if (data && data.sessions) {
+                            setAvailableSessions(data.sessions);
+                        }
+                    })
+                    .catch((err) => console.error("Failed to load sessions:", err));
+            }, []);
 
             // Act 1: Character Vault & Saved Cast State
             const [savedVaultCharacters, setSavedVaultCharacters] = useState([]);
@@ -429,9 +445,10 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
-            const handleLoadSessionRoster = async () => {
+            const handleLoadSessionRoster = async (targetSessionName) => {
+                const targetSession = targetSessionName || sessionName;
                 try {
-                    const res = await fetch(`/api/characters/roster?session_name=${encodeURIComponent(sessionName)}`);
+                    const res = await fetch(`/api/characters/roster?session_name=${encodeURIComponent(targetSession)}`);
                     const data = await res.json();
                     if (data && data.characters) {
                         const restored = [];
@@ -994,6 +1011,22 @@ UI_HTML = r"""<!DOCTYPE html>
                             </button>
                             <div className="bg-black/60 border border-gray-800 rounded-lg px-3 py-1.5 flex items-center space-x-2">
                                 <span className="text-xs text-purple-400">🗂️ GCS Session:</span>
+                                <select
+                                    value={sessionName}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val) {
+                                            setSessionName(val);
+                                            handleLoadSessionRoster(val);
+                                        }
+                                    }}
+                                    className="bg-gray-900 border border-gray-700 text-xs font-mono text-purple-200 rounded px-2 py-1 focus:outline-none focus:border-purple-400"
+                                >
+                                    <option value="">-- Select Session --</option>
+                                    {availableSessions.map((s) => (
+                                        <option key={s} value={s}>{s}</option>
+                                    ))}
+                                </select>
                                 <input
                                     type="text"
                                     value={sessionName}
@@ -1001,7 +1034,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                     placeholder="session_name"
                                     className="bg-transparent border-b border-gray-700 text-xs font-mono text-purple-200 focus:outline-none focus:border-purple-400 w-32"
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const newId = `session_${Date.now()}`;
+                                        setSessionName(newId);
+                                        setAvailableSessions((prev) => prev.includes(newId) ? prev : [...prev, newId]);
+                                    }}
+                                    className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-semibold px-2 py-1 rounded transition"
+                                >
+                                    + New Session
+                                </button>
                             </div>
+
                         </div>
                     </header>
 
@@ -2059,6 +2104,10 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             for c in (raw_chars or [])
         ]
         return CharacterListResponse(characters=characters)
+
+    @app.get("/api/sessions", response_model=SessionListResponse)
+    def list_sessions() -> SessionListResponse:
+        return SessionListResponse(sessions=agent.storage.list_session_ids())
 
     @app.post("/api/characters/load", response_model=CharacterRoleModel)
     def load_character(req: LoadCharacterRequest) -> CharacterRoleModel:

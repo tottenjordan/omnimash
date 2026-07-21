@@ -244,3 +244,13 @@ def test_api_media_proxy():
     assert res_valid.status_code == 200
     assert res_valid.headers["cache-control"] == "public, max-age=86400"
     assert res_valid.content == b"mock_image_bytes"
+
+
+def test_api_list_sessions():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.get("/api/sessions")
+    assert res.status_code == 200
+    data = res.json()
+    assert "sessions" in data
+    assert "parody_session_1" in data["sessions"]
