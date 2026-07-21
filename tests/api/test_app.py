@@ -149,3 +149,50 @@ def test_api_generate_and_extend_scene_with_vocal_delivery_and_voice_style():
     )
     assert res_extend.status_code == 200
     assert res_extend.json()["success"] is True
+
+
+def test_api_save_final_multi_clip_stitching():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    s_name = "api_multi_clip_session"
+
+    g1 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_multi",
+            "project_id": "prj_multi",
+            "session_name": s_name,
+            "prompt": "Clip 1 generation",
+            "clip_index": 0,
+        },
+    )
+    assert g1.status_code == 200
+    t1_id = g1.json()["turn_id"]
+
+    g2 = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_multi",
+            "project_id": "prj_multi",
+            "session_name": s_name,
+            "parent_turn_id": t1_id,
+            "prompt": "Clip 2 generation",
+            "clip_index": 1,
+        },
+    )
+    assert g2.status_code == 200
+    v2_url = g2.json()["video_url"]
+
+    res_save = client.post(
+        "/api/save-final",
+        json={
+            "session_name": s_name,
+            "video_url": v2_url,
+            "master_title": "api_stitched_master",
+        },
+    )
+    assert res_save.status_code == 200
+    data_save = res_save.json()
+    assert data_save["success"] is True
+    assert "final_masters" in data_save["gcs_uri"]
+    assert "api_stitched_master.mp4" in data_save["gcs_uri"]

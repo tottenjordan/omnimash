@@ -85,3 +85,39 @@ def test_orchestrator_accepts_audio_stem_and_compiled_override():
     )
     assert res.success is True
     assert res.video_url is not None
+
+
+def test_stitch_session_master_and_multi_clip_save():
+    agent = OmniMashAgent(mock_mode=True)
+    assert hasattr(agent, "stitcher")
+    s_name = "multi_clip_session_test"
+    r1 = agent.process_user_turn(
+        user_id="u1",
+        project_id="p1",
+        prompt="Clip 1",
+        clip_index=0,
+        session_name=s_name,
+    )
+    r2 = agent.process_user_turn(
+        user_id="u1",
+        project_id="p1",
+        prompt="Clip 2",
+        clip_index=1,
+        parent_turn_id=r1.turn_id,
+        session_name=s_name,
+    )
+    assert r1.video_url is not None
+    assert r2.video_url is not None
+
+    pub_url, gcs_uri = agent.stitch_session_master(s_name, "direct_stitch_master")
+    assert "final_masters" in gcs_uri
+    assert "direct_stitch_master.mp4" in gcs_uri
+    assert pub_url.startswith("https://")
+
+    pub_url2, gcs_uri2 = agent.save_final_master(
+        session_id=s_name,
+        video_url=r2.video_url,
+        master_title="auto_stitched_master",
+    )
+    assert "final_masters" in gcs_uri2
+    assert "auto_stitched_master.mp4" in gcs_uri2
