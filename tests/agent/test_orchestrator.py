@@ -121,3 +121,55 @@ def test_stitch_session_master_and_multi_clip_save():
     )
     assert "final_masters" in gcs_uri2
     assert "auto_stitched_master.mp4" in gcs_uri2
+
+
+def test_orchestrator_save_final_master_with_raw_compiled_prompt(monkeypatch):
+    agent = OmniMashAgent(mock_mode=True)
+    calls = []
+
+    def mock_save_final_master(
+        session_id, source_rel_path, master_title, prompt_data=None
+    ):
+        calls.append((session_id, source_rel_path, master_title, prompt_data))
+        return "https://pub/master.mp4", "gs://bucket/master.mp4"
+
+    monkeypatch.setattr(agent.storage, "save_final_master", mock_save_final_master)
+
+    pub_url, gcs_uri = agent.save_final_master(
+        session_id="sess_123",
+        video_url="/static/rendered/turn_0_video.mp4",
+        master_title="final_rap_battle",
+        raw_compiled_prompt="[SUBJECT ANCHOR]: Snape",
+    )
+    assert len(calls) == 1
+    s_id, src_path, title, prompt_data = calls[0]
+    assert s_id == "sess_123"
+    assert src_path == "/static/rendered/turn_0_video.mp4"
+    assert title == "final_rap_battle"
+    assert prompt_data == "[SUBJECT ANCHOR]: Snape"
+
+
+def test_orchestrator_intermediate_turn_video_naming():
+    agent = OmniMashAgent(mock_mode=True)
+    res0 = agent.process_user_turn(
+        user_id="u1",
+        project_id="p1",
+        prompt="Turn 0 prompt",
+        clip_index=0,
+        session_name="naming_test_session",
+    )
+    assert res0.success is True
+    assert res0.video_url is not None
+    assert "turn_0_video.mp4" in res0.video_url
+
+    res1 = agent.process_user_turn(
+        user_id="u1",
+        project_id="p1",
+        prompt="Turn 1 prompt diff",
+        clip_index=0,
+        parent_turn_id=res0.turn_id,
+        session_name="naming_test_session",
+    )
+    assert res1.success is True
+    assert res1.video_url is not None
+    assert "turn_1_video.mp4" in res1.video_url

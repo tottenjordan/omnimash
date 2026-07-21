@@ -203,3 +203,29 @@ def test_list_session_ids():
     live_gcs._bucket = object()
     live_ids = live_gcs.list_session_ids()
     assert set(live_ids) == {"parody_session_1", "session_8492", "dripwarts_battle"}
+
+
+def test_gcs_save_final_master_with_prompt_companion(monkeypatch):
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    uploaded_blobs = []
+
+    original_upload_bytes = gcs.upload_bytes
+
+    def mock_upload_bytes(data, destination_blob_name, content_type="video/mp4"):
+        uploaded_blobs.append((destination_blob_name, data, content_type))
+        return original_upload_bytes(data, destination_blob_name, content_type)
+
+    monkeypatch.setattr(gcs, "upload_bytes", mock_upload_bytes)
+
+    pub_url, gcs_uri = gcs.save_final_master(
+        session_id="session_abc",
+        source_rel_path="/static/rendered/clip.mp4",
+        master_title="master_v1.mp4",
+        prompt_data={"compiled_prompt": "DumbleDior in Dior robes"},
+    )
+    assert "sessions/session_abc/final_masters/master_v1.mp4" in gcs_uri
+    assert len(uploaded_blobs) == 1
+    blob_name, data, content_type = uploaded_blobs[0]
+    assert blob_name == "sessions/session_abc/final_masters/master_v1_prompt.json"
+    assert content_type == "application/json"
+    assert b"DumbleDior in Dior robes" in data
