@@ -59,3 +59,101 @@ def test_omni_client_session_gcs_persistence():
 def test_gcs_ensure_bucket_exists():
     gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
     assert gcs.ensure_bucket_exists() is True
+
+
+def test_save_and_load_character_gcs():
+    storage = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    char_data = {
+        "role_id": "Role A",
+        "name": "Harry",
+        "description": "Young wizard",
+        "reference_url": "gs://bucket/harry.jpg",
+        "aesthetic_tags": ["Red Gucci Tracksuit"],
+        "voice_style": "Atlanta trap flow",
+    }
+    pub_url, gcs_uri = storage.save_character(
+        char_data, session_id="test_session", is_library=True
+    )
+    assert "library/characters/harry.json" in gcs_uri
+    assert (
+        pub_url
+        == "https://storage.googleapis.com/test-omnimash-bucket/library/characters/harry.json"
+    )
+
+    loaded = storage.load_character("harry")
+    assert loaded is not None
+    assert loaded["name"] == "Harry"
+    assert loaded["voice_style"] == "Atlanta trap flow"
+
+    # Also test session-specific character save
+    session_char = {
+        "role_id": "Role B",
+        "name": "Young Draco",
+        "description": "Rival wizard",
+        "reference_url": "gs://bucket/draco.jpg",
+        "aesthetic_tags": ["Platinum Slicked Hair"],
+        "voice_style": "British drawl",
+    }
+    pub_url_s, gcs_uri_s = storage.save_character(
+        session_char, session_id="test_session", is_library=False
+    )
+    assert "sessions/test_session/characters/young_draco.json" in gcs_uri_s
+    loaded_s = storage.load_character("young_draco", session_id="test_session")
+    assert loaded_s is not None
+    assert loaded_s["name"] == "Young Draco"
+
+
+def test_list_characters_gcs():
+    storage = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    chars = storage.list_characters()
+    assert isinstance(chars, list)
+    names = [c["name"] for c in chars]
+    assert any('Harry "Gucci"' in n for n in names)
+    assert any('Young Draco "Jeezy"' in n for n in names)
+    assert any("Cyborg Gordon Ramsay" in n for n in names)
+    assert any("Neon Julia Child" in n for n in names)
+
+    custom_char = {
+        "role_id": "Role C",
+        "name": "Snoop Dogg Wizard",
+        "description": "West Coast rap icon",
+        "reference_url": "gs://bucket/snoop.jpg",
+        "aesthetic_tags": ["Flannel Robe"],
+        "voice_style": "West Coast drawl",
+    }
+    storage.save_character(custom_char)
+    updated_chars = storage.list_characters()
+    updated_names = [c["name"] for c in updated_chars]
+    assert "Snoop Dogg Wizard" in updated_names
+
+
+def test_save_and_load_session_roster_gcs():
+    storage = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    roster = [
+        {
+            "role_id": "Role A",
+            "name": 'Harry "Gucci"',
+            "description": "Young wizard",
+            "reference_url": "gs://bucket/harry.jpg",
+            "aesthetic_tags": ["Red Gucci Tracksuit"],
+            "voice_style": "Atlanta trap flow",
+        },
+        {
+            "role_id": "Role B",
+            "name": 'Young Draco "Jeezy"',
+            "description": "Rival wizard",
+            "reference_url": "gs://bucket/draco.jpg",
+            "aesthetic_tags": ["Platinum Slicked Hair"],
+            "voice_style": "British drawl",
+        },
+    ]
+    pub_url, gcs_uri = storage.save_session_roster("sess_999", roster)
+    assert "sessions/sess_999/characters/roster.json" in gcs_uri
+    assert (
+        pub_url
+        == "https://storage.googleapis.com/test-omnimash-bucket/sessions/sess_999/characters/roster.json"
+    )
+
+    loaded = storage.load_session_roster("sess_999")
+    assert loaded == roster
+    assert storage.load_session_roster("non_existent_session") is None
