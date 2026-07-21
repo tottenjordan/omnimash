@@ -346,3 +346,7 @@ def test_dashboard_ui_html_features() -> None:
     assert "Character Vault" in html
     assert "Save to Vault" in html
     assert "Save Cast Roster" in html
+
+    # 8. Act 3 Stitch & Combine Selected Clips UI present
+    assert "Stitch & Combine Selected Clips" in html
+    assert "/api/stitch-clips" in html
