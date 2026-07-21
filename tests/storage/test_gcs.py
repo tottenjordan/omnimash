@@ -157,3 +157,20 @@ def test_save_and_load_session_roster_gcs():
     loaded = storage.load_session_roster("sess_999")
     assert loaded == roster
     assert storage.load_session_roster("non_existent_session") is None
+
+
+def test_download_blob_bytes():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    # Invalid URIs
+    assert gcs.download_blob_bytes("http://example.com/image.jpg") == (
+        b"",
+        "image/jpeg",
+    )
+    assert gcs.download_blob_bytes("gs://") == (b"", "image/jpeg")
+    assert gcs.download_blob_bytes("gs://bucket_only") == (b"", "image/jpeg")
+    assert gcs.download_blob_bytes("invalid_uri") == (b"", "image/jpeg")
+
+    # Valid URI in mock_mode
+    data, content_type = gcs.download_blob_bytes("gs://test-bucket/path/to/image.jpg")
+    assert data == b"mock_image_bytes"
+    assert content_type == "image/jpeg"

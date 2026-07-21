@@ -182,6 +182,46 @@ class GcsStorageManager:
         except Exception:
             return self.get_public_url(destination_blob_name)
 
+    def download_blob_bytes(self, gs_uri: str) -> tuple[bytes, str]:
+        """Downloads binary bytes and infers content_type from a GCS URI (gs://bucket/blob_path)."""
+        if not isinstance(gs_uri, str) or not gs_uri.startswith("gs://"):
+            return (b"", "image/jpeg")
+
+        path = gs_uri[5:]
+        parts = path.split("/", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            return (b"", "image/jpeg")
+
+        bucket_name, blob_path = parts[0], parts[1]
+
+        if self.mock_mode:
+            return (b"mock_image_bytes", "image/jpeg")
+
+        if not self._client:
+            return (b"", "image/jpeg")
+
+        try:
+            bucket = self._client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+            data = blob.download_as_bytes()
+            content_type = getattr(blob, "content_type", None)
+            if not content_type:
+                if blob_path.endswith(".mp4"):
+                    content_type = "video/mp4"
+                elif blob_path.endswith(".wav"):
+                    content_type = "audio/wav"
+                elif blob_path.endswith(".jpg") or blob_path.endswith(".jpeg"):
+                    content_type = "image/jpeg"
+                elif blob_path.endswith(".png"):
+                    content_type = "image/png"
+                elif blob_path.endswith(".json"):
+                    content_type = "application/json"
+                else:
+                    content_type = "image/jpeg"
+            return (data, content_type)
+        except Exception:
+            return (b"", "image/jpeg")
+
     def save_session_prompt(
         self,
         session_id: str,
