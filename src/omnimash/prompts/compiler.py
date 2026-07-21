@@ -647,7 +647,7 @@ class PromptCompiler:
             isolated_diff=isolated_diff,
         )
 
-    def compile_storyboard(
+    def compile_multi_role_prompt(
         self,
         concept: str,
         characters: list[CharacterRole],
@@ -657,17 +657,31 @@ class PromptCompiler:
         audio_beat: str | None = None,
         vocal_delivery: str | None = None,
     ) -> str:
+        image_role_lines: list[str] = []
         role_lines: list[str] = []
+        img_idx = 1
+
         for char in characters:
+            if char.reference_url and char.reference_url.strip():
+                name_suffix = f" ({char.name})" if char.name else ""
+                image_role_lines.append(
+                    f"- [IMAGE {img_idx}]: Reference image for {char.role_id}{name_suffix}."
+                )
+                img_idx += 1
+
             style_str = (
                 f" [Style: {', '.join(char.aesthetic_tags)}]"
                 if char.aesthetic_tags
                 else ""
             )
-            ref_str = f" (Ref: {char.reference_url})" if char.reference_url else ""
             role_lines.append(
-                f"- {char.role_id} ({char.name}): {char.description}{style_str}{ref_str}"
+                f"- {char.role_id} ({char.name}): {char.description}{style_str}"
             )
+
+        image_roles_block = ""
+        if image_role_lines:
+            image_roles_block = "[IMAGE ROLES]\n" + "\n".join(image_role_lines) + "\n\n"
+
         roles_block = "\n".join(role_lines) if role_lines else "- None"
 
         aesthetic_parts: list[str] = []
@@ -711,10 +725,31 @@ class PromptCompiler:
         scenes_block = "\n".join(scene_lines) if scene_lines else "- No scenes"
 
         return (
+            f"{image_roles_block}"
             f"[ROLE DEFINITIONS]\n{roles_block}\n\n"
             f"[AESTHETIC INJECTION]\n{aesthetic_block}\n\n"
             f"[AUDIO & VOCAL DIRECTION]\n{audio_block}\n\n"
             f"[STORYBOARD SEQUENCE]\n{scenes_block}"
+        )
+
+    def compile_storyboard(
+        self,
+        concept: str,
+        characters: list[CharacterRole],
+        scenes: list[SceneDirective],
+        aesthetic_tags: list[str] | None = None,
+        environment_tag: str | None = None,
+        audio_beat: str | None = None,
+        vocal_delivery: str | None = None,
+    ) -> str:
+        return self.compile_multi_role_prompt(
+            concept=concept,
+            characters=characters,
+            scenes=scenes,
+            aesthetic_tags=aesthetic_tags,
+            environment_tag=environment_tag,
+            audio_beat=audio_beat,
+            vocal_delivery=vocal_delivery,
         )
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
