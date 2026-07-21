@@ -806,6 +806,17 @@ UI_HTML = r"""<!DOCTYPE html>
                 setActiveAct(1);
             };
 
+            const handleCreateNewSession = () => {
+                const input = window.prompt("Enter new GCS session folder name:", "");
+                let cleaned = (input || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+                if (!cleaned) {
+                    cleaned = `session_${Date.now()}`;
+                }
+                setSessionName(cleaned);
+                setAvailableSessions((prev) => (prev.includes(cleaned) ? prev : [...prev, cleaned]));
+                handleResetStudio();
+            };
+
             const isCommitModalVisible = status === "COMMIT_RECOMMENDED" || showCommitModal;
 
 
@@ -1031,20 +1042,27 @@ UI_HTML = r"""<!DOCTYPE html>
                                     type="text"
                                     value={sessionName}
                                     onChange={(e) => setSessionName(e.target.value)}
+                                    onBlur={() => {
+                                        if (sessionName.trim()) {
+                                            setAvailableSessions((prev) => (prev.includes(sessionName.trim()) ? prev : [...prev, sessionName.trim()]));
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" && sessionName.trim()) {
+                                            setAvailableSessions((prev) => (prev.includes(sessionName.trim()) ? prev : [...prev, sessionName.trim()]));
+                                        }
+                                    }}
                                     placeholder="session_name"
                                     className="bg-transparent border-b border-gray-700 text-xs font-mono text-purple-200 focus:outline-none focus:border-purple-400 w-32"
                                 />
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        const newId = `session_${Date.now()}`;
-                                        setSessionName(newId);
-                                        setAvailableSessions((prev) => prev.includes(newId) ? prev : [...prev, newId]);
-                                    }}
+                                    onClick={handleCreateNewSession}
                                     className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-semibold px-2 py-1 rounded transition"
                                 >
                                     + New Session
                                 </button>
+
                             </div>
 
                         </div>

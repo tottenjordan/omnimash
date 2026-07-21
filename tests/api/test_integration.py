@@ -367,3 +367,4 @@ def test_dashboard_ui_html_features() -> None:
     assert "/api/sessions" in html
     assert "availableSessions" in html
     assert "+ New Session" in html
+    assert "handleCreateNewSession" in html
