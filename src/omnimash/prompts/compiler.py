@@ -97,6 +97,8 @@ class SceneDirective:
     active_roles: list[str]
     action: str
     dialogue: str = ""
+    screenplay_text: str | None = None
+    audio_cues: str = ""
 
 
 @dataclass
@@ -142,6 +144,172 @@ AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
         "audio": "Retro 80s city pop brass samples, lo-fi cassette tape hiss, and upbeat Japanese synth melody",
     },
 }
+
+SCREENPLAY_AUDIO_KEYWORDS: set[str] = {
+    "audio",
+    "sound",
+    "music",
+    "beat",
+    "bgm",
+    "sfx",
+    "thunder",
+    "bass",
+    "boom",
+    "track",
+    "rumble",
+    "rumbles",
+    "reverb",
+    "echo",
+    "hiss",
+    "synth",
+    "drums",
+    "screech",
+    "whisper",
+    "noise",
+    "loud",
+    "cue",
+    "playing",
+    "rhythm",
+    "melody",
+    "vocals",
+    "singing",
+    "rap",
+    "808",
+    "drone",
+}
+
+
+def parse_screenplay_script(
+    script_text: str, characters: list[CharacterRole] | None = None
+) -> dict[str, Any]:
+    """Parses line-by-line screenplay text into structured components.
+
+    Format: `CharacterName: (Action description. Audio cue.) "Spoken dialogue."`
+    Returns a dictionary with keys: active_roles, action, audio_cues, dialogue.
+    """
+    if not script_text or not script_text.strip():
+        return {
+            "active_roles": [],
+            "action": "",
+            "audio_cues": "",
+            "dialogue": "",
+        }
+
+    import re
+
+    active_roles: list[str] = []
+    action_parts: list[str] = []
+    audio_cue_parts: list[str] = []
+    dialogue_parts: list[str] = []
+
+    lines = [line.strip() for line in script_text.splitlines() if line.strip()]
+
+    for line in lines:
+        speaker_raw: str | None = None
+
+        if ":" in line:
+            colon_idx = line.index(":")
+            paren_idx = line.find("(")
+            quote_idx = line.find('"')
+            smart_quote_idx = line.find("“")
+
+            delim_indices = [
+                idx for idx in [paren_idx, quote_idx, smart_quote_idx] if idx != -1
+            ]
+            first_delim = min(delim_indices) if delim_indices else len(line)
+
+            if colon_idx < first_delim:
+                speaker_raw = line[:colon_idx].strip()
+
+        matched_role_id: str | None = None
+        if speaker_raw:
+            spk_lower = speaker_raw.lower()
+            if characters:
+                for char in characters:
+                    char_role = char.role_id.strip().lower()
+                    char_name = char.name.strip().lower()
+                    if spk_lower == char_role or spk_lower == char_name:
+                        matched_role_id = char.role_id
+                        break
+                    if spk_lower in char_name or char_name in spk_lower:
+                        matched_role_id = char.role_id
+                        break
+                    if char_role in spk_lower:
+                        matched_role_id = char.role_id
+                        break
+
+            role_to_add = matched_role_id if matched_role_id else speaker_raw
+            if role_to_add not in active_roles:
+                active_roles.append(role_to_add)
+
+        # Parenthetical extraction
+        parentheticals = re.findall(r"\((.*?)\)", line)
+        for ptext in parentheticals:
+            ptext_clean = ptext.strip()
+            if not ptext_clean:
+                continue
+            segments = [s.strip() for s in re.split(r"[.;]", ptext_clean) if s.strip()]
+            for seg in segments:
+                seg_lower = seg.lower()
+                has_audio_kw = any(kw in seg_lower for kw in SCREENPLAY_AUDIO_KEYWORDS)
+                is_pure_audio = seg_lower.startswith(
+                    ("audio:", "sound:", "bgm:", "sfx:", "cue:")
+                ) or (
+                    has_audio_kw
+                    and not any(
+                        w in seg_lower
+                        for w in [
+                            "standing",
+                            "bopping",
+                            "walking",
+                            "looking",
+                            "stepping",
+                            "sitting",
+                            "gesturing",
+                            "head",
+                            "wand",
+                            "hand",
+                            "eye",
+                            "face",
+                            "wearing",
+                            "facing",
+                            "running",
+                            "moving",
+                            "turning",
+                        ]
+                    )
+                )
+                if not is_pure_audio:
+                    if seg not in action_parts:
+                        action_parts.append(seg)
+                if has_audio_kw:
+                    if seg not in audio_cue_parts:
+                        audio_cue_parts.append(seg)
+
+        # Quoted text extraction
+        quotes = re.findall(r'["“]([^"”]+)["”]', line)
+        if quotes:
+            spoken_text = " ".join(q.strip() for q in quotes if q.strip())
+            if spoken_text:
+                speaker_display = speaker_raw if speaker_raw else "Speaker"
+                dialogue_parts.append(f'{speaker_display}: "{spoken_text}"')
+
+    action_str = ". ".join(action_parts).strip()
+    if action_str and not action_str.endswith("."):
+        action_str += "."
+
+    audio_cues_str = ". ".join(audio_cue_parts).strip()
+    if audio_cues_str and not audio_cues_str.endswith("."):
+        audio_cues_str += "."
+
+    dialogue_str = " / ".join(dialogue_parts).strip()
+
+    return {
+        "active_roles": active_roles,
+        "action": action_str,
+        "audio_cues": audio_cues_str,
+        "dialogue": dialogue_str,
+    }
 
 
 class PromptCompiler:
@@ -349,17 +517,113 @@ class PromptCompiler:
         # 6. Resolve Audio Track (explicit override takes precedence over preset)
         audio = audio_stem.strip() if audio_stem else style_info["audio"]
 
+        motion_desc = (
+            f"{raw_prompt.rstrip('.')}. {style_info['motion']}"
+            if raw_prompt and raw_prompt.strip()
+            else style_info["motion"]
+        )
+
         return CompiledPromptParts(
             subject_anchor=anchor,
             aesthetic_injection=aesthetic,
             environment=env,
             camera_lighting=camera_lighting,
-            motion=style_info["motion"],
+            motion=motion_desc,
             audio_track=audio,
             voiceover=voiceover.strip() if voiceover else "",
             is_silent=is_silent,
             on_screen_text=on_screen_text.strip() if on_screen_text else "",
             drip_props=props_list,
+            vibe_intensity=vibe_intensity,
+        )
+
+    def compile_prompt(
+        self,
+        raw_prompt: str = "",
+        scene: SceneDirective | dict[str, Any] | None = None,
+        screenplay_text: str | None = None,
+        characters: list[CharacterRole] | None = None,
+        style_preset: StylePreset | str = "90s_rap_video",
+        custom_instructions: str = "",
+        audio_stem: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
+        on_screen_text: str | None = None,
+        drip_props: list[str] | str | None = None,
+        vibe_intensity: int = 50,
+    ) -> CompiledPromptParts:
+        script: str | None = screenplay_text
+        scene_action: str = ""
+        scene_dialogue: str = ""
+        scene_audio: str = ""
+
+        if isinstance(scene, SceneDirective):
+            if scene.screenplay_text:
+                script = str(scene.screenplay_text)
+            if scene.action:
+                scene_action = str(scene.action)
+            if scene.dialogue:
+                scene_dialogue = str(scene.dialogue)
+            if getattr(scene, "audio_cues", None):
+                scene_audio = str(scene.audio_cues)
+        elif isinstance(scene, dict):
+            sp_text = scene.get("screenplay_text")
+            if isinstance(sp_text, str) and sp_text:
+                script = sp_text
+            act = scene.get("action")
+            if isinstance(act, str) and act:
+                scene_action = act
+            diag = scene.get("dialogue")
+            if isinstance(diag, str) and diag:
+                scene_dialogue = diag
+            aud = scene.get("audio_cues")
+            if isinstance(aud, str) and aud:
+                scene_audio = aud
+
+        parsed_action = ""
+        parsed_audio = ""
+        parsed_dialogue = ""
+
+        if script and script.strip():
+            parsed = parse_screenplay_script(script, characters=characters)
+            parsed_action = parsed.get("action", "")
+            parsed_audio = parsed.get("audio_cues", "")
+            parsed_dialogue = parsed.get("dialogue", "")
+
+        action_components = [
+            comp
+            for comp in [raw_prompt, scene_action, parsed_action]
+            if comp and comp.strip()
+        ]
+        effective_raw_prompt = (
+            ". ".join(action_components) if action_components else "Cinematic shot"
+        )
+
+        audio_components = [
+            comp
+            for comp in [audio_stem, scene_audio, parsed_audio]
+            if comp and comp.strip()
+        ]
+        effective_audio_stem = ". ".join(audio_components) if audio_components else None
+
+        dialogue_components = [
+            comp
+            for comp in [voiceover, scene_dialogue, parsed_dialogue]
+            if comp and comp.strip()
+        ]
+        effective_voiceover = (
+            " / ".join(dialogue_components) if dialogue_components else None
+        )
+
+        return self.compile(
+            raw_prompt=effective_raw_prompt,
+            style_preset=style_preset,
+            custom_instructions=custom_instructions,
+            audio_stem=effective_audio_stem,
+            voiceover=effective_voiceover,
+            is_silent=is_silent,
+            on_screen_text=on_screen_text,
+            drip_props=drip_props,
             vibe_intensity=vibe_intensity,
         )
 

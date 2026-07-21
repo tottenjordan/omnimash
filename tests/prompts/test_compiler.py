@@ -4,6 +4,7 @@ from omnimash.prompts.compiler import (
     CompiledPromptParts,
     PromptCompiler,
     SceneDirective,
+    parse_screenplay_script,
 )
 from omnimash.prompts.taxonomy import StylePreset
 
@@ -301,3 +302,67 @@ def test_deconstruct_concept_3_tier_fallback():
         )
         assert isinstance(tags_t3, MetaPromptTags)
         assert len(tags_t3.characters) >= 2
+
+
+def test_parse_screenplay_script():
+    characters = [
+        CharacterRole(
+            role_id="Role A", name="Severus Snape", description="Gaunt wizard"
+        ),
+        CharacterRole(
+            role_id="Role B", name="Harry Potter", description="Young wizard"
+        ),
+    ]
+
+    script_text = (
+        'Snape: (Standing in the dark dungeon. Heavy thunder rumbles.) "Silence, Potter!"\n'
+        'Harry: (Bopping head to 120 BPM beat.) "It was the beat, professor!"'
+    )
+
+    result = parse_screenplay_script(script_text, characters=characters)
+
+    assert isinstance(result, dict)
+    assert "active_roles" in result
+    assert "action" in result
+    assert "audio_cues" in result
+    assert "dialogue" in result
+
+    # Character matching mapped Snape -> Role A and Harry -> Role B
+    assert "Role A" in result["active_roles"]
+    assert "Role B" in result["active_roles"]
+
+    # Action extraction
+    assert "Standing in the dark dungeon" in result["action"]
+    assert "Bopping head" in result["action"]
+
+    # Parenthetical audio cues extraction
+    assert (
+        "thunder" in result["audio_cues"].lower()
+        or "beat" in result["audio_cues"].lower()
+    )
+
+    # Spoken dialogue extraction and formatting
+    assert 'Snape: "Silence, Potter!"' in result["dialogue"]
+    assert 'Harry: "It was the beat, professor!"' in result["dialogue"]
+
+
+def test_compile_prompt_with_screenplay_text():
+    compiler = PromptCompiler()
+    characters = [
+        CharacterRole(
+            role_id="Role A", name="Severus Snape", description="Gaunt wizard"
+        )
+    ]
+    scene = SceneDirective(
+        scene_number=1,
+        active_roles=["Role A"],
+        action="Default action",
+        screenplay_text='Snape: (Stepping out from shadows. Low synth bass drone.) "Always."',
+    )
+
+    parts = compiler.compile_prompt(scene=scene, characters=characters)
+    assert isinstance(parts, CompiledPromptParts)
+    prompt = parts.to_full_prompt()
+
+    assert "Stepping out from shadows" in prompt
+    assert "Always" in prompt
