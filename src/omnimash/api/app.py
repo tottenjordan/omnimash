@@ -103,6 +103,12 @@ class SaveFinalRequest(BaseModel):
     master_title: str
 
 
+class StitchClipsRequest(BaseModel):
+    session_name: str
+    clip_urls: list[str]
+    master_title: str = "custom_stitched_cut"
+
+
 class SaveFinalResponse(BaseModel):
     success: bool
     gcs_uri: str
@@ -1788,6 +1794,27 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             success=True,
             gcs_uri=gcs_uri,
             message=f"Final master successfully saved to {gcs_uri}",
+        )
+
+    @app.post("/api/stitch-clips", response_model=SaveFinalResponse)
+    def stitch_clips(req: StitchClipsRequest) -> SaveFinalResponse:
+        if not req.clip_urls:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one clip URL is required for stitching.",
+            )
+        stitched_path = agent.stitcher.concatenate_clips(
+            req.clip_urls, session_id=req.session_name
+        )
+        _pub_url, gcs_uri = agent.storage.save_final_master(
+            session_id=req.session_name,
+            source_rel_path=stitched_path,
+            master_title=req.master_title,
+        )
+        return SaveFinalResponse(
+            success=True,
+            gcs_uri=gcs_uri,
+            message=f"Custom stitched master successfully saved to {gcs_uri}",
         )
 
     @app.post("/api/extend-scene", response_model=GenerateResponse)
