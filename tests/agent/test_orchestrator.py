@@ -1,4 +1,5 @@
 from omnimash.agent.orchestrator import OmniMashAgent, build_adk_agent
+from omnimash.prompts.compiler import CharacterRole
 
 
 def test_agent_initial_creation_flow():
@@ -186,3 +187,36 @@ def test_orchestrator_returns_gcs_media_proxy_video_url():
     assert res.success is True
     assert res.video_url is not None
     assert res.video_url.startswith("/api/media-proxy?uri=gs%3A%2F%2F")
+
+
+def test_orchestrator_passes_characters_to_omni_client(monkeypatch):
+    agent = OmniMashAgent(mock_mode=True)
+    captured_kwargs = {}
+
+    def mock_generate_clip(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        from omnimash.engine.omni_client import GenerationResult
+
+        return GenerationResult(
+            interaction_thread_id="test_thread",
+            video_url="/static/rendered/test.mp4",
+        )
+
+    monkeypatch.setattr(agent.omni_client, "generate_clip", mock_generate_clip)
+
+    char = CharacterRole(
+        role_id="r1",
+        name="Snape",
+        description="Potion master",
+        reference_url="gs://bucket/snape.jpg",
+    )
+    res = agent.process_user_turn(
+        user_id="u1",
+        project_id="p1",
+        prompt="Snape rap battle",
+        characters=[char],
+    )
+
+    assert res.success is True
+    assert "characters" in captured_kwargs
+    assert captured_kwargs["characters"] == [char]
