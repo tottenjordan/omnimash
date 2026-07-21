@@ -353,6 +353,7 @@ def test_dashboard_ui_html_features() -> None:
 
     # 9. Reference Image Thumbnail Rendering & URL helper
     assert "getDisplayableRefUrl" in html
+    assert "getNextAvailableRoleId" in html
     assert "Linked Image Role" in html
     assert "/api/media-proxy" in html
     assert "handleLoadVaultCharacter" in html
