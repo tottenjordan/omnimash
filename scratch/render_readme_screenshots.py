@@ -3,6 +3,15 @@ import os
 import subprocess
 from PIL import Image
 
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(REPO_DIR)
+
+if not os.path.exists("/tmp/tailwind.js"):
+    subprocess.run(
+        ["curl", "-sL", "https://cdn.tailwindcss.com", "-o", "/tmp/tailwind.js"],
+        check=False,
+    )
+
 frame_path = "/tmp/live_trap_frame.jpg"
 if not os.path.exists(frame_path):
     frame_path = "/tmp/live_omni_frame_1.jpg"
@@ -36,7 +45,7 @@ def get_html(act_num: int, content_body: str) -> str:
 <head>
     <meta charset="UTF-8">
     <title>OmniMash Digital Director's Studio</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="file:///tmp/tailwind.js"></script>
     <style>
         body { background-color: #030712; color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -151,14 +160,58 @@ act1_content = """
         </div>
 
         <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-3">
-            <h2 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                <span>🎭</span><span>Gemini Omni Image Roles &amp; Character Style Signifiers</span>
-            </h2>
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-2.5">
+                <div>
+                    <h2 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                        <span>👥</span><span>Gemini Omni Image Roles &amp; Character Style Signifiers</span>
+                    </h2>
+                    <p class="text-[10px] text-gray-400 mt-0.5">
+                        Define character roles with visual descriptions and attached reference image URLs to maintain likeness.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="bg-gray-950 hover:bg-gray-800 text-purple-300 border border-purple-900/60 font-bold text-[10px] py-1 px-2.5 rounded-lg shadow flex items-center gap-1.5 transition">
+                        <span>💾</span><span>Save Cast Roster</span>
+                    </button>
+                    <button class="bg-gray-950 hover:bg-gray-800 text-gray-300 border border-gray-700 font-bold text-[10px] py-1 px-2.5 rounded-lg shadow flex items-center gap-1.5 transition">
+                        <span>📂</span><span>Restore Cast</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-gray-950/80 border border-purple-900/50 rounded-xl p-3 space-y-2">
+                <div class="flex items-center justify-between">
+                    <label class="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2 font-mono">
+                        <span>🏛️</span><span>Character Vault &amp; Saved Library</span>
+                    </label>
+                    <span class="text-[10px] text-gray-400 font-mono">4 Preset(s) Available</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm font-medium">
+                        <span>+</span><span>Harry "Gucci"</span>
+                    </button>
+                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm font-medium">
+                        <span>+</span><span>Young Draco "Jeezy"</span>
+                    </button>
+                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm font-medium">
+                        <span>+</span><span>Cyborg Gordon Ramsay</span>
+                    </button>
+                    <button class="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm font-medium">
+                        <span>+</span><span>Neon Julia Child</span>
+                    </button>
+                </div>
+            </div>
+
             <div class="grid grid-cols-2 gap-4">
                 <div class="bg-gray-950 border border-amber-500/40 rounded-xl p-3.5 space-y-2.5 relative overflow-hidden">
                     <div class="flex items-center justify-between">
-                        <span class="bg-amber-500 text-black font-black text-[10px] px-2 py-0.5 rounded font-mono uppercase">Role A</span>
-                        <span class="text-[10px] text-green-400 font-mono">Image Role Attached 🔗</span>
+                        <div class="flex items-center gap-2">
+                            <span class="bg-amber-500 text-black font-black text-[10px] px-2 py-0.5 rounded font-mono uppercase">Role A</span>
+                            <span class="text-[10px] text-green-400 font-mono">Image Role Attached 🔗</span>
+                        </div>
+                        <button class="bg-gray-900 hover:bg-purple-950 text-purple-300 border border-purple-900/60 text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1 font-medium shadow-sm">
+                            <span>💾</span><span>Save to Vault</span>
+                        </button>
                     </div>
                     <div>
                         <h3 class="text-xs font-bold text-white">Harry "Gucci"</h3>
@@ -184,8 +237,13 @@ act1_content = """
 
                 <div class="bg-gray-950 border border-purple-500/40 rounded-xl p-3.5 space-y-2.5 relative overflow-hidden">
                     <div class="flex items-center justify-between">
-                        <span class="bg-purple-500 text-black font-black text-[10px] px-2 py-0.5 rounded font-mono uppercase">Role B</span>
-                        <span class="text-[10px] text-green-400 font-mono">Image Role Attached 🔗</span>
+                        <div class="flex items-center gap-2">
+                            <span class="bg-purple-500 text-black font-black text-[10px] px-2 py-0.5 rounded font-mono uppercase">Role B</span>
+                            <span class="text-[10px] text-green-400 font-mono">Image Role Attached 🔗</span>
+                        </div>
+                        <button class="bg-gray-900 hover:bg-purple-950 text-purple-300 border border-purple-900/60 text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1 font-medium shadow-sm">
+                            <span>💾</span><span>Save to Vault</span>
+                        </button>
                     </div>
                     <div>
                         <h3 class="text-xs font-bold text-white">Young Draco "Jeezy"</h3>
@@ -429,17 +487,19 @@ html_files = {
 }
 
 for img_target, html_code in html_files.items():
-    tmp_html = f"/tmp/readme_html/{os.path.basename(img_target)}.html"
+    file_name = os.path.basename(img_target)
+    tmp_html = f"/tmp/readme_html/{file_name}.html"
+    tmp_png = f"/tmp/readme_html/{file_name}.png"
     with open(tmp_html, "w") as f:
         f.write(html_code)
 
-    tmp_png = tmp_html.replace(".html", ".png")
     cmd = [
         "/usr/bin/google-chrome",
         "--headless",
         "--disable-gpu",
         "--no-sandbox",
         "--hide-scrollbars",
+        "--virtual-time-budget=2000",
         "--window-size=1600,1000",
         f"--screenshot={tmp_png}",
         f"file://{tmp_html}",
@@ -447,12 +507,15 @@ for img_target, html_code in html_files.items():
     subprocess.run(cmd, check=True)
 
     im = Image.open(tmp_png).convert("RGB")
-    im.save(img_target, "JPEG", quality=92)
+    dest_path = os.path.join(REPO_DIR, img_target)
+    im.save(dest_path, "JPEG", quality=92)
+    print(f"Saved {dest_path} with mtime {os.path.getmtime(dest_path)}")
 
     artifact_dirs = [
         "/usr/local/google/home/jordantotten/.gemini/jetski/brain/3560c909-b993-4b35-8d92-8ae1ffa85ea1",
         "/usr/local/google/home/jordantotten/.gemini/jetski/brain/4b2ceabd-0603-4e86-9966-e874e937e9b7",
         "/usr/local/google/home/jordantotten/.gemini/jetski/brain/0157fe8d-a743-41ec-9ab2-3e2221f21102",
+        "/usr/local/google/home/jordantotten/.gemini/jetski/brain/69153085-e742-4580-9407-4d57ab3541ea",
     ]
     for ad in artifact_dirs:
         os.makedirs(ad, exist_ok=True)
