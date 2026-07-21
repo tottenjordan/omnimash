@@ -1,3 +1,4 @@
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -9,6 +10,7 @@ from omnimash.prompts.compiler import CharacterRole, MetaPromptTags, SceneDirect
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
 from omnimash.security.guardrail import ModelArmorGuardrail
 from omnimash.state.session_manager import SessionManager
+from omnimash.stitching.stitcher import VideoStitcher
 from omnimash.storage.gcs import GcsStorageManager
 
 
@@ -34,6 +36,7 @@ class OmniMashAgent:
         self.taxonomy = PromptTaxonomyEngine()
         self.media_extractor = MediaExtractor(mock_mode=mock_mode)
         self.storage = GcsStorageManager(mock_mode=mock_mode)
+        self.stitcher = VideoStitcher(mock_mode=mock_mode)
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         return self.taxonomy.deconstruct_concept(concept)
@@ -271,14 +274,56 @@ class OmniMashAgent:
             depth=0,
         )
 
-    def save_final_master(
+    def _get_session(self, session_id: str | None) -> Any | None:
+        if not session_id:
+            return None
+        if session_id in self.session_manager._sessions:
+            return self.session_manager._sessions[session_id]
+        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
+        if sanitized in self.session_manager._sessions:
+            return self.session_manager._sessions[sanitized]
+        for session in self.session_manager._sessions.values():
+            if session.session_id in (session_id, sanitized):
+                return session
+        return None
+
+    def stitch_session_master(
         self,
-        session_id: str | None,
-        video_url: str,
+        session_name: str | None,
         master_title: str,
     ) -> tuple[str, str]:
+        session = self._get_session(session_name)
+        clip_paths: list[str] = []
+        if session and session.turns:
+            clip_paths = [t.video_url for t in session.turns.values() if t.video_url]
+
+        stitched_path = self.stitcher.concatenate_clips(
+            clip_paths, session_id=session_name
+        )
         return self.storage.save_final_master(
-            session_id=session_id,
+            session_id=session_name,
+            source_rel_path=stitched_path,
+            master_title=master_title,
+        )
+
+    def save_final_master(
+        self,
+        session_id: str | None = None,
+        video_url: str = "",
+        master_title: str = "",
+        session_name: str | None = None,
+    ) -> tuple[str, str]:
+        s_id = session_id if session_id is not None else session_name
+        session = self._get_session(s_id)
+        if session:
+            video_nodes = [t for t in session.turns.values() if t.video_url]
+            if len(video_nodes) > 1:
+                return self.stitch_session_master(
+                    session_name=s_id,
+                    master_title=master_title,
+                )
+        return self.storage.save_final_master(
+            session_id=s_id,
             source_rel_path=video_url,
             master_title=master_title,
         )

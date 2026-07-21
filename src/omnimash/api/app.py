@@ -1780,7 +1780,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/save-final", response_model=SaveFinalResponse)
     def save_final(req: SaveFinalRequest) -> SaveFinalResponse:
         _pub_url, gcs_uri = agent.save_final_master(
-            session_id=req.session_name,
+            session_name=req.session_name,
             video_url=req.video_url,
             master_title=req.master_title,
         )
