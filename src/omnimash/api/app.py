@@ -153,6 +153,14 @@ UI_HTML = r"""<!DOCTYPE html>
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        const getDisplayableRefUrl = (url) => {
+            if (!url) return "";
+            if (url.startsWith("gs://")) {
+                return url.replace("gs://", "https://storage.googleapis.com/");
+            }
+            return url;
+        };
+
         const exampleConcepts = [
             "Gordon Ramsay vs Julia Child in a cyberpunk iron chef battle",
             "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style",
@@ -700,7 +708,6 @@ UI_HTML = r"""<!DOCTYPE html>
 
             // Helper: Reset Studio / Start Over
             const handleResetStudio = () => {
-                setSessionName(`session_${Date.now().toString().slice(-4)}`);
                 setConcept("");
                 setCharacters([]);
                 setAestheticTags([]);
@@ -1023,6 +1030,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         className="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 hover:border-purple-500 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
                                                         title={`Click to load ${c.name || c.role_id} into roster`}
                                                     >
+                                                        {c.reference_url && (
+                                                            <img
+                                                                src={getDisplayableRefUrl(c.reference_url)}
+                                                                alt={c.name || "Preset"}
+                                                                className="w-4 h-4 rounded-full object-cover border border-purple-400/50"
+                                                            />
+                                                        )}
                                                         <span>+</span>
                                                         <span>{chipText}</span>
                                                     </button>
@@ -1160,6 +1174,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         placeholder="https://example.com/character_reference.jpg"
                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                     />
+                                                    {char.reference_url && (
+                                                        <div className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2 mt-2">
+                                                            <img
+                                                                src={getDisplayableRefUrl(char.reference_url)}
+                                                                alt={char.name || char.role_id}
+                                                                className="w-10 h-10 object-cover rounded-lg border border-purple-500/50"
+                                                            />
+                                                            <div className="overflow-hidden">
+                                                                <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">Linked Image Role</span>
+                                                                <span className="text-[10px] text-gray-400 font-mono truncate block">{char.reference_url}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         ))}
