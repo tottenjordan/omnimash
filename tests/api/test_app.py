@@ -237,6 +237,9 @@ def test_api_media_proxy():
     res_invalid = client.get("/api/media-proxy?uri=https://example.com/image.jpg")
     assert res_invalid.status_code == 400
 
+    res_empty = client.get("/api/media-proxy?uri=gs://bucket_only")
+    assert res_empty.status_code == 404
+
     res_valid = client.get("/api/media-proxy?uri=gs://bucket/test_image.jpg")
     assert res_valid.status_code == 200
     assert res_valid.headers["cache-control"] == "public, max-age=86400"

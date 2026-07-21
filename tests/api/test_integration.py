@@ -355,3 +355,5 @@ def test_dashboard_ui_html_features() -> None:
     assert "getDisplayableRefUrl" in html
     assert "Linked Image Role" in html
     assert "/api/media-proxy" in html
+    assert "handleLoadVaultCharacter" in html
+    assert "handleLoadSessionRoster" in html

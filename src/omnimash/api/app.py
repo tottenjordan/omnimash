@@ -389,18 +389,19 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
-            const handleLoadVaultCharacter = (vaultChar) => {
+            const handleLoadVaultCharacter = (c) => {
                 const nextLetter = String.fromCharCode(65 + characters.length);
                 const newRole = {
                     role_id: `Role ${nextLetter}`,
-                    name: vaultChar.name || "",
-                    description: vaultChar.description || "",
-                    reference_url: vaultChar.reference_url || "",
-                    voice_style: vaultChar.voice_style || "",
-                    aesthetic_tags: vaultChar.aesthetic_tags ? [...vaultChar.aesthetic_tags] : []
+                    name: c.name || "",
+                    description: c.description || "",
+                    reference_url: c.reference_url || "",
+                    voice_style: c.voice_style || "",
+                    aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
                 };
                 setCharacters([...characters, newRole]);
             };
+
 
             const handleSaveSessionRoster = async () => {
                 try {
