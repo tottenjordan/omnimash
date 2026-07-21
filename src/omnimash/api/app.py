@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -17,6 +17,32 @@ class CharacterRoleModel(BaseModel):
     reference_url: str | None = None
     aesthetic_tags: list[str] = []
     voice_style: str = ""
+
+
+class SaveCharacterRequest(BaseModel):
+    session_name: str | None = None
+    character: CharacterRoleModel
+    is_library: bool = True
+
+
+class SaveCharacterResponse(BaseModel):
+    success: bool = True
+    gcs_uri: str = ""
+    message: str = ""
+
+
+class CharacterListResponse(BaseModel):
+    characters: list[CharacterRoleModel] = []
+
+
+class LoadCharacterRequest(BaseModel):
+    slug: str
+    session_name: str | None = None
+
+
+class SaveRosterRequest(BaseModel):
+    session_name: str
+    characters: list[CharacterRoleModel]
 
 
 class DeconstructResponse(BaseModel):
@@ -1647,6 +1673,80 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         return agent.media_extractor.analyze_youtube_reference(
             req.url, session_id=req.session_name or "default"
         )
+
+    @app.post("/api/characters/save", response_model=SaveCharacterResponse)
+    def save_character(req: SaveCharacterRequest) -> SaveCharacterResponse:
+        _pub_url, gcs_uri = agent.storage.save_character(
+            req.character.model_dump(),
+            session_id=req.session_name,
+            is_library=req.is_library,
+        )
+        return SaveCharacterResponse(
+            success=True,
+            gcs_uri=gcs_uri,
+            message=f"Character saved successfully to {gcs_uri}",
+        )
+
+    @app.get("/api/characters", response_model=CharacterListResponse)
+    def list_characters(session_name: str | None = None) -> CharacterListResponse:
+        raw_chars = agent.storage.list_characters(session_id=session_name)
+        characters = [
+            CharacterRoleModel(
+                role_id=c.get("role_id", "Role A"),
+                name=c.get("name", ""),
+                description=c.get("description", ""),
+                reference_url=c.get("reference_url"),
+                aesthetic_tags=c.get("aesthetic_tags", []),
+                voice_style=c.get("voice_style", ""),
+            )
+            for c in (raw_chars or [])
+        ]
+        return CharacterListResponse(characters=characters)
+
+    @app.post("/api/characters/load", response_model=CharacterRoleModel)
+    def load_character(req: LoadCharacterRequest) -> CharacterRoleModel:
+        char_data = agent.storage.load_character(req.slug, session_id=req.session_name)
+        if not char_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Character '{req.slug}' not found",
+            )
+        return CharacterRoleModel(
+            role_id=char_data.get("role_id", "Role A"),
+            name=char_data.get("name", ""),
+            description=char_data.get("description", ""),
+            reference_url=char_data.get("reference_url"),
+            aesthetic_tags=char_data.get("aesthetic_tags", []),
+            voice_style=char_data.get("voice_style", ""),
+        )
+
+    @app.post("/api/characters/save-roster", response_model=SaveCharacterResponse)
+    def save_roster(req: SaveRosterRequest) -> SaveCharacterResponse:
+        _pub_url, gcs_uri = agent.storage.save_session_roster(
+            req.session_name,
+            [c.model_dump() for c in req.characters],
+        )
+        return SaveCharacterResponse(
+            success=True,
+            gcs_uri=gcs_uri,
+            message=f"Session roster saved successfully to {gcs_uri}",
+        )
+
+    @app.get("/api/characters/roster", response_model=CharacterListResponse)
+    def get_session_roster(session_name: str) -> CharacterListResponse:
+        raw_roster = agent.storage.load_session_roster(session_name)
+        characters = [
+            CharacterRoleModel(
+                role_id=c.get("role_id", "Role A"),
+                name=c.get("name", ""),
+                description=c.get("description", ""),
+                reference_url=c.get("reference_url"),
+                aesthetic_tags=c.get("aesthetic_tags", []),
+                voice_style=c.get("voice_style", ""),
+            )
+            for c in (raw_roster or [])
+        ]
+        return CharacterListResponse(characters=characters)
 
     return app
 
