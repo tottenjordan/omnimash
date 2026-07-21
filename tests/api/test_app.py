@@ -228,3 +228,16 @@ def test_api_stitch_selected_clips():
     assert data["success"] is True
     assert "gcs_uri" in data
     assert "my_stitched_cut.mp4" in data["gcs_uri"]
+
+
+def test_api_media_proxy():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res_invalid = client.get("/api/media-proxy?uri=https://example.com/image.jpg")
+    assert res_invalid.status_code == 400
+
+    res_valid = client.get("/api/media-proxy?uri=gs://bucket/test_image.jpg")
+    assert res_valid.status_code == 200
+    assert res_valid.headers["cache-control"] == "public, max-age=86400"
+    assert res_valid.content == b"mock_image_bytes"

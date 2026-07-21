@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -162,7 +162,7 @@ UI_HTML = r"""<!DOCTYPE html>
         const getDisplayableRefUrl = (url) => {
             if (!url) return "";
             if (url.startsWith("gs://")) {
-                return url.replace("gs://", "https://storage.googleapis.com/");
+                return `/api/media-proxy?uri=${encodeURIComponent(url)}`;
             }
             return url;
         };
@@ -396,8 +396,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     name: vaultChar.name || "",
                     description: vaultChar.description || "",
                     reference_url: vaultChar.reference_url || "",
-                    aesthetic_tags: vaultChar.aesthetic_tags || [],
-                    voice_style: vaultChar.voice_style || ""
+                    voice_style: vaultChar.voice_style || "",
+                    aesthetic_tags: vaultChar.aesthetic_tags ? [...vaultChar.aesthetic_tags] : []
                 };
                 setCharacters([...characters, newRole]);
             };
@@ -422,7 +422,15 @@ UI_HTML = r"""<!DOCTYPE html>
                     const res = await fetch(`/api/characters/roster?session_name=${encodeURIComponent(sessionName)}`);
                     const data = await res.json();
                     if (data && data.characters) {
-                        setCharacters(data.characters);
+                        const restored = data.characters.map((c, idx) => ({
+                            role_id: c.role_id || `Role ${String.fromCharCode(65 + idx)}`,
+                            name: c.name || "",
+                            description: c.description || "",
+                            reference_url: c.reference_url || "",
+                            voice_style: c.voice_style || "",
+                            aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
+                        }));
+                        setCharacters(restored);
                     }
                 } catch (err) {
                     console.error("Load session roster failed:", err);
@@ -2083,6 +2091,25 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             for c in (raw_roster or [])
         ]
         return CharacterListResponse(characters=characters)
+
+    @app.get("/api/media-proxy")
+    def media_proxy(uri: str) -> Response:
+        if not uri or not uri.startswith("gs://"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid GCS URI. Must start with gs://",
+            )
+        data, content_type = agent.storage.download_blob_bytes(uri)
+        if not data:
+            raise HTTPException(
+                status_code=404,
+                detail="Media object not found or empty",
+            )
+        return Response(
+            content=data,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
 
     return app
 
