@@ -639,3 +639,79 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
     }
     assert input_arg[1]["type"] == "text"
     assert "young wizard" in input_arg[1]["text"]
+
+
+def test_load_reference_images_logs_diagnostics(
+    caplog: pytest.LogCaptureFixture, tmp_path: Any
+) -> None:
+    """Verify diagnostic logs during reference image loading and payload construction."""
+    import base64
+    import logging
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=False)
+
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Harry Potter",
+        reference_url="gs://test-bucket/harry.png",
+    )
+    char2 = CharacterRole(
+        role_id="Role B",
+        name="Draco",
+        description="Draco Malfoy",
+        reference_url=None,
+    )
+    char3 = CharacterRole(
+        role_id="Role C",
+        name="Snape",
+        description="Severus Snape",
+        reference_url="gs://test-bucket/snape.jpg",
+    )
+
+    def mock_download(url: str) -> tuple[bytes, str]:
+        if "harry" in url:
+            return b"fake_harry_png", "image/png"
+        return b"", ""
+
+    with caplog.at_level(logging.INFO, logger="omnimash.engine"):
+        with patch.object(
+            client.storage, "download_blob_bytes", side_effect=mock_download
+        ):
+            imgs = client._load_reference_images_as_input(
+                session_id="session_123", characters=[char1, char2, char3]
+            )
+
+    assert len(imgs) == 1
+    assert "Loaded 1 reference image(s) for characters: ['Role A']" in caplog.text
+    assert (
+        "Character Role C (Snape) has reference_url 'gs://test-bucket/snape.jpg' but image bytes could not be loaded!"
+        in caplog.text
+    )
+
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_test_999", output_video=mock_output_video
+    )
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "test_diag_out.mp4")
+    with caplog.at_level(logging.INFO, logger="omnimash.engine"):
+        with patch.object(
+            client.storage, "download_blob_bytes", side_effect=mock_download
+        ):
+            client._generate_live_omni_flash_video(
+                prompt="Harry in rap battle",
+                target_rel_path=target_file,
+                characters=[char1],
+            )
+
+    assert (
+        "Attaching 1 multimodal base64 reference image(s) to gemini-omni-flash-preview interaction payload."
+        in caplog.text
+    )

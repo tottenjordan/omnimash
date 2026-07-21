@@ -89,6 +89,46 @@ class OmniMashAgent:
             )
 
         # Step 2: Check if initial generation or conversational diff
+        char_objs: list[CharacterRole] = []
+        if characters:
+            for c in characters:
+                if isinstance(c, CharacterRole):
+                    char_objs.append(c)
+                elif isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", ""),
+                            name=c.get("name", ""),
+                            description=c.get("description", ""),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=c.get("aesthetic_tags", []),
+                            voice_style=c.get("voice_style", ""),
+                        )
+                    )
+                elif hasattr(c, "model_dump"):
+                    cd = c.model_dump()
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=cd.get("role_id", ""),
+                            name=cd.get("name", ""),
+                            description=cd.get("description", ""),
+                            reference_url=cd.get("reference_url"),
+                            aesthetic_tags=cd.get("aesthetic_tags", []),
+                            voice_style=cd.get("voice_style", ""),
+                        )
+                    )
+                elif hasattr(c, "role_id"):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=getattr(c, "role_id", ""),
+                            name=getattr(c, "name", ""),
+                            description=getattr(c, "description", ""),
+                            reference_url=getattr(c, "reference_url", None),
+                            aesthetic_tags=getattr(c, "aesthetic_tags", []),
+                            voice_style=getattr(c, "voice_style", ""),
+                        )
+                    )
+
         turn_index = len(session.turns)
         if parent_turn_id and parent_turn_id in session.turns:
             parent_turn = session.turns[parent_turn_id]
@@ -109,48 +149,10 @@ class OmniMashAgent:
                 voiceover=voiceover,
                 is_silent=is_silent,
                 audio_stem=audio_stem,
+                characters=char_objs,
             )
         else:
             if characters or scenes:
-                char_objs: list[CharacterRole] = []
-                if characters:
-                    for c in characters:
-                        if isinstance(c, CharacterRole):
-                            char_objs.append(c)
-                        elif isinstance(c, dict):
-                            char_objs.append(
-                                CharacterRole(
-                                    role_id=c.get("role_id", ""),
-                                    name=c.get("name", ""),
-                                    description=c.get("description", ""),
-                                    reference_url=c.get("reference_url"),
-                                    aesthetic_tags=c.get("aesthetic_tags", []),
-                                    voice_style=c.get("voice_style", ""),
-                                )
-                            )
-                        elif hasattr(c, "model_dump"):
-                            cd = c.model_dump()
-                            char_objs.append(
-                                CharacterRole(
-                                    role_id=cd.get("role_id", ""),
-                                    name=cd.get("name", ""),
-                                    description=cd.get("description", ""),
-                                    reference_url=cd.get("reference_url"),
-                                    aesthetic_tags=cd.get("aesthetic_tags", []),
-                                    voice_style=cd.get("voice_style", ""),
-                                )
-                            )
-                        elif hasattr(c, "role_id"):
-                            char_objs.append(
-                                CharacterRole(
-                                    role_id=getattr(c, "role_id", ""),
-                                    name=getattr(c, "name", ""),
-                                    description=getattr(c, "description", ""),
-                                    reference_url=getattr(c, "reference_url", None),
-                                    aesthetic_tags=getattr(c, "aesthetic_tags", []),
-                                    voice_style=getattr(c, "voice_style", ""),
-                                )
-                            )
                 scene_objs: list[SceneDirective] = []
                 if scenes:
                     for s in scenes:
@@ -200,6 +202,7 @@ class OmniMashAgent:
                 voiceover=voiceover,
                 is_silent=is_silent,
                 audio_stem=audio_stem,
+                characters=char_objs,
             )
 
         # Step 3: Persist Turn in Session Version Tree
@@ -299,6 +302,7 @@ class OmniMashAgent:
         voiceover: str | None = None,
         is_silent: bool = False,
         audio_stem: str | None = None,
+        characters: list[CharacterRole] | None = None,
     ) -> Any:
         if parent_thread_id:
             return self.omni_client.apply_interaction_diff(
@@ -309,6 +313,7 @@ class OmniMashAgent:
                 is_silent=is_silent,
                 audio_stem=audio_stem,
                 turn_index=turn_index,
+                characters=characters,
             )
         return self.omni_client.generate_clip(
             prompt,
@@ -317,6 +322,7 @@ class OmniMashAgent:
             is_silent=is_silent,
             audio_stem=audio_stem,
             turn_index=turn_index,
+            characters=characters,
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:

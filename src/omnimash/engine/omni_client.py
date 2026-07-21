@@ -598,6 +598,9 @@ class OmniFlashClient:
             return []
 
         image_objects: list[dict[str, Any]] = []
+        loaded_chars: list[Any] = []
+        failed_chars: list[Any] = []
+
         for char in characters:
             ref_url = (
                 getattr(char, "reference_url", None)
@@ -668,6 +671,39 @@ class OmniFlashClient:
                         "mime_type": mime_type,
                     }
                 )
+                loaded_chars.append(char)
+            else:
+                failed_chars.append(char)
+                char_id = (
+                    char.get("role_id")
+                    if isinstance(char, dict)
+                    else getattr(
+                        char,
+                        "role_id",
+                        getattr(char, "char_id", getattr(char, "id", None)),
+                    )
+                )
+                char_name = (
+                    char.get("name")
+                    if isinstance(char, dict)
+                    else getattr(char, "name", getattr(char, "char_name", None))
+                )
+                logger.warning(
+                    "Character %s (%s) has reference_url '%s' but image bytes could not be loaded!",
+                    char_id,
+                    char_name,
+                    ref_url,
+                )
+
+        loaded_roles = [
+            c.role_id if hasattr(c, "role_id") else c.get("role_id")
+            for c in loaded_chars
+        ]
+        logger.info(
+            "Loaded %d reference image(s) for characters: %s",
+            len(image_objects),
+            loaded_roles,
+        )
 
         return image_objects
 
@@ -701,6 +737,10 @@ class OmniFlashClient:
             session_id=session_id, characters=characters
         )
         if image_objects:
+            logger.info(
+                "Attaching %d multimodal base64 reference image(s) to gemini-omni-flash-preview interaction payload.",
+                len(image_objects),
+            )
             inputs: list[dict[str, Any]] = [
                 *image_objects,
                 {"type": "text", "text": safe_input},
