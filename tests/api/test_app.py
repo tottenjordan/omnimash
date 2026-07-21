@@ -196,3 +196,35 @@ def test_api_save_final_multi_clip_stitching():
     assert data_save["success"] is True
     assert "final_masters" in data_save["gcs_uri"]
     assert "api_stitched_master.mp4" in data_save["gcs_uri"]
+
+
+def test_api_stitch_selected_clips():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res_empty = client.post(
+        "/api/stitch-clips",
+        json={
+            "session_name": "test_stitch_session",
+            "clip_urls": [],
+            "master_title": "my_stitched_cut",
+        },
+    )
+    assert res_empty.status_code == 400
+    assert (
+        res_empty.json()["detail"] == "At least one clip URL is required for stitching."
+    )
+
+    res_valid = client.post(
+        "/api/stitch-clips",
+        json={
+            "session_name": "test_stitch_session",
+            "clip_urls": ["/static/rendered/clip1.mp4", "/static/rendered/clip2.mp4"],
+            "master_title": "my_stitched_cut",
+        },
+    )
+    assert res_valid.status_code == 200
+    data = res_valid.json()
+    assert data["success"] is True
+    assert "gcs_uri" in data
+    assert "my_stitched_cut.mp4" in data["gcs_uri"]

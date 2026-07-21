@@ -347,6 +347,10 @@ def test_dashboard_ui_html_features() -> None:
     assert "Save to Vault" in html
     assert "Save Cast Roster" in html
 
-    # 8. Reference Image Thumbnail Rendering & URL helper
+    # 8. Act 3 Stitch & Combine Selected Clips UI present
+    assert "Stitch & Combine Selected Clips" in html
+    assert "/api/stitch-clips" in html
+
+    # 9. Reference Image Thumbnail Rendering & URL helper
     assert "getDisplayableRefUrl" in html
     assert "Linked Image Role" in html

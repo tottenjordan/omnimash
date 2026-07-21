@@ -393,6 +393,9 @@ act3_content = """
                     </span>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button class="text-xs bg-purple-950 hover:bg-purple-900 text-purple-300 border border-purple-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition">
+                        <span>🎬</span><span>Stitch & Combine Selected Clips</span>
+                    </button>
                     <button class="text-xs bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition">
                         <span>💾</span><span>Stitch & Save Master (30–60s) to GCS</span>
                     </button>

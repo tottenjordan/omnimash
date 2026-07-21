@@ -103,6 +103,12 @@ class SaveFinalRequest(BaseModel):
     master_title: str
 
 
+class StitchClipsRequest(BaseModel):
+    session_name: str
+    clip_urls: list[str]
+    master_title: str = "custom_stitched_cut"
+
+
 class SaveFinalResponse(BaseModel):
     success: bool
     gcs_uri: str
@@ -262,6 +268,11 @@ UI_HTML = r"""<!DOCTYPE html>
             const [showSaveModal, setShowSaveModal] = useState(false);
             const [saveLoading, setSaveLoading] = useState(false);
             const [extendLoading, setExtendLoading] = useState(false);
+
+            const [showStitchModal, setShowStitchModal] = useState(false);
+            const [selectedClipUrls, setSelectedClipUrls] = useState([]);
+            const [stitchLoading, setStitchLoading] = useState(false);
+            const [stitchResultGcs, setStitchResultGcs] = useState(null);
 
             const [history, setHistory] = useState([
                 {
@@ -650,6 +661,36 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
+            // Stitch Selected Clips Handler (POST /api/stitch-clips)
+            const handleStitchSelectedClips = async () => {
+                if (!selectedClipUrls || selectedClipUrls.length === 0) return;
+                setStitchLoading(true);
+                setStitchResultGcs(null);
+                try {
+                    const res = await fetch("/api/stitch-clips", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName,
+                            clip_urls: selectedClipUrls,
+                            master_title: masterTitle || "custom_stitched_cut"
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success && data.gcs_uri) {
+                        setStitchResultGcs(data.gcs_uri);
+                        setSavedGcsUri(data.gcs_uri);
+                    } else if (data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    console.error("Stitch clips failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setStitchLoading(false);
+                }
+            };
+
             // Extend Scene Handler (POST /api/extend-scene)
             const handleExtendScene = async () => {
                 setExtendLoading(true);
@@ -812,6 +853,92 @@ UI_HTML = r"""<!DOCTYPE html>
                                     >
                                         <span>💾</span>
                                         <span>{saveLoading ? "Stitching & Saving..." : "Stitch & Save Master (30–60s) to GCS"}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Stitch & Combine Selected Clips Modal */}
+                    {showStitchModal && (
+                        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                            <div className="bg-gray-900 border-2 border-purple-500/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+                                <div className="flex items-center space-x-3 bg-purple-950/80 border border-purple-500/50 rounded-xl p-4 mb-5 text-purple-300">
+                                    <span className="text-2xl">🎬</span>
+                                    <div>
+                                        <h3 className="font-bold text-base text-purple-200">Stitch &amp; Combine Selected Clips</h3>
+                                        <p className="text-xs text-purple-300/80 mt-0.5">Select specific scene clips from your session history to concatenate into a custom master video exported to GCS.</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-4 mb-6">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">Master Title</label>
+                                        <input
+                                            type="text"
+                                            value={masterTitle}
+                                            onChange={(e) => setMasterTitle(e.target.value)}
+                                            placeholder="e.g. custom_stitched_cut"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-2">Select Clips from History to Concatenate</label>
+                                        <div className="max-h-48 overflow-y-auto space-y-2 border border-gray-800 rounded-xl p-3 bg-gray-950 custom-scrollbar">
+                                            {history.map((turn, idx) => {
+                                                const clipUrl = turn.videoUrl;
+                                                const isChecked = selectedClipUrls.includes(clipUrl);
+                                                return (
+                                                    <label key={idx} className="flex items-center space-x-3 text-xs text-gray-300 cursor-pointer hover:bg-gray-900 p-2 rounded-lg transition">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setSelectedClipUrls([...selectedClipUrls, clipUrl]);
+                                                                } else {
+                                                                    setSelectedClipUrls(selectedClipUrls.filter(u => u !== clipUrl));
+                                                                }
+                                                            }}
+                                                            className="rounded border-gray-700 text-purple-600 focus:ring-purple-500 bg-gray-900 w-4 h-4"
+                                                        />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="font-bold text-gray-200 truncate">Turn #{idx + 1}: {turn.prompt}</div>
+                                                            <div className="text-[10px] text-gray-500 font-mono truncate">{clipUrl}</div>
+                                                        </div>
+                                                    </label>
+                                                );
+                                            })}
+                                            {history.length === 0 && (
+                                                <div className="text-xs text-gray-500 italic p-2">No generated clips available in history.</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {stitchResultGcs && (
+                                        <div className="bg-green-950/60 border border-green-500/80 rounded-xl p-3 text-xs text-green-300 break-all font-mono">
+                                            <span className="font-bold block text-green-200 mb-1">✓ Custom Cut Saved:</span>
+                                            {stitchResultGcs}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center justify-end space-x-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowStitchModal(false);
+                                            setStitchResultGcs(null);
+                                        }}
+                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white"
+                                    >
+                                        Close
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={stitchLoading || selectedClipUrls.length === 0 || !masterTitle.trim()}
+                                        onClick={handleStitchSelectedClips}
+                                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                    >
+                                        <span>🎬</span>
+                                        <span>{stitchLoading ? "Concatenating..." : "🎬 Concatenate Selected Videos"}</span>
                                     </button>
                                 </div>
                             </div>
@@ -1577,6 +1704,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <div className="flex items-center space-x-3">
                                                     <button
                                                         type="button"
+                                                        onClick={() => {
+                                                            if (selectedClipUrls.length === 0 && history.length > 0) {
+                                                                setSelectedClipUrls(history.map(h => h.videoUrl));
+                                                            }
+                                                            setShowStitchModal(true);
+                                                        }}
+                                                        className="text-xs bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                    >
+                                                        <span>🎬</span>
+                                                        <span>Stitch & Combine Selected Clips</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
                                                         onClick={() => setShowSaveModal(true)}
                                                         className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
                                                     >
@@ -1815,6 +1955,27 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             success=True,
             gcs_uri=gcs_uri,
             message=f"Final master successfully saved to {gcs_uri}",
+        )
+
+    @app.post("/api/stitch-clips", response_model=SaveFinalResponse)
+    def stitch_clips(req: StitchClipsRequest) -> SaveFinalResponse:
+        if not req.clip_urls:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one clip URL is required for stitching.",
+            )
+        stitched_path = agent.stitcher.concatenate_clips(
+            req.clip_urls, session_id=req.session_name
+        )
+        _pub_url, gcs_uri = agent.storage.save_final_master(
+            session_id=req.session_name,
+            source_rel_path=stitched_path,
+            master_title=req.master_title,
+        )
+        return SaveFinalResponse(
+            success=True,
+            gcs_uri=gcs_uri,
+            message=f"Custom stitched master successfully saved to {gcs_uri}",
         )
 
     @app.post("/api/extend-scene", response_model=GenerateResponse)

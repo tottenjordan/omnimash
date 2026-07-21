@@ -27,6 +27,7 @@ graph TD
         PreviewCard["🪄 Live Storyboard Prompt Compiler Preview"]
         DAGView["🌳 Version Tree DAG (Edit Depth & Checkpoint Badges)"]
         ModalBanner["⚠️ Commit & Re-Anchor Modal"]
+        ModalStitch["🎬 Stitch & Combine Selected Clips Modal"]
         Player["🎥 720p Video Player + SynthID Badge"]
 
         UI --> Act1
@@ -41,6 +42,7 @@ graph TD
         Act3 --> Player
         Act3 --> DAGView
         Act3 --> ModalBanner
+        Act3 --> ModalStitch
     end
 
     subgraph BackendServices["Backend Services (FastAPI + Uvicorn)"]
@@ -48,18 +50,22 @@ graph TD
         EndpointDeconstruct["POST /api/deconstruct-concept"]
         EndpointGen["POST /api/generate"]
         EndpointCommit["POST /api/commit"]
+        EndpointStitch["POST /api/stitch-clips"]
         EndpointRoot["GET / (HTML Studio Dashboard)"]
         
         Gateway --> EndpointRoot
         Gateway --> EndpointDeconstruct
         Gateway --> EndpointGen
         Gateway --> EndpointCommit
+        Gateway --> EndpointStitch
     end
 
     subgraph OrchestrationEngine["Orchestration Engine"]
         EndpointDeconstruct --> CompilerDeconstruct["PromptCompiler.deconstruct_concept()"]
         EndpointGen --> Agent["OmniMashAgent"]
         EndpointCommit --> Agent
+        EndpointStitch --> StitcherEngine["VideoStitcher.concatenate_clips()"]
+        StitcherEngine --> StorageEngine["Storage.save_final_master()"]
         
         Agent --> CompilerStoryboard["PromptCompiler.compile_storyboard()"]
         Agent --> State["SessionManager (Version DAG & Depth)"]
@@ -72,10 +78,12 @@ graph TD
     
     StoryboardEditor -->|POST /api/generate| EndpointGen
     ModalBanner -->|POST /api/commit| EndpointCommit
+    ModalStitch -->|POST /api/stitch-clips| EndpointStitch
     
     EndpointGen -->|JSON / SSE Event Stream| DAGView
     EndpointCommit -->|Re-Anchored Status / Depth 0| DAGView
     EndpointGen -->|720p Native Video URL| Player
+    EndpointStitch -->|Custom Stitched Master GCS URI| ModalStitch
 ```
 
 ---
@@ -207,3 +215,30 @@ Flushes conversational token context decay when edit depth reaches $\ge 3$, esta
   "error": null
 }
 ```
+
+---
+
+### `POST /api/stitch-clips`
+Concatenates custom-selected scene clips from session history into a unified master parody video MP4 and exports to GCS.
+
+**Request Payload (`StitchClipsRequest`):**
+```json
+{
+  "session_name": "parody_session_1",
+  "clip_urls": [
+    "/static/rendered/session_turn0.mp4",
+    "/static/rendered/session_turn1.mp4"
+  ],
+  "master_title": "custom_stitched_cut"
+}
+```
+
+**Response Payload (`SaveFinalResponse`):**
+```json
+{
+  "success": true,
+  "gcs_uri": "gs://omnimash-media-project/sessions/parody_session_1/final_masters/custom_stitched_cut.mp4",
+  "message": "Custom stitched master successfully saved to gs://omnimash-media-project/sessions/parody_session_1/final_masters/custom_stitched_cut.mp4"
+}
+```
+
