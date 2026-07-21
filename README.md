@@ -90,7 +90,21 @@ To overcome the **10-second per-clip single-turn limit** of Gemini Omni Flash an
 
 3. **Stage 3: FFmpeg Multi-Clip Concatenation & Master Export (`MediaStitcher` / `VideoStitcher`)**
    - Triggered via `POST /api/save-final` to stitch sequential 10s MP4 clips and continuous 140 BPM audio stems into a unified 30–60s master video MP4.
-   - Saves master exports directly to GCS at `sessions/{session_id}/final_masters/{master_title}.mp4` using `VideoStitcher` / `MediaStitcher` with `aresample=async=1:first_pts=0` and presentation timestamp (PTS) frame locking.
+   - Saves master exports directly to GCS using explicit GCS session name preservation (`session_name` / `session_id`) at `sessions/{session_name}/final_masters/{master_title}.mp4` using `VideoStitcher` / `MediaStitcher` with `aresample=async=1:first_pts=0` and presentation timestamp (PTS) frame locking.
+
+#### 🗂️ Session-Scoped GCS Storage Hierarchy & Session Name Preservation
+
+OmniMash maintains a structured, session-scoped folder hierarchy in Google Cloud Storage (`gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}/`), preserving user-specified `session_name` parameters explicitly across all generation, commit, and export operations:
+
+```
+gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}/
+└── sessions/{session_name}/
+    ├── intermediate/   # Per-turn 10s MP4 video clips & audio stems (thread_..._turnX.mp4)
+    ├── finalized/      # Multi-clip concatenated timeline video renders
+    ├── final_masters/  # Exported 30–60s master parody video MP4 files
+    ├── prompts/        # Turn log history & compiled storyboard prompt text files
+    └── references/     # Session character cast rosters & reference analysis metadata
+```
 
 ---
 
@@ -222,8 +236,8 @@ In **Act 1**, define the high-level creative vision, dynamic character bindings,
 1. **1-Click Studio Reset Control:** Use the 🔄 **"New Project / Start Over"** button in the top navigation header toolbar at any time to instantly wipe current concept state, character bindings, aesthetic tags, and storyboard scenes, generating a fresh session ID and blank studio workspace.
 2. **Enter Visual Shorthand:** Type your open-ended parody concept (e.g., *"Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"*).
 3. **Deconstruct Concept:** Click **✨ Deconstruct Concept** (`POST /api/deconstruct-concept`). OmniMash parses the prompt into structured `MetaPromptTags`.
-4. **🏛️ Character Vault & Saved Library Toolbar:** Access the 🏛️ **Character Vault & Saved Library** toolbar above the character cards to instantly load pre-saved character presets (`+ Harry "Gucci"`, `+ Young Draco "Jeezy"`, `+ Cyborg Gordon Ramsay`, `+ Neon Julia Child`) into your active cast with 1 click.
-5. **Configure Dynamic Character Roles & Reference Images:** Review dynamic character roles (`Role A: Harry "Gucci"`, `Role B: Young Draco "Jeezy"`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) (`gs://reference-images-jt-trend-trawler/...`) to lock facial likeness across scenes.
+4. **🏛️ Character Vault & Saved Library Toolbar:** Access the 🏛️ **Character Vault & Saved Library** toolbar above the character cards to instantly load pre-saved character presets (`+ Harry "Gucci"`, `+ Young Draco "Jeezy"`, `+ Cyborg Gordon Ramsay`, `+ Neon Julia Child`) into your active cast with 1 click, complete with miniature avatar image thumbnails next to each preset chip.
+5. **Configure Dynamic Character Roles & Reference Images:** Review dynamic character roles (`Role A: Harry "Gucci"`, `Role B: Young Draco "Jeezy"`). Attach reference image URLs per the [Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles) (`gs://reference-images-jt-trend-trawler/...`) to lock facial likeness across scenes, featuring live character reference image preview rendering inside dedicated `Linked Image Role` thumbnail containers on each Character Role card.
 6. **💾 Save to Vault Card Buttons:** Click 💾 **"Save to Vault"** on any individual Character Role card to persist its name, description, reference image URL, voice style, and style tags into your persistent Character Vault library for future sessions.
 7. **💾 Save Cast Roster / 📂 Restore Cast Session Controls:** Use the 💾 **"Save Cast Roster"** and 📂 **"Restore Cast"** buttons in the Character Roles header toolbar to snapshot or restore the full multi-character cast ensemble for the current project session.
 8. **Manage Character-Specific Style Signifiers & 🎙️ Voice Style & Accent:** Refine granular character-level style tags and dedicated **🎙️ Voice Style & Accent** inputs inside each Character Role card (e.g., `Red Gucci Tracksuit`, `Cartier Glasses`, and `Fast-paced confident Atlanta rap flow with autotune` for Role A; `Platinum Slicked Hair`, `Diamond Iced-Out Chain`, and `Pompous, cynical British drawl with aggressive rap cadence` for Role B). The prompt compiler binds these tags into character definitions and the `[AUDIO & VOCAL DIRECTION]` block to anchor attire and vocal delivery across scenes.
@@ -422,7 +436,7 @@ curl -X POST http://localhost:8000/api/stitch-clips \
 
 The built-in single-page web dashboard (React 18 + Tailwind CSS) implements the **3-Act Digital Director's Studio**:
 
-- **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), 🏛️ **Character Vault & Saved Library** toolbar with 1-click preset quick-load chips, 💾 **Save to Vault** character card buttons, 💾 **Save Cast Roster / 📂 Restore Cast** session controls, dynamic Character Roles manager (`Role A`, `Role B`) with attached Gemini Omni Image Role reference image URLs, dedicated **🎙️ Voice Style & Accent** inputs per character card, character-specific style signifiers, and the **🎙️ Vocal Delivery / Voiceover Style** global control.
+- **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), 🏛️ **Character Vault & Saved Library** toolbar with 1-click preset quick-load chips rendering miniature avatar image thumbnails, 💾 **Save to Vault** character card buttons, 💾 **Save Cast Roster / 📂 Restore Cast** session controls, dynamic Character Roles manager (`Role A`, `Role B`) with character reference image preview rendering (`Linked Image Role` thumbnail containers) and attached Gemini Omni Image Role reference image URLs, dedicated **🎙️ Voice Style & Accent** inputs per character card, character-specific style signifiers, and the **🎙️ Vocal Delivery / Voiceover Style** global control.
 - **Act 2: Fine-Tune & Storyboard Directing:** Multi-scene storyboard sequence editor, active role selectors (`["Role A"]`, `["Role B"]`), action directives, turn-by-turn dialogue, and real-time live compiled storyboard prompt preview (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`).
 - **Act 3: The Screening Room & Branching:** 720p native video player with non-autoplay playback controls and SynthID C2PA provenance indicators, Generation Status pill badge (`🟢 Live Gemini Omni Flash` vs `🟠 Procedural Fallback Animation`), Active Error Mitigation banner, live Final Generation Prompt inspection pane (`rawCompiledPrompt` with structured `[AUDIO & VOCAL DIRECTION]`), "Stitch & Combine Selected Clips" modal (`POST /api/stitch-clips`) for custom clip selection & concatenation, "Stitch & Save Master (30–60s) to GCS" export modal (`POST /api/save-final`), "Extend Video / Next Scene" storyboard continuation (`POST /api/extend-scene`), interactive Version Tree DAG explorer, conversational delta prompting, and depth $\ge 3$ commit & re-anchor modal.
 
