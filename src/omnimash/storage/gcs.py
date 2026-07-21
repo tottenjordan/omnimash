@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 from typing import TYPE_CHECKING, Any
 
 from omnimash.config import settings
@@ -14,6 +15,46 @@ try:
     from google.cloud import storage
 except ImportError:
     storage: Any = None
+
+
+DEFAULT_CHARACTERS: list[dict[str, Any]] = [
+    {
+        "role_id": "Role A",
+        "name": 'Harry "Gucci"',
+        "description": "Harry Potter, a young wizard with round gold wire-rim Cartier glasses, untidy jet-black hair, and distinct lightning scar wearing a red Gucci tracksuit",
+        "reference_url": "gs://reference-images-jt-trend-trawler/harry_drip.jpeg",
+        "aesthetic_tags": ["Red Gucci Tracksuit", "Cartier Glasses"],
+        "voice_style": "Fast-paced confident Atlanta rap flow with autotune",
+    },
+    {
+        "role_id": "Role B",
+        "name": 'Young Draco "Jeezy"',
+        "description": 'Young Draco "Jeezy", pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored green velvet blazer',
+        "reference_url": "gs://reference-images-jt-trend-trawler/draco.jpeg",
+        "aesthetic_tags": ["Platinum Slicked Hair", "Diamond Iced-Out Chain"],
+        "voice_style": "Pompous, cynical British drawl with aggressive rap cadence",
+    },
+    {
+        "role_id": "Role A",
+        "name": "Cyborg Gordon Ramsay",
+        "description": "Cyborg Gordon Ramsay, a fiery celebrity chef with sharp blond hair, intense focused gaze, robotic eye implant, and chrome chef jacket",
+        "reference_url": "gs://reference-images-jt-trend-trawler/gordon_ramsay.jpeg",
+        "aesthetic_tags": [
+            "Chrome Chef Jacket",
+            "Bionic Eye Implant",
+            "Cybernetic Kitchen Knife",
+        ],
+        "voice_style": "Aggressive British shouting with robotic vocoder undertones",
+    },
+    {
+        "role_id": "Role B",
+        "name": "Neon Julia Child",
+        "description": "Neon Julia Child, legendary TV chef with towering frame, pearl necklace, vibrant neon French apron, and whisk",
+        "reference_url": "gs://reference-images-jt-trend-trawler/julia_child.jpeg",
+        "aesthetic_tags": ["Neon French Apron", "Pearl Necklace", "Glowing Whisk"],
+        "voice_style": "Warbling, enthusiastic high-pitched mid-Atlantic accent with electronic delay",
+    },
+]
 
 
 class GcsStorageManager:
@@ -31,6 +72,10 @@ class GcsStorageManager:
         self._client: Any = None
         self._bucket: Any = None
         self._mock_analyses: dict[str, dict[str, Any]] = {}
+        self._mock_characters: dict[str, dict[str, Any]] = {
+            self._slugify(c["name"]): dict(c) for c in DEFAULT_CHARACTERS
+        }
+        self._mock_rosters: dict[str, list[dict[str, Any]]] = {}
 
         if not self.mock_mode and storage:
             try:
@@ -239,3 +284,146 @@ class GcsStorageManager:
                 pass
 
         return public_url, gcs_uri
+
+    @staticmethod
+    def _slugify(name: str) -> str:
+        """Converts a character or entity name into a normalized lowercase slug."""
+        slug = re.sub(r"[^a-zA-Z0-9]+", "_", name).strip("_").lower()
+        return slug or "character"
+
+    def save_character(
+        self,
+        character: dict[str, Any],
+        session_id: str | None = None,
+        is_library: bool = True,
+    ) -> tuple[str, str]:
+        """Persists character definitions as JSON in GCS under library or session scope."""
+        name = str(character.get("name", "character"))
+        slug = self._slugify(name)
+        if is_library or session_id is None:
+            blob_path = f"library/characters/{slug}.json"
+        else:
+            blob_path = f"sessions/{session_id}/characters/{slug}.json"
+
+        content = json.dumps(character, indent=2)
+        self.upload_bytes(
+            content.encode("utf-8"),
+            blob_path,
+            content_type="application/json",
+        )
+        self._mock_characters[slug] = character
+        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+
+    def list_characters(
+        self,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Returns list of character dicts from library and session scope."""
+        if not self.mock_mode and self._bucket:
+            try:
+                characters: list[dict[str, Any]] = []
+                seen_slugs: set[str] = set()
+
+                prefixes = ["library/characters/"]
+                if session_id:
+                    prefixes.append(f"sessions/{session_id}/characters/")
+
+                for prefix in prefixes:
+                    blobs = self._bucket.list_blobs(prefix=prefix)
+                    for blob in blobs:
+                        if blob.name.endswith(".json") and not blob.name.endswith(
+                            "roster.json"
+                        ):
+                            try:
+                                data = json.loads(blob.download_as_text())
+                                if isinstance(data, dict):
+                                    slug = self._slugify(str(data.get("name", "")))
+                                    if slug not in seen_slugs:
+                                        seen_slugs.add(slug)
+                                        characters.append(data)
+                                        self._mock_characters[slug] = data
+                            except Exception:
+                                pass
+                if characters:
+                    return characters
+            except Exception:
+                pass
+
+        return list(self._mock_characters.values())
+
+    def load_character(
+        self,
+        slug: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetches character dict for a given slug from session scope, library scope, or mock cache."""
+        clean_slug = self._slugify(slug)
+
+        if not self.mock_mode and self._bucket:
+            try:
+                paths_to_try: list[str] = []
+                if session_id:
+                    paths_to_try.append(
+                        f"sessions/{session_id}/characters/{clean_slug}.json"
+                    )
+                paths_to_try.append(f"library/characters/{clean_slug}.json")
+
+                for blob_path in paths_to_try:
+                    blob = self._bucket.blob(blob_path)
+                    if blob.exists():
+                        data = json.loads(blob.download_as_text())
+                        if isinstance(data, dict):
+                            self._mock_characters[clean_slug] = data
+                            return data
+            except Exception:
+                pass
+
+        if slug in self._mock_characters:
+            return self._mock_characters[slug]
+        if clean_slug in self._mock_characters:
+            return self._mock_characters[clean_slug]
+
+        for key, char in self._mock_characters.items():
+            if (
+                key == clean_slug
+                or key.startswith(f"{clean_slug}_")
+                or self._slugify(str(char.get("name", ""))) == clean_slug
+            ):
+                return char
+
+        return None
+
+    def save_session_roster(
+        self,
+        session_id: str,
+        characters: list[dict[str, Any]],
+    ) -> tuple[str, str]:
+        """Saves session cast roster to sessions/{session_id}/characters/roster.json."""
+        blob_path = f"sessions/{session_id}/characters/roster.json"
+        content = json.dumps(characters, indent=2)
+        self.upload_bytes(
+            content.encode("utf-8"),
+            blob_path,
+            content_type="application/json",
+        )
+        self._mock_rosters[session_id] = characters
+        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+
+    def load_session_roster(
+        self,
+        session_id: str,
+    ) -> list[dict[str, Any]] | None:
+        """Loads session cast roster JSON for a given session ID."""
+        if not self.mock_mode and self._bucket:
+            try:
+                blob_path = f"sessions/{session_id}/characters/roster.json"
+                blob = self._bucket.blob(blob_path)
+                if blob.exists():
+                    data = json.loads(blob.download_as_text())
+                    if isinstance(data, list):
+                        self._mock_rosters[session_id] = data
+                        return data
+            except Exception:
+                pass
+
+        return self._mock_rosters.get(session_id)
