@@ -241,16 +241,20 @@ def test_ensure_rendered_video_synthesizes_spoken_dialogue_audio() -> None:
 
 def test_ensure_rendered_video_clean_voiceover_fallback() -> None:
     video_url = "/static/rendered/test_clean_fallback.mp4"
-    ensure_rendered_video(
-        video_url,
-        prompt='Dialogue: "I been cooking potions since first year."',
-        voiceover=None,
-    )
     rel_path = video_url.lstrip("/")
-    assert os.path.exists(rel_path)
-    assert os.path.getsize(rel_path) > 10000
     if os.path.exists(rel_path):
         os.remove(rel_path)
+    try:
+        ensure_rendered_video(
+            video_url,
+            prompt='Dialogue: "I been cooking potions since first year."',
+            voiceover=None,
+        )
+        assert os.path.exists(rel_path)
+        assert os.path.getsize(rel_path) > 10000
+    finally:
+        if os.path.exists(rel_path):
+            os.remove(rel_path)
 
 
 @pytest.mark.parametrize(
