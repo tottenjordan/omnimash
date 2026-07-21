@@ -206,6 +206,40 @@ Detailed subsystem architectures and workflow outlines are available in [docs/di
 
 ---
 
+### 🗂️ Google Cloud Storage (GCS) Directory Hierarchy & Asset Storage
+
+OmniMash organizes persistent media, character presets, session cast rosters, and exported master videos across a clean, multi-tier Google Cloud Storage hierarchy:
+
+```text
+gs://omnimash-media-hybrid-vertex/
+│
+├── 🏛️ library/characters/                 <-- GLOBAL VAULT (Root of Bucket)
+│   ├── harry_gucci.json                  - Global reusable character presets
+│   ├── young_draco_jeezy.json            - Shared across ALL sessions & projects
+│   └── cyborg_gordon_ramsay.json
+│
+├── 🖼️ saved_characters/                  <-- GLOBAL REFERENCE IMAGES (Root of Bucket)
+│   ├── harry_drip.jpeg                   - Character reference images attached to roles
+│   ├── draco.jpeg                        - Served via authenticated /api/media-proxy
+│   └── gordon_ramsay.jpeg
+│
+└── 🗂️ sessions/                          <-- PER-SESSION WORKSPACES
+    └── {session_id}/                     (e.g., session_8492)
+        ├── 👤 characters/
+        │   └── roster.json               - Project-specific cast roster snapshot
+        ├── 🎬 intermediate/
+        │   ├── turn0_clip.mp4            - 10s individual turn renders
+        │   └── turn1_diff.mp4
+        └── 🏆 final_masters/
+            └── stitched_master.mp4       - Multi-clip concatenated final exports
+```
+
+- **Global Character Vault (`library/characters/`):** Stores reusable character definition presets (`name`, `description`, `reference_url`, `voice_style`, `aesthetic_tags`) at the bucket root, shared across all project sessions.
+- **Global Reference Images (`saved_characters/`):** Holds character facial reference images accessible via the authenticated `/api/media-proxy` backend streaming route.
+- **Per-Session Workspaces (`sessions/{session_id}/`):** Isolates session cast snapshots (`characters/roster.json`), intermediate 10s turn clips (`intermediate/`), and finalized multi-clip concatenated renders (`final_masters/`).
+
+---
+
 ## 🚀 Getting Started & User Journey
 
 Follow this visual step-by-step walkthrough to launch OmniMash and create full-length AI parody videos using the **3-Act Digital Director's Studio**.

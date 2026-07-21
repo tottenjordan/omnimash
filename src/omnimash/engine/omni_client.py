@@ -243,14 +243,16 @@ def ensure_rendered_video(
 
     wav_silent_path = "static/rendered/temp_silent.wav"
     _generate_dynamic_audio_wav(
-        wav_silent_path, prompt=prompt, is_silent=effective_silent
+        wav_silent_path,
+        prompt=prompt,
+        voiceover=voiceover,
+        is_silent=effective_silent,
     )
     target_audio_wav = wav_silent_path
 
+    effective_voiceover = voiceover or extract_clean_dialogue_summary(prompt) or ""
     clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
-    clean_subtitles = (
-        extract_clean_dialogue_summary(prompt).replace("'", "").replace('"', "")[:100]
-    )
+    clean_subtitles = effective_voiceover.replace("'", "").replace('"', "")[:100]
 
     # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
     txt_prompt_path = "static/rendered/temp_prompt.txt"

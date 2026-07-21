@@ -329,6 +329,8 @@ UI_HTML = r"""<!DOCTYPE html>
             const handleDeconstructConcept = async (conceptOverride) => {
                 const targetConcept = conceptOverride || concept;
                 if (!targetConcept || !targetConcept.trim()) return;
+                setParentTurnId(null);
+                setRawCompiledPrompt("");
                 setDeconstructLoading(true);
                 try {
                     const res = await fetch("/api/deconstruct-concept", {
@@ -767,9 +769,9 @@ UI_HTML = r"""<!DOCTYPE html>
                 setVocalDelivery("");
                 setScenes([]);
                 setHistory([]);
-                setParentTurnId("");
+                setParentTurnId(null);
                 setDeltaPrompt("");
-                setRawCompiledPrompt("Ready for new concept deconstruction.");
+                setRawCompiledPrompt("");
                 setActiveAct(1);
             };
 
@@ -1865,7 +1867,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     ensure_rendered_video(
         "/static/rendered/mock.mp4",
         prompt="Trapwarts trailer",
-        voiceover='Harry: "You talkin bout potions Draco? I been cooking since first year. Burrr!" / Draco: "This is Trap or Die Potter! Let us get it!"',
     )
 
     @app.get("/", response_class=HTMLResponse)

@@ -357,3 +357,7 @@ def test_dashboard_ui_html_features() -> None:
     assert "/api/media-proxy" in html
     assert "handleLoadVaultCharacter" in html
     assert "handleLoadSessionRoster" in html
+
+    # 10. Thread isolation handling on concept deconstruction and studio reset
+    assert "setParentTurnId(null);" in html
+    assert 'setRawCompiledPrompt("");' in html
