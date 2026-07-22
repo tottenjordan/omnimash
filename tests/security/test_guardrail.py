@@ -17,3 +17,16 @@ def test_guardrail_block_policy_violation():
     )
     assert result.is_approved is False
     assert "Policy violation" in (result.rejection_reason or "")
+
+
+def test_guardrail_stays_relaxed_for_edgy_free_text():
+    # Regression guard: guardrails are permissive by design. Edgy-but-legal
+    # creative content must pass — only explicit policy triggers block.
+    guardrail = ModelArmorGuardrail(mock_mode=True)
+    spicy = (
+        "Snape brutally roasts Draco in a savage explicit diss track: profanity, "
+        "gory neon violence, dark drug-den imagery, and raunchy adult humor."
+    )
+    result = guardrail.validate_prompt(spicy)
+    assert result.is_approved is True
+    assert result.sanitized_prompt == spicy.strip()

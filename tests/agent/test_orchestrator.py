@@ -287,3 +287,20 @@ def test_commit_and_branch_returns_typed_error_on_failure(monkeypatch):
     assert res.success is False
     assert res.status_event == "ERROR"
     assert "secret-bucket" not in (res.error_message or "")
+
+
+def test_spicy_free_text_prompt_still_succeeds_end_to_end():
+    # Regression guard: none of the Phase 1-2 validation tightens content.
+    # A spicy free-text prompt + compiled_override still generates in mock mode.
+    agent = OmniMashAgent(mock_mode=True)
+    spicy = "Draco spits a savage explicit diss with gore, profanity, and neon drug imagery"
+    res = agent.process_user_turn(
+        user_id="u_spice",
+        project_id="p_spice",
+        prompt=spicy,
+        compiled_override=f"[RAW OVERRIDE] {spicy} -- brutal uncensored parody",
+        clip_index=0,
+    )
+    assert res.success is True
+    assert res.status_event == "COMPLETED"
+    assert res.video_url is not None
