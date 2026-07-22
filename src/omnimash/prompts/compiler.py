@@ -15,6 +15,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _role_label(idx: int) -> str:
+    """Unique, spreadsheet-style role label for character ``idx``.
+
+    Produces ``Role A``..``Role Z``, then ``Role AA``, ``Role AB``, ... so any
+    number of characters gets a distinct id (the old fixed 4-label list clamped
+    everyone past the 4th to ``Role D``, silently aliasing them).
+    """
+    letters = ""
+    n = idx
+    while True:
+        letters = chr(65 + n % 26) + letters
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return f"Role {letters}"
+
+
 @dataclass
 class CompiledPromptParts:
     subject_anchor: str
@@ -990,7 +1007,6 @@ class PromptCompiler:
 
         # 1. Character Extraction
         chars: list[CharacterRole] = []
-        role_labels = ["Role A", "Role B", "Role C", "Role D"]
 
         known_lore: dict[str, tuple[str, str]] = {
             "harry": (
@@ -1037,7 +1053,7 @@ class PromptCompiler:
                 name, desc = known_lore[k]
                 chars.append(
                     CharacterRole(
-                        role_id=role_labels[min(idx, len(role_labels) - 1)],
+                        role_id=_role_label(idx),
                         name=name,
                         description=desc,
                         aesthetic_tags=get_char_tags(k),

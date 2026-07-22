@@ -104,3 +104,24 @@ def test_compile_storyboard_minimal_args():
     assert "[AESTHETIC INJECTION]" in compiled
     assert "[STORYBOARD SEQUENCE]" in compiled
     assert "Scene 1 [Role A]" in compiled
+
+
+def test_fallback_assigns_unique_role_ids_for_five_characters():
+    compiler = PromptCompiler(mock_mode=True)
+    tags = compiler.deconstruct_concept(
+        "Harry, Draco, Snape, Dumbledore, and Voldemort in a 90s rap battle"
+    )
+    role_ids = [c.role_id for c in tags.characters]
+    # Five named characters -> five DISTINCT role ids (no clamping to Role D).
+    assert len(role_ids) == 5
+    assert len(set(role_ids)) == 5
+    assert role_ids == ["Role A", "Role B", "Role C", "Role D", "Role E"]
+
+
+def test_role_label_spreadsheet_style_overflow():
+    from omnimash.prompts.compiler import _role_label
+
+    assert _role_label(0) == "Role A"
+    assert _role_label(25) == "Role Z"
+    assert _role_label(26) == "Role AA"
+    assert _role_label(27) == "Role AB"
