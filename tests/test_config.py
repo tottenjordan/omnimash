@@ -49,3 +49,32 @@ def test_omnimash_settings_custom_project():
 def test_omnimash_settings_explicit_bucket():
     s = OmniMashSettings(omnimash_gcs_bucket="my-custom-bucket")
     assert s.gcs_bucket_name == "my-custom-bucket"
+
+
+def test_api_keys_masked_in_repr_and_str():
+    fake_key = "super-hidden-key-value-12345"
+    s = OmniMashSettings(mock_mode=True, gemini_api_key=fake_key)
+    # Secret value must never leak into repr/str dumps.
+    assert fake_key not in repr(s)
+    assert fake_key not in str(s)
+    # But the value is retrievable at the point of use.
+    assert s.effective_api_key == fake_key
+
+
+def test_effective_api_key_prefers_gemini_over_google():
+    s = OmniMashSettings(
+        mock_mode=True,
+        gemini_api_key="gemini-key",
+        google_api_key="google-key",
+    )
+    assert s.effective_api_key == "gemini-key"
+
+
+def test_effective_api_key_falls_back_to_google():
+    s = OmniMashSettings(mock_mode=True, gemini_api_key=None, google_api_key="google-key")
+    assert s.effective_api_key == "google-key"
+
+
+def test_effective_api_key_none_when_unset():
+    s = OmniMashSettings(mock_mode=True, gemini_api_key=None, google_api_key=None)
+    assert s.effective_api_key is None

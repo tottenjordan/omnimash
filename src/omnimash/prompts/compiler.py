@@ -397,8 +397,7 @@ class PromptCompiler:
         api_key = (
             os.environ.get("GEMINI_API_KEY")
             or os.environ.get("GOOGLE_API_KEY")
-            or getattr(settings, "gemini_api_key", None)
-            or getattr(settings, "google_api_key", None)
+            or settings.effective_api_key
         )
         project = os.environ.get(
             "GOOGLE_CLOUD_PROJECT",

@@ -1,4 +1,4 @@
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,8 +11,8 @@ class OmniMashSettings(BaseSettings):
     google_cloud_location: str = "global"
     gemini_location: str = "global"
     omnimash_gcs_bucket: str | None = None
-    google_api_key: str | None = None
-    gemini_api_key: str | None = None
+    google_api_key: SecretStr | None = None
+    gemini_api_key: SecretStr | None = None
     model_armor_template_id: str = "omnimash-safety-filter"
     # Read-only reference buckets the media proxy may serve in addition to the
     # app's own bucket. Keeps the default character references loadable while
@@ -42,7 +42,7 @@ class OmniMashSettings(BaseSettings):
         """
         if self.mock_mode:
             return self
-        has_api_key = bool(self.google_api_key or self.gemini_api_key)
+        has_api_key = bool(self.effective_api_key)
         has_adc = bool(self.google_cloud_project)
         if not (has_api_key or has_adc):
             raise ValueError(
@@ -51,6 +51,21 @@ class OmniMashSettings(BaseSettings):
                 "Set MOCK_MODE=true for offline development."
             )
         return self
+
+    @property
+    def effective_api_key(self) -> str | None:
+        """Return the first configured API key as a plain string, or ``None``.
+
+        Prefers ``GEMINI_API_KEY`` over ``GOOGLE_API_KEY`` and unwraps the
+        :class:`~pydantic.SecretStr` only at the point of use, so the raw value
+        never lands in ``repr``/logs/tracebacks.
+        """
+        for key in (self.gemini_api_key, self.google_api_key):
+            if key is not None:
+                value = key.get_secret_value()
+                if value:
+                    return value
+        return None
 
     @property
     def gcs_bucket_name(self) -> str:
