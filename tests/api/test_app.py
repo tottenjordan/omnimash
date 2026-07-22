@@ -274,6 +274,29 @@ def test_api_media_proxy_rejects_foreign_bucket():
     assert res.status_code == 404
 
 
+def test_extract_reference_rejects_bad_urls():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    for bad in (
+        "file:///etc/passwd",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://evil.example.com/watch?v=abc",
+        "not-a-url",
+    ):
+        res = client.post("/api/extract-reference", json={"url": bad})
+        assert res.status_code == 422, bad
+
+
+def test_extract_reference_allows_youtube():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/extract-reference",
+        json={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+    )
+    assert res.status_code == 200
+
+
 def test_api_list_sessions():
     app = create_app(mock_mode=True)
     client = TestClient(app)

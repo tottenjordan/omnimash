@@ -1,10 +1,11 @@
 import os
 from typing import Annotated
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import AfterValidator, BaseModel
+from pydantic import AfterValidator, BaseModel, field_validator
 
 from omnimash.agent.orchestrator import OmniMashAgent
 from omnimash.ingestion.media_extractor import (
@@ -30,6 +31,24 @@ def _sanitize_identifier(value: str | None) -> str | None:
 SafeIdentifier = Annotated[str, AfterValidator(_sanitize_identifier)]
 # Optional identifier: sanitized when present, None passes through.
 OptSafeIdentifier = Annotated[str | None, AfterValidator(_sanitize_identifier)]
+
+
+# Hosts the reference extractor is allowed to fetch. Keeps the SSRF surface to
+# well-formed http(s) YouTube URLs; scheme/host abuse is rejected before any fetch.
+ALLOWED_REFERENCE_HOSTS = frozenset(
+    {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}
+)
+
+
+def validate_reference_url(value: str) -> str:
+    """Reject non-http(s) schemes and non-allow-listed hosts (SSRF guard)."""
+    parsed = urlparse(value.strip())
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("URL must use http or https")
+    host = (parsed.hostname or "").lower()
+    if host not in ALLOWED_REFERENCE_HOSTS:
+        raise ValueError(f"URL host '{host}' is not an allow-listed reference source")
+    return value.strip()
 
 
 class CharacterRoleModel(BaseModel):
@@ -92,6 +111,11 @@ class ResearchRequest(BaseModel):
 class ExtractReferenceRequest(BaseModel):
     url: str
     session_name: OptSafeIdentifier = None
+
+    @field_validator("url")
+    @classmethod
+    def _check_url(cls, value: str) -> str:
+        return validate_reference_url(value)
 
 
 class GenerateRequest(BaseModel):
