@@ -27,6 +27,25 @@ def test_identifier_fields_are_sanitized():
     assert stitch.master_title == "custom_stitched_cut"
 
 
+def test_dashboard_served_from_static_asset():
+    # The UI now lives as a packaged asset; GET / reads and returns it.
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.get("/")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("text/html")
+    assert "<!DOCTYPE html>" in res.text
+    assert "OmniMash" in res.text
+
+
+def test_ui_html_asset_file_exists_and_loads():
+    from omnimash.api.app import _load_ui_html
+
+    html = _load_ui_html()
+    assert html.startswith("<!DOCTYPE html>")
+    assert "</html>" in html
+
+
 def test_api_generate_endpoint():
     app = create_app(mock_mode=True)
     client = TestClient(app)
