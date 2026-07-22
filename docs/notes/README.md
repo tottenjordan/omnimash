@@ -42,3 +42,4 @@ This directory documents non-obvious knowledge, session notes, and operational q
 | PR-First Workflow | [development_workflow_prs.md](development_workflow_prs.md) | Mandatory process for submitting structural changes as unmerged Pull Requests |
 | Request Lifecycle & State | [request_lifecycle.md](request_lifecycle.md) | Blueprint for state management, Model Armor gating, and Interactions API lifecycle |
 | Session Store Limitations | [session-store-limitations.md](session-store-limitations.md) | Thread-safe LRU-bounded in-memory session store and its single-process (single-worker) limitation |
+| API Structure: Routers & Lifespan | [api_structure_routers_and_lifespan.md](api_structure_routers_and_lifespan.md) | Router/schema/deps split of the FastAPI layer; lifespan-only ffmpeg warm-up and the non-context TestClient gotcha |
