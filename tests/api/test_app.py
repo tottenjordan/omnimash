@@ -274,6 +274,69 @@ def test_api_media_proxy_rejects_foreign_bucket():
     assert res.status_code == 404
 
 
+def test_media_proxy_full_get_advertises_range_support():
+    from omnimash.config import settings
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    bucket = settings.gcs_bucket_name
+    res = client.get(f"/api/media-proxy?uri=gs://{bucket}/clip.mp4")
+    assert res.status_code == 200
+    assert res.headers["accept-ranges"] == "bytes"
+    assert res.headers["content-length"] == str(len(b"mock_image_bytes"))
+    assert res.content == b"mock_image_bytes"
+
+
+def test_media_proxy_serves_partial_content_for_range():
+    from omnimash.config import settings
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    bucket = settings.gcs_bucket_name
+    res = client.get(
+        f"/api/media-proxy?uri=gs://{bucket}/clip.mp4",
+        headers={"Range": "bytes=0-3"},
+    )
+    assert res.status_code == 206
+    assert res.headers["content-range"] == f"bytes 0-3/{len(b'mock_image_bytes')}"
+    assert res.headers["content-length"] == "4"
+    assert res.headers["accept-ranges"] == "bytes"
+    assert res.content == b"mock"
+
+
+def test_media_proxy_rejects_unsatisfiable_range():
+    from omnimash.config import settings
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    bucket = settings.gcs_bucket_name
+    res = client.get(
+        f"/api/media-proxy?uri=gs://{bucket}/clip.mp4",
+        headers={"Range": "bytes=9999-"},
+    )
+    assert res.status_code == 416
+    assert res.headers["content-range"] == f"bytes */{len(b'mock_image_bytes')}"
+
+
+def test_parse_range_header_variants():
+    from omnimash.api.app import _parse_range_header
+
+    # No / unparseable header -> serve full (None).
+    assert _parse_range_header(None, 100) is None
+    assert _parse_range_header("items=0-10", 100) is None
+    assert _parse_range_header("bytes=0-10,20-30", 100) is None
+    # Closed range, clamped to size.
+    assert _parse_range_header("bytes=0-49", 100) == (0, 49)
+    assert _parse_range_header("bytes=10-", 100) == (10, 99)
+    assert _parse_range_header("bytes=50-9999", 100) == (50, 99)
+    # Suffix range: last N bytes.
+    assert _parse_range_header("bytes=-20", 100) == (80, 99)
+    assert _parse_range_header("bytes=-500", 100) == (0, 99)
+    # Unsatisfiable -> sentinel for a 416.
+    assert _parse_range_header("bytes=100-", 100) == "invalid"
+    assert _parse_range_header("bytes=-0", 100) == "invalid"
+
+
 def test_extract_reference_rejects_bad_urls():
     app = create_app(mock_mode=True)
     client = TestClient(app)

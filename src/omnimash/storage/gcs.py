@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Iterator
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -256,17 +257,42 @@ class GcsStorageManager:
             log.error("GCS byte upload failed for %s: %s", destination_blob_name, exc)
             raise
 
+    @staticmethod
+    def _resolve_gs_uri(gs_uri: str) -> tuple[str, str] | None:
+        """Parse ``gs://bucket/blob_path`` into ``(bucket, blob_path)`` or ``None``."""
+        if not isinstance(gs_uri, str) or not gs_uri.startswith("gs://"):
+            return None
+        parts = gs_uri[5:].split("/", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            return None
+        return (parts[0], parts[1])
+
+    @staticmethod
+    def _infer_content_type(blob_path: str, blob: Any = None) -> str:
+        """Prefer the blob's own content_type, else infer from the extension."""
+        content_type = getattr(blob, "content_type", None) if blob is not None else None
+        if content_type:
+            return content_type
+        lower = blob_path.lower()
+        if lower.endswith(".mp4"):
+            return "video/mp4"
+        if lower.endswith(".wav"):
+            return "audio/wav"
+        if lower.endswith((".jpg", ".jpeg")):
+            return "image/jpeg"
+        if lower.endswith(".png"):
+            return "image/png"
+        if lower.endswith(".json"):
+            return "application/json"
+        return "image/jpeg"
+
     def download_blob_bytes(self, gs_uri: str) -> tuple[bytes, str]:
         """Downloads binary bytes and infers content_type from a GCS URI (gs://bucket/blob_path)."""
-        if not isinstance(gs_uri, str) or not gs_uri.startswith("gs://"):
+        resolved = self._resolve_gs_uri(gs_uri)
+        if resolved is None:
             return (b"", "image/jpeg")
 
-        path = gs_uri[5:]
-        parts = path.split("/", 1)
-        if len(parts) != 2 or not parts[0] or not parts[1]:
-            return (b"", "image/jpeg")
-
-        bucket_name, blob_path = parts[0], parts[1]
+        bucket_name, blob_path = resolved
 
         if not self._is_bucket_allowed(bucket_name):
             # Reject cross-bucket reads: only the app bucket and explicitly
@@ -284,24 +310,93 @@ class GcsStorageManager:
             bucket = self._client.bucket(bucket_name)
             blob = bucket.blob(blob_path)
             data = blob.download_as_bytes(**self._io_kwargs())
-            content_type = getattr(blob, "content_type", None)
-            if not content_type:
-                if blob_path.endswith(".mp4"):
-                    content_type = "video/mp4"
-                elif blob_path.endswith(".wav"):
-                    content_type = "audio/wav"
-                elif blob_path.endswith(".jpg") or blob_path.endswith(".jpeg"):
-                    content_type = "image/jpeg"
-                elif blob_path.endswith(".png"):
-                    content_type = "image/png"
-                elif blob_path.endswith(".json"):
-                    content_type = "application/json"
-                else:
-                    content_type = "image/jpeg"
-            return (data, content_type)
+            return (data, self._infer_content_type(blob_path, blob))
         except Exception as exc:
             log.warning("GCS download failed for gs://%s/%s: %s", bucket_name, blob_path, exc)
             return (b"", "image/jpeg")
+
+    def get_media_metadata(self, gs_uri: str) -> tuple[int, str] | None:
+        """Return ``(size_bytes, content_type)`` for an allow-listed object, else ``None``.
+
+        Lets the media proxy answer Range requests without buffering the whole
+        object: the size drives ``Content-Range``/``Content-Length`` and 206s.
+        """
+        resolved = self._resolve_gs_uri(gs_uri)
+        if resolved is None:
+            return None
+        bucket_name, blob_path = resolved
+        if not self._is_bucket_allowed(bucket_name):
+            return None
+
+        if self.mock_mode:
+            return (len(b"mock_image_bytes"), self._infer_content_type(blob_path))
+
+        if not self._client:
+            return None
+
+        try:
+            bucket = self._client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+            blob.reload(**self._io_kwargs())
+            size = getattr(blob, "size", None)
+            if size is None:
+                return None
+            return (int(size), self._infer_content_type(blob_path, blob))
+        except Exception as exc:
+            log.warning(
+                "GCS metadata lookup failed for gs://%s/%s: %s", bucket_name, blob_path, exc
+            )
+            return None
+
+    def iter_blob_range(
+        self,
+        gs_uri: str,
+        *,
+        start: int = 0,
+        end: int | None = None,
+        chunk_size: int = 1024 * 1024,
+    ) -> Iterator[bytes]:
+        """Yield an inclusive ``[start, end]`` byte range in bounded chunks.
+
+        Streams from GCS a chunk at a time so the proxy holds only one chunk in
+        memory regardless of object size. ``end`` defaults to the object's last
+        byte. Yields nothing for a disallowed/missing object or an empty range.
+        """
+        resolved = self._resolve_gs_uri(gs_uri)
+        if resolved is None:
+            return
+        bucket_name, blob_path = resolved
+        if not self._is_bucket_allowed(bucket_name):
+            return
+
+        if self.mock_mode:
+            data = b"mock_image_bytes"
+            last = len(data) - 1 if end is None else end
+            yield data[start : last + 1]
+            return
+
+        if not self._client:
+            return
+
+        try:
+            bucket = self._client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+            pos = start
+            while end is None or pos <= end:
+                chunk_end = pos + chunk_size - 1
+                if end is not None:
+                    chunk_end = min(chunk_end, end)
+                chunk = blob.download_as_bytes(start=pos, end=chunk_end, **self._io_kwargs())
+                if not chunk:
+                    break
+                yield chunk
+                pos += len(chunk)
+                # A short read means we reached EOF on an open-ended request.
+                if end is None and len(chunk) < chunk_size:
+                    break
+        except Exception as exc:
+            log.warning("GCS range read failed for gs://%s/%s: %s", bucket_name, blob_path, exc)
+            return
 
     def load_bytes(self, gs_uri_or_path: str) -> tuple[bytes, str]:
         """Loads binary bytes and content_type from a GCS URI or local filesystem path."""

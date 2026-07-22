@@ -111,6 +111,71 @@ def test_download_blob_bytes_allows_reference_bucket():
     assert data == b"mock_image_bytes"
 
 
+def test_get_media_metadata_reads_size_and_type_live():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    blob = MagicMock()
+    blob.size = 4096
+    blob.content_type = "video/mp4"
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    client = MagicMock()
+    client.bucket.return_value = bucket
+    gcs._client = client
+
+    meta = gcs.get_media_metadata("gs://test-omnimash-bucket/sessions/s/clip.mp4")
+    assert meta == (4096, "video/mp4")
+    blob.reload.assert_called_once()
+
+
+def test_get_media_metadata_rejects_foreign_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    gcs._client = MagicMock()
+    assert gcs.get_media_metadata("gs://some-other-bucket/secret.mp4") is None
+
+
+def test_iter_blob_range_streams_inclusive_chunks_live():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    payload = bytes(range(50))
+    blob = MagicMock()
+
+    def _fake_download(*, start, end, **kwargs):
+        return payload[start : end + 1]
+
+    blob.download_as_bytes.side_effect = _fake_download
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    client = MagicMock()
+    client.bucket.return_value = bucket
+    gcs._client = client
+
+    chunks = list(
+        gcs.iter_blob_range(
+            "gs://test-omnimash-bucket/sessions/s/clip.mp4",
+            start=10,
+            end=19,
+            chunk_size=4,
+        )
+    )
+    assert b"".join(chunks) == payload[10:20]
+    # Chunked: 4 + 4 + 2 bytes across three bounded reads.
+    assert [len(c) for c in chunks] == [4, 4, 2]
+
+
+def test_iter_blob_range_mock_mode_slices_payload():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    chunks = list(
+        gcs.iter_blob_range(
+            "gs://test-omnimash-bucket/sessions/s/clip.mp4",
+            start=0,
+            end=3,
+        )
+    )
+    assert b"".join(chunks) == b"mock"
+
+
 def test_gcs_save_session_prompt():
     gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
     url = gcs.save_session_prompt(
