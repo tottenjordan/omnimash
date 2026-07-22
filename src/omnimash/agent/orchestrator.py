@@ -62,6 +62,7 @@ class OmniMashAgent:
         aesthetic_tags: list[str] | None = None,
         environment_tag: str | None = None,
         vocal_delivery: str | None = None,
+        optimize_prompt: bool = False,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
@@ -192,6 +193,10 @@ class OmniMashAgent:
                     is_silent=is_silent,
                     on_screen_text=on_screen_text,
                     override_prompt=compiled_override,
+                )
+            if optimize_prompt:
+                meta_prompt = self.taxonomy.compiler.optimize_prompt_for_omni_flash(
+                    meta_prompt, use_llm=True
                 )
             raw_compiled_prompt = meta_prompt
             self.storage.save_session_prompt(

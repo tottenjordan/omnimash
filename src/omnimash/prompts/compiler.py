@@ -318,12 +318,12 @@ class PromptOptimizer:
     def __init__(self, compiler: Any = None) -> None:
         self.compiler = compiler
 
-    def optimize(self, compiled_prompt: str) -> str:
+    def optimize(self, compiled_prompt: str, use_llm: bool = False) -> str:
         """Synthesizes structured block prompts into dense, qualitative directives."""
         if not compiled_prompt or not compiled_prompt.strip():
             return compiled_prompt
 
-        # Normalize quantitative audio mixing terms to qualitative descriptors
+        # Tier 1: Normalize quantitative audio mixing terms to qualitative descriptors
         optimized = compiled_prompt.replace(
             "(ducked at 15% volume under dialogue)",
             "(subtly ducked in the background beneath dialogue)",
@@ -331,6 +331,33 @@ class PromptOptimizer:
             "is quietly ducked at 15% volume in the background",
             "is subtly ducked in the background beneath dialogue",
         )
+
+        # Tier 2: LLM Optimization Pass via Gemini Flash (if requested and client available)
+        if use_llm and self.compiler:
+            client = getattr(
+                self.compiler, "_flash_regional_client", None
+            ) or getattr(self.compiler, "_pro_global_client", None)
+            if client:
+                try:
+                    system_instruction = (
+                        "You are an expert multimodal prompt engineer for Gemini Omni Flash. "
+                        "Refine and condense the following structured storyboard prompt into a clear, "
+                        "vivid, single-pass generation directive. "
+                        "CRITICAL: Keep all [IMAGE ROLES] and [ROLE DEFINITIONS] blocks intact."
+                    )
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=f"{system_instruction}\n\n[PROMPT TO OPTIMIZE]:\n{optimized}",
+                    )
+                    if response and getattr(response, "text", None):
+                        llm_out = response.text.strip()
+                        if llm_out and "[ROLE DEFINITIONS]" in llm_out:
+                            return llm_out
+                except Exception as exc:
+                    logger.warning(
+                        "PromptOptimizer LLM pass failed, using Tier 1 prompt: %s",
+                        exc,
+                    )
 
         return optimized
 
@@ -343,10 +370,12 @@ class PromptCompiler:
         if not self.mock_mode:
             self._init_deconstructor_clients()
 
-    def optimize_prompt_for_omni_flash(self, compiled_prompt: str) -> str:
+    def optimize_prompt_for_omni_flash(
+        self, compiled_prompt: str, use_llm: bool = False
+    ) -> str:
         """Optimizes a compiled prompt string for Gemini Omni Flash generation."""
         optimizer = PromptOptimizer(compiler=self)
-        return optimizer.optimize(compiled_prompt)
+        return optimizer.optimize(compiled_prompt, use_llm=use_llm)
 
     def _init_deconstructor_clients(self) -> None:
         try:

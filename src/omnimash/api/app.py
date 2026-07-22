@@ -91,6 +91,7 @@ class GenerateRequest(BaseModel):
     aesthetic_tags: list[str] | None = None
     environment_tag: str | None = None
     vocal_delivery: str = ""
+    optimize_prompt: bool = False
 
 
 class CommitRequest(BaseModel):
@@ -2074,6 +2075,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             aesthetic_tags=req.aesthetic_tags,
             environment_tag=req.environment_tag,
             vocal_delivery=req.vocal_delivery,
+            optimize_prompt=req.optimize_prompt,
         )
         return GenerateResponse(
             success=agent_turn.success,
