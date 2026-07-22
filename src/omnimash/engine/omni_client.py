@@ -3,13 +3,13 @@ import logging
 import math
 import os
 import struct
-import subprocess
 import uuid
 import wave
 from dataclasses import dataclass
 from typing import Any
 
 from omnimash.config import settings
+from omnimash.engine.media_utils import DEFAULT_FFMPEG_TIMEOUT, ffmpeg_ok
 from omnimash.prompts.compiler import CharacterRole
 from omnimash.storage.gcs import GcsStorageManager
 
@@ -305,11 +305,10 @@ def ensure_rendered_video(
                 "+faststart",
                 rel_path,
             ]
-            res = subprocess.run(cmd, capture_output=True, check=False)
-            if res.returncode == 0:
+            if ffmpeg_ok(cmd, timeout=DEFAULT_FFMPEG_TIMEOUT):
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Primary banner render failed, falling back: %s", exc)
 
     # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
     try:
@@ -352,9 +351,10 @@ def ensure_rendered_video(
             "+faststart",
             rel_path,
         ]
-        subprocess.run(cmd, capture_output=True, check=False)
-    except Exception:
-        pass
+        if not ffmpeg_ok(cmd, timeout=DEFAULT_FFMPEG_TIMEOUT):
+            logger.warning("Fallback visualizer render failed for %s", rel_path)
+    except Exception as exc:
+        logger.warning("Fallback visualizer render errored for %s: %s", rel_path, exc)
 
 
 def _abstract_prompt_for_responsible_ai(prompt: str) -> str:

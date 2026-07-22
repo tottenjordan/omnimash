@@ -1,7 +1,25 @@
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from omnimash.engine.media_utils import FfmpegError
 from omnimash.stitching.stitcher import VideoStitcher
+
+
+def _ffmpeg_producing(returncode: int = 0):
+    """subprocess.run side_effect that writes the ffmpeg output file (cmd[-1])."""
+
+    def _run(cmd, *args, **kwargs):
+        if returncode == 0:
+            with open(cmd[-1], "wb") as f:
+                f.write(b"stitched master bytes")
+        res = MagicMock()
+        res.returncode = returncode
+        res.stderr = b""
+        return res
+
+    return _run
 
 
 def test_stitch_clips_mock(tmp_path):
@@ -41,11 +59,8 @@ def test_stitch_clips_live_mode_copy_success(tmp_path):
     clip2 = str(tmp_path / "clip2.mp4")
     clip_paths = [clip1, clip2]
 
-    mock_res = MagicMock()
-    mock_res.returncode = 0
-
     with (
-        patch("subprocess.run", return_value=mock_res) as mock_subproc,
+        patch("subprocess.run", side_effect=_ffmpeg_producing(0)) as mock_subproc,
         patch.object(stitcher.storage, "upload_file") as mock_upload,
     ):
         out_path = stitcher.concatenate_clips(
@@ -91,13 +106,22 @@ def test_stitch_clips_live_mode_reencode_fallback(tmp_path):
     clip1 = str(tmp_path / "clip1.mp4")
     clip_paths = [clip1]
 
-    fail_res = MagicMock()
-    fail_res.returncode = 1
-    success_res = MagicMock()
-    success_res.returncode = 0
+    calls = {"n": 0}
+
+    def _run(cmd, *args, **kwargs):
+        calls["n"] += 1
+        res = MagicMock()
+        res.stderr = b""
+        if calls["n"] == 1:
+            res.returncode = 1  # stream copy fails
+        else:
+            res.returncode = 0  # re-encode succeeds and produces the file
+            with open(cmd[-1], "wb") as f:
+                f.write(b"reencoded master bytes")
+        return res
 
     with (
-        patch("subprocess.run", side_effect=[fail_res, success_res]) as mock_subproc,
+        patch("subprocess.run", side_effect=_run) as mock_subproc,
         patch.object(stitcher.storage, "upload_file") as mock_upload,
     ):
         out_path = stitcher.concatenate_clips(clip_paths, output_dir=str(tmp_path))
@@ -115,3 +139,18 @@ def test_stitch_clips_live_mode_reencode_fallback(tmp_path):
         assert "-pix_fmt" in second_cmd and "yuv420p" in second_cmd
 
         mock_upload.assert_called_once()
+
+
+def test_stitch_clips_raises_when_reencode_fails(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    clip_paths = [str(tmp_path / "clip1.mp4")]
+
+    # Both stream-copy and re-encode fail: no master is produced, so the stitch
+    # must raise instead of uploading a broken/empty file.
+    with (
+        patch("subprocess.run", side_effect=_ffmpeg_producing(1)),
+        patch.object(stitcher.storage, "upload_file") as mock_upload,
+    ):
+        with pytest.raises(FfmpegError):
+            stitcher.concatenate_clips(clip_paths, output_dir=str(tmp_path))
+        mock_upload.assert_not_called()

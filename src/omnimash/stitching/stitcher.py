@@ -1,8 +1,13 @@
 import os
 import shutil
-import subprocess
 import uuid
 
+from omnimash.engine.media_utils import (
+    DEFAULT_FFMPEG_TIMEOUT,
+    FfmpegError,
+    ffmpeg_ok,
+    run_ffmpeg,
+)
 from omnimash.storage.gcs import GcsStorageManager
 
 
@@ -48,8 +53,10 @@ class VideoStitcher:
                     "copy",
                     out_path,
                 ]
-                res = subprocess.run(cmd_copy, capture_output=True, text=True)
-                if res.returncode != 0:
+                # Try a fast stream copy first; fall back to a re-encode when the
+                # clips' codecs differ. The re-encode raises FfmpegError on
+                # failure so we never upload a broken/empty master.
+                if not ffmpeg_ok(cmd_copy, timeout=DEFAULT_FFMPEG_TIMEOUT):
                     cmd_reencode = [
                         "ffmpeg",
                         "-y",
@@ -67,7 +74,11 @@ class VideoStitcher:
                         "yuv420p",
                         out_path,
                     ]
-                    subprocess.run(cmd_reencode, capture_output=True, text=True)
+                    run_ffmpeg(cmd_reencode, timeout=DEFAULT_FFMPEG_TIMEOUT)
+
+        # Never upload a master that ffmpeg failed to produce.
+        if not (os.path.exists(out_path) and os.path.getsize(out_path) > 0):
+            raise FfmpegError(f"Stitched master missing or empty: {out_path}")
 
         gcs_blob = self.storage.build_session_blob_path(
             session_id=session_id,

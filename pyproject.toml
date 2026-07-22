@@ -52,10 +52,8 @@ ignore = [
 "tests/**" = ["S101", "S108"]  # asserts and /tmp scratch paths are fine in tests
 # The entries below suppress lint for patterns that dedicated tasks in this same
 # remediation PR replace outright. Trim each as its task lands:
-#   Task 2.2 (fix engine): route ffmpeg through a bounded runner (omni_client S110)
 #   Task 2.3 (fix engine): unique/cleaned temp files (media_extractor/stitcher S108/S110/SIM105)
 #   Task 2.5 (fix storage): surface GCS errors instead of swallowing (gcs S110)
-"src/omnimash/engine/omni_client.py" = ["S110"]
 "src/omnimash/ingestion/media_extractor.py" = ["S108", "S110", "SIM105"]
 "src/omnimash/stitching/stitcher.py" = ["S108"]
 "src/omnimash/storage/gcs.py" = ["S110"]
