@@ -8,7 +8,8 @@ import struct
 import time
 import uuid
 import wave
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from typing import Any
 
 from omnimash.config import settings
@@ -33,6 +34,23 @@ class GenerationResult:
     synth_id_watermark: str = "SYNTHID_C2PA_VERIFIED"
     error_message: str | None = None
     generation_mode: str = "LIVE_OMNI_FLASH"
+
+
+@dataclass
+class ClipRequest:
+    """One independent clip to generate in a batch (no diff/commit chaining).
+
+    Mirrors the :meth:`OmniFlashClient.generate_clip` parameters so a caller can
+    hand a list of these to :meth:`OmniFlashClient.generate_clips_batch`.
+    """
+
+    prompt: str
+    session_id: str | None = None
+    voiceover: str | None = None
+    is_silent: bool = False
+    audio_stem: str | None = None
+    turn_index: int | None = None
+    characters: list[CharacterRole] | None = field(default=None)
 
 
 def _generate_dynamic_audio_wav(
@@ -984,6 +1002,49 @@ class OmniFlashClient:
             gcs_uri=gcs_uri,
             error_message=error_message if not success else None,
             generation_mode=generation_mode,
+        )
+
+    def generate_clips_batch(self, requests: list[ClipRequest]) -> list[GenerationResult]:
+        """Generate independent clips concurrently, preserving request order.
+
+        Each :class:`ClipRequest` is a standalone :meth:`generate_clip` call with
+        its own thread/interaction id and (via ``turn_index``) its own output
+        filename, so the clips share no mutable state and are safe to run in
+        parallel. This is for *independent* clips only — stateful diff/commit
+        chains must stay strictly sequential and are not routed here.
+
+        Clip generation is I/O-bound (remote model + GCS upload), so a bounded
+        thread pool (``settings.clip_batch_max_workers``) overlaps the waits.
+        Results are returned in the same order as ``requests``.
+        """
+        if not requests:
+            return []
+        if len(requests) == 1:
+            return [self._generate_one(requests[0])]
+
+        max_workers = max(1, min(len(requests), settings.clip_batch_max_workers))
+        results: list[GenerationResult | None] = [None] * len(requests)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_idx = {
+                executor.submit(self._generate_one, req): idx for idx, req in enumerate(requests)
+            }
+            for future in future_to_idx:
+                idx = future_to_idx[future]
+                results[idx] = future.result()
+        # Every slot is filled by future.result() above (which re-raises rather
+        # than leaving a None), so this cast-free comprehension is total.
+        return [r for r in results if r is not None]
+
+    def _generate_one(self, req: ClipRequest) -> GenerationResult:
+        """Adapt a :class:`ClipRequest` to a single :meth:`generate_clip` call."""
+        return self.generate_clip(
+            req.prompt,
+            session_id=req.session_id,
+            voiceover=req.voiceover,
+            is_silent=req.is_silent,
+            audio_stem=req.audio_stem,
+            turn_index=req.turn_index,
+            characters=req.characters,
         )
 
     def apply_interaction_diff(

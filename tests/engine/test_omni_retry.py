@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from omnimash.engine.omni_client import (
+    ClipRequest,
     GenerationResult,
     OmniFlashClient,
     _extract_status_code,
@@ -171,6 +172,35 @@ def test_model_id_is_sourced_from_settings() -> None:
 
     kwargs = vertex_client.interactions.create.call_args.kwargs
     assert kwargs["model"] == "gemini-omni-flash-custom"
+
+
+def test_generate_clips_batch_runs_all_and_preserves_order() -> None:
+    # Independent clips fan out concurrently but results must line up with the
+    # input order; every request must reach the underlying generate_clip once.
+    client = OmniFlashClient(mock_mode=True)
+
+    calls: list[int] = []
+
+    def _fake_generate_clip(prompt, **kwargs):
+        turn = kwargs["turn_index"]
+        calls.append(turn)
+        return GenerationResult(
+            interaction_thread_id=f"thread_{turn}",
+            video_url=f"/static/rendered/turn_{turn}_video.mp4",
+        )
+
+    requests = [ClipRequest(prompt=f"scene {i}", turn_index=i) for i in range(3)]
+    with patch.object(client, "generate_clip", side_effect=_fake_generate_clip):
+        results = client.generate_clips_batch(requests)
+
+    assert [r.interaction_thread_id for r in results] == ["thread_0", "thread_1", "thread_2"]
+    assert sorted(calls) == [0, 1, 2]
+    assert len(results) == 3
+
+
+def test_generate_clips_batch_empty_returns_empty() -> None:
+    client = OmniFlashClient(mock_mode=True)
+    assert client.generate_clips_batch([]) == []
 
 
 def test_generation_result_modes_success_and_fallback() -> None:

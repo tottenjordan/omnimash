@@ -33,6 +33,9 @@ class OmniMashSettings(BaseSettings):
     omni_http_timeout_ms: int = 300000
     omni_max_retries: int = 3
     omni_retry_base_delay: float = 0.5
+    # Upper bound on concurrent workers when generating independent clips in a
+    # batch. Chained diff/commit edits stay strictly sequential regardless.
+    clip_batch_max_workers: int = 4
 
     # Text-only LLMs used to deconstruct/optimize prompts (NOT video generation).
     # Two-tier fallback: a stronger Pro model first, then a faster Flash model.
