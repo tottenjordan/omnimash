@@ -451,3 +451,187 @@ def test_fallback_deconstruct_uses_shared_lore():
     by_name = {c.name: c.description for c in tags.characters}
     assert by_name["Harry"] == CHARACTER_LORE["harry"][1]
     assert by_name["Draco"] == CHARACTER_LORE["draco"][1]
+
+
+# --- Golden characterization tests for _deconstruct_fallback -----------------
+# These lock the exact heuristic output for four representative concepts, one
+# per style category (trap / cyber / anime / cinematic) and covering the lore
+# multi-character path, the chef environment variant, the single "Lead Subject"
+# fallback, and the "X vs Y" split. They must stay green through the
+# table-driven refactor (Task 5.3) — any diff is a behavior change, not a
+# refactor.
+
+
+def _tags_as_dict(tags) -> dict:
+    return {
+        "characters": [
+            {
+                "role_id": c.role_id,
+                "name": c.name,
+                "description": c.description,
+                "aesthetic_tags": c.aesthetic_tags,
+                "voice_style": c.voice_style,
+            }
+            for c in tags.characters
+        ],
+        "aesthetic_tags": tags.aesthetic_tags,
+        "environment_tag": tags.environment_tag,
+        "camera_lighting_tag": tags.camera_lighting_tag,
+        "audio_beat": tags.audio_beat,
+        "vocal_delivery": tags.vocal_delivery,
+    }
+
+
+def test_fallback_golden_trap_multichar():
+    compiler = PromptCompiler()
+    result = _tags_as_dict(compiler._deconstruct_fallback("harry vs draco trap rap battle"))
+    assert result == {
+        "characters": [
+            {
+                "role_id": "Role A",
+                "name": "Harry",
+                "description": CHARACTER_LORE["harry"][1],
+                "aesthetic_tags": ["Red Gucci Tracksuit", "Cartier Glasses"],
+                "voice_style": "Fast-paced confident Atlanta rap flow with autotune",
+            },
+            {
+                "role_id": "Role B",
+                "name": "Draco",
+                "description": CHARACTER_LORE["draco"][1],
+                "aesthetic_tags": ["Platinum Slicked Hair", "Diamond Iced-Out Chain"],
+                "voice_style": "Pompous, cynical British drawl with aggressive rap cadence",
+            },
+        ],
+        "aesthetic_tags": [
+            "2000s Atlanta Trap Disstrack",
+            "Diamond Lightning Bolt Chain",
+            "Vintage Streetwear",
+            "Heavy 808 Bass Lighting",
+        ],
+        "environment_tag": "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze",
+        "camera_lighting_tag": (
+            "Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights"
+        ),
+        "audio_beat": "140 BPM Heavy 808 Trap",
+        "vocal_delivery": (
+            "High-energy back-and-forth rap battle delivery with synchronized "
+            "lip-sync and punchy cadence"
+        ),
+    }
+
+
+def test_fallback_golden_cyber_chef_variant():
+    compiler = PromptCompiler()
+    result = _tags_as_dict(
+        compiler._deconstruct_fallback("ramsay vs julia cyberpunk iron chef showdown")
+    )
+    assert result == {
+        "characters": [
+            {
+                "role_id": "Role A",
+                "name": "Gordon Ramsay",
+                "description": CHARACTER_LORE["ramsay"][1],
+                "aesthetic_tags": ["Holographic Chef Jacket", "Laser Thermal Blade"],
+                "voice_style": "High-intensity barking commands with sharp electronic vocoding",
+            },
+            {
+                "role_id": "Role B",
+                "name": "Julia Child",
+                "description": CHARACTER_LORE["julia"][1],
+                "aesthetic_tags": ["Cybernetic Apron", "Holographic Visor"],
+                "voice_style": "Warm vintage tone with cheerful cybernetic filter",
+            },
+        ],
+        "aesthetic_tags": [
+            "Cyberpunk Glow",
+            "Neon Cyan & Purple Color Grading",
+            "Futuristic Techwear",
+            "Anamorphic Lens Flare",
+        ],
+        "environment_tag": ("Futuristic neon kitchen colosseum with holographic spectator screens"),
+        "camera_lighting_tag": (
+            "Anamorphic widescreen tracking shot with high-gloss neon reflections "
+            "and holographic bloom"
+        ),
+        "audio_beat": "110 BPM Cyberpunk Synthwave Groove",
+        "vocal_delivery": (
+            "Futuristic vocoded dialogue with sharp synthesized delivery and spatial reverb"
+        ),
+    }
+
+
+def test_fallback_golden_anime_lead_subject():
+    compiler = PromptCompiler()
+    result = _tags_as_dict(
+        compiler._deconstruct_fallback("a mysterious hero in an anime vhs showdown")
+    )
+    assert result == {
+        "characters": [
+            {
+                "role_id": "Role A",
+                "name": "Lead Subject",
+                "description": (
+                    "A distinct cinematic character with expressive facial features "
+                    "and stylized attire"
+                ),
+                "aesthetic_tags": ["Cel-Shaded Styling", "Retro Headband"],
+                "voice_style": "Expressive retro anime dub voice with dramatic flair",
+            },
+        ],
+        "aesthetic_tags": [
+            "Retro VHS Anime Lo-Fi",
+            "Analog Scanlines",
+            "Warm Nostalgic Bloom",
+            "Cel-Shaded Styling",
+        ],
+        "environment_tag": "Retro 80s anime cityscape bathed in sunset pastel lighting",
+        "camera_lighting_tag": (
+            "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
+        ),
+        "audio_beat": "85 BPM VHS Lo-Fi City Pop",
+        "vocal_delivery": (
+            "Expressive 80s anime dub voiceover with dramatic dynamic range and emotional emphasis"
+        ),
+    }
+
+
+def test_fallback_golden_cinematic_vs_split():
+    compiler = PromptCompiler()
+    result = _tags_as_dict(compiler._deconstruct_fallback("Godzilla vs Kong epic battle"))
+    assert result == {
+        "characters": [
+            {
+                "role_id": "Role A",
+                "name": "Godzilla",
+                "description": (
+                    "Godzilla, a distinct cinematic character with sharp expressive features"
+                ),
+                "aesthetic_tags": ["Stylized Wardrobe", "Cinematic Attire"],
+                "voice_style": "Cinematic theatrical voice with distinct expressive delivery",
+            },
+            {
+                "role_id": "Role B",
+                "name": "Kong Epic Battle",
+                "description": (
+                    "Kong Epic Battle, a compelling rival character with bold visual presence"
+                ),
+                "aesthetic_tags": ["Stylized Wardrobe", "Cinematic Attire"],
+                "voice_style": "Cinematic theatrical voice with distinct expressive delivery",
+            },
+        ],
+        "aesthetic_tags": [
+            "High-Contrast Cinematic Parody",
+            "Stylized Wardrobe",
+            "Dramatic Lighting",
+        ],
+        "environment_tag": (
+            "Atmospheric stage set with dramatic directional lighting and smoke effects"
+        ),
+        "camera_lighting_tag": (
+            "Cinematic 16:9 tracking shot with balanced ambient lighting and crisp depth of field"
+        ),
+        "audio_beat": "120 BPM Cinematic Beat",
+        "vocal_delivery": (
+            "Crisp cinematic dialogue with natural conversational timing and clear studio projection"
+        ),
+    }
