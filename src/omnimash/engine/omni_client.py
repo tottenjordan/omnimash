@@ -2,13 +2,18 @@ import base64
 import logging
 import math
 import os
+import random
+import re
 import struct
-import subprocess
-from typing import Any
+import time
 import uuid
 import wave
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from typing import Any
+
 from omnimash.config import settings
+from omnimash.engine.media_utils import DEFAULT_FFMPEG_TIMEOUT, ffmpeg_ok
 from omnimash.prompts.compiler import CharacterRole
 from omnimash.storage.gcs import GcsStorageManager
 
@@ -29,6 +34,23 @@ class GenerationResult:
     synth_id_watermark: str = "SYNTHID_C2PA_VERIFIED"
     error_message: str | None = None
     generation_mode: str = "LIVE_OMNI_FLASH"
+
+
+@dataclass
+class ClipRequest:
+    """One independent clip to generate in a batch (no diff/commit chaining).
+
+    Mirrors the :meth:`OmniFlashClient.generate_clip` parameters so a caller can
+    hand a list of these to :meth:`OmniFlashClient.generate_clips_batch`.
+    """
+
+    prompt: str
+    session_id: str | None = None
+    voiceover: str | None = None
+    is_silent: bool = False
+    audio_stem: str | None = None
+    turn_index: int | None = None
+    characters: list[CharacterRole] | None = field(default=None)
 
 
 def _generate_dynamic_audio_wav(
@@ -72,11 +94,7 @@ def _generate_dynamic_audio_wav(
 
     beat_interval = 60 / bpm
     has_vocal = bool(
-        voiceover
-        or "voiceover" in lower
-        or "dialogue" in lower
-        or ":" in prompt
-        or '"' in prompt
+        voiceover or "voiceover" in lower or "dialogue" in lower or ":" in prompt or '"' in prompt
     )
 
     audio_data = []
@@ -94,9 +112,7 @@ def _generate_dynamic_audio_wav(
                 if kick_t < 0.2:
                     slide_freq = 140 * math.exp(-kick_t * 15) + 38
                     val += (
-                        0.7
-                        * math.sin(2 * math.pi * slide_freq * kick_t)
-                        * math.exp(-kick_t * 10)
+                        0.7 * math.sin(2 * math.pi * slide_freq * kick_t) * math.exp(-kick_t * 10)
                     )
             if beat_index in [1, 3]:
                 snare_t = beat_pos
@@ -128,11 +144,7 @@ def _generate_dynamic_audio_wav(
             for f in chord_freqs:
                 val += 0.12 * math.sin(2 * math.pi * f * t)
             if beat_index == 0 and beat_pos < 0.3:
-                val += (
-                    0.5
-                    * math.sin(2 * math.pi * 50 * beat_pos)
-                    * math.exp(-beat_pos * 8)
-                )
+                val += 0.5 * math.sin(2 * math.pi * 50 * beat_pos) * math.exp(-beat_pos * 8)
             crackle = ((i * 37911 + 71) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
             val += 0.04 * crackle
 
@@ -142,11 +154,7 @@ def _generate_dynamic_audio_wav(
                 kick_t = beat_pos
                 if kick_t < 0.25:
                     freq = 120 * math.exp(-kick_t * 20) + 45
-                    val += (
-                        0.6
-                        * math.sin(2 * math.pi * freq * kick_t)
-                        * math.exp(-kick_t * 12)
-                    )
+                    val += 0.6 * math.sin(2 * math.pi * freq * kick_t) * math.exp(-kick_t * 12)
             if beat_index in [1, 3]:
                 snare_t = beat_pos
                 if snare_t < 0.2:
@@ -196,7 +204,6 @@ def extract_clean_dialogue_summary(prompt: str) -> str:
     """Extracts clean character dialogue quotes or short scene summaries from structured prompts for offline simulation subtitles."""
     if not prompt:
         return "AI Parody Storyboard Preview"
-    import re
 
     dialogues = re.findall(r'Dialogue:\s*"([^"]+)"', prompt, re.IGNORECASE)
     if dialogues:
@@ -215,9 +222,7 @@ def extract_clean_dialogue_summary(prompt: str) -> str:
         line.strip()
         for line in cleaned.splitlines()
         if line.strip()
-        and not line.strip().startswith(
-            ("Role ", "Active Roles:", "Environment:", "Aesthetic:")
-        )
+        and not line.strip().startswith(("Role ", "Active Roles:", "Environment:", "Aesthetic:"))
     ]
     return " ".join(lines)[:100] or "AI Parody Storyboard Preview"
 
@@ -238,65 +243,118 @@ def ensure_rendered_video(
     os.makedirs(os.path.dirname(rel_path), exist_ok=True)
 
     # Extract voiceover / dialogue if not explicitly passed
-    effective_silent = (
-        is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
-    )
+    effective_silent = is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
 
-    wav_silent_path = "static/rendered/temp_silent.wav"
-    _generate_dynamic_audio_wav(
-        wav_silent_path,
-        prompt=prompt,
-        voiceover=voiceover,
-        is_silent=effective_silent,
-    )
-    target_audio_wav = wav_silent_path
+    # Unique per-call temp file names so concurrent renders never clobber each
+    # other's audio/subtitle scratch files; cleaned up in the finally below.
+    render_dir = os.path.dirname(rel_path) or "static/rendered"
+    token = uuid.uuid4().hex[:8]
+    wav_silent_path = os.path.join(render_dir, f"temp_silent_{token}.wav")
+    txt_prompt_path = os.path.join(render_dir, f"temp_prompt_{token}.txt")
+    txt_sub_path = os.path.join(render_dir, f"temp_subtitles_{token}.txt")
+    _temp_files = [wav_silent_path, txt_prompt_path, txt_sub_path]
 
-    effective_voiceover = voiceover or extract_clean_dialogue_summary(prompt) or ""
-    clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
-    clean_subtitles = effective_voiceover.replace("'", "").replace('"', "")[:100]
+    try:
+        _generate_dynamic_audio_wav(
+            wav_silent_path,
+            prompt=prompt,
+            voiceover=voiceover,
+            is_silent=effective_silent,
+        )
+        target_audio_wav = wav_silent_path
 
-    # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
-    txt_prompt_path = "static/rendered/temp_prompt.txt"
-    txt_sub_path = "static/rendered/temp_subtitles.txt"
-    with open(txt_prompt_path, "w", encoding="utf-8") as f:
-        f.write(f"PROMPT: {clean_prompt}")
-    with open(txt_sub_path, "w", encoding="utf-8") as f:
-        f.write(f"🗣️ {clean_subtitles}")
+        effective_voiceover = voiceover or extract_clean_dialogue_summary(prompt) or ""
+        clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
+        clean_subtitles = effective_voiceover.replace("'", "").replace('"', "")[:100]
 
-    # Discover crisp vector TrueType font
-    font_arg = ""
-    font_candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ]
-    for fc in font_candidates:
-        if os.path.exists(fc):
-            font_arg = f":fontfile={fc}"
-            break
+        # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
+        with open(txt_prompt_path, "w", encoding="utf-8") as f:
+            f.write(f"PROMPT: {clean_prompt}")
+        with open(txt_sub_path, "w", encoding="utf-8") as f:
+            f.write(f"🗣️ {clean_subtitles}")
 
-    banner_img = "imgs/omnimash_banner.png"
+        # Discover crisp vector TrueType font
+        font_arg = ""
+        font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for fc in font_candidates:
+            if os.path.exists(fc):
+                font_arg = f":fontfile={fc}"
+                break
 
-    if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
+        banner_img = "imgs/omnimash_banner.png"
+
+        if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
+            try:
+                filter_str = (
+                    f"[0:v]scale=1280:720,zoompan=z='min(1.04+0.02*abs(sin(2*PI*0.5*in_time)),1.12)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,"
+                    f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
+                    f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
+                    f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
+                    f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
+                    f"drawtext=textfile={txt_prompt_path}{font_arg}:fontcolor=0x94A3B8:fontsize=18:x=90:y=h-135,"
+                    f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95[v]; [1:a]aresample=async=1:first_pts=0[a]"
+                )
+                cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-loop",
+                    "1",
+                    "-i",
+                    banner_img,
+                    "-i",
+                    target_audio_wav,
+                    "-filter_complex",
+                    filter_str,
+                    "-map",
+                    "[v]",
+                    "-map",
+                    "[a]",
+                    "-r",
+                    str(settings.ffmpeg_fps),
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    settings.ffmpeg_preset,
+                    "-crf",
+                    str(settings.ffmpeg_crf),
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    settings.ffmpeg_audio_bitrate,
+                    "-shortest",
+                    "-movflags",
+                    "+faststart",
+                    rel_path,
+                ]
+                if ffmpeg_ok(cmd, timeout=DEFAULT_FFMPEG_TIMEOUT):
+                    return
+            except Exception as exc:
+                logger.warning("Primary banner render failed, falling back: %s", exc)
+
+        # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
         try:
+            audio_inputs = (
+                ["-i", target_audio_wav]
+                if os.path.exists(target_audio_wav)
+                else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
+            )
             filter_str = (
-                f"[0:v]scale=1280:720,zoompan=z='min(1.04+0.02*abs(sin(2*PI*0.5*in_time)),1.12)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,"
+                f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
                 f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
-                f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
                 f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
                 f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
-                f"drawtext=textfile={txt_prompt_path}{font_arg}:fontcolor=0x94A3B8:fontsize=18:x=90:y=h-135,"
-                f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95[v]; [1:a]aresample=async=1:first_pts=0[a]"
+                f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]"
             )
             cmd = [
                 "ffmpeg",
                 "-y",
-                "-loop",
-                "1",
-                "-i",
-                banner_img,
-                "-i",
-                target_audio_wav,
+                *audio_inputs,
                 "-filter_complex",
                 filter_str,
                 "-map",
@@ -304,74 +362,33 @@ def ensure_rendered_video(
                 "-map",
                 "[a]",
                 "-r",
-                "24",
+                str(settings.ffmpeg_fps),
                 "-c:v",
                 "libx264",
                 "-preset",
-                "fast",
+                settings.ffmpeg_preset,
                 "-crf",
-                "18",
+                str(settings.ffmpeg_crf),
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
                 "aac",
-                "-b:a",
-                "192k",
                 "-shortest",
                 "-movflags",
                 "+faststart",
                 rel_path,
             ]
-            res = subprocess.run(cmd, capture_output=True, check=False)
-            if res.returncode == 0:
-                return
-        except Exception:
-            pass
-
-    # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
-    try:
-        audio_inputs = (
-            ["-i", target_audio_wav]
-            if os.path.exists(target_audio_wav)
-            else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
-        )
-        filter_str = (
-            f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
-            f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
-            f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
-            f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
-            f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]"
-        )
-        cmd = [
-            "ffmpeg",
-            "-y",
-            *audio_inputs,
-            "-filter_complex",
-            filter_str,
-            "-map",
-            "[v]",
-            "-map",
-            "[a]",
-            "-r",
-            "24",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-shortest",
-            "-movflags",
-            "+faststart",
-            rel_path,
-        ]
-        subprocess.run(cmd, capture_output=True, check=False)
-    except Exception:
-        pass
+            if not ffmpeg_ok(cmd, timeout=DEFAULT_FFMPEG_TIMEOUT):
+                logger.warning("Fallback visualizer render failed for %s", rel_path)
+        except Exception as exc:
+            logger.warning("Fallback visualizer render errored for %s: %s", rel_path, exc)
+    finally:
+        for _tf in _temp_files:
+            try:
+                if os.path.exists(_tf):
+                    os.remove(_tf)
+            except OSError:
+                pass
 
 
 def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
@@ -470,8 +487,6 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         r"\battack\b": "challenge",
     }
 
-    import re
-
     abstracted = text
     for pattern, archetype in replacements.items():
         abstracted = re.sub(pattern, archetype, abstracted, flags=re.IGNORECASE)
@@ -511,6 +526,68 @@ def _get_relaxed_safety_settings() -> list[Any] | None:
 get_relaxed_safety_settings = _get_relaxed_safety_settings
 
 
+# HTTP statuses worth retrying: request timeout / conflict / too-early, rate
+# limiting, and the transient 5xx family. Everything else in 4xx is permanent.
+_RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+_PERMANENT_MARKERS = (
+    "invalid argument",
+    "invalidargument",
+    "permission denied",
+    "permissiondenied",
+    "failed precondition",
+    "not found",
+)
+_TRANSIENT_MARKERS = (
+    "timeout",
+    "timed out",
+    "deadline",
+    "unavailable",
+    "temporarily",
+    "connection reset",
+    "connection aborted",
+)
+
+
+def _extract_status_code(exc: Exception) -> int | None:
+    """Best-effort HTTP status extraction from a google-genai / API exception.
+
+    google-genai's ``APIError`` exposes an integer ``code``; other clients use
+    ``status_code``/``status``. Returns ``None`` when no numeric status is found.
+    """
+    for attr in ("code", "status_code", "status"):
+        val = getattr(exc, attr, None)
+        if isinstance(val, bool):
+            continue
+        if isinstance(val, int):
+            return val
+        if isinstance(val, str) and val.isdigit():
+            return int(val)
+    return None
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    """Classify an exception as transient (retry) vs permanent (give up).
+
+    Prefers a typed status code; only falls back to substring heuristics when no
+    code is exposed. Unknown errors default to retryable to preserve the prior
+    lenient behavior.
+    """
+    code = _extract_status_code(exc)
+    if code is not None:
+        if code in _RETRYABLE_STATUS:
+            return True
+        if 400 <= code < 500:
+            return False
+        if code >= 500:
+            return True
+    low = str(exc).lower()
+    if any(marker in low for marker in _PERMANENT_MARKERS):
+        return False
+    if any(marker in low for marker in _TRANSIENT_MARKERS):
+        return True
+    return True
+
+
 class OmniFlashClient:
     def __init__(
         self,
@@ -522,7 +599,9 @@ class OmniFlashClient:
         self.api_key = api_key
         self.mock_mode = mock_mode
         self.retry_delay = (
-            retry_delay if retry_delay is not None else (0.0 if mock_mode else 0.5)
+            retry_delay
+            if retry_delay is not None
+            else (0.0 if mock_mode else settings.omni_retry_base_delay)
         )
         self.project = os.environ.get(
             "GOOGLE_CLOUD_PROJECT",
@@ -546,14 +625,13 @@ class OmniFlashClient:
             else (
                 os.environ.get("GEMINI_API_KEY")
                 or os.environ.get("GOOGLE_API_KEY")
-                or getattr(settings, "gemini_api_key", None)
-                or getattr(settings, "google_api_key", None)
+                or settings.effective_api_key
             )
         )
         if not self.mock_mode and genai:
             from google.genai import types
 
-            http_options = types.HttpOptions(timeout=300000)
+            http_options = types.HttpOptions(timeout=settings.omni_http_timeout_ms)
 
             # Strategy 1: Google AI Studio Developer API Client (API Key)
             if effective_key:
@@ -636,34 +714,24 @@ class OmniFlashClient:
                 and ref_url.startswith("gs://")
             ):
                 try:
-                    img_bytes, downloaded_mime = self.storage.download_blob_bytes(
-                        ref_url
-                    )
+                    img_bytes, downloaded_mime = self.storage.download_blob_bytes(ref_url)
                     if downloaded_mime:
                         mime_type = downloaded_mime
                 except Exception as exc:
-                    logger.warning(
-                        "Failed to download blob bytes for %s: %s", ref_url, exc
-                    )
+                    logger.warning("Failed to download blob bytes for %s: %s", ref_url, exc)
 
-            if not img_bytes and (
-                os.path.exists(ref_url) or os.path.exists(ref_url.lstrip("/"))
-            ):
+            if not img_bytes and (os.path.exists(ref_url) or os.path.exists(ref_url.lstrip("/"))):
                 path = ref_url if os.path.exists(ref_url) else ref_url.lstrip("/")
                 try:
                     with open(path, "rb") as f:
                         img_bytes = f.read()
                 except Exception as exc:
-                    logger.warning(
-                        "Failed to read local reference image file %s: %s", path, exc
-                    )
+                    logger.warning("Failed to read local reference image file %s: %s", path, exc)
 
             if img_bytes:
                 if ref_url.lower().endswith(".png"):
                     mime_type = "image/png"
-                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(
-                    ".jpeg"
-                ):
+                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
                     mime_type = "image/jpeg"
 
                 b64_str = base64.b64encode(img_bytes).decode("utf-8")
@@ -699,8 +767,7 @@ class OmniFlashClient:
                 )
 
         loaded_roles = [
-            c.role_id if hasattr(c, "role_id") else c.get("role_id")
-            for c in loaded_chars
+            c.role_id if hasattr(c, "role_id") else c.get("role_id") for c in loaded_chars
         ]
         logger.info(
             "Loaded %d reference image(s) for characters: %s",
@@ -728,14 +795,11 @@ class OmniFlashClient:
             logger.warning("Generation aborted: %s", msg)
             return False, None, msg
 
-        max_attempts = 3
-        delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
+        max_attempts = settings.omni_max_retries
         last_error: str | None = None
 
         safe_input = _abstract_prompt_for_responsible_ai(prompt)
-        logger.info(
-            "Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input
-        )
+        logger.info("Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input)
         image_objects = self._load_reference_images_as_input(
             session_id=session_id, characters=characters
         )
@@ -749,13 +813,13 @@ class OmniFlashClient:
                 {"type": "text", "text": safe_input},
             ]
             kwargs: dict[str, Any] = {
-                "model": "gemini-omni-flash-preview",
+                "model": settings.omni_model_id,
                 "input": inputs,
                 "safety_settings": _get_relaxed_safety_settings(),
             }
         else:
             kwargs = {
-                "model": "gemini-omni-flash-preview",
+                "model": settings.omni_model_id,
                 "input": safe_input,
                 "safety_settings": _get_relaxed_safety_settings(),
             }
@@ -770,9 +834,7 @@ class OmniFlashClient:
                     max_attempts,
                     prompt,
                 )
-                if not self._genai_client or not hasattr(
-                    self._genai_client, "interactions"
-                ):
+                if not self._genai_client or not hasattr(self._genai_client, "interactions"):
                     last_error = "Gemini client or interactions API not available"
                     break
 
@@ -795,9 +857,7 @@ class OmniFlashClient:
                         or getattr(output_vid, "video", None)
                     )
                     if data:
-                        video_bytes = (
-                            base64.b64decode(data) if isinstance(data, str) else data
-                        )
+                        video_bytes = base64.b64decode(data) if isinstance(data, str) else data
                         os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
                         with open(target_rel_path, "wb") as f:
                             f.write(video_bytes)
@@ -808,66 +868,90 @@ class OmniFlashClient:
                         )
                         return True, inter_id, None
 
-                last_error = (
-                    "Gemini Omni Flash returned interaction without video output data"
-                )
+                last_error = "Gemini Omni Flash returned interaction without video output data"
                 logger.warning(last_error)
             except Exception as exc:
                 exc_str = str(exc)
                 last_error = exc_str
+                code = _extract_status_code(exc)
 
-                if (
-                    "401" in exc_str
+                is_auth = (
+                    code == 401
+                    or "401" in exc_str
                     or "UNAUTHENTICATED" in exc_str
                     or "API keys are not supported" in exc_str
-                ):
+                )
+                is_endpoint = code == 404 or "404" in exc_str or "Publisher model" in exc_str
+                is_param = (
+                    "safety_settings" in exc_str
+                    or "Unmarshaller" in exc_str
+                    or "ValidationError" in exc_str
+                    or "invalid_request" in exc_str
+                )
+                is_rate = code == 429 or "ResourceExhausted" in exc_str
+
+                retryable = True
+                # Auth-fallback retries immediately on the freshly switched client;
+                # no point sleeping first.
+                skip_sleep = False
+
+                if is_auth:
                     logger.warning(
                         "401 UNAUTHENTICATED on Vertex AI. Actively switching to Google AI Studio Developer API client."
                     )
                     self.switch_to_developer_api()
-                elif "404" in exc_str or "Publisher model" in exc_str:
+                    skip_sleep = True
+                elif is_endpoint:
                     logger.warning(
                         "Vertex AI endpoint unavailable (%s). Actively switching to Google AI Studio Developer API client.",
                         exc_str,
                     )
                     self.switch_to_developer_api()
-                elif (
-                    "safety_settings" in exc_str
-                    or "Unmarshaller" in exc_str
-                    or "ValidationError" in exc_str
-                    or "invalid_request" in exc_str
-                ):
+                elif is_param:
                     logger.warning(
                         "Interactions API parameter error (%s). Removing unsupported safety_settings kwarg and retrying.",
                         exc_str,
                     )
                     kwargs.pop("safety_settings", None)
-                elif "429" in exc_str or "ResourceExhausted" in exc_str:
+                elif is_rate:
                     logger.warning(
-                        "Retry attempt %d/%d after rate limit error (%s). Backoff delay: %.2fs",
+                        "Retry attempt %d/%d after rate limit error (%s).",
                         attempt,
                         max_attempts,
                         exc_str,
-                        delay,
                     )
                 else:
-                    logger.warning(
-                        "Omni Flash generation error on attempt %d/%d: %s",
-                        attempt,
-                        max_attempts,
-                        exc_str,
-                    )
+                    # Unrecognized error: retry only if it looks transient
+                    # (timeout / 5xx). Permanent client errors (400/403, invalid
+                    # argument, permission denied) abort immediately so we don't
+                    # burn attempts or hammer the API.
+                    retryable = _is_retryable_error(exc)
+                    if retryable:
+                        logger.warning(
+                            "Transient Omni Flash error on attempt %d/%d, will retry: %s",
+                            attempt,
+                            max_attempts,
+                            exc_str,
+                        )
+                    else:
+                        logger.warning(
+                            "Non-retryable Omni Flash error on attempt %d/%d, aborting: %s",
+                            attempt,
+                            max_attempts,
+                            exc_str,
+                        )
 
-                if attempt < max_attempts:
-                    if delay > 0 and not (
-                        "401" in exc_str
-                        or "UNAUTHENTICATED" in exc_str
-                        or "API keys are not supported" in exc_str
-                    ):
-                        import time
+                if not retryable:
+                    break
 
-                        time.sleep(delay)
-                    delay *= 2
+                if attempt < max_attempts and not skip_sleep and self.retry_delay > 0:
+                    # Exponential backoff with full jitter to avoid a thundering
+                    # herd across concurrent clip workers. A retry_delay of 0
+                    # (mock/dev/tests) disables sleeping entirely.
+                    backoff = self.retry_delay * 2 ** (attempt - 1)
+                    # Jitter is scheduling noise, not a security primitive.
+                    jitter = random.uniform(0, backoff / 2)  # noqa: S311
+                    time.sleep(backoff / 2 + jitter)
 
         return False, None, last_error
 
@@ -883,9 +967,7 @@ class OmniFlashClient:
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
-            f"turn_{turn_index}_video.mp4"
-            if turn_index is not None
-            else f"{thread_id}_turn0.mp4"
+            f"turn_{turn_index}_video.mp4" if turn_index is not None else f"{thread_id}_turn0.mp4"
         )
         url = f"/static/rendered/{filename}"
         rel_path = url.lstrip("/")
@@ -920,6 +1002,49 @@ class OmniFlashClient:
             gcs_uri=gcs_uri,
             error_message=error_message if not success else None,
             generation_mode=generation_mode,
+        )
+
+    def generate_clips_batch(self, requests: list[ClipRequest]) -> list[GenerationResult]:
+        """Generate independent clips concurrently, preserving request order.
+
+        Each :class:`ClipRequest` is a standalone :meth:`generate_clip` call with
+        its own thread/interaction id and (via ``turn_index``) its own output
+        filename, so the clips share no mutable state and are safe to run in
+        parallel. This is for *independent* clips only — stateful diff/commit
+        chains must stay strictly sequential and are not routed here.
+
+        Clip generation is I/O-bound (remote model + GCS upload), so a bounded
+        thread pool (``settings.clip_batch_max_workers``) overlaps the waits.
+        Results are returned in the same order as ``requests``.
+        """
+        if not requests:
+            return []
+        if len(requests) == 1:
+            return [self._generate_one(requests[0])]
+
+        max_workers = max(1, min(len(requests), settings.clip_batch_max_workers))
+        results: list[GenerationResult | None] = [None] * len(requests)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_idx = {
+                executor.submit(self._generate_one, req): idx for idx, req in enumerate(requests)
+            }
+            for future in future_to_idx:
+                idx = future_to_idx[future]
+                results[idx] = future.result()
+        # Every slot is filled by future.result() above (which re-raises rather
+        # than leaving a None), so this cast-free comprehension is total.
+        return [r for r in results if r is not None]
+
+    def _generate_one(self, req: ClipRequest) -> GenerationResult:
+        """Adapt a :class:`ClipRequest` to a single :meth:`generate_clip` call."""
+        return self.generate_clip(
+            req.prompt,
+            session_id=req.session_id,
+            voiceover=req.voiceover,
+            is_silent=req.is_silent,
+            audio_stem=req.audio_stem,
+            turn_index=req.turn_index,
+            characters=req.characters,
         )
 
     def apply_interaction_diff(

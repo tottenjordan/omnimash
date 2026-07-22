@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -13,6 +14,23 @@ if TYPE_CHECKING:
     from omnimash.prompts.taxonomy import StylePreset
 
 logger = logging.getLogger(__name__)
+
+
+def _role_label(idx: int) -> str:
+    """Unique, spreadsheet-style role label for character ``idx``.
+
+    Produces ``Role A``..``Role Z``, then ``Role AA``, ``Role AB``, ... so any
+    number of characters gets a distinct id (the old fixed 4-label list clamped
+    everyone past the 4th to ``Role D``, silently aliasing them).
+    """
+    letters = ""
+    n = idx
+    while True:
+        letters = chr(65 + n % 26) + letters
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return f"Role {letters}"
 
 
 @dataclass
@@ -38,9 +56,7 @@ class CompiledPromptParts:
 
         lower_audio = self.audio_track.lower().strip()
         if self.is_silent or lower_audio in ("none", "mute", "silent"):
-            sound_directive = (
-                "Sound design: Silent video. No background music, no audio"
-            )
+            sound_directive = "Sound design: Silent video. No background music, no audio"
         elif self.voiceover and self.voiceover.strip():
             sound_directive = (
                 f"Sound design: Foreground spoken voiceover/dialogue is dominant, "
@@ -76,8 +92,7 @@ class CompiledDeltaPrompt:
 
     def to_delta_prompt(self) -> str:
         return (
-            f"[PRESERVATION LOCK]: {self.preservation_lock} | "
-            f"[ISOLATED DIFF]: {self.isolated_diff}"
+            f"[PRESERVATION LOCK]: {self.preservation_lock} | [ISOLATED DIFF]: {self.isolated_diff}"
         )
 
 
@@ -111,12 +126,280 @@ class MetaPromptTags:
     vocal_delivery: str = ""
 
 
-CHARACTER_LORE_ANCHORS: dict[str, str] = {
-    "snape": "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
-    "dumbledore": "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
-    "voldemort": "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
-    "harry": "Harry Potter, a young man with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
+# Single source of character lore: keyword -> (display name, visual description).
+# Both the subject-anchor lookup (CHARACTER_LORE_ANCHORS, derived below) and the
+# fallback deconstructor read from this map so the descriptions never drift apart.
+CHARACTER_LORE: dict[str, tuple[str, str]] = {
+    "harry": (
+        "Harry",
+        "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
+    ),
+    "draco": (
+        "Draco",
+        "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
+    ),
+    "snape": (
+        "Severus Snape",
+        "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
+    ),
+    "dumbledore": (
+        "Albus Dumbledore",
+        "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
+    ),
+    "voldemort": (
+        "Lord Voldemort",
+        "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
+    ),
+    "ramsay": (
+        "Gordon Ramsay",
+        "Gordon Ramsay, a fiery celebrity chef with sharp blond hair, intense focused gaze, and crisp white chef jacket",
+    ),
+    "julia": (
+        "Julia Child",
+        "Julia Child, an iconic tall cheerful culinary master with curly brown hair, expressive warm smile, and classic vintage apron",
+    ),
+    "samurai": (
+        "Neon Samurai",
+        "Neon Samurai, a stoic warrior in glowing LED armor with a razor-sharp energy katana",
+    ),
+    "ninja": (
+        "Cyborg Ninja",
+        "Cyborg Ninja, an agile cybernetic assassin with chrome mask and stealth holographic visor",
+    ),
 }
+
+# Description-only view keyed by the same keywords, for subject-anchor resolution.
+CHARACTER_LORE_ANCHORS: dict[str, str] = {
+    key: desc for key, (_name, desc) in CHARACTER_LORE.items()
+}
+
+
+@dataclass(frozen=True)
+class StyleProfile:
+    """One style category for the offline heuristic deconstructor.
+
+    A profile bundles everything the fallback needs for a category so the
+    keyword tuples and per-character lookups live in exactly one place (they
+    used to be duplicated across three inline maps, which drifted silently).
+    """
+
+    # Trigger keywords; the first profile whose keyword appears wins. The
+    # catch-all "cinematic" profile has an empty tuple and is the default.
+    keywords: tuple[str, ...]
+    # Per-character wardrobe tags and voice styles, with a category default
+    # used for any character not explicitly listed.
+    char_tags: dict[str, list[str]]
+    char_tags_default: list[str]
+    char_voices: dict[str, str]
+    char_voice_default: str
+    # Scene-wide tags for the category.
+    aesthetic_tags: list[str]
+    audio_beat: str
+    vocal_delivery: str
+    camera_lighting_tag: str
+    # Environment is the default unless one of the variant triggers matches; the
+    # first variant whose keyword appears in the concept wins.
+    environment_default: str
+    environment_variants: tuple[tuple[tuple[str, ...], str], ...] = ()
+
+    def environment_for(self, lower_concept: str) -> str:
+        for triggers, env in self.environment_variants:
+            if any(t in lower_concept for t in triggers):
+                return env
+        return self.environment_default
+
+
+# Ordered so the first matching profile wins; "cinematic" is the empty-keyword
+# catch-all resolved by classify_concept when nothing else matches.
+STYLE_PROFILES: dict[str, StyleProfile] = {
+    "trap": StyleProfile(
+        keywords=("trap", "atlanta", "808", "rap", "hip-hop"),
+        char_tags={
+            "harry": ["Red Gucci Tracksuit", "Cartier Glasses"],
+            "draco": ["Platinum Slicked Hair", "Diamond Iced-Out Chain"],
+            "snape": ["Black Puffer Jacket", "Cuban Link Chain"],
+            "dumbledore": ["Oversized Silk Robes", "Half-Moon Cartier Glasses"],
+            "voldemort": ["Chalk-White Techwear", "Diamond Snake Medallion"],
+            "ramsay": ["Diamond Chef Knife Chain", "Designer White Streetwear"],
+            "julia": ["Vintage Pearl Medallion", "Retro Silk Apron"],
+            "samurai": ["Diamond Katana Chain", "Streetwear Samurai Armor"],
+            "ninja": ["Iced-Out Ninja Mask", "Tactical Techwear"],
+        },
+        char_tags_default=["Vintage Streetwear", "Diamond Chain"],
+        char_voices={
+            "harry": "Fast-paced confident Atlanta rap flow with autotune",
+            "draco": "Pompous, cynical British drawl with aggressive rap cadence",
+            "snape": "Deep sarcastic monotone rap cadence with heavy bass resonance",
+            "dumbledore": "Smooth authoritative elder rap flow with melodic reverb",
+            "voldemort": "Hissing raspy dark trap cadence with sinister whisper",
+            "ramsay": "Aggressive rapid-fire British rap delivery with fiery staccato",
+            "julia": "Cheerful rhythmic vintage cadence with operatic flair",
+            "samurai": "Stoic disciplined hip-hop cadence with sharp precision",
+            "ninja": "Fast whisper-rap flow with rhythmic syncopation",
+        },
+        char_voice_default="Fast-paced rhythmic rap cadence with confident delivery",
+        aesthetic_tags=[
+            "2000s Atlanta Trap Disstrack",
+            "Diamond Lightning Bolt Chain",
+            "Vintage Streetwear",
+            "Heavy 808 Bass Lighting",
+        ],
+        audio_beat="140 BPM Heavy 808 Trap",
+        vocal_delivery=(
+            "High-energy back-and-forth rap battle delivery with synchronized "
+            "lip-sync and punchy cadence"
+        ),
+        camera_lighting_tag=(
+            "Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights"
+        ),
+        environment_default="Urban street alley with neon stage lights and atmospheric fog",
+        environment_variants=(
+            (
+                ("harry", "draco", "hogwarts", "snape"),
+                "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze",
+            ),
+        ),
+    ),
+    "cyber": StyleProfile(
+        keywords=("cyberpunk", "neon", "futuristic", "iron chef", "samurai", "ninja", "arcade"),
+        char_tags={
+            "harry": ["Holographic Wire-Rim Glasses", "LED-Lined Techwear Robes"],
+            "draco": ["Silver Techwear Coat", "Holographic Visor"],
+            "snape": ["High-Collar Dark Techwear", "Holographic Cyber Coat"],
+            "dumbledore": ["Neon-Embroidered Robes", "Holographic Spectacles"],
+            "voldemort": ["Chrome Cyber Armor", "Serpentine Neon Glow"],
+            "ramsay": ["Holographic Chef Jacket", "Laser Thermal Blade"],
+            "julia": ["Cybernetic Apron", "Holographic Visor"],
+            "samurai": ["Glowing LED Armor", "Energy Katana"],
+            "ninja": ["Chrome Cyber Mask", "Stealth Holographic Visor"],
+        },
+        char_tags_default=["Futuristic Techwear", "Holographic Visor"],
+        char_voices={
+            "harry": "Youthful tech-filtered voice with energetic synthesized cadence",
+            "draco": "Cold aristocratic drawl with subtle robotic modulation",
+            "snape": "Deep resonant cyborg baritone with metallic vocoder edge",
+            "dumbledore": "Resonant holographic elder voice with ethereal synth harmonic",
+            "voldemort": "Sinister digital rasp with glitchy pitch shift",
+            "ramsay": "High-intensity barking commands with sharp electronic vocoding",
+            "julia": "Warm vintage tone with cheerful cybernetic filter",
+            "samurai": "Stoic synthesized warrior cadence with crisp electronic articulation",
+            "ninja": "Stealth filtered whisper with robotic modulation",
+        },
+        char_voice_default="Futuristic vocoded speech with crisp electronic articulation",
+        aesthetic_tags=[
+            "Cyberpunk Glow",
+            "Neon Cyan & Purple Color Grading",
+            "Futuristic Techwear",
+            "Anamorphic Lens Flare",
+        ],
+        audio_beat="110 BPM Cyberpunk Synthwave Groove",
+        vocal_delivery=(
+            "Futuristic vocoded dialogue with sharp synthesized delivery and spatial reverb"
+        ),
+        camera_lighting_tag=(
+            "Anamorphic widescreen tracking shot with high-gloss neon reflections "
+            "and holographic bloom"
+        ),
+        environment_default="Neon-lit cyberpunk arcade showdown arena",
+        environment_variants=(
+            (
+                ("chef", "ramsay", "julia", "kitchen"),
+                "Futuristic neon kitchen colosseum with holographic spectator screens",
+            ),
+        ),
+    ),
+    "anime": StyleProfile(
+        keywords=("anime", "vhs", "lo-fi"),
+        char_tags={
+            "harry": ["Cel-Shaded Wire-Rim Glasses", "Retro Anime Robes"],
+            "draco": ["Cel-Shaded Platinum Hair", "Silver-Trimmed Uniform"],
+            "snape": ["Cel-Shaded Dark Cloak", "Analog Grain Filter"],
+            "dumbledore": ["Vintage Cel-Shaded Robes", "Flowing Silver Beard"],
+            "voldemort": ["Chalk-White Cel-Shading", "Serpentine Aura"],
+            "ramsay": ["Cel-Shaded Chef Coat", "Flame Aura"],
+            "julia": ["Retro Cel-Shaded Apron", "Vintage Kitchen Attire"],
+            "samurai": ["Cel-Shaded Samurai Armor", "Energy Katana"],
+            "ninja": ["Cel-Shaded Ninja Garb", "Stealth Visor"],
+        },
+        char_tags_default=["Cel-Shaded Styling", "Retro Headband"],
+        char_voices={
+            "harry": "Energetic youthful anime protagonist voice with passionate delivery",
+            "draco": "Smug aristocratic rival voice with dramatic anime inflection",
+            "snape": "Brooding dramatic antagonist voice with slow deliberate pacing",
+            "dumbledore": "Wise eccentric mentor voice with warm melodic phrasing",
+            "voldemort": "Theatrical villainous rasp with dramatic echo",
+            "ramsay": "Fiery competitive anime chef delivery with explosive shouts",
+            "julia": "Whimsical motherly culinary host voice with cheerful vintage lilt",
+            "samurai": "Deep honorable warrior voice with classic anime dub inflection",
+            "ninja": "Quiet masked assassin voice with sharp dramatic whispers",
+        },
+        char_voice_default="Expressive retro anime dub voice with dramatic flair",
+        aesthetic_tags=[
+            "Retro VHS Anime Lo-Fi",
+            "Analog Scanlines",
+            "Warm Nostalgic Bloom",
+            "Cel-Shaded Styling",
+        ],
+        audio_beat="85 BPM VHS Lo-Fi City Pop",
+        vocal_delivery=(
+            "Expressive 80s anime dub voiceover with dramatic dynamic range and emotional emphasis"
+        ),
+        camera_lighting_tag=("Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"),
+        environment_default="Retro 80s anime cityscape bathed in sunset pastel lighting",
+    ),
+    "cinematic": StyleProfile(
+        keywords=(),
+        char_tags={
+            "harry": ["Red Gucci Tracksuit", "Cartier Glasses"],
+            "draco": ["Tailored Silver-Trimmed Robes", "Platinum Slicked Hair"],
+            "snape": ["Flowing Black Cloak", "Severe Dark Attire"],
+            "dumbledore": ["Ornate Wizard Robes", "Half-Moon Spectacles"],
+            "voldemort": ["Chalk-White Silk Robes", "Serpentine Aura"],
+            "ramsay": ["Crisp White Chef Jacket", "Fiery Apron"],
+            "julia": ["Classic Vintage Apron", "Warm Retro Styling"],
+            "samurai": ["Glowing LED Armor", "Energy Katana"],
+            "ninja": ["Chrome Cyber Mask", "Stealth Visor"],
+        },
+        char_tags_default=["Stylized Wardrobe", "Cinematic Attire"],
+        char_voices={
+            "harry": "Youthful British accent with determined heroic cadence",
+            "draco": "Aristocratic British drawl with sneering sarcastic tone",
+            "snape": "Deep cynical British drawl with slow menacing pauses",
+            "dumbledore": "Gentle whimsical British elder voice with grandfatherly warmth",
+            "voldemort": "Cold sibilant whisper with chilling theatrical intensity",
+            "ramsay": "Fiery passionate British chef voice with explosive intensity",
+            "julia": "High-pitched cheerful mid-Atlantic accent with warm enthusiastic lilt",
+            "samurai": "Stoic grounded warrior voice with focused intensity",
+            "ninja": "Hushed tactical voice with crisp deliberate phrasing",
+        },
+        char_voice_default="Cinematic theatrical voice with distinct expressive delivery",
+        aesthetic_tags=[
+            "High-Contrast Cinematic Parody",
+            "Stylized Wardrobe",
+            "Dramatic Lighting",
+        ],
+        audio_beat="120 BPM Cinematic Beat",
+        vocal_delivery=(
+            "Crisp cinematic dialogue with natural conversational timing and clear studio projection"
+        ),
+        camera_lighting_tag=(
+            "Cinematic 16:9 tracking shot with balanced ambient lighting and crisp depth of field"
+        ),
+        environment_default=(
+            "Atmospheric stage set with dramatic directional lighting and smoke effects"
+        ),
+    ),
+}
+
+
+def classify_concept(text: str) -> str:
+    """Return the STYLE_PROFILES key for a concept (defaults to ``cinematic``)."""
+    lower = text.lower()
+    for key, profile in STYLE_PROFILES.items():
+        if profile.keywords and any(kw in lower for kw in profile.keywords):
+            return key
+    return "cinematic"
+
 
 AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
     "90s_rap_video": {
@@ -195,8 +478,6 @@ def parse_screenplay_script(
             "dialogue": "",
         }
 
-    import re
-
     active_roles: list[str] = []
     action_parts: list[str] = []
     audio_cue_parts: list[str] = []
@@ -213,9 +494,7 @@ def parse_screenplay_script(
             quote_idx = line.find('"')
             smart_quote_idx = line.find("“")
 
-            delim_indices = [
-                idx for idx in [paren_idx, quote_idx, smart_quote_idx] if idx != -1
-            ]
+            delim_indices = [idx for idx in [paren_idx, quote_idx, smart_quote_idx] if idx != -1]
             first_delim = min(delim_indices) if delim_indices else len(line)
 
             if colon_idx < first_delim:
@@ -228,7 +507,7 @@ def parse_screenplay_script(
                 for char in characters:
                     char_role = char.role_id.strip().lower()
                     char_name = char.name.strip().lower()
-                    if spk_lower == char_role or spk_lower == char_name:
+                    if spk_lower in (char_role, char_name):
                         matched_role_id = char.role_id
                         break
                     if spk_lower in char_name or char_name in spk_lower:
@@ -279,12 +558,10 @@ def parse_screenplay_script(
                         ]
                     )
                 )
-                if not is_pure_audio:
-                    if seg not in action_parts:
-                        action_parts.append(seg)
-                if has_audio_kw:
-                    if seg not in audio_cue_parts:
-                        audio_cue_parts.append(seg)
+                if not is_pure_audio and seg not in action_parts:
+                    action_parts.append(seg)
+                if has_audio_kw and seg not in audio_cue_parts:
+                    audio_cue_parts.append(seg)
 
         # Quoted text extraction
         quotes = re.findall(r'["“]([^"”]+)["”]', line)
@@ -334,9 +611,9 @@ class PromptOptimizer:
 
         # Tier 2: LLM Optimization Pass via Gemini Flash (if requested and client available)
         if use_llm and self.compiler:
-            client = getattr(
-                self.compiler, "_flash_regional_client", None
-            ) or getattr(self.compiler, "_pro_global_client", None)
+            client = getattr(self.compiler, "_flash_regional_client", None) or getattr(
+                self.compiler, "_pro_global_client", None
+            )
             if client:
                 try:
                     system_instruction = (
@@ -346,7 +623,7 @@ class PromptOptimizer:
                         "CRITICAL: Keep all [IMAGE ROLES] and [ROLE DEFINITIONS] blocks intact."
                     )
                     response = client.models.generate_content(
-                        model="gemini-2.5-flash",
+                        model=settings.deconstruct_flash_model,
                         contents=f"{system_instruction}\n\n[PROMPT TO OPTIMIZE]:\n{optimized}",
                     )
                     if response and getattr(response, "text", None):
@@ -370,9 +647,7 @@ class PromptCompiler:
         if not self.mock_mode:
             self._init_deconstructor_clients()
 
-    def optimize_prompt_for_omni_flash(
-        self, compiled_prompt: str, use_llm: bool = False
-    ) -> str:
+    def optimize_prompt_for_omni_flash(self, compiled_prompt: str, use_llm: bool = False) -> str:
         """Optimizes a compiled prompt string for Gemini Omni Flash generation."""
         optimizer = PromptOptimizer(compiler=self)
         return optimizer.optimize(compiled_prompt, use_llm=use_llm)
@@ -389,8 +664,7 @@ class PromptCompiler:
         api_key = (
             os.environ.get("GEMINI_API_KEY")
             or os.environ.get("GOOGLE_API_KEY")
-            or getattr(settings, "gemini_api_key", None)
-            or getattr(settings, "google_api_key", None)
+            or settings.effective_api_key
         )
         project = os.environ.get(
             "GOOGLE_CLOUD_PROJECT",
@@ -536,9 +810,7 @@ class PromptCompiler:
                 break
 
         # 2. Resolve Style Signifiers
-        preset_key = str(
-            style_preset.value if hasattr(style_preset, "value") else style_preset
-        )
+        preset_key = str(style_preset.value if hasattr(style_preset, "value") else style_preset)
         style_info = AESTHETIC_SIGNIFIERS.get(
             preset_key,
             AESTHETIC_SIGNIFIERS["90s_rap_video"],
@@ -648,29 +920,21 @@ class PromptCompiler:
             parsed_dialogue = parsed.get("dialogue", "")
 
         action_components = [
-            comp
-            for comp in [raw_prompt, scene_action, parsed_action]
-            if comp and comp.strip()
+            comp for comp in [raw_prompt, scene_action, parsed_action] if comp and comp.strip()
         ]
         effective_raw_prompt = (
             ". ".join(action_components) if action_components else "Cinematic shot"
         )
 
         audio_components = [
-            comp
-            for comp in [audio_stem, scene_audio, parsed_audio]
-            if comp and comp.strip()
+            comp for comp in [audio_stem, scene_audio, parsed_audio] if comp and comp.strip()
         ]
         effective_audio_stem = ". ".join(audio_components) if audio_components else None
 
         dialogue_components = [
-            comp
-            for comp in [voiceover, scene_dialogue, parsed_dialogue]
-            if comp and comp.strip()
+            comp for comp in [voiceover, scene_dialogue, parsed_dialogue] if comp and comp.strip()
         ]
-        effective_voiceover = (
-            " / ".join(dialogue_components) if dialogue_components else None
-        )
+        effective_voiceover = " / ".join(dialogue_components) if dialogue_components else None
 
         return self.compile(
             raw_prompt=effective_raw_prompt,
@@ -726,14 +990,8 @@ class PromptCompiler:
                 )
                 img_idx += 1
 
-            style_str = (
-                f" [Style: {', '.join(char.aesthetic_tags)}]"
-                if char.aesthetic_tags
-                else ""
-            )
-            role_lines.append(
-                f"- {char.role_id} ({char.name}): {char.description}{style_str}"
-            )
+            style_str = f" [Style: {', '.join(char.aesthetic_tags)}]" if char.aesthetic_tags else ""
+            role_lines.append(f"- {char.role_id} ({char.name}): {char.description}{style_str}")
 
         image_roles_block = ""
         if image_role_lines:
@@ -748,9 +1006,7 @@ class PromptCompiler:
             aesthetic_parts.append(f"Aesthetic Tags: {', '.join(aesthetic_tags)}")
         if environment_tag and environment_tag.strip():
             aesthetic_parts.append(f"Environment: {environment_tag.strip()}")
-        aesthetic_block = (
-            "\n".join(aesthetic_parts) if aesthetic_parts else "Default Aesthetic"
-        )
+        aesthetic_block = "\n".join(aesthetic_parts) if aesthetic_parts else "Default Aesthetic"
 
         audio_parts: list[str] = []
         if audio_beat and audio_beat.strip():
@@ -759,9 +1015,7 @@ class PromptCompiler:
             )
         for char in characters:
             if char.voice_style and char.voice_style.strip():
-                audio_parts.append(
-                    f"Voice Style ({char.role_id}): {char.voice_style.strip()}"
-                )
+                audio_parts.append(f"Voice Style ({char.role_id}): {char.voice_style.strip()}")
         if vocal_delivery and vocal_delivery.strip():
             audio_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
 
@@ -778,9 +1032,7 @@ class PromptCompiler:
                 else getattr(scene, "active_roles", [])
             )
             roles_list: list[str] = (
-                [str(r) for r in raw_roles]
-                if isinstance(raw_roles, (list, tuple))
-                else []
+                [str(r) for r in raw_roles] if isinstance(raw_roles, (list, tuple)) else []
             )
             roles_str = ", ".join(roles_list)
 
@@ -796,12 +1048,8 @@ class PromptCompiler:
             if sp_text and isinstance(sp_text, str) and sp_text.strip():
                 parsed = parse_screenplay_script(sp_text, characters=characters)
                 if parsed.get("audio_cues"):
-                    audio_parts.append(
-                        f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}"
-                    )
-                indented_script = "\n".join(
-                    f"  {line}" for line in sp_text.strip().splitlines()
-                )
+                    audio_parts.append(f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}")
+                indented_script = "\n".join(f"  {line}" for line in sp_text.strip().splitlines())
                 scene_lines.append(
                     f"- Scene {scene_num} [{roles_str}] (Screenplay Script):\n{indented_script}"
                 )
@@ -817,17 +1065,11 @@ class PromptCompiler:
                     else getattr(scene, "dialogue", "")
                 )
                 diag_str = (
-                    f' | Dialogue: "{dialogue}"'
-                    if dialogue and str(dialogue).strip()
-                    else ""
+                    f' | Dialogue: "{dialogue}"' if dialogue and str(dialogue).strip() else ""
                 )
-                scene_lines.append(
-                    f"- Scene {scene_num} [{roles_str}]: {action}{diag_str}"
-                )
+                scene_lines.append(f"- Scene {scene_num} [{roles_str}]: {action}{diag_str}")
 
-        audio_block = (
-            "\n".join(audio_parts) if audio_parts else "Default Audio & Voice Direction"
-        )
+        audio_block = "\n".join(audio_parts) if audio_parts else "Default Audio & Voice Direction"
         scenes_block = "\n".join(scene_lines) if scene_lines else "- No scenes"
 
         return (
@@ -866,7 +1108,7 @@ class PromptCompiler:
         if self._pro_global_client:
             res = self._try_gemini_deconstruction(
                 client=self._pro_global_client,
-                model_name="gemini-3.1-pro-preview",
+                model_name=settings.deconstruct_pro_model,
                 concept=concept,
                 tier_name="Tier 1 Pro Global",
             )
@@ -876,7 +1118,7 @@ class PromptCompiler:
         if self._flash_regional_client:
             res = self._try_gemini_deconstruction(
                 client=self._flash_regional_client,
-                model_name="gemini-2.5-flash",
+                model_name=settings.deconstruct_flash_model,
                 concept=concept,
                 tier_name="Tier 2 Flash Regional",
             )
@@ -889,325 +1131,84 @@ class PromptCompiler:
         return self._deconstruct_fallback(concept)
 
     def _deconstruct_fallback(self, concept: str) -> MetaPromptTags:
-        """Parses open-ended parody concept shorthand into structured MetaPromptTags with CharacterRoles, Aesthetic Tags, Environment, Camera/Lighting, Audio Beat, and Vocal Delivery."""
+        """Parse open-ended parody concept shorthand into structured MetaPromptTags.
+
+        Table-driven: :func:`classify_concept` picks the :class:`StyleProfile`,
+        which supplies every per-character and scene-wide value. This keeps the
+        keyword tuples and lookups defined once (see ``STYLE_PROFILES``).
+        """
         lower = concept.lower().strip()
+        profile = STYLE_PROFILES[classify_concept(lower)]
 
-        def get_char_tags(k: str) -> list[str]:
-            if any(t in lower for t in ("trap", "atlanta", "808", "rap", "hip-hop")):
-                tag_map = {
-                    "harry": ["Red Gucci Tracksuit", "Cartier Glasses"],
-                    "draco": ["Platinum Slicked Hair", "Diamond Iced-Out Chain"],
-                    "snape": ["Black Puffer Jacket", "Cuban Link Chain"],
-                    "dumbledore": ["Oversized Silk Robes", "Half-Moon Cartier Glasses"],
-                    "voldemort": ["Chalk-White Techwear", "Diamond Snake Medallion"],
-                    "ramsay": ["Diamond Chef Knife Chain", "Designer White Streetwear"],
-                    "julia": ["Vintage Pearl Medallion", "Retro Silk Apron"],
-                    "samurai": ["Diamond Katana Chain", "Streetwear Samurai Armor"],
-                    "ninja": ["Iced-Out Ninja Mask", "Tactical Techwear"],
-                }
-                return tag_map.get(k, ["Vintage Streetwear", "Diamond Chain"])
-            elif any(
-                t in lower
-                for t in (
-                    "cyberpunk",
-                    "neon",
-                    "futuristic",
-                    "iron chef",
-                    "samurai",
-                    "ninja",
-                    "arcade",
-                )
-            ):
-                tag_map = {
-                    "harry": [
-                        "Holographic Wire-Rim Glasses",
-                        "LED-Lined Techwear Robes",
-                    ],
-                    "draco": ["Silver Techwear Coat", "Holographic Visor"],
-                    "snape": ["High-Collar Dark Techwear", "Holographic Cyber Coat"],
-                    "dumbledore": ["Neon-Embroidered Robes", "Holographic Spectacles"],
-                    "voldemort": ["Chrome Cyber Armor", "Serpentine Neon Glow"],
-                    "ramsay": ["Holographic Chef Jacket", "Laser Thermal Blade"],
-                    "julia": ["Cybernetic Apron", "Holographic Visor"],
-                    "samurai": ["Glowing LED Armor", "Energy Katana"],
-                    "ninja": ["Chrome Cyber Mask", "Stealth Holographic Visor"],
-                }
-                return tag_map.get(k, ["Futuristic Techwear", "Holographic Visor"])
-            elif any(t in lower for t in ("anime", "vhs", "lo-fi")):
-                tag_map = {
-                    "harry": ["Cel-Shaded Wire-Rim Glasses", "Retro Anime Robes"],
-                    "draco": ["Cel-Shaded Platinum Hair", "Silver-Trimmed Uniform"],
-                    "snape": ["Cel-Shaded Dark Cloak", "Analog Grain Filter"],
-                    "dumbledore": ["Vintage Cel-Shaded Robes", "Flowing Silver Beard"],
-                    "voldemort": ["Chalk-White Cel-Shading", "Serpentine Aura"],
-                    "ramsay": ["Cel-Shaded Chef Coat", "Flame Aura"],
-                    "julia": ["Retro Cel-Shaded Apron", "Vintage Kitchen Attire"],
-                    "samurai": ["Cel-Shaded Samurai Armor", "Energy Katana"],
-                    "ninja": ["Cel-Shaded Ninja Garb", "Stealth Visor"],
-                }
-                return tag_map.get(k, ["Cel-Shaded Styling", "Retro Headband"])
-            else:
-                tag_map = {
-                    "harry": ["Red Gucci Tracksuit", "Cartier Glasses"],
-                    "draco": ["Tailored Silver-Trimmed Robes", "Platinum Slicked Hair"],
-                    "snape": ["Flowing Black Cloak", "Severe Dark Attire"],
-                    "dumbledore": ["Ornate Wizard Robes", "Half-Moon Spectacles"],
-                    "voldemort": ["Chalk-White Silk Robes", "Serpentine Aura"],
-                    "ramsay": ["Crisp White Chef Jacket", "Fiery Apron"],
-                    "julia": ["Classic Vintage Apron", "Warm Retro Styling"],
-                    "samurai": ["Glowing LED Armor", "Energy Katana"],
-                    "ninja": ["Chrome Cyber Mask", "Stealth Visor"],
-                }
-                return tag_map.get(k, ["Stylized Wardrobe", "Cinematic Attire"])
+        def char_tags(k: str) -> list[str]:
+            return profile.char_tags.get(k, profile.char_tags_default)
 
-        def get_char_voice(k: str) -> str:
-            if any(t in lower for t in ("trap", "atlanta", "808", "rap", "hip-hop")):
-                voice_map = {
-                    "harry": "Fast-paced confident Atlanta rap flow with autotune",
-                    "draco": "Pompous, cynical British drawl with aggressive rap cadence",
-                    "snape": "Deep sarcastic monotone rap cadence with heavy bass resonance",
-                    "dumbledore": "Smooth authoritative elder rap flow with melodic reverb",
-                    "voldemort": "Hissing raspy dark trap cadence with sinister whisper",
-                    "ramsay": "Aggressive rapid-fire British rap delivery with fiery staccato",
-                    "julia": "Cheerful rhythmic vintage cadence with operatic flair",
-                    "samurai": "Stoic disciplined hip-hop cadence with sharp precision",
-                    "ninja": "Fast whisper-rap flow with rhythmic syncopation",
-                }
-                return voice_map.get(
-                    k, "Fast-paced rhythmic rap cadence with confident delivery"
-                )
-            elif any(
-                t in lower
-                for t in (
-                    "cyberpunk",
-                    "neon",
-                    "futuristic",
-                    "iron chef",
-                    "samurai",
-                    "ninja",
-                    "arcade",
-                )
-            ):
-                voice_map = {
-                    "harry": "Youthful tech-filtered voice with energetic synthesized cadence",
-                    "draco": "Cold aristocratic drawl with subtle robotic modulation",
-                    "snape": "Deep resonant cyborg baritone with metallic vocoder edge",
-                    "dumbledore": "Resonant holographic elder voice with ethereal synth harmonic",
-                    "voldemort": "Sinister digital rasp with glitchy pitch shift",
-                    "ramsay": "High-intensity barking commands with sharp electronic vocoding",
-                    "julia": "Warm vintage tone with cheerful cybernetic filter",
-                    "samurai": "Stoic synthesized warrior cadence with crisp electronic articulation",
-                    "ninja": "Stealth filtered whisper with robotic modulation",
-                }
-                return voice_map.get(
-                    k, "Futuristic vocoded speech with crisp electronic articulation"
-                )
-            elif any(t in lower for t in ("anime", "vhs", "lo-fi")):
-                voice_map = {
-                    "harry": "Energetic youthful anime protagonist voice with passionate delivery",
-                    "draco": "Smug aristocratic rival voice with dramatic anime inflection",
-                    "snape": "Brooding dramatic antagonist voice with slow deliberate pacing",
-                    "dumbledore": "Wise eccentric mentor voice with warm melodic phrasing",
-                    "voldemort": "Theatrical villainous rasp with dramatic echo",
-                    "ramsay": "Fiery competitive anime chef delivery with explosive shouts",
-                    "julia": "Whimsical motherly culinary host voice with cheerful vintage lilt",
-                    "samurai": "Deep honorable warrior voice with classic anime dub inflection",
-                    "ninja": "Quiet masked assassin voice with sharp dramatic whispers",
-                }
-                return voice_map.get(
-                    k, "Expressive retro anime dub voice with dramatic flair"
-                )
-            else:
-                voice_map = {
-                    "harry": "Youthful British accent with determined heroic cadence",
-                    "draco": "Aristocratic British drawl with sneering sarcastic tone",
-                    "snape": "Deep cynical British drawl with slow menacing pauses",
-                    "dumbledore": "Gentle whimsical British elder voice with grandfatherly warmth",
-                    "voldemort": "Cold sibilant whisper with chilling theatrical intensity",
-                    "ramsay": "Fiery passionate British chef voice with explosive intensity",
-                    "julia": "High-pitched cheerful mid-Atlantic accent with warm enthusiastic lilt",
-                    "samurai": "Stoic grounded warrior voice with focused intensity",
-                    "ninja": "Hushed tactical voice with crisp deliberate phrasing",
-                }
-                return voice_map.get(
-                    k, "Cinematic theatrical voice with distinct expressive delivery"
-                )
+        def char_voice(k: str) -> str:
+            return profile.char_voices.get(k, profile.char_voice_default)
 
         # 1. Character Extraction
         chars: list[CharacterRole] = []
-        role_labels = ["Role A", "Role B", "Role C", "Role D"]
-
-        known_lore: dict[str, tuple[str, str]] = {
-            "harry": (
-                "Harry",
-                "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
-            ),
-            "draco": (
-                "Draco",
-                "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
-            ),
-            "snape": (
-                "Severus Snape",
-                "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
-            ),
-            "dumbledore": (
-                "Albus Dumbledore",
-                "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
-            ),
-            "voldemort": (
-                "Lord Voldemort",
-                "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
-            ),
-            "ramsay": (
-                "Gordon Ramsay",
-                "Gordon Ramsay, a fiery celebrity chef with sharp blond hair, intense focused gaze, and crisp white chef jacket",
-            ),
-            "julia": (
-                "Julia Child",
-                "Julia Child, an iconic tall cheerful culinary master with curly brown hair, expressive warm smile, and classic vintage apron",
-            ),
-            "samurai": (
-                "Neon Samurai",
-                "Neon Samurai, a stoic warrior in glowing LED armor with a razor-sharp energy katana",
-            ),
-            "ninja": (
-                "Cyborg Ninja",
-                "Cyborg Ninja, an agile cybernetic assassin with chrome mask and stealth holographic visor",
-            ),
-        }
-
-        matched_keys = [k for k in known_lore if k in lower]
+        matched_keys = [k for k in CHARACTER_LORE if k in lower]
         if matched_keys:
             for idx, k in enumerate(matched_keys):
-                name, desc = known_lore[k]
+                name, desc = CHARACTER_LORE[k]
                 chars.append(
                     CharacterRole(
-                        role_id=role_labels[min(idx, len(role_labels) - 1)],
+                        role_id=_role_label(idx),
                         name=name,
                         description=desc,
-                        aesthetic_tags=get_char_tags(k),
-                        voice_style=get_char_voice(k),
+                        aesthetic_tags=char_tags(k),
+                        voice_style=char_voice(k),
                     )
                 )
-        else:
-            if " vs " in lower or " versus " in lower:
-                splitter = " vs " if " vs " in lower else " versus "
-                parts = concept.split(splitter)
-                name_a = parts[0].strip().split(" in ")[0].strip()
-                name_b = parts[1].strip().split(" in ")[0].strip()
-                chars.append(
-                    CharacterRole(
-                        role_id="Role A",
-                        name=name_a.title(),
-                        description=f"{name_a.title()}, a distinct cinematic character with sharp expressive features",
-                        aesthetic_tags=get_char_tags(name_a.lower()),
-                        voice_style=get_char_voice(name_a.lower()),
-                    )
+        elif " vs " in lower or " versus " in lower:
+            splitter = " vs " if " vs " in lower else " versus "
+            parts = concept.split(splitter)
+            name_a = parts[0].strip().split(" in ")[0].strip()
+            name_b = parts[1].strip().split(" in ")[0].strip()
+            chars.append(
+                CharacterRole(
+                    role_id="Role A",
+                    name=name_a.title(),
+                    description=(
+                        f"{name_a.title()}, a distinct cinematic character "
+                        "with sharp expressive features"
+                    ),
+                    aesthetic_tags=char_tags(name_a.lower()),
+                    voice_style=char_voice(name_a.lower()),
                 )
-                chars.append(
-                    CharacterRole(
-                        role_id="Role B",
-                        name=name_b.title(),
-                        description=f"{name_b.title()}, a compelling rival character with bold visual presence",
-                        aesthetic_tags=get_char_tags(name_b.lower()),
-                        voice_style=get_char_voice(name_b.lower()),
-                    )
-                )
-            else:
-                chars.append(
-                    CharacterRole(
-                        role_id="Role A",
-                        name="Lead Subject",
-                        description="A distinct cinematic character with expressive facial features and stylized attire",
-                        aesthetic_tags=get_char_tags("lead"),
-                        voice_style=get_char_voice("lead"),
-                    )
-                )
-
-        # 2. Aesthetic / Style Tags Extraction
-        if (
-            "trap" in lower
-            or "atlanta" in lower
-            or "808" in lower
-            or "rap" in lower
-            or "hip-hop" in lower
-        ):
-            aesthetic_tags = [
-                "2000s Atlanta Trap Disstrack",
-                "Diamond Lightning Bolt Chain",
-                "Vintage Streetwear",
-                "Heavy 808 Bass Lighting",
-            ]
-            audio_beat = "140 BPM Heavy 808 Trap"
-            vocal_delivery = "High-energy back-and-forth rap battle delivery with synchronized lip-sync and punchy cadence"
-            env_tag = (
-                "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze"
-                if (
-                    "harry" in lower
-                    or "draco" in lower
-                    or "hogwarts" in lower
-                    or "snape" in lower
-                )
-                else "Urban street alley with neon stage lights and atmospheric fog"
             )
-            cam_tag = "Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights"
-        elif (
-            "cyberpunk" in lower
-            or "neon" in lower
-            or "futuristic" in lower
-            or "iron chef" in lower
-            or "samurai" in lower
-            or "ninja" in lower
-            or "arcade" in lower
-        ):
-            aesthetic_tags = [
-                "Cyberpunk Glow",
-                "Neon Cyan & Purple Color Grading",
-                "Futuristic Techwear",
-                "Anamorphic Lens Flare",
-            ]
-            audio_beat = "110 BPM Cyberpunk Synthwave Groove"
-            vocal_delivery = "Futuristic vocoded dialogue with sharp synthesized delivery and spatial reverb"
-            env_tag = (
-                "Futuristic neon kitchen colosseum with holographic spectator screens"
-                if (
-                    "chef" in lower
-                    or "ramsay" in lower
-                    or "julia" in lower
-                    or "kitchen" in lower
+            chars.append(
+                CharacterRole(
+                    role_id="Role B",
+                    name=name_b.title(),
+                    description=(
+                        f"{name_b.title()}, a compelling rival character with bold visual presence"
+                    ),
+                    aesthetic_tags=char_tags(name_b.lower()),
+                    voice_style=char_voice(name_b.lower()),
                 )
-                else "Neon-lit cyberpunk arcade showdown arena"
-            )
-            cam_tag = "Anamorphic widescreen tracking shot with high-gloss neon reflections and holographic bloom"
-        elif "anime" in lower or "vhs" in lower or "lo-fi" in lower:
-            aesthetic_tags = [
-                "Retro VHS Anime Lo-Fi",
-                "Analog Scanlines",
-                "Warm Nostalgic Bloom",
-                "Cel-Shaded Styling",
-            ]
-            audio_beat = "85 BPM VHS Lo-Fi City Pop"
-            vocal_delivery = "Expressive 80s anime dub voiceover with dramatic dynamic range and emotional emphasis"
-            env_tag = "Retro 80s anime cityscape bathed in sunset pastel lighting"
-            cam_tag = (
-                "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
             )
         else:
-            aesthetic_tags = [
-                "High-Contrast Cinematic Parody",
-                "Stylized Wardrobe",
-                "Dramatic Lighting",
-            ]
-            audio_beat = "120 BPM Cinematic Beat"
-            vocal_delivery = "Crisp cinematic dialogue with natural conversational timing and clear studio projection"
-            env_tag = "Atmospheric stage set with dramatic directional lighting and smoke effects"
-            cam_tag = "Cinematic 16:9 tracking shot with balanced ambient lighting and crisp depth of field"
+            chars.append(
+                CharacterRole(
+                    role_id="Role A",
+                    name="Lead Subject",
+                    description=(
+                        "A distinct cinematic character with expressive facial features "
+                        "and stylized attire"
+                    ),
+                    aesthetic_tags=char_tags("lead"),
+                    voice_style=char_voice("lead"),
+                )
+            )
 
+        # 2. Scene-wide tags come straight from the resolved profile.
         return MetaPromptTags(
             characters=chars,
-            aesthetic_tags=aesthetic_tags,
-            environment_tag=env_tag,
-            camera_lighting_tag=cam_tag,
-            audio_beat=audio_beat,
-            vocal_delivery=vocal_delivery,
+            aesthetic_tags=list(profile.aesthetic_tags),
+            environment_tag=profile.environment_for(lower),
+            camera_lighting_tag=profile.camera_lighting_tag,
+            audio_beat=profile.audio_beat,
+            vocal_delivery=profile.vocal_delivery,
         )

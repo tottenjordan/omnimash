@@ -1,6 +1,48 @@
 import os
-from omnimash.storage.gcs import GcsStorageManager
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from omnimash.engine.omni_client import OmniFlashClient
+from omnimash.storage import gcs as gcs_mod
+from omnimash.storage.gcs import GcsStorageManager
+
+
+def _live_manager_with_failing_blob() -> GcsStorageManager:
+    """A non-mock manager whose bucket's blob uploads raise, for error-path tests."""
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    blob = MagicMock()
+    blob.upload_from_filename.side_effect = RuntimeError("boom upload")
+    blob.upload_from_string.side_effect = RuntimeError("boom upload")
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    gcs._bucket = bucket
+    return gcs
+
+
+def test_upload_file_raises_on_error_instead_of_fake_url(tmp_path):
+    gcs = _live_manager_with_failing_blob()
+    local = tmp_path / "clip.mp4"
+    local.write_bytes(b"data")
+    # Must NOT return a fabricated success URL when the upload fails.
+    with pytest.raises(RuntimeError):
+        gcs.upload_file(str(local), destination_blob_name="sessions/s/intermediate/clip.mp4")
+
+
+def test_upload_bytes_raises_on_error_instead_of_fake_url():
+    gcs = _live_manager_with_failing_blob()
+    with pytest.raises(RuntimeError):
+        gcs.upload_bytes(b"data", "sessions/s/intermediate/clip.mp4")
+
+
+def test_upload_file_mock_mode_still_returns_url(tmp_path):
+    # Mock/offline dev keeps returning a fabricated URL (no raise).
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    local = tmp_path / "clip.mp4"
+    local.write_bytes(b"data")
+    url = gcs.upload_file(str(local), destination_blob_name="sessions/s/intermediate/clip.mp4")
+    assert url.endswith("sessions/s/intermediate/clip.mp4")
 
 
 def test_gcs_storage_manager_urls():
@@ -20,6 +62,118 @@ def test_gcs_session_blob_path():
         session_id="session_abc", category="intermediate", filename="clip_0.mp4"
     )
     assert path == "sessions/session_abc/intermediate/clip_0.mp4"
+
+
+def test_sanitize_path_segment_blocks_traversal():
+    sanitize = GcsStorageManager.sanitize_path_segment
+    # Traversal and separators collapse to safe single segments.
+    assert "/" not in sanitize("../evil")
+    assert ".." not in sanitize("..")
+    assert "/" not in sanitize("a/../b")
+    assert sanitize("/leading") == "leading"
+    # Empty / whitespace fall back to the default.
+    assert sanitize("") == "global"
+    assert sanitize("   ") == "global"
+    assert sanitize(None) == "global"
+    assert sanitize("", default="misc") == "misc"
+    # Valid identifiers survive (colon normalized to underscore).
+    assert sanitize("user:project") == "user_project"
+    assert sanitize("session_abc-123") == "session_abc-123"
+
+
+def test_build_session_blob_path_stays_scoped():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    path = gcs.build_session_blob_path("../evil", "../x", "../../f.mp4")
+    assert path.startswith("sessions/")
+    assert ".." not in path
+    # Exactly four segments: sessions/{sid}/{category}/{filename}
+    assert len(path.split("/")) == 4
+
+
+def test_download_blob_bytes_rejects_foreign_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    # A bucket outside the app bucket + allow-list yields empty bytes (-> 404).
+    data, ctype = gcs.download_blob_bytes("gs://some-other-bucket/secret.mp4")
+    assert data == b""
+    assert ctype == ""
+
+
+def test_download_blob_bytes_allows_app_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    data, _ = gcs.download_blob_bytes("gs://test-omnimash-bucket/sessions/s/clip.mp4")
+    assert data == b"mock_image_bytes"
+
+
+def test_download_blob_bytes_allows_reference_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    # Default reference bucket for the built-in characters stays readable.
+    data, _ = gcs.download_blob_bytes("gs://reference-images-jt-trend-trawler/harry_drip.jpeg")
+    assert data == b"mock_image_bytes"
+
+
+def test_get_media_metadata_reads_size_and_type_live():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    blob = MagicMock()
+    blob.size = 4096
+    blob.content_type = "video/mp4"
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    client = MagicMock()
+    client.bucket.return_value = bucket
+    gcs._client = client
+
+    meta = gcs.get_media_metadata("gs://test-omnimash-bucket/sessions/s/clip.mp4")
+    assert meta == (4096, "video/mp4")
+    blob.reload.assert_called_once()
+
+
+def test_get_media_metadata_rejects_foreign_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    gcs._client = MagicMock()
+    assert gcs.get_media_metadata("gs://some-other-bucket/secret.mp4") is None
+
+
+def test_iter_blob_range_streams_inclusive_chunks_live():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    payload = bytes(range(50))
+    blob = MagicMock()
+
+    def _fake_download(*, start, end, **kwargs):
+        return payload[start : end + 1]
+
+    blob.download_as_bytes.side_effect = _fake_download
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    client = MagicMock()
+    client.bucket.return_value = bucket
+    gcs._client = client
+
+    chunks = list(
+        gcs.iter_blob_range(
+            "gs://test-omnimash-bucket/sessions/s/clip.mp4",
+            start=10,
+            end=19,
+            chunk_size=4,
+        )
+    )
+    assert b"".join(chunks) == payload[10:20]
+    # Chunked: 4 + 4 + 2 bytes across three bounded reads.
+    assert [len(c) for c in chunks] == [4, 4, 2]
+
+
+def test_iter_blob_range_mock_mode_slices_payload():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    chunks = list(
+        gcs.iter_blob_range(
+            "gs://test-omnimash-bucket/sessions/s/clip.mp4",
+            start=0,
+            end=3,
+        )
+    )
+    assert b"".join(chunks) == b"mock"
 
 
 def test_gcs_save_session_prompt():
@@ -61,6 +215,55 @@ def test_gcs_ensure_bucket_exists():
     assert gcs.ensure_bucket_exists() is True
 
 
+def test_managers_share_one_client_per_project():
+    if gcs_mod.storage is None:
+        pytest.skip("google-cloud-storage not installed")
+    gcs_mod._SHARED_CLIENTS.clear()
+    fake_client = MagicMock()
+    try:
+        with patch.object(gcs_mod.storage, "Client", return_value=fake_client) as mock_ctor:
+            m1 = GcsStorageManager(bucket_name="b1", project_id="proj-x", mock_mode=False)
+            m2 = GcsStorageManager(bucket_name="b2", project_id="proj-x", mock_mode=False)
+        # Same project => one shared client instance, built exactly once.
+        assert m1._client is fake_client
+        assert m2._client is fake_client
+        assert mock_ctor.call_count == 1
+    finally:
+        gcs_mod._SHARED_CLIENTS.clear()
+
+
+def test_generate_browser_url_mock_returns_public_url():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    url = gcs.generate_browser_url("sessions/s/final_masters/master.mp4")
+    assert url == gcs.get_public_url("sessions/s/final_masters/master.mp4")
+
+
+def test_generate_browser_url_signs_for_private_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    blob = MagicMock()
+    blob.generate_signed_url.return_value = "https://signed.example/xyz"
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    gcs._bucket = bucket
+    url = gcs.generate_browser_url("sessions/s/final_masters/master.mp4")
+    assert url == "https://signed.example/xyz"
+    blob.generate_signed_url.assert_called_once()
+
+
+def test_generate_browser_url_falls_back_to_gs_uri_on_signing_failure():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    blob = MagicMock()
+    blob.generate_signed_url.side_effect = RuntimeError("no signBlob permission")
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    gcs._bucket = bucket
+    url = gcs.generate_browser_url("sessions/s/final_masters/master.mp4")
+    # Never a 403-prone public URL; the proxy can serve the gs:// URI.
+    assert url == "gs://test-omnimash-bucket/sessions/s/final_masters/master.mp4"
+
+
 def test_save_and_load_character_gcs():
     storage = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
     char_data = {
@@ -71,9 +274,7 @@ def test_save_and_load_character_gcs():
         "aesthetic_tags": ["Red Gucci Tracksuit"],
         "voice_style": "Atlanta trap flow",
     }
-    pub_url, gcs_uri = storage.save_character(
-        char_data, session_id="test_session", is_library=True
-    )
+    pub_url, gcs_uri = storage.save_character(char_data, session_id="test_session", is_library=True)
     assert "library/characters/harry.json" in gcs_uri
     assert (
         pub_url

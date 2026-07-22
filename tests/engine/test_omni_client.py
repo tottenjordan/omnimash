@@ -2,9 +2,11 @@ import inspect
 import os
 from typing import Any
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 import omnimash.config
+import omnimash.engine.omni_client as omni_module
 from omnimash.engine.omni_client import (
     OmniFlashClient,
     _abstract_prompt_for_responsible_ai,
@@ -12,7 +14,6 @@ from omnimash.engine.omni_client import (
     _get_relaxed_safety_settings,
     ensure_rendered_video,
 )
-import omnimash.engine.omni_client as omni_module
 
 
 def test_zero_veo_or_tts_references() -> None:
@@ -164,16 +165,12 @@ def test_dynamic_audio_synthesizer_genres() -> None:
     wav_path = "/tmp/test_dynamic_beat.wav"
 
     # 1. 140 BPM Drill
-    bpm_drill = _generate_dynamic_audio_wav(
-        wav_path, prompt="140 BPM UK Drill 808s", duration=1
-    )
+    bpm_drill = _generate_dynamic_audio_wav(wav_path, prompt="140 BPM UK Drill 808s", duration=1)
     assert bpm_drill == 140
     assert os.path.exists(wav_path)
 
     # 2. 85 BPM Anime Lo-Fi
-    bpm_anime = _generate_dynamic_audio_wav(
-        wav_path, prompt="VHS anime lo-fi city pop", duration=1
-    )
+    bpm_anime = _generate_dynamic_audio_wav(wav_path, prompt="VHS anime lo-fi city pop", duration=1)
     assert bpm_anime == 85
 
     # 3. 110 BPM Cyberpunk
@@ -211,9 +208,7 @@ def test_ensure_rendered_video_procedural_visualizer_fallback() -> None:
 def test_dynamic_audio_wav_ducks_instrumental_when_voiceover_present() -> None:
     wav_no_vo = "temp_beat_no_vo.wav"
     wav_vo = "temp_beat_vo.wav"
-    _generate_dynamic_audio_wav(
-        wav_no_vo, prompt="120 BPM boom-bap", voiceover=None, duration=1
-    )
+    _generate_dynamic_audio_wav(wav_no_vo, prompt="120 BPM boom-bap", voiceover=None, duration=1)
     _generate_dynamic_audio_wav(
         wav_vo, prompt="120 BPM boom-bap", voiceover="Gaunt wizard speaking", duration=1
     )
@@ -536,6 +531,7 @@ def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
 def test_load_reference_images_as_input_returns_base64_objects() -> None:
     """Verify that _load_reference_images_as_input returns base64 image objects for characters with reference_url."""
     import base64
+
     from omnimash.prompts.compiler import CharacterRole
 
     client = OmniFlashClient(mock_mode=True)
@@ -562,9 +558,7 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
         client.storage,
         "download_blob_bytes",
         side_effect=lambda url: (
-            (b"fake_png_data", "image/png")
-            if "png" in url
-            else (b"fake_jpg_data", "image/jpeg")
+            (b"fake_png_data", "image/png") if "png" in url else (b"fake_jpg_data", "image/jpeg")
         ),
     ):
         imgs = client._load_reference_images_as_input(
@@ -587,6 +581,7 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
 def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
     """Verify _generate_live_omni_flash_video calls interactions.create with multimodal input array containing image and text objects."""
     import base64
+
     from omnimash.prompts.compiler import CharacterRole
 
     client = OmniFlashClient(mock_mode=False)
@@ -647,6 +642,7 @@ def test_load_reference_images_logs_diagnostics(
     """Verify diagnostic logs during reference image loading and payload construction."""
     import base64
     import logging
+
     from omnimash.prompts.compiler import CharacterRole
 
     client = OmniFlashClient(mock_mode=False)
@@ -675,13 +671,13 @@ def test_load_reference_images_logs_diagnostics(
             return b"fake_harry_png", "image/png"
         return b"", ""
 
-    with caplog.at_level(logging.INFO, logger="omnimash.engine"):
-        with patch.object(
-            client.storage, "download_blob_bytes", side_effect=mock_download
-        ):
-            imgs = client._load_reference_images_as_input(
-                session_id="session_123", characters=[char1, char2, char3]
-            )
+    with (
+        caplog.at_level(logging.INFO, logger="omnimash.engine"),
+        patch.object(client.storage, "download_blob_bytes", side_effect=mock_download),
+    ):
+        imgs = client._load_reference_images_as_input(
+            session_id="session_123", characters=[char1, char2, char3]
+        )
 
     assert len(imgs) == 1
     assert "Loaded 1 reference image(s) for characters: ['Role A']" in caplog.text
@@ -701,15 +697,15 @@ def test_load_reference_images_logs_diagnostics(
     client._genai_client = mock_genai_client
 
     target_file = str(tmp_path / "test_diag_out.mp4")
-    with caplog.at_level(logging.INFO, logger="omnimash.engine"):
-        with patch.object(
-            client.storage, "download_blob_bytes", side_effect=mock_download
-        ):
-            client._generate_live_omni_flash_video(
-                prompt="Harry in rap battle",
-                target_rel_path=target_file,
-                characters=[char1],
-            )
+    with (
+        caplog.at_level(logging.INFO, logger="omnimash.engine"),
+        patch.object(client.storage, "download_blob_bytes", side_effect=mock_download),
+    ):
+        client._generate_live_omni_flash_video(
+            prompt="Harry in rap battle",
+            target_rel_path=target_file,
+            characters=[char1],
+        )
 
     assert (
         "Attaching 1 multimodal base64 reference image(s) to gemini-omni-flash-preview interaction payload."

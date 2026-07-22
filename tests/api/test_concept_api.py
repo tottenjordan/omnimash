@@ -60,13 +60,8 @@ def test_generate_endpoint_accepts_vocal_delivery_and_character_voice_style():
     data = res.json()
     assert data["success"] is True
     assert data["raw_compiled_prompt"] is not None
-    assert (
-        "Voice Style (Role A): Fast-paced Atlanta trap flow"
-        in data["raw_compiled_prompt"]
-    )
-    assert (
-        "Vocal Delivery: Punchy synchronized rap cadence" in data["raw_compiled_prompt"]
-    )
+    assert "Voice Style (Role A): Fast-paced Atlanta trap flow" in data["raw_compiled_prompt"]
+    assert "Vocal Delivery: Punchy synchronized rap cadence" in data["raw_compiled_prompt"]
 
 
 def test_generate_with_character_roles_and_scenes():

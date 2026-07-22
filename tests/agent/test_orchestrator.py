@@ -128,9 +128,7 @@ def test_orchestrator_save_final_master_with_raw_compiled_prompt(monkeypatch):
     agent = OmniMashAgent(mock_mode=True)
     calls = []
 
-    def mock_save_final_master(
-        session_id, source_rel_path, master_title, prompt_data=None
-    ):
+    def mock_save_final_master(session_id, source_rel_path, master_title, prompt_data=None):
         calls.append((session_id, source_rel_path, master_title, prompt_data))
         return "https://pub/master.mp4", "gs://bucket/master.mp4"
 
@@ -250,3 +248,59 @@ def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
     assert "[STORYBOARD SEQUENCE]" in res.raw_compiled_prompt
     assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in res.raw_compiled_prompt
     assert '  Harry: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
+
+
+def test_process_user_turn_returns_typed_error_on_generation_failure(monkeypatch):
+    # A downstream generation failure becomes a typed ERROR response, not a raise.
+    agent = OmniMashAgent(mock_mode=True)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("gs://secret-bucket/leak.mp4 exploded at /tmp/x")
+
+    monkeypatch.setattr(agent.omni_client, "generate_clip", boom)
+
+    res = agent.process_user_turn(
+        user_id="u_err",
+        project_id="p_err",
+        prompt="Snape 90s rap",
+        clip_index=0,
+    )
+    assert res.success is False
+    assert res.status_event == "ERROR"
+    assert res.error_message
+    # Sanitized: internal identifiers never leak to the caller.
+    assert "secret-bucket" not in res.error_message
+    assert "/tmp" not in res.error_message
+
+
+def test_commit_and_branch_returns_typed_error_on_failure(monkeypatch):
+    agent = OmniMashAgent(mock_mode=True)
+    r1 = agent.process_user_turn("u_cb", "p_cb", "Snape 90s rap", 0)
+    assert r1.success is True
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("gs://secret-bucket/reanchor.mp4 down")
+
+    monkeypatch.setattr(agent.omni_client, "start_thread_from_video", boom)
+
+    res = agent.commit_and_branch("u_cb", "p_cb", r1.turn_id, "next prompt")
+    assert res.success is False
+    assert res.status_event == "ERROR"
+    assert "secret-bucket" not in (res.error_message or "")
+
+
+def test_spicy_free_text_prompt_still_succeeds_end_to_end():
+    # Regression guard: none of the Phase 1-2 validation tightens content.
+    # A spicy free-text prompt + compiled_override still generates in mock mode.
+    agent = OmniMashAgent(mock_mode=True)
+    spicy = "Draco spits a savage explicit diss with gore, profanity, and neon drug imagery"
+    res = agent.process_user_turn(
+        user_id="u_spice",
+        project_id="p_spice",
+        prompt=spicy,
+        compiled_override=f"[RAW OVERRIDE] {spicy} -- brutal uncensored parody",
+        clip_index=0,
+    )
+    assert res.success is True
+    assert res.status_event == "COMPLETED"
+    assert res.video_url is not None

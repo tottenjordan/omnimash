@@ -19,7 +19,7 @@ class PresetContribution:
     sound_design: str
 
 
-class StylePreset(str, Enum):
+class StylePreset(str, Enum):  # noqa: UP042 - str+Enum kept intentionally; code reads .value explicitly
     NINETIES_RAP_VIDEO = "90s_rap_video"
     TRAP_DISSTRACK = "trap_disstrack"
     CYBERPUNK_DRIFT = "cyberpunk_drift"
@@ -84,9 +84,7 @@ class PromptTaxonomyEngine:
         if override_prompt:
             return override_prompt
 
-        compiled_delta = self.compiler.compile_delta(
-            delta_instruction=delta_instruction
-        )
+        compiled_delta = self.compiler.compile_delta(delta_instruction=delta_instruction)
         return (
             "Apply conversational diff to the existing video latent space using Lock & Isolate: "
             f"{compiled_delta.to_delta_prompt()}"

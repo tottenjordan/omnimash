@@ -1,8 +1,35 @@
 import base64
 from unittest.mock import MagicMock, patch
+
 import pytest
 
-from omnimash.engine.omni_client import GenerationResult, OmniFlashClient
+from omnimash.engine.omni_client import (
+    ClipRequest,
+    GenerationResult,
+    OmniFlashClient,
+    _extract_status_code,
+    _is_retryable_error,
+)
+
+
+class _FakeAPIError(Exception):
+    """Mimics google-genai's APIError exposing an integer ``code``."""
+
+    def __init__(self, message: str, code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def _live_client(side_effect) -> tuple[OmniFlashClient, MagicMock]:
+    vertex_client = MagicMock()
+    vertex_client.interactions.create.side_effect = side_effect
+    client = OmniFlashClient(mock_mode=True)
+    client.mock_mode = False
+    client.retry_delay = 0.0
+    client._vertex_client = vertex_client
+    client._dev_client = None
+    client._genai_client = vertex_client
+    return client, vertex_client
 
 
 def _make_mock_interaction(
@@ -120,6 +147,62 @@ def test_exponential_backoff_retry_on_429_transient_success() -> None:
     assert vertex_client.interactions.create.call_count == 3
 
 
+def test_model_id_is_sourced_from_settings() -> None:
+    # Centralized settings must drive the interaction payload's model, so a
+    # deployment can retarget the video model via env without code edits.
+    vertex_client = MagicMock()
+    vertex_client.interactions.create.side_effect = [_make_mock_interaction("model_inter")]
+
+    client = OmniFlashClient(mock_mode=True)
+    client.mock_mode = False
+    client.retry_delay = 0.0
+    client._vertex_client = vertex_client
+    client._dev_client = None
+    client._genai_client = vertex_client
+
+    with (
+        patch("builtins.open", MagicMock()),
+        patch("os.makedirs", MagicMock()),
+        patch("omnimash.engine.omni_client.settings.omni_model_id", "gemini-omni-flash-custom"),
+    ):
+        client._generate_live_omni_flash_video(
+            prompt="A wizard dancing",
+            target_rel_path="static/rendered/test.mp4",
+        )
+
+    kwargs = vertex_client.interactions.create.call_args.kwargs
+    assert kwargs["model"] == "gemini-omni-flash-custom"
+
+
+def test_generate_clips_batch_runs_all_and_preserves_order() -> None:
+    # Independent clips fan out concurrently but results must line up with the
+    # input order; every request must reach the underlying generate_clip once.
+    client = OmniFlashClient(mock_mode=True)
+
+    calls: list[int] = []
+
+    def _fake_generate_clip(prompt, **kwargs):
+        turn = kwargs["turn_index"]
+        calls.append(turn)
+        return GenerationResult(
+            interaction_thread_id=f"thread_{turn}",
+            video_url=f"/static/rendered/turn_{turn}_video.mp4",
+        )
+
+    requests = [ClipRequest(prompt=f"scene {i}", turn_index=i) for i in range(3)]
+    with patch.object(client, "generate_clip", side_effect=_fake_generate_clip):
+        results = client.generate_clips_batch(requests)
+
+    assert [r.interaction_thread_id for r in results] == ["thread_0", "thread_1", "thread_2"]
+    assert sorted(calls) == [0, 1, 2]
+    assert len(results) == 3
+
+
+def test_generate_clips_batch_empty_returns_empty() -> None:
+    client = OmniFlashClient(mock_mode=True)
+    assert client.generate_clips_batch([]) == []
+
+
 def test_generation_result_modes_success_and_fallback() -> None:
     client = OmniFlashClient(mock_mode=True)
     client.mock_mode = False
@@ -133,9 +216,7 @@ def test_generation_result_modes_success_and_fallback() -> None:
             return_value=(True, "live_thread_123", None),
         ),
         patch.object(client.storage, "upload_file"),
-        patch.object(
-            client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"
-        ),
+        patch.object(client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"),
     ):
         res = client.generate_clip("Prompt test")
         assert res.generation_mode == "LIVE_OMNI_FLASH"
@@ -146,9 +227,7 @@ def test_generation_result_modes_success_and_fallback() -> None:
         assert res_diff.generation_mode == "LIVE_OMNI_FLASH"
         assert res_diff.error_message is None
 
-        res_reanchor = client.start_thread_from_video(
-            "/static/test.mp4", "Reanchor test"
-        )
+        res_reanchor = client.start_thread_from_video("/static/test.mp4", "Reanchor test")
         assert res_reanchor.generation_mode == "LIVE_OMNI_FLASH"
         assert res_reanchor.error_message is None
 
@@ -161,17 +240,13 @@ def test_generation_result_modes_success_and_fallback() -> None:
         ),
         patch("omnimash.engine.omni_client.ensure_rendered_video"),
         patch.object(client.storage, "upload_file"),
-        patch.object(
-            client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"
-        ),
+        patch.object(client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"),
     ):
         res_fallback = client.generate_clip("Prompt fallback")
         assert res_fallback.generation_mode == "LOCAL_PROCEDURAL_ANIMATION"
         assert res_fallback.error_message == "Vertex AI 404 Endpoint Not Found"
 
-        res_diff_fallback = client.apply_interaction_diff(
-            "live_thread_123", "Diff fallback"
-        )
+        res_diff_fallback = client.apply_interaction_diff("live_thread_123", "Diff fallback")
         assert res_diff_fallback.generation_mode == "LOCAL_PROCEDURAL_ANIMATION"
         assert res_diff_fallback.error_message == "Vertex AI 404 Endpoint Not Found"
 
@@ -180,3 +255,82 @@ def test_generation_result_modes_success_and_fallback() -> None:
         )
         assert res_reanchor_fallback.generation_mode == "LOCAL_PROCEDURAL_ANIMATION"
         assert res_reanchor_fallback.error_message == "Vertex AI 404 Endpoint Not Found"
+
+
+def test_extract_status_code_variants() -> None:
+    assert _extract_status_code(_FakeAPIError("boom", code=429)) == 429
+    assert _extract_status_code(RuntimeError("no numeric status")) is None
+
+
+def test_is_retryable_classification() -> None:
+    # Typed status codes drive the decision.
+    assert _is_retryable_error(_FakeAPIError("server", 503)) is True
+    assert _is_retryable_error(_FakeAPIError("rate", 429)) is True
+    assert _is_retryable_error(_FakeAPIError("bad request", 400)) is False
+    assert _is_retryable_error(_FakeAPIError("forbidden", 403)) is False
+    # Substring fallback when no code is exposed.
+    assert _is_retryable_error(RuntimeError("Deadline exceeded")) is True
+    assert _is_retryable_error(RuntimeError("PERMISSION_DENIED: no access")) is False
+    # Unknown errors stay lenient (retry) to preserve prior behavior.
+    assert _is_retryable_error(RuntimeError("something weird happened")) is True
+
+
+def test_permanent_status_code_aborts_without_retry() -> None:
+    client, vertex_client = _live_client(_FakeAPIError("bad request", code=400))
+    success, inter_id, error_message = client._generate_live_omni_flash_video(
+        prompt="A wizard dancing",
+        target_rel_path="static/rendered/test.mp4",
+    )
+    assert success is False
+    assert inter_id is None
+    # Permanent error => single attempt, no retries.
+    assert vertex_client.interactions.create.call_count == 1
+
+
+def test_permanent_error_by_message_aborts_without_retry() -> None:
+    client, vertex_client = _live_client(RuntimeError("PERMISSION_DENIED: caller lacks access"))
+    success, _inter_id, _error = client._generate_live_omni_flash_video(
+        prompt="A wizard dancing",
+        target_rel_path="static/rendered/test.mp4",
+    )
+    assert success is False
+    assert vertex_client.interactions.create.call_count == 1
+
+
+def test_transient_status_code_retries_to_exhaustion() -> None:
+    client, vertex_client = _live_client(_FakeAPIError("service unavailable", code=503))
+    success, _inter_id, error_message = client._generate_live_omni_flash_video(
+        prompt="A wizard dancing",
+        target_rel_path="static/rendered/test.mp4",
+    )
+    assert success is False
+    assert error_message is not None
+    # Transient error => retried up to max_attempts (3).
+    assert vertex_client.interactions.create.call_count == 3
+
+
+def test_backoff_sleep_is_jittered_and_skipped_when_delay_zero() -> None:
+    client, vertex_client = _live_client(_FakeAPIError("service unavailable", code=503))
+    # retry_delay is 0.0, so no sleep should occur even across retries.
+    with patch("omnimash.engine.omni_client.time.sleep") as mock_sleep:
+        client._generate_live_omni_flash_video(
+            prompt="A wizard dancing",
+            target_rel_path="static/rendered/test.mp4",
+        )
+    mock_sleep.assert_not_called()
+
+    # With a positive base delay, backoff sleeps with jitter bounded by the
+    # exponential window (base * 2**(attempt-1)).
+    client.retry_delay = 1.0
+    vertex_client.interactions.create.side_effect = _FakeAPIError("service unavailable", code=503)
+    with (
+        patch("omnimash.engine.omni_client.time.sleep") as mock_sleep,
+        patch("omnimash.engine.omni_client.random.uniform", return_value=0.0),
+    ):
+        client._generate_live_omni_flash_video(
+            prompt="A wizard dancing",
+            target_rel_path="static/rendered/test.mp4",
+        )
+    # attempt 1 -> base 1.0 -> half 0.5; attempt 2 -> base 2.0 -> half 1.0.
+    slept = [c.args[0] for c in mock_sleep.call_args_list]
+    assert slept == [0.5, 1.0]
