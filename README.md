@@ -298,6 +298,32 @@ In **Act 2**, sequence your multi-character storyline into structured scenes.
 4. **Write Actions & Dialogue / Screenplay Scripts:** Provide character actions and synced rap bars in Guided Mode or full screenplay scripts (e.g. `Harry: (Takes wand. Subwoofers rumble). "How many Galleons?"`).
 5. **Inspect Compiled Storyboard Prompt:** Verify the live prompt compiler box on the right, structured with `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]` matching the official Gemini Omni Prompt Guide.
 
+#### 📜 Screenplay Mode Syntax & 3-Character Example
+
+In **Screenplay Mode**, direct multi-character scenes using natural screenplay formatting:
+
+```text
+CharacterName: (Action description / Stage directions. Audio cue.) "Spoken dialogue quote."
+```
+
+##### 🔑 Formatting Rules:
+- **Character Name / Role Prefix:** Must end with a colon `:` and match either the character's Name (e.g. `Harry:`, `Ollivander:`, `Dumbledore:`) or Role ID (`Role A:`, `Role B:`, `Role C:`).
+- **Parentheticals `(...)`:** Actions, stage directions, and sound effects inside parentheses are parsed into visual actions and background audio cues.
+- **Double Quotes `"..."`:** Spoken dialogue **must** be wrapped in double quotes `"..."` (or smart quotes `“...”`) to be parsed as spoken dialogue tracks.
+
+##### 🎬 Example: 3-Character Scene Script
+```text
+Harry: (Holds up the glowing ice wand. Heavy sub-bass drops) "Is this really the 1017 edition?"
+Ollivander: (Adjusts spectacles and leans over counter) "Indeed it is, Mr. Potter!"
+Dumbledore: (Steps into frame smiling) "Handle it with care, gentlemen."
+```
+
+##### ⚙️ How PromptCompiler Parses This Script:
+- **Active Roles:** `[Role A (Harry), Role B (Ollivander), Role C (Dumbledore)]`
+- **Parsed Actions:** `Holds up the glowing ice wand. Adjusts spectacles and leans over counter. Steps into frame smiling.`
+- **Audio SFX Cues:** `Heavy sub-bass drops.`
+- **Dialogue Track:** `Harry: "Is this really the 1017 edition?" / Ollivander: "Indeed it is, Mr. Potter!" / Dumbledore: "Handle it with care, gentlemen."`
+
 ---
 
 ### Step 4: Act 3 — The Screening Room & Branching
