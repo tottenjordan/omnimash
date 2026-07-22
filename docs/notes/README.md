@@ -41,3 +41,4 @@ This directory documents non-obvious knowledge, session notes, and operational q
 | Architecture & System Design | [architecture_omnimash.md](architecture_omnimash.md) | Reference architecture, component breakdown, and pipeline design for OmniMash |
 | PR-First Workflow | [development_workflow_prs.md](development_workflow_prs.md) | Mandatory process for submitting structural changes as unmerged Pull Requests |
 | Request Lifecycle & State | [request_lifecycle.md](request_lifecycle.md) | Blueprint for state management, Model Armor gating, and Interactions API lifecycle |
+| Codebase Review Backlog | [codebase_review_backlog.md](codebase_review_backlog.md) | 2026-07-22 severity-ranked audit: security (media-proxy GCS read, guardrail stub, mock_mode default), error handling, tooling/CI gaps |
