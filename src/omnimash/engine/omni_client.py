@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import random
+import re
 import struct
 import time
 import uuid
@@ -185,7 +186,6 @@ def extract_clean_dialogue_summary(prompt: str) -> str:
     """Extracts clean character dialogue quotes or short scene summaries from structured prompts for offline simulation subtitles."""
     if not prompt:
         return "AI Parody Storyboard Preview"
-    import re
 
     dialogues = re.findall(r'Dialogue:\s*"([^"]+)"', prompt, re.IGNORECASE)
     if dialogues:
@@ -468,8 +468,6 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         r"\bdestroy\b": "out-perform",
         r"\battack\b": "challenge",
     }
-
-    import re
 
     abstracted = text
     for pattern, archetype in replacements.items():

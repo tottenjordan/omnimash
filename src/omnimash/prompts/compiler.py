@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -125,11 +126,51 @@ class MetaPromptTags:
     vocal_delivery: str = ""
 
 
+# Single source of character lore: keyword -> (display name, visual description).
+# Both the subject-anchor lookup (CHARACTER_LORE_ANCHORS, derived below) and the
+# fallback deconstructor read from this map so the descriptions never drift apart.
+CHARACTER_LORE: dict[str, tuple[str, str]] = {
+    "harry": (
+        "Harry",
+        "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
+    ),
+    "draco": (
+        "Draco",
+        "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
+    ),
+    "snape": (
+        "Severus Snape",
+        "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
+    ),
+    "dumbledore": (
+        "Albus Dumbledore",
+        "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
+    ),
+    "voldemort": (
+        "Lord Voldemort",
+        "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
+    ),
+    "ramsay": (
+        "Gordon Ramsay",
+        "Gordon Ramsay, a fiery celebrity chef with sharp blond hair, intense focused gaze, and crisp white chef jacket",
+    ),
+    "julia": (
+        "Julia Child",
+        "Julia Child, an iconic tall cheerful culinary master with curly brown hair, expressive warm smile, and classic vintage apron",
+    ),
+    "samurai": (
+        "Neon Samurai",
+        "Neon Samurai, a stoic warrior in glowing LED armor with a razor-sharp energy katana",
+    ),
+    "ninja": (
+        "Cyborg Ninja",
+        "Cyborg Ninja, an agile cybernetic assassin with chrome mask and stealth holographic visor",
+    ),
+}
+
+# Description-only view keyed by the same keywords, for subject-anchor resolution.
 CHARACTER_LORE_ANCHORS: dict[str, str] = {
-    "snape": "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
-    "dumbledore": "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
-    "voldemort": "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
-    "harry": "Harry Potter, a young man with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
+    key: desc for key, (_name, desc) in CHARACTER_LORE.items()
 }
 
 AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
@@ -208,8 +249,6 @@ def parse_screenplay_script(
             "audio_cues": "",
             "dialogue": "",
         }
-
-    import re
 
     active_roles: list[str] = []
     action_parts: list[str] = []
@@ -1007,49 +1046,10 @@ class PromptCompiler:
         # 1. Character Extraction
         chars: list[CharacterRole] = []
 
-        known_lore: dict[str, tuple[str, str]] = {
-            "harry": (
-                "Harry",
-                "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
-            ),
-            "draco": (
-                "Draco",
-                "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
-            ),
-            "snape": (
-                "Severus Snape",
-                "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
-            ),
-            "dumbledore": (
-                "Albus Dumbledore",
-                "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
-            ),
-            "voldemort": (
-                "Lord Voldemort",
-                "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
-            ),
-            "ramsay": (
-                "Gordon Ramsay",
-                "Gordon Ramsay, a fiery celebrity chef with sharp blond hair, intense focused gaze, and crisp white chef jacket",
-            ),
-            "julia": (
-                "Julia Child",
-                "Julia Child, an iconic tall cheerful culinary master with curly brown hair, expressive warm smile, and classic vintage apron",
-            ),
-            "samurai": (
-                "Neon Samurai",
-                "Neon Samurai, a stoic warrior in glowing LED armor with a razor-sharp energy katana",
-            ),
-            "ninja": (
-                "Cyborg Ninja",
-                "Cyborg Ninja, an agile cybernetic assassin with chrome mask and stealth holographic visor",
-            ),
-        }
-
-        matched_keys = [k for k in known_lore if k in lower]
+        matched_keys = [k for k in CHARACTER_LORE if k in lower]
         if matched_keys:
             for idx, k in enumerate(matched_keys):
-                name, desc = known_lore[k]
+                name, desc = CHARACTER_LORE[k]
                 chars.append(
                     CharacterRole(
                         role_id=_role_label(idx),

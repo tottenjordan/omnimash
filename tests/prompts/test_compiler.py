@@ -1,4 +1,6 @@
 from omnimash.prompts.compiler import (
+    CHARACTER_LORE,
+    CHARACTER_LORE_ANCHORS,
     CharacterRole,
     CompiledDeltaPrompt,
     CompiledPromptParts,
@@ -432,3 +434,20 @@ def test_compile_multi_role_prompt_with_screenplay_text():
     assert '  Snape: (Standing in the dungeon. Low bass rumble.) "Silence, Potter!"' in prompt
     assert '  Harry: (Bopping head to 120 BPM beat.) "No!"' in prompt
     assert "Scene 1 Audio Cues:" in prompt
+
+
+def test_character_lore_anchors_derive_from_single_source():
+    # CHARACTER_LORE is the sole lore source; the anchor lookup must be a pure
+    # projection of it so the two never drift apart.
+    derived = {key: desc for key, (_name, desc) in CHARACTER_LORE.items()}
+    assert derived == CHARACTER_LORE_ANCHORS
+
+
+def test_fallback_deconstruct_uses_shared_lore():
+    # The offline fallback deconstructor must resolve character descriptions
+    # from the same CHARACTER_LORE map that feeds subject-anchor resolution.
+    compiler = PromptCompiler()
+    tags = compiler._deconstruct_fallback("Harry Potter versus Draco Malfoy in a rap battle")
+    by_name = {c.name: c.description for c in tags.characters}
+    assert by_name["Harry"] == CHARACTER_LORE["harry"][1]
+    assert by_name["Draco"] == CHARACTER_LORE["draco"][1]
