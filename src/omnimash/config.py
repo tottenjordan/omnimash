@@ -42,6 +42,8 @@ class OmniMashSettings(BaseSettings):
     # Wall-clock budget (seconds) for individual GCS upload/download/list calls,
     # so a stalled network op fails fast instead of hanging a worker.
     gcs_timeout: int = 60
+    # Lifetime of V4 signed browser URLs for private-bucket objects (seconds).
+    signed_url_ttl_seconds: int = 3600
 
     # --- ffmpeg render/stitch presets ------------------------------------------
     ffmpeg_timeout: int = 120

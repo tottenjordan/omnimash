@@ -167,6 +167,38 @@ def test_managers_share_one_client_per_project():
         gcs_mod._SHARED_CLIENTS.clear()
 
 
+def test_generate_browser_url_mock_returns_public_url():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    url = gcs.generate_browser_url("sessions/s/final_masters/master.mp4")
+    assert url == gcs.get_public_url("sessions/s/final_masters/master.mp4")
+
+
+def test_generate_browser_url_signs_for_private_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    blob = MagicMock()
+    blob.generate_signed_url.return_value = "https://signed.example/xyz"
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    gcs._bucket = bucket
+    url = gcs.generate_browser_url("sessions/s/final_masters/master.mp4")
+    assert url == "https://signed.example/xyz"
+    blob.generate_signed_url.assert_called_once()
+
+
+def test_generate_browser_url_falls_back_to_gs_uri_on_signing_failure():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    blob = MagicMock()
+    blob.generate_signed_url.side_effect = RuntimeError("no signBlob permission")
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    gcs._bucket = bucket
+    url = gcs.generate_browser_url("sessions/s/final_masters/master.mp4")
+    # Never a 403-prone public URL; the proxy can serve the gs:// URI.
+    assert url == "gs://test-omnimash-bucket/sessions/s/final_masters/master.mp4"
+
+
 def test_save_and_load_character_gcs():
     storage = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
     char_data = {

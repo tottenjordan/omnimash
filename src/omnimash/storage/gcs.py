@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from omnimash.config import settings
@@ -145,9 +146,35 @@ class GcsStorageManager:
             return False
 
     def get_public_url(self, blob_name: str) -> str:
-        """Returns the public HTTPS URL for a given GCS blob name."""
+        """Returns the public HTTPS URL for a given GCS blob name.
+
+        Only valid for public buckets/objects (403s otherwise). Prefer
+        :meth:`generate_browser_url` or the media proxy for private buckets.
+        """
         clean_blob = blob_name.lstrip("/")
         return f"https://storage.googleapis.com/{self.bucket_name}/{clean_blob}"
+
+    def generate_browser_url(self, blob_name: str) -> str:
+        """Return a browser-fetchable URL for a blob.
+
+        In mock/offline mode returns the plain public URL. In real mode issues a
+        time-limited V4 signed URL so private-bucket objects load without making
+        the bucket public; on any signing failure falls back to the ``gs://``
+        URI (which the media proxy can serve), never a 403-prone public link.
+        """
+        clean_blob = blob_name.lstrip("/")
+        if self.mock_mode or not self._bucket:
+            return self.get_public_url(clean_blob)
+        try:
+            blob = self._bucket.blob(clean_blob)
+            return blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(seconds=settings.signed_url_ttl_seconds),
+                method="GET",
+            )
+        except Exception as exc:
+            log.warning("Signed URL generation failed for %s: %s", clean_blob, exc)
+            return self.get_gcs_uri(clean_blob)
 
     def get_gcs_uri(self, blob_name: str) -> str:
         """Returns the gs:// URI for a given GCS blob name."""
@@ -373,7 +400,6 @@ class GcsStorageManager:
         dest_blob_path = self.build_session_blob_path(
             session_id, "final_masters", clean_title
         ).lstrip("/")
-        public_url = self.get_public_url(dest_blob_path)
         gcs_uri = self.get_gcs_uri(dest_blob_path)
 
         if not self.mock_mode and self._bucket:
@@ -420,7 +446,7 @@ class GcsStorageManager:
                 content_type="application/json",
             )
 
-        return public_url, gcs_uri
+        return self.generate_browser_url(dest_blob_path), gcs_uri
 
     @staticmethod
     def _slugify(name: str) -> str:
@@ -468,7 +494,7 @@ class GcsStorageManager:
             content_type="application/json",
         )
         self._mock_characters[slug] = character
-        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+        return self.generate_browser_url(blob_path), self.get_gcs_uri(blob_path)
 
     def list_characters(
         self,
@@ -561,7 +587,7 @@ class GcsStorageManager:
             content_type="application/json",
         )
         self._mock_rosters[session_id] = characters
-        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+        return self.generate_browser_url(blob_path), self.get_gcs_uri(blob_path)
 
     def load_session_roster(
         self,
