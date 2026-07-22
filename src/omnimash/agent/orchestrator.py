@@ -8,6 +8,7 @@ from google.adk.agents import Agent
 from omnimash.engine.omni_client import OmniFlashClient
 from omnimash.ingestion.media_extractor import MediaExtractor
 from omnimash.prompts.compiler import CharacterRole, MetaPromptTags, SceneDirective
+from omnimash.prompts.storyboard_agent import StoryboardAgent, StoryboardShot
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
 from omnimash.security.guardrail import ModelArmorGuardrail
 from omnimash.state.session_manager import SessionManager
@@ -38,9 +39,20 @@ class OmniMashAgent:
         self.media_extractor = MediaExtractor(mock_mode=mock_mode)
         self.storage = GcsStorageManager(mock_mode=mock_mode)
         self.stitcher = VideoStitcher(mock_mode=mock_mode)
+        self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         return self.taxonomy.deconstruct_concept(concept)
+
+    def expand_storyboard(
+        self,
+        concept: str,
+        style_tone: str = "Cinematic Trap Parody",
+        target_duration: float = 30.0,
+    ) -> list[StoryboardShot]:
+        return self.storyboard_agent.expand_vision(
+            concept, style_tone=style_tone, target_duration=target_duration
+        )
 
     def validate_conversational_edit(self, edit_prompt: str) -> tuple[bool, str]:
         """Validates that a conversational edit prompt contains only a single change.

@@ -107,6 +107,28 @@ class SaveFinalRequest(BaseModel):
     video_url: str
     master_title: str
     is_single_clip: bool = False
+    master_audio_path: str | None = None
+    master_audio_url: str | None = None
+
+
+class StoryboardShotModel(BaseModel):
+    shot_index: int
+    duration_seconds: float
+    action: str
+    location: str
+    style_lighting: str
+    framing_motion: str
+    audio: str
+
+
+class StoryboardExpandRequest(BaseModel):
+    concept: str
+    style_tone: str = "Cinematic Trap Parody"
+    target_duration: float = 30.0
+
+
+class StoryboardExpandResponse(BaseModel):
+    shots: list[StoryboardShotModel]
 
 
 class StitchClipsRequest(BaseModel):
@@ -305,6 +327,131 @@ UI_HTML = r"""<!DOCTYPE html>
             const [selectedClipUrls, setSelectedClipUrls] = useState([]);
             const [stitchLoading, setStitchLoading] = useState(false);
             const [stitchResultGcs, setStitchResultGcs] = useState(null);
+
+            // Studio Mode Switcher State ("acts" | "stages")
+            const [studioMode, setStudioMode] = useState("acts");
+
+            // 4-Stage Journey State (1: Vision, 2: Storyboard, 3: The Dailies, 4: The Final Cut)
+            const [activeStage, setActiveStage] = useState(1);
+            const [stageStyleTone, setStageStyleTone] = useState("Cinematic Trap Parody");
+            const [stageTargetDuration, setStageTargetDuration] = useState(30.0);
+            const [stageRefImage, setStageRefImage] = useState("");
+            const [stageRefAudio, setStageRefAudio] = useState("");
+            const [stageShots, setStageShots] = useState([
+                {
+                    shot_index: 1,
+                    duration_seconds: 10.0,
+                    action: "Establishing shot for concept: key characters enter the scene.",
+                    location: "Dimly lit stone dungeon classroom with bubbling cauldrons",
+                    style_lighting: "Cinematic Trap Parody, high-contrast lighting with warm shadows",
+                    framing_motion: "Static medium shot with subtle handheld drift",
+                    audio: "Slow heavy 808 trap beat with bubbling liquid sound"
+                },
+                {
+                    shot_index: 2,
+                    duration_seconds: 10.0,
+                    action: "Key character performs dramatic action, reacting in surprise.",
+                    location: "Gothic potion classroom with floating candles",
+                    style_lighting: "Cinematic Trap Parody, vibrant dramatic color grading",
+                    framing_motion: "Dynamic dolly zoom in on character face",
+                    audio: "Trap beat drop with sub-bass and crisp snare trills"
+                },
+                {
+                    shot_index: 3,
+                    duration_seconds: 10.0,
+                    action: "Subject is transformed, stepping forward in upgraded aesthetic wardrobe.",
+                    location: "High contrast Hogwarts courtyard with stage smoke and ambient flares",
+                    style_lighting: "Cinematic Trap Parody, polished commercial lighting",
+                    framing_motion: "Low angle pedestal shot moving upward slowly",
+                    audio: "Aggressive 90s hip hop beat with heavy kick drum"
+                }
+            ]);
+            const [expandLoading, setExpandLoading] = useState(false);
+            const [masterAudioUrl, setMasterAudioUrl] = useState("");
+            const [stageSaveGcs, setStageSaveGcs] = useState(null);
+            const [stageSaveLoading, setStageSaveLoading] = useState(false);
+
+            // Handlers for 4-Stage Journey
+            const handleExpandStoryboard = async () => {
+                setExpandLoading(true);
+                try {
+                    const res = await fetch("/api/storyboard/expand", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            concept: concept || "Parody music video clash",
+                            style_tone: stageStyleTone,
+                            target_duration: parseFloat(stageTargetDuration) || 30.0
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.shots && data.shots.length > 0) {
+                        setStageShots(data.shots);
+                        setActiveStage(2);
+                    }
+                } catch (err) {
+                    console.error("Storyboard expansion failed:", err);
+                } finally {
+                    setExpandLoading(false);
+                }
+            };
+
+            const updateStageShot = (idx, field, value) => {
+                const updated = [...stageShots];
+                updated[idx] = { ...updated[idx], [field]: value };
+                setStageShots(updated);
+            };
+
+            const addStageShot = () => {
+                const nextIdx = stageShots.length + 1;
+                setStageShots([
+                    ...stageShots,
+                    {
+                        shot_index: nextIdx,
+                        duration_seconds: 10.0,
+                        action: "New shot directive and subject action",
+                        location: "Cinematic set location",
+                        style_lighting: `${stageStyleTone}, high-contrast lighting`,
+                        framing_motion: "Medium tracking shot",
+                        audio: "Atmospheric soundscape cue"
+                    }
+                ]);
+            };
+
+            const removeStageShot = (idx) => {
+                if (stageShots.length <= 1) return;
+                const updated = stageShots.filter((_, i) => i !== idx).map((s, i) => ({
+                    ...s,
+                    shot_index: i + 1
+                }));
+                setStageShots(updated);
+            };
+
+            const handleStageSaveFinal = async () => {
+                setStageSaveLoading(true);
+                setStageSaveGcs(null);
+                try {
+                    const res = await fetch("/api/save-final", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName,
+                            video_url: currentVideo,
+                            master_title: masterTitle || "final_master_export",
+                            is_single_clip: false,
+                            master_audio_url: masterAudioUrl || stageRefAudio || null
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.gcs_uri) {
+                        setStageSaveGcs(data.gcs_uri);
+                    }
+                } catch (err) {
+                    console.error("Stage final save failed:", err);
+                } finally {
+                    setStageSaveLoading(false);
+                }
+            };
 
             const [history, setHistory] = useState([
                 {
@@ -1036,9 +1183,37 @@ UI_HTML = r"""<!DOCTYPE html>
                                     <h1 className="text-lg font-extrabold bg-gradient-to-r from-purple-400 via-pink-400 to-amber-400 bg-clip-text text-transparent">
                                         OMNIMASH • DIGITAL DIRECTOR'S STUDIO
                                     </h1>
-                                    <p className="text-[11px] text-gray-400">Flexible Parody Concept &amp; Character Roles Workflow (Gemini Omni Image Roles)</p>
+                                    <p className="text-[11px] text-gray-400">Gemini Omni Flash 30–60s Parody &amp; Storyboard Studio</p>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Studio Mode Switcher Toggle */}
+                        <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
+                            <button
+                                type="button"
+                                onClick={() => setStudioMode("acts")}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                                    studioMode === "acts"
+                                        ? "bg-purple-600 text-white shadow shadow-purple-900/50"
+                                        : "text-gray-400 hover:text-gray-200"
+                                }`}
+                            >
+                                <span>🎭</span>
+                                <span>Act-Based Director Mode</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setStudioMode("stages")}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                                    studioMode === "stages"
+                                        ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow shadow-amber-900/50 font-extrabold"
+                                        : "text-gray-400 hover:text-gray-200"
+                                }`}
+                            >
+                                <span>🎬</span>
+                                <span>4-Stage Storyboard Journey</span>
+                            </button>
                         </div>
 
                         {/* GCS Session Name & Reset Studio */}
@@ -1097,46 +1272,97 @@ UI_HTML = r"""<!DOCTYPE html>
                         </div>
                     </header>
 
-                    {/* 3-Act Navigation Bar */}
-                    <div className="bg-gray-900/60 border-b border-gray-800/80 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-6">
-                        <button
-                            onClick={() => setActiveAct(1)}
-                            className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
-                                activeAct === 1
-                                    ? "bg-purple-600/30 text-purple-300 border border-purple-500 shadow-lg shadow-purple-900/20"
-                                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
-                            }`}
-                        >
-                            <span className="text-base">🎭</span>
-                            <span>Act 1: Global Production Context (Applies to All Shots)</span>
-                            {activeAct > 1 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
-                        </button>
-                        <span className="text-gray-700 font-bold">➔</span>
-                        <button
-                            onClick={() => setActiveAct(2)}
-                            className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
-                                activeAct === 2
-                                    ? "bg-pink-600/30 text-pink-300 border border-pink-500 shadow-lg shadow-pink-900/20"
-                                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
-                            }`}
-                        >
-                            <span className="text-base">🎛️</span>
-                            <span>Act 2: Storyboard &amp; Shot Director (10-Second Video Clips)</span>
-                            {activeAct > 2 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
-                        </button>
-                        <span className="text-gray-700 font-bold">➔</span>
-                        <button
-                            onClick={() => setActiveAct(3)}
-                            className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
-                                activeAct === 3
-                                    ? "bg-amber-600/30 text-amber-300 border border-amber-500 shadow-lg shadow-amber-900/20"
-                                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
-                            }`}
-                        >
-                            <span className="text-base">🎬</span>
-                            <span>Act 3: The Screening Room &amp; Branching</span>
-                        </button>
-                    </div>
+                    {/* Navigation Bar based on Studio Mode */}
+                    {studioMode === "acts" ? (
+                        <div className="bg-gray-900/60 border-b border-gray-800/80 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-6">
+                            <button
+                                onClick={() => setActiveAct(1)}
+                                className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                    activeAct === 1
+                                        ? "bg-purple-600/30 text-purple-300 border border-purple-500 shadow-lg shadow-purple-900/20"
+                                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                                }`}
+                            >
+                                <span className="text-base">🎭</span>
+                                <span>Act 1: Global Production Context (Applies to All Shots)</span>
+                                {activeAct > 1 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
+                            </button>
+                            <span className="text-gray-700 font-bold">➔</span>
+                            <button
+                                onClick={() => setActiveAct(2)}
+                                className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                    activeAct === 2
+                                        ? "bg-pink-600/30 text-pink-300 border border-pink-500 shadow-lg shadow-pink-900/20"
+                                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                                }`}
+                            >
+                                <span className="text-base">🎛️</span>
+                                <span>Act 2: Storyboard &amp; Shot Director (10-Second Video Clips)</span>
+                                {activeAct > 2 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
+                            </button>
+                            <span className="text-gray-700 font-bold">➔</span>
+                            <button
+                                onClick={() => setActiveAct(3)}
+                                className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                    activeAct === 3
+                                        ? "bg-amber-600/30 text-amber-300 border border-amber-500 shadow-lg shadow-amber-900/20"
+                                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                                }`}
+                            >
+                                <span className="text-base">🎬</span>
+                                <span>Act 3: The Screening Room &amp; Branching</span>
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-4">
+                            <button
+                                onClick={() => setActiveStage(1)}
+                                className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                    activeStage === 1
+                                        ? "bg-amber-500/20 text-amber-300 border border-amber-500 shadow-md shadow-amber-900/20"
+                                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                                }`}
+                            >
+                                <span>💡 Stage 1: Vision &amp; Style</span>
+                                {activeStage > 1 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
+                            </button>
+                            <span className="text-gray-700 font-bold">➔</span>
+                            <button
+                                onClick={() => setActiveStage(2)}
+                                className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                    activeStage === 2
+                                        ? "bg-purple-500/20 text-purple-300 border border-purple-500 shadow-md shadow-purple-900/20"
+                                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                                }`}
+                            >
+                                <span>📋 Stage 2: Storyboard Grid</span>
+                                {activeStage > 2 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
+                            </button>
+                            <span className="text-gray-700 font-bold">➔</span>
+                            <button
+                                onClick={() => setActiveStage(3)}
+                                className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                    activeStage === 3
+                                        ? "bg-pink-500/20 text-pink-300 border border-pink-500 shadow-md shadow-pink-900/20"
+                                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                                }`}
+                            >
+                                <span>📽️ Stage 3: The Dailies</span>
+                                {activeStage > 3 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
+                            </button>
+                            <span className="text-gray-700 font-bold">➔</span>
+                            <button
+                                onClick={() => setActiveStage(4)}
+                                className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
+                                    activeStage === 4
+                                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500 shadow-md shadow-emerald-900/20"
+                                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
+                                }`}
+                            >
+                                <span>🏆 Stage 4: The Final Cut</span>
+                            </button>
+                        </div>
+                    )}
 
                     {/* Main Stage Studio Container */}
                     <main className="flex-1 max-w-7xl w-full mx-auto p-6 overflow-y-auto custom-scrollbar">
@@ -1144,7 +1370,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         {/* ========================================================= */}
                         {/* 🎭 ACT 1: THE CONCEPT & CAST MANAGER                      */}
                         {/* ========================================================= */}
-                        {activeAct === 1 && (
+                        {studioMode === "acts" && activeAct === 1 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-purple-950/40 to-pink-950/40 border border-purple-800/50 rounded-2xl p-5">
                                     <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
@@ -1551,7 +1777,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         {/* ========================================================= */}
                         {/* 🎛️ ACT 2: STORYBOARD & SHOT DIRECTOR (10-SECOND VIDEO CLIPS) */}
                         {/* ========================================================= */}
-                        {activeAct === 2 && (
+                        {studioMode === "acts" && activeAct === 2 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-pink-950/40 to-amber-950/40 border border-pink-800/50 rounded-2xl p-5">
                                     <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
@@ -1782,9 +2008,386 @@ UI_HTML = r"""<!DOCTYPE html>
                         )}
 
                         {/* ========================================================= */}
+                        {/* 🎬 DEDICATED 4-STAGE STORYBOARD JOURNEY WORKFLOW          */}
+                        {/* ========================================================= */}
+                        {studioMode === "stages" && (
+                            <div className="space-y-6">
+                                {/* STAGE 1: VISION & STYLE SETUP */}
+                                {activeStage === 1 && (
+                                    <div className="space-y-6">
+                                        <div className="bg-gradient-to-r from-amber-950/40 via-orange-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 shadow-xl">
+                                            <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
+                                                <span>💡</span>
+                                                <span>Stage 1: 60s Vision &amp; Style Directing</span>
+                                            </h2>
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                Define your overall 30–60s video concept, select style &amp; tone presets, and upload reference image and audio assets.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                                                    Visual Concept / Parody Idea (30–60s)
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-gray-400">Target Duration:</span>
+                                                    <select
+                                                        value={stageTargetDuration}
+                                                        onChange={(e) => setStageTargetDuration(parseFloat(e.target.value))}
+                                                        className="bg-gray-950 border border-gray-700 rounded text-xs font-mono px-2 py-1 text-amber-300"
+                                                    >
+                                                        <option value={30.0}>30 Seconds (3 Shots)</option>
+                                                        <option value={45.0}>45 Seconds (5 Shots)</option>
+                                                        <option value={60.0}>60 Seconds (6 Shots)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <textarea
+                                                rows={3}
+                                                value={concept}
+                                                onChange={(e) => setConcept(e.target.value)}
+                                                placeholder="Describe your 60s parody video concept in detail..."
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                            />
+
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-300 block mb-2">Style &amp; Tone Preset Pills:</label>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {[
+                                                        "Gritty 90s Rap Video",
+                                                        "Gothic Trap Parody",
+                                                        "Cinematic Documentary",
+                                                        "80s Anime Disstrack",
+                                                        "Cinematic Trap Parody"
+                                                    ].map((tone) => (
+                                                        <button
+                                                            key={tone}
+                                                            type="button"
+                                                            onClick={() => setStageStyleTone(tone)}
+                                                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                                                                stageStyleTone === tone
+                                                                    ? "bg-amber-500 text-black font-extrabold shadow-md shadow-amber-900/50"
+                                                                    : "bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700"
+                                                            }`}
+                                                        >
+                                                            {stageStyleTone === tone && "✓ "}
+                                                            {tone}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-800">
+                                                <div>
+                                                    <label className="text-xs font-bold text-purple-300 block mb-1">🖼️ Reference Image Asset (URL or GCS Path)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={stageRefImage}
+                                                        onChange={(e) => setStageRefImage(e.target.value)}
+                                                        placeholder="https://example.com/character.jpg or gs://..."
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-bold text-purple-300 block mb-1">🎵 Reference Audio Stem / Track (URL or GCS Path)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={stageRefAudio}
+                                                        onChange={(e) => setStageRefAudio(e.target.value)}
+                                                        placeholder="https://example.com/beat.mp3 or gs://..."
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-3 flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    disabled={expandLoading || !concept.trim()}
+                                                    onClick={handleExpandStoryboard}
+                                                    className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                                >
+                                                    <span>🚀</span>
+                                                    <span>{expandLoading ? "Expanding 60s Vision..." : "Expand Vision into 5-Part Storyboard Grid (AI)"}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STAGE 2: 5-PART INTERACTIVE STORYBOARD GRID */}
+                                {activeStage === 2 && (
+                                    <div className="space-y-6">
+                                        <div className="bg-gradient-to-r from-purple-950/40 via-pink-950/40 to-amber-950/40 border border-purple-800/50 rounded-2xl p-5 shadow-xl flex items-center justify-between">
+                                            <div>
+                                                <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
+                                                    <span>📋</span>
+                                                    <span>Stage 2: 5-Part Interactive Storyboard Grid ({stageShots.length} Shots)</span>
+                                                </h2>
+                                                <p className="text-xs text-gray-400 mt-1">
+                                                    Each shot card defines 5 structured directives: Action/Subject, Location, Style &amp; Lighting, Framing &amp; Motion, Audio.
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={addStageShot}
+                                                className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition"
+                                            >
+                                                + Add Shot Card
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                            {stageShots.map((shot, idx) => (
+                                                <div key={idx} className="bg-gray-900 border border-gray-800 hover:border-purple-500/50 rounded-2xl p-4 shadow-xl flex flex-col justify-between space-y-3 transition">
+                                                    <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                                                        <span className="text-xs font-extrabold text-amber-400 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-700">
+                                                            Shot #{shot.shot_index || idx + 1} ({shot.duration_seconds || 10}s)
+                                                        </span>
+                                                        {stageShots.length > 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeStageShot(idx)}
+                                                                className="text-xs text-red-400 hover:text-red-300 font-bold px-2 py-0.5"
+                                                            >
+                                                                ✕ Remove
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-2.5 text-xs">
+                                                        <div>
+                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5">1. Action / Subject</label>
+                                                            <textarea
+                                                                rows={2}
+                                                                value={shot.action}
+                                                                onChange={(e) => updateStageShot(idx, "action", e.target.value)}
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-pink-500 text-[11px]"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-0.5">2. Location</label>
+                                                            <input
+                                                                type="text"
+                                                                value={shot.location}
+                                                                onChange={(e) => updateStageShot(idx, "location", e.target.value)}
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-purple-500 text-[11px]"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-0.5">3. Style &amp; Lighting</label>
+                                                            <input
+                                                                type="text"
+                                                                value={shot.style_lighting}
+                                                                onChange={(e) => updateStageShot(idx, "style_lighting", e.target.value)}
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-[11px]"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block mb-0.5">4. Framing &amp; Motion</label>
+                                                            <input
+                                                                type="text"
+                                                                value={shot.framing_motion}
+                                                                onChange={(e) => updateStageShot(idx, "framing_motion", e.target.value)}
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-cyan-500 text-[11px]"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">5. Audio Soundscape</label>
+                                                            <input
+                                                                type="text"
+                                                                value={shot.audio}
+                                                                onChange={(e) => updateStageShot(idx, "audio", e.target.value)}
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-[11px]"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="pt-3 flex justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveStage(3)}
+                                                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2"
+                                            >
+                                                <span>📽️</span>
+                                                <span>Proceed to Stage 3: The Dailies &amp; Diff ➔</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STAGE 3: THE DAILIES & CONVERSATIONAL DIFF */}
+                                {activeStage === 3 && (
+                                    <div className="space-y-6">
+                                        <div className="bg-gradient-to-r from-pink-950/40 via-purple-950/40 to-indigo-950/40 border border-pink-800/50 rounded-2xl p-5 shadow-xl">
+                                            <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
+                                                <span>📽️</span>
+                                                <span>Stage 3: The Dailies &amp; Single-Change Conversational Diff</span>
+                                            </h2>
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                Review generated clip iterations side-by-side. Perform single-change conversational diffs adhering to the Gemini Omni Flash golden rule.
+                                            </p>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold text-purple-300">Active Clip (Current Turn)</span>
+                                                    <span className="text-[10px] bg-green-950 text-green-400 px-2 py-0.5 rounded border border-green-800">LIVE</span>
+                                                </div>
+                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center">
+                                                    <video src={getDisplayableRefUrl(currentVideo)} controls className="w-full h-full object-cover" />
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold text-gray-400">Previous / Baseline Reference Clip</span>
+                                                    <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded">BASELINE</span>
+                                                </div>
+                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center">
+                                                    {history.length > 1 ? (
+                                                        <video src={getDisplayableRefUrl(history[history.length - 2].videoUrl)} controls className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="text-xs text-gray-500 italic p-4 text-center">No previous turn clip yet. Generate a diff turn to compare side-by-side.</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                            <div className="flex items-center space-x-3 bg-amber-950/60 border border-amber-500/50 rounded-xl p-3 text-amber-300 text-xs">
+                                                <span className="text-lg">⚠️</span>
+                                                <div>
+                                                    <span className="font-bold block">Gemini Omni Flash Rule: One Change Per Turn</span>
+                                                    <span className="text-amber-300/80 text-[11px]">For best results, request only one modification per diff turn (e.g. "Add neon green rims to car" or "Change shirt color to red").</span>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="text-xs font-bold text-pink-400 block mb-1">Conversational Diff Instruction Prompt:</label>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={deltaPrompt}
+                                                        onChange={(e) => setDeltaPrompt(e.target.value)}
+                                                        placeholder="e.g. Change Harry's glasses to gold metallic sunglasses..."
+                                                        className="flex-1 bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 font-mono"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        disabled={loading}
+                                                        onClick={handleGenerate}
+                                                        className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs px-5 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                                    >
+                                                        <span>⚡</span>
+                                                        <span>{loading ? "Generating..." : "Apply Diff &amp; Render"}</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-3 flex justify-between items-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowCommitModal(true)}
+                                                className="bg-amber-950/60 hover:bg-amber-900 border border-amber-700 text-amber-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2"
+                                            >
+                                                <span>⚓</span>
+                                                <span>Commit &amp; Re-Anchor Keyframe</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveStage(4)}
+                                                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2"
+                                            >
+                                                <span>🏆</span>
+                                                <span>Proceed to Stage 4: The Final Cut ➔</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STAGE 4: THE FINAL CUT & GCS EXPORT */}
+                                {activeStage === 4 && (
+                                    <div className="space-y-6">
+                                        <div className="bg-gradient-to-r from-emerald-950/40 via-teal-950/40 to-cyan-950/40 border border-emerald-800/50 rounded-2xl p-5 shadow-xl">
+                                            <h2 className="text-base font-bold text-emerald-200 flex items-center gap-2">
+                                                <span>🏆</span>
+                                                <span>Stage 4: The Final Cut &amp; Master GCS Export</span>
+                                            </h2>
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                Review your full 30–60s stitched master video, configure master audio track overlay, and export to Google Cloud Storage.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-bold text-emerald-300">Stitched 30–60s Master Video Player</span>
+                                                <span className="text-[11px] font-mono text-gray-400">Master: {masterTitle}.mp4</span>
+                                            </div>
+                                            <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center max-w-4xl mx-auto">
+                                                <video src={getDisplayableRefUrl(currentVideo)} controls className="w-full h-full object-contain" />
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                            <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Master Audio Overlay &amp; GCS Export Settings</h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="text-xs font-bold text-gray-300 block mb-1">Master Video Title:</label>
+                                                    <input
+                                                        type="text"
+                                                        value={masterTitle}
+                                                        onChange={(e) => setMasterTitle(e.target.value)}
+                                                        placeholder="official_rap_battle_master"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-emerald-500"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-bold text-gray-300 block mb-1">Master Audio Overlay Path / URL:</label>
+                                                    <input
+                                                        type="text"
+                                                        value={masterAudioUrl}
+                                                        onChange={(e) => setMasterAudioUrl(e.target.value)}
+                                                        placeholder="gs://my-bucket/master_beat.mp3 or local path"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-emerald-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {stageSaveGcs && (
+                                                <div className="bg-green-950/80 border border-green-500/80 rounded-xl p-4 text-xs text-green-300 font-mono break-all space-y-1">
+                                                    <span className="font-bold text-green-200 block">✓ Master Export Successful!</span>
+                                                    <div>Saved to GCS URI: <span className="underline">{stageSaveGcs}</span></div>
+                                                </div>
+                                            )}
+
+                                            <div className="pt-2 flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    disabled={stageSaveLoading}
+                                                    onClick={handleStageSaveFinal}
+                                                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                                >
+                                                    <span>🎬</span>
+                                                    <span>{stageSaveLoading ? "Exporting Master..." : "Stitch & Export Final 30–60s Master to GCS"}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ========================================================= */}
                         {/* 🎬 ACT 3: THE SCREENING ROOM & BRANCHING                  */}
                         {/* ========================================================= */}
-                        {activeAct === 3 && (
+                        {studioMode === "acts" && activeAct === 3 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-amber-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
                                     <div>
@@ -2145,6 +2748,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/save-final", response_model=SaveFinalResponse)
     def save_final(req: SaveFinalRequest) -> SaveFinalResponse:
+        audio = req.master_audio_path or req.master_audio_url
         if req.is_single_clip:
             _pub_url, gcs_uri = agent.storage.save_final_master(
                 session_id=req.session_name,
@@ -2156,11 +2760,34 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 session_name=req.session_name,
                 video_url=req.video_url,
                 master_title=req.master_title,
+                master_audio_path=audio,
             )
         return SaveFinalResponse(
             success=True,
             gcs_uri=gcs_uri,
             message=f"Final master successfully saved to {gcs_uri}",
+        )
+
+    @app.post("/api/storyboard/expand", response_model=StoryboardExpandResponse)
+    def expand_storyboard(req: StoryboardExpandRequest) -> StoryboardExpandResponse:
+        shots = agent.expand_storyboard(
+            concept=req.concept,
+            style_tone=req.style_tone,
+            target_duration=req.target_duration,
+        )
+        return StoryboardExpandResponse(
+            shots=[
+                StoryboardShotModel(
+                    shot_index=s.shot_index,
+                    duration_seconds=s.duration_seconds,
+                    action=s.action,
+                    location=s.location,
+                    style_lighting=s.style_lighting,
+                    framing_motion=s.framing_motion,
+                    audio=s.audio,
+                )
+                for s in shots
+            ]
         )
 
     @app.post("/api/stitch-clips", response_model=SaveFinalResponse)
