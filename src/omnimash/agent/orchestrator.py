@@ -459,6 +459,7 @@ class OmniMashAgent:
         session_name: str | None,
         master_title: str,
         raw_compiled_prompt: str | None = None,
+        master_audio_path: str | None = None,
     ) -> tuple[str, str]:
         session = self._get_session(session_name)
         clip_paths: list[str] = []
@@ -466,7 +467,9 @@ class OmniMashAgent:
             clip_paths = [t.video_url for t in session.turns.values() if t.video_url]
 
         stitched_path = self.stitcher.concatenate_clips(
-            clip_paths, session_id=session_name
+            clip_paths,
+            session_id=session_name,
+            master_audio_path=master_audio_path,
         )
         return self.storage.save_final_master(
             session_id=session_name,
@@ -482,6 +485,7 @@ class OmniMashAgent:
         master_title: str = "",
         session_name: str | None = None,
         raw_compiled_prompt: str | None = None,
+        master_audio_path: str | None = None,
     ) -> tuple[str, str]:
         s_id = session_id if session_id is not None else session_name
         session = self._get_session(s_id)
@@ -492,6 +496,7 @@ class OmniMashAgent:
                     session_name=s_id,
                     master_title=master_title,
                     raw_compiled_prompt=raw_compiled_prompt,
+                    master_audio_path=master_audio_path,
                 )
         return self.storage.save_final_master(
             session_id=s_id,

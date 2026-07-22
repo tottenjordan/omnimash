@@ -17,6 +17,7 @@ class VideoStitcher:
         clip_paths: list[str],
         output_dir: str = "/tmp",
         session_id: str | None = None,
+        master_audio_path: str | None = None,
     ) -> str:
         os.makedirs(output_dir, exist_ok=True)
         master_filename = f"master_{uuid.uuid4().hex[:8]}_stitched.mp4"
@@ -58,28 +59,43 @@ class VideoStitcher:
                 else:
                     resolved_clips.append(norm_clip)
 
+            resolved_audio: str | None = None
+            if master_audio_path:
+                norm_audio = self.storage._normalize_media_source_path(master_audio_path)
+                if os.path.exists(norm_audio):
+                    resolved_audio = os.path.abspath(norm_audio)
+                elif norm_audio.startswith("/static/"):
+                    loc = os.path.join(os.getcwd(), norm_audio.lstrip("/"))
+                    if os.path.exists(loc):
+                        resolved_audio = loc
+                elif (
+                    not self.mock_mode
+                    and self.storage._bucket
+                    and norm_audio.startswith("gs://")
+                ):
+                    try:
+                        blob_name = norm_audio.replace(
+                            f"gs://{self.storage.bucket_name}/", ""
+                        ).lstrip("/")
+                        tmp_audio_path = os.path.join(
+                            output_dir, f"audio_{uuid.uuid4().hex[:6]}.mp3"
+                        )
+                        blob = self.storage._bucket.blob(blob_name)
+                        blob.download_to_filename(tmp_audio_path)
+                        resolved_audio = tmp_audio_path
+                    except Exception:
+                        resolved_audio = norm_audio
+                else:
+                    resolved_audio = norm_audio
+
             if resolved_clips:
                 concat_list_path = os.path.join(output_dir, "concat_list.txt")
                 with open(concat_list_path, "w") as f:
                     for clip_file in resolved_clips:
                         f.write(f"file '{clip_file}'\n")
 
-                cmd_copy = [
-                    "ffmpeg",
-                    "-y",
-                    "-f",
-                    "concat",
-                    "-safe",
-                    "0",
-                    "-i",
-                    concat_list_path,
-                    "-c",
-                    "copy",
-                    out_path,
-                ]
-                res = subprocess.run(cmd_copy, capture_output=True, text=True)
-                if res.returncode != 0:
-                    cmd_reencode = [
+                if resolved_audio and os.path.exists(resolved_audio):
+                    cmd_copy = [
                         "ffmpeg",
                         "-y",
                         "-f",
@@ -88,14 +104,79 @@ class VideoStitcher:
                         "0",
                         "-i",
                         concat_list_path,
+                        "-i",
+                        resolved_audio,
                         "-c:v",
-                        "libx264",
+                        "copy",
                         "-c:a",
                         "aac",
-                        "-pix_fmt",
-                        "yuv420p",
+                        "-map",
+                        "0:v:0",
+                        "-map",
+                        "1:a:0",
+                        "-shortest",
                         out_path,
                     ]
+                else:
+                    cmd_copy = [
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        concat_list_path,
+                        "-c",
+                        "copy",
+                        out_path,
+                    ]
+
+                res = subprocess.run(cmd_copy, capture_output=True, text=True)
+                if res.returncode != 0:
+                    if resolved_audio and os.path.exists(resolved_audio):
+                        cmd_reencode = [
+                            "ffmpeg",
+                            "-y",
+                            "-f",
+                            "concat",
+                            "-safe",
+                            "0",
+                            "-i",
+                            concat_list_path,
+                            "-i",
+                            resolved_audio,
+                            "-c:v",
+                            "libx264",
+                            "-c:a",
+                            "aac",
+                            "-map",
+                            "0:v:0",
+                            "-map",
+                            "1:a:0",
+                            "-pix_fmt",
+                            "yuv420p",
+                            "-shortest",
+                            out_path,
+                        ]
+                    else:
+                        cmd_reencode = [
+                            "ffmpeg",
+                            "-y",
+                            "-f",
+                            "concat",
+                            "-safe",
+                            "0",
+                            "-i",
+                            concat_list_path,
+                            "-c:v",
+                            "libx264",
+                            "-c:a",
+                            "aac",
+                            "-pix_fmt",
+                            "yuv420p",
+                            out_path,
+                        ]
                     subprocess.run(cmd_reencode, capture_output=True, text=True)
 
         gcs_blob = self.storage.build_session_blob_path(
