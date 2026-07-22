@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import os
 import re
 from typing import TYPE_CHECKING, Any
@@ -11,10 +12,17 @@ from omnimash.config import settings
 if TYPE_CHECKING:
     from omnimash.ingestion.media_extractor import ReferenceAnalysisReport
 
+log = logging.getLogger(__name__)
+
 try:
     from google.cloud import storage
 except ImportError:
     storage: Any = None
+
+try:
+    from google.api_core.exceptions import GoogleAPIError
+except ImportError:  # google-api-core is optional in some environments
+    GoogleAPIError = Exception  # type: ignore[assignment,misc]
 
 
 DEFAULT_CHARACTERS: list[dict[str, Any]] = [
@@ -81,8 +89,10 @@ class GcsStorageManager:
             try:
                 self._client = storage.Client(project=self.project_id)
                 self.ensure_bucket_exists()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning(
+                    "Failed to initialize GCS client for project %s: %s", self.project_id, exc
+                )
 
     def ensure_bucket_exists(self, location: str | None = None) -> bool:
         """Verifies or programmatically creates the GCS bucket in the configured GCP project."""
@@ -96,7 +106,8 @@ class GcsStorageManager:
             else:
                 self._bucket = bucket
             return True
-        except Exception:
+        except Exception as exc:
+            log.warning("Failed to verify/create GCS bucket %s: %s", self.bucket_name, exc)
             return False
 
     def get_public_url(self, blob_name: str) -> str:
@@ -159,8 +170,11 @@ class GcsStorageManager:
             blob = self._bucket.blob(destination_blob_name)
             blob.upload_from_filename(local_path, content_type=content_type)
             return self.get_public_url(destination_blob_name)
-        except Exception:
-            return self.get_public_url(destination_blob_name)
+        except GoogleAPIError as exc:
+            # Surface the failure instead of returning a fabricated success URL,
+            # which would silently drop data and leave a dangling link.
+            log.error("GCS upload failed for %s: %s", destination_blob_name, exc)
+            raise
 
     def upload_bytes(
         self,
@@ -177,8 +191,9 @@ class GcsStorageManager:
             blob = self._bucket.blob(destination_blob_name)
             blob.upload_from_string(data, content_type=content_type)
             return self.get_public_url(destination_blob_name)
-        except Exception:
-            return self.get_public_url(destination_blob_name)
+        except GoogleAPIError as exc:
+            log.error("GCS byte upload failed for %s: %s", destination_blob_name, exc)
+            raise
 
     def download_blob_bytes(self, gs_uri: str) -> tuple[bytes, str]:
         """Downloads binary bytes and infers content_type from a GCS URI (gs://bucket/blob_path)."""
@@ -223,7 +238,8 @@ class GcsStorageManager:
                 else:
                     content_type = "image/jpeg"
             return (data, content_type)
-        except Exception:
+        except Exception as exc:
+            log.warning("GCS download failed for gs://%s/%s: %s", bucket_name, blob_path, exc)
             return (b"", "image/jpeg")
 
     def load_bytes(self, gs_uri_or_path: str) -> tuple[bytes, str]:
@@ -239,8 +255,8 @@ class GcsStorageManager:
                         data = f.read()
                     mime = "image/png" if path.lower().endswith(".png") else "image/jpeg"
                     return (data, mime)
-                except Exception:
-                    pass
+                except OSError as exc:
+                    log.warning("Failed to read local media %s: %s", path, exc)
 
         if self.mock_mode:
             mime = "image/png" if str(gs_uri_or_path).lower().endswith(".png") else "image/jpeg"
@@ -305,8 +321,8 @@ class GcsStorageManager:
                     res: dict[str, Any] = json.loads(data)
                     self._mock_analyses[session_id] = res
                     return res
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("Failed to load reference analysis for %s: %s", session_id, exc)
 
         return None
 
@@ -346,8 +362,9 @@ class GcsStorageManager:
                     src_blob = self._bucket.blob(src_blob_name)
                     if src_blob.exists():
                         self._bucket.copy_blob(src_blob, self._bucket, dest_blob_path)
-            except Exception:
-                pass
+            except GoogleAPIError as exc:
+                log.error("Failed to persist final master %s: %s", dest_blob_path, exc)
+                raise
 
         if prompt_data is not None:
             prompt_filename = f"{title_base}_prompt.json"
@@ -441,12 +458,14 @@ class GcsStorageManager:
                                         seen_slugs.add(slug)
                                         characters.append(data)
                                         self._mock_characters[slug] = data
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                log.warning(
+                                    "Skipping unreadable character blob %s: %s", blob.name, exc
+                                )
                 if characters:
                     return characters
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("Failed to list characters from GCS: %s", exc)
 
         return list(self._mock_characters.values())
 
@@ -472,8 +491,8 @@ class GcsStorageManager:
                         if isinstance(data, dict):
                             self._mock_characters[clean_slug] = data
                             return data
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("Failed to load character %s from GCS: %s", clean_slug, exc)
 
         if slug in self._mock_characters:
             return self._mock_characters[slug]
@@ -520,8 +539,8 @@ class GcsStorageManager:
                     if isinstance(data, list):
                         self._mock_rosters[session_id] = data
                         return data
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("Failed to load session roster for %s: %s", session_id, exc)
 
         return self._mock_rosters.get(session_id)
 
@@ -542,5 +561,6 @@ class GcsStorageManager:
                 if clean:
                     session_ids.append(clean)
             return session_ids if session_ids else default_sessions
-        except Exception:
+        except Exception as exc:
+            log.warning("Failed to list session IDs from GCS: %s", exc)
             return default_sessions

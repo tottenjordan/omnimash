@@ -1,7 +1,47 @@
 import os
+from unittest.mock import MagicMock
+
+import pytest
 
 from omnimash.engine.omni_client import OmniFlashClient
 from omnimash.storage.gcs import GcsStorageManager
+
+
+def _live_manager_with_failing_blob() -> GcsStorageManager:
+    """A non-mock manager whose bucket's blob uploads raise, for error-path tests."""
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    gcs.mock_mode = False
+    blob = MagicMock()
+    blob.upload_from_filename.side_effect = RuntimeError("boom upload")
+    blob.upload_from_string.side_effect = RuntimeError("boom upload")
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+    gcs._bucket = bucket
+    return gcs
+
+
+def test_upload_file_raises_on_error_instead_of_fake_url(tmp_path):
+    gcs = _live_manager_with_failing_blob()
+    local = tmp_path / "clip.mp4"
+    local.write_bytes(b"data")
+    # Must NOT return a fabricated success URL when the upload fails.
+    with pytest.raises(RuntimeError):
+        gcs.upload_file(str(local), destination_blob_name="sessions/s/intermediate/clip.mp4")
+
+
+def test_upload_bytes_raises_on_error_instead_of_fake_url():
+    gcs = _live_manager_with_failing_blob()
+    with pytest.raises(RuntimeError):
+        gcs.upload_bytes(b"data", "sessions/s/intermediate/clip.mp4")
+
+
+def test_upload_file_mock_mode_still_returns_url(tmp_path):
+    # Mock/offline dev keeps returning a fabricated URL (no raise).
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    local = tmp_path / "clip.mp4"
+    local.write_bytes(b"data")
+    url = gcs.upload_file(str(local), destination_blob_name="sessions/s/intermediate/clip.mp4")
+    assert url.endswith("sessions/s/intermediate/clip.mp4")
 
 
 def test_gcs_storage_manager_urls():
