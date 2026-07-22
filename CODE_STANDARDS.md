@@ -5,6 +5,7 @@ This document outlines the mandatory engineering standards, tooling rules, and d
 ---
 
 ## 🐍 Package & Environment Management (Modern Python)
+- **Reference skill**: These standards follow the `modern-python` skill (uv + ruff + ty + pytest). Consult it for tooling rationale and migration guidance.
 - **Always use `uv`**: Manage all dependencies and environments exclusively via `uv`.
 - **No bare `pip` or `python`**: Never run `pip install`, `python ...`, or manually activate virtualenvs (`source .venv/bin/activate`).
 - **Running commands**: Always execute scripts and tools within the project environment using `uv run <command>` (e.g. `uv run python main.py`, `uv run pytest`).
@@ -36,6 +37,7 @@ This document outlines the mandatory engineering standards, tooling rules, and d
 ## 📦 Git, Commit & Pull Request Guidelines
 - **Structural Changes as Pull Requests**: All structural changes (modifying core architecture, schemas, system instructions, or adding new features) must be committed on a dedicated branch (`feature/...`, `refactor/...`, `fix/...`) and submitted as a Pull Request.
 - **Commit Messages**: Write clean, descriptive commit messages matching Conventional Commits.
+- **No Co-Authored-By Trailers**: Never add `Co-Authored-By` trailers (or similar agent-attribution trailers) to commit messages or Pull Requests.
 
 ---
 
