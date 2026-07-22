@@ -106,6 +106,7 @@ class SaveFinalRequest(BaseModel):
     session_name: str | None = None
     video_url: str
     master_title: str
+    is_single_clip: bool = False
 
 
 class StitchClipsRequest(BaseModel):
@@ -294,6 +295,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
             const [rawCompiledPrompt, setRawCompiledPrompt] = useState(initialRawPrompt);
             const [masterTitle, setMasterTitle] = useState("official_rap_battle_master");
+            const [saveModalMode, setSaveModalMode] = useState("master"); // "clip" | "master"
             const [savedGcsUri, setSavedGcsUri] = useState(null);
             const [showSaveModal, setShowSaveModal] = useState(false);
             const [saveLoading, setSaveLoading] = useState(false);
@@ -697,7 +699,8 @@ UI_HTML = r"""<!DOCTYPE html>
                         body: JSON.stringify({
                             session_name: sessionName,
                             video_url: currentVideo,
-                            master_title: masterTitle || "final_master"
+                            master_title: masterTitle || "final_master",
+                            is_single_clip: saveModalMode === "clip"
                         })
                     });
                     const data = await res.json();
@@ -884,20 +887,28 @@ UI_HTML = r"""<!DOCTYPE html>
                         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
                             <div className="bg-gray-900 border-2 border-amber-500/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
                                 <div className="flex items-center space-x-3 bg-amber-950/80 border border-amber-500/50 rounded-xl p-4 mb-5 text-amber-300">
-                                    <span className="text-2xl">💾</span>
+                                    <span className="text-2xl">{saveModalMode === "clip" ? "💾" : "🎬"}</span>
                                     <div>
-                                        <h3 className="font-bold text-base text-amber-200">Stitch & Save Master (30–60s) to GCS</h3>
-                                        <p className="text-xs text-amber-300/80 mt-0.5">OmniMash will automatically concatenate all 10-second scene clips and audio stems generated in this session into a single 30–60s master MP4 file exported to Google Cloud Storage.</p>
+                                        <h3 className="font-bold text-base text-amber-200">
+                                            {saveModalMode === "clip" ? "Save Active Clip to GCS" : "Stitch & Save Session Master (30–60s) to GCS"}
+                                        </h3>
+                                        <p className="text-xs text-amber-300/80 mt-0.5">
+                                            {saveModalMode === "clip"
+                                                ? "Export and save the currently active 10-second scene clip directly to Google Cloud Storage."
+                                                : "OmniMash will automatically concatenate all 10-second scene clips and audio stems generated in this session into a single 30–60s master MP4 file exported to Google Cloud Storage."}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="space-y-4 mb-6">
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">Master Title</label>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                                            {saveModalMode === "clip" ? "Clip Title" : "Master Title"}
+                                        </label>
                                         <input
                                             type="text"
                                             value={masterTitle}
                                             onChange={(e) => setMasterTitle(e.target.value)}
-                                            placeholder="e.g. official_rap_battle_master"
+                                            placeholder={saveModalMode === "clip" ? "e.g. active_scene_clip_1" : "e.g. official_rap_battle_master"}
                                             className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
                                         />
                                     </div>
@@ -917,7 +928,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                         className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 text-black font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50"
                                     >
                                         <span>💾</span>
-                                        <span>{saveLoading ? "Stitching & Saving..." : "Stitch & Save Master (30–60s) to GCS"}</span>
+                                        <span>
+                                            {saveLoading
+                                                ? "Saving..."
+                                                : saveModalMode === "clip"
+                                                ? "Save Active Clip to GCS"
+                                                : "Stitch & Save Master (30–60s) to GCS"}
+                                        </span>
                                     </button>
                                 </div>
                             </div>
@@ -1871,6 +1888,18 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     <button
                                                         type="button"
                                                         onClick={() => {
+                                                            setSaveModalMode("clip");
+                                                            setMasterTitle("active_clip_master");
+                                                            setShowSaveModal(true);
+                                                        }}
+                                                        className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                    >
+                                                        <span>💾</span>
+                                                        <span>Save Active Clip to GCS</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
                                                             if (selectedClipUrls.length === 0 && history.length > 0) {
                                                                 setSelectedClipUrls(history.map(h => h.videoUrl));
                                                             }
@@ -1883,10 +1912,14 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setShowSaveModal(true)}
+                                                        onClick={() => {
+                                                            setSaveModalMode("master");
+                                                            setMasterTitle("official_rap_battle_master");
+                                                            setShowSaveModal(true);
+                                                        }}
                                                         className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
                                                     >
-                                                        <span>💾</span>
+                                                        <span>🎬</span>
                                                         <span>Stitch & Save Master (30–60s) to GCS</span>
                                                     </button>
                                                     <button
@@ -2112,11 +2145,18 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/save-final", response_model=SaveFinalResponse)
     def save_final(req: SaveFinalRequest) -> SaveFinalResponse:
-        _pub_url, gcs_uri = agent.save_final_master(
-            session_name=req.session_name,
-            video_url=req.video_url,
-            master_title=req.master_title,
-        )
+        if req.is_single_clip:
+            _pub_url, gcs_uri = agent.storage.save_final_master(
+                session_id=req.session_name,
+                source_rel_path=req.video_url,
+                master_title=req.master_title,
+            )
+        else:
+            _pub_url, gcs_uri = agent.save_final_master(
+                session_name=req.session_name,
+                video_url=req.video_url,
+                master_title=req.master_title,
+            )
         return SaveFinalResponse(
             success=True,
             gcs_uri=gcs_uri,

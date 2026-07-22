@@ -5,6 +5,7 @@ import json
 import os
 import re
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, unquote, urlparse
 
 from omnimash.config import settings
 
@@ -316,6 +317,17 @@ class GcsStorageManager:
 
         return None
 
+    def _normalize_media_source_path(self, src: str) -> str:
+        """Normalizes proxy URLs, GCS URIs, or relative paths to a raw GCS URI or local path."""
+        if not src:
+            return ""
+        if "/api/media-proxy" in src and "uri=" in src:
+            parsed = urlparse(src)
+            qs = parse_qs(parsed.query)
+            if "uri" in qs and qs["uri"]:
+                return unquote(qs["uri"][0])
+        return src
+
     def save_final_master(
         self,
         session_id: str | None,
@@ -336,7 +348,8 @@ class GcsStorageManager:
 
         if not self.mock_mode and self._bucket:
             try:
-                local_path = source_rel_path
+                norm_source = self._normalize_media_source_path(source_rel_path)
+                local_path = norm_source
                 if local_path.startswith("/static/"):
                     local_path = os.path.join(os.getcwd(), local_path.lstrip("/"))
                 elif not os.path.isabs(local_path) and os.path.exists(
@@ -348,7 +361,7 @@ class GcsStorageManager:
                     blob = self._bucket.blob(dest_blob_path)
                     blob.upload_from_filename(local_path, content_type="video/mp4")
                 else:
-                    src_blob_name = source_rel_path.replace(
+                    src_blob_name = norm_source.replace(
                         f"gs://{self.bucket_name}/", ""
                     ).lstrip("/")
                     src_blob = self._bucket.blob(src_blob_name)

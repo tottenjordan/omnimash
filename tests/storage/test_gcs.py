@@ -229,3 +229,16 @@ def test_gcs_save_final_master_with_prompt_companion(monkeypatch):
     assert blob_name == "sessions/session_abc/final_masters/master_v1_prompt.json"
     assert content_type == "application/json"
     assert b"DumbleDior in Dior robes" in data
+
+
+def test_gcs_normalize_media_source_path():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    proxy_url = "/api/media-proxy?uri=gs%3A%2F%2Fomnimash-media-hybrid-vertex%2Fsessions%2Fnew_new_v2%2Fintermediate%2Fturn_0_video.mp4"
+    normalized = gcs._normalize_media_source_path(proxy_url)
+    assert (
+        normalized
+        == "gs://omnimash-media-hybrid-vertex/sessions/new_new_v2/intermediate/turn_0_video.mp4"
+    )
+
+    raw_gcs = "gs://omnimash-media-hybrid-vertex/sessions/new_new_v2/clip.mp4"
+    assert gcs._normalize_media_source_path(raw_gcs) == raw_gcs
