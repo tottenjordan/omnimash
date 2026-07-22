@@ -10,12 +10,14 @@ from __future__ import annotations
 import logging
 import subprocess
 
+from omnimash.config import settings
+
 log = logging.getLogger(__name__)
 
 # Default wall-clock budget for a single ffmpeg call. Renders/stitches are short
 # (10s clips), so a couple of minutes is a generous ceiling that still fails fast
-# on a hung process.
-DEFAULT_FFMPEG_TIMEOUT = 120
+# on a hung process. Sourced from settings (env: FFMPEG_TIMEOUT).
+DEFAULT_FFMPEG_TIMEOUT = settings.ffmpeg_timeout
 
 
 class FfmpegError(RuntimeError):

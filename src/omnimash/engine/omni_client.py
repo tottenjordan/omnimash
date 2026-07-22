@@ -296,19 +296,19 @@ def ensure_rendered_video(
                     "-map",
                     "[a]",
                     "-r",
-                    "24",
+                    str(settings.ffmpeg_fps),
                     "-c:v",
                     "libx264",
                     "-preset",
-                    "fast",
+                    settings.ffmpeg_preset,
                     "-crf",
-                    "18",
+                    str(settings.ffmpeg_crf),
                     "-pix_fmt",
                     "yuv420p",
                     "-c:a",
                     "aac",
                     "-b:a",
-                    "192k",
+                    settings.ffmpeg_audio_bitrate,
                     "-shortest",
                     "-movflags",
                     "+faststart",
@@ -344,13 +344,13 @@ def ensure_rendered_video(
                 "-map",
                 "[a]",
                 "-r",
-                "24",
+                str(settings.ffmpeg_fps),
                 "-c:v",
                 "libx264",
                 "-preset",
-                "fast",
+                settings.ffmpeg_preset,
                 "-crf",
-                "18",
+                str(settings.ffmpeg_crf),
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
@@ -582,7 +582,11 @@ class OmniFlashClient:
     ):
         self.api_key = api_key
         self.mock_mode = mock_mode
-        self.retry_delay = retry_delay if retry_delay is not None else (0.0 if mock_mode else 0.5)
+        self.retry_delay = (
+            retry_delay
+            if retry_delay is not None
+            else (0.0 if mock_mode else settings.omni_retry_base_delay)
+        )
         self.project = os.environ.get(
             "GOOGLE_CLOUD_PROJECT",
             getattr(settings, "google_cloud_project", "hybrid-vertex"),
@@ -611,7 +615,7 @@ class OmniFlashClient:
         if not self.mock_mode and genai:
             from google.genai import types
 
-            http_options = types.HttpOptions(timeout=300000)
+            http_options = types.HttpOptions(timeout=settings.omni_http_timeout_ms)
 
             # Strategy 1: Google AI Studio Developer API Client (API Key)
             if effective_key:
@@ -775,7 +779,7 @@ class OmniFlashClient:
             logger.warning("Generation aborted: %s", msg)
             return False, None, msg
 
-        max_attempts = 3
+        max_attempts = settings.omni_max_retries
         last_error: str | None = None
 
         safe_input = _abstract_prompt_for_responsible_ai(prompt)
@@ -793,13 +797,13 @@ class OmniFlashClient:
                 {"type": "text", "text": safe_input},
             ]
             kwargs: dict[str, Any] = {
-                "model": "gemini-omni-flash-preview",
+                "model": settings.omni_model_id,
                 "input": inputs,
                 "safety_settings": _get_relaxed_safety_settings(),
             }
         else:
             kwargs = {
-                "model": "gemini-omni-flash-preview",
+                "model": settings.omni_model_id,
                 "input": safe_input,
                 "safety_settings": _get_relaxed_safety_settings(),
             }

@@ -146,6 +146,33 @@ def test_exponential_backoff_retry_on_429_transient_success() -> None:
     assert vertex_client.interactions.create.call_count == 3
 
 
+def test_model_id_is_sourced_from_settings() -> None:
+    # Centralized settings must drive the interaction payload's model, so a
+    # deployment can retarget the video model via env without code edits.
+    vertex_client = MagicMock()
+    vertex_client.interactions.create.side_effect = [_make_mock_interaction("model_inter")]
+
+    client = OmniFlashClient(mock_mode=True)
+    client.mock_mode = False
+    client.retry_delay = 0.0
+    client._vertex_client = vertex_client
+    client._dev_client = None
+    client._genai_client = vertex_client
+
+    with (
+        patch("builtins.open", MagicMock()),
+        patch("os.makedirs", MagicMock()),
+        patch("omnimash.engine.omni_client.settings.omni_model_id", "gemini-omni-flash-custom"),
+    ):
+        client._generate_live_omni_flash_video(
+            prompt="A wizard dancing",
+            target_rel_path="static/rendered/test.mp4",
+        )
+
+    kwargs = vertex_client.interactions.create.call_args.kwargs
+    assert kwargs["model"] == "gemini-omni-flash-custom"
+
+
 def test_generation_result_modes_success_and_fallback() -> None:
     client = OmniFlashClient(mock_mode=True)
     client.mock_mode = False

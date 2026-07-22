@@ -356,7 +356,7 @@ class PromptOptimizer:
                         "CRITICAL: Keep all [IMAGE ROLES] and [ROLE DEFINITIONS] blocks intact."
                     )
                     response = client.models.generate_content(
-                        model="gemini-2.5-flash",
+                        model=settings.deconstruct_flash_model,
                         contents=f"{system_instruction}\n\n[PROMPT TO OPTIMIZE]:\n{optimized}",
                     )
                     if response and getattr(response, "text", None):
@@ -841,7 +841,7 @@ class PromptCompiler:
         if self._pro_global_client:
             res = self._try_gemini_deconstruction(
                 client=self._pro_global_client,
-                model_name="gemini-3.1-pro-preview",
+                model_name=settings.deconstruct_pro_model,
                 concept=concept,
                 tier_name="Tier 1 Pro Global",
             )
@@ -851,7 +851,7 @@ class PromptCompiler:
         if self._flash_regional_client:
             res = self._try_gemini_deconstruction(
                 client=self._flash_regional_client,
-                model_name="gemini-2.5-flash",
+                model_name=settings.deconstruct_flash_model,
                 concept=concept,
                 tier_name="Tier 2 Flash Regional",
             )

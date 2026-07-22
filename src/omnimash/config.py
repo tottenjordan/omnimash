@@ -26,6 +26,26 @@ class OmniMashSettings(BaseSettings):
     port: int = 8080
     log_level: str = "INFO"
 
+    # --- Video engine (Gemini Omni Flash) tuning -------------------------------
+    # Sole video+audio model per CLAUDE.md; Veo is never permitted. Centralized
+    # here so deployment/cost-sensitive values are tuned via env, not code edits.
+    omni_model_id: str = "gemini-omni-flash-preview"
+    omni_http_timeout_ms: int = 300000
+    omni_max_retries: int = 3
+    omni_retry_base_delay: float = 0.5
+
+    # Text-only LLMs used to deconstruct/optimize prompts (NOT video generation).
+    # Two-tier fallback: a stronger Pro model first, then a faster Flash model.
+    deconstruct_pro_model: str = "gemini-3.1-pro-preview"
+    deconstruct_flash_model: str = "gemini-2.5-flash"
+
+    # --- ffmpeg render/stitch presets ------------------------------------------
+    ffmpeg_timeout: int = 120
+    ffmpeg_preset: str = "fast"
+    ffmpeg_crf: int = 18
+    ffmpeg_fps: int = 24
+    ffmpeg_audio_bitrate: str = "192k"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

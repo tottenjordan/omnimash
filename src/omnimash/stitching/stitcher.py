@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import uuid
 
+from omnimash.config import settings
 from omnimash.engine.media_utils import (
     DEFAULT_FFMPEG_TIMEOUT,
     FfmpegError,
@@ -79,6 +80,10 @@ class VideoStitcher:
                             concat_list_path,
                             "-c:v",
                             "libx264",
+                            "-preset",
+                            settings.ffmpeg_preset,
+                            "-crf",
+                            str(settings.ffmpeg_crf),
                             "-c:a",
                             "aac",
                             "-pix_fmt",
