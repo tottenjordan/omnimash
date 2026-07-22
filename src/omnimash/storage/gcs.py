@@ -24,6 +24,29 @@ try:
 except ImportError:  # google-api-core is optional in some environments
     GoogleAPIError = Exception  # type: ignore[assignment,misc]
 
+try:
+    from google.cloud.storage.retry import DEFAULT_RETRY as _GCS_DEFAULT_RETRY
+except ImportError:  # storage sdk optional / older versions
+    _GCS_DEFAULT_RETRY = None
+
+
+# Process-wide cache of storage clients keyed by project id. Building a
+# storage.Client is comparatively expensive (auth discovery + connection pool),
+# so managers for the same project share one instance instead of each creating
+# their own (media_extractor builds its own manager, etc.).
+_SHARED_CLIENTS: dict[str, Any] = {}
+
+
+def _get_shared_client(project_id: str) -> Any:
+    """Return a lazily-created, process-wide ``storage.Client`` for ``project_id``."""
+    if storage is None:
+        return None
+    client = _SHARED_CLIENTS.get(project_id)
+    if client is None:
+        client = storage.Client(project=project_id)
+        _SHARED_CLIENTS[project_id] = client
+    return client
+
 
 DEFAULT_CHARACTERS: list[dict[str, Any]] = [
     {
@@ -87,12 +110,23 @@ class GcsStorageManager:
 
         if not self.mock_mode and storage:
             try:
-                self._client = storage.Client(project=self.project_id)
-                self.ensure_bucket_exists()
+                self._client = _get_shared_client(self.project_id)
+                if self._client is not None:
+                    # .bucket() returns a handle without a network round-trip;
+                    # existence is verified lazily/once via ensure_bucket_exists()
+                    # (called at deploy/startup), not on every manager init.
+                    self._bucket = self._client.bucket(self.bucket_name)
             except Exception as exc:
                 log.warning(
                     "Failed to initialize GCS client for project %s: %s", self.project_id, exc
                 )
+
+    def _io_kwargs(self) -> dict[str, Any]:
+        """Common timeout/retry kwargs for GCS I/O so calls are bounded + retried."""
+        kwargs: dict[str, Any] = {"timeout": settings.gcs_timeout}
+        if _GCS_DEFAULT_RETRY is not None:
+            kwargs["retry"] = _GCS_DEFAULT_RETRY
+        return kwargs
 
     def ensure_bucket_exists(self, location: str | None = None) -> bool:
         """Verifies or programmatically creates the GCS bucket in the configured GCP project."""
@@ -168,7 +202,7 @@ class GcsStorageManager:
                     content_type = "application/json"
 
             blob = self._bucket.blob(destination_blob_name)
-            blob.upload_from_filename(local_path, content_type=content_type)
+            blob.upload_from_filename(local_path, content_type=content_type, **self._io_kwargs())
             return self.get_public_url(destination_blob_name)
         except GoogleAPIError as exc:
             # Surface the failure instead of returning a fabricated success URL,
@@ -189,7 +223,7 @@ class GcsStorageManager:
 
         try:
             blob = self._bucket.blob(destination_blob_name)
-            blob.upload_from_string(data, content_type=content_type)
+            blob.upload_from_string(data, content_type=content_type, **self._io_kwargs())
             return self.get_public_url(destination_blob_name)
         except GoogleAPIError as exc:
             log.error("GCS byte upload failed for %s: %s", destination_blob_name, exc)
@@ -222,7 +256,7 @@ class GcsStorageManager:
         try:
             bucket = self._client.bucket(bucket_name)
             blob = bucket.blob(blob_path)
-            data = blob.download_as_bytes()
+            data = blob.download_as_bytes(**self._io_kwargs())
             content_type = getattr(blob, "content_type", None)
             if not content_type:
                 if blob_path.endswith(".mp4"):
@@ -316,8 +350,8 @@ class GcsStorageManager:
                     session_id, "references", "reference_analysis.json"
                 ).lstrip("/")
                 blob = self._bucket.blob(blob_path)
-                if blob.exists():
-                    data = blob.download_as_text()
+                if blob.exists(**self._io_kwargs()):
+                    data = blob.download_as_text(**self._io_kwargs())
                     res: dict[str, Any] = json.loads(data)
                     self._mock_analyses[session_id] = res
                     return res
@@ -354,14 +388,18 @@ class GcsStorageManager:
 
                 if os.path.exists(local_path):
                     blob = self._bucket.blob(dest_blob_path)
-                    blob.upload_from_filename(local_path, content_type="video/mp4")
+                    blob.upload_from_filename(
+                        local_path, content_type="video/mp4", **self._io_kwargs()
+                    )
                 else:
                     src_blob_name = source_rel_path.replace(f"gs://{self.bucket_name}/", "").lstrip(
                         "/"
                     )
                     src_blob = self._bucket.blob(src_blob_name)
-                    if src_blob.exists():
-                        self._bucket.copy_blob(src_blob, self._bucket, dest_blob_path)
+                    if src_blob.exists(**self._io_kwargs()):
+                        self._bucket.copy_blob(
+                            src_blob, self._bucket, dest_blob_path, **self._io_kwargs()
+                        )
             except GoogleAPIError as exc:
                 log.error("Failed to persist final master %s: %s", dest_blob_path, exc)
                 raise
@@ -447,11 +485,11 @@ class GcsStorageManager:
                     prefixes.append(f"sessions/{session_id}/characters/")
 
                 for prefix in prefixes:
-                    blobs = self._bucket.list_blobs(prefix=prefix)
+                    blobs = self._bucket.list_blobs(prefix=prefix, **self._io_kwargs())
                     for blob in blobs:
                         if blob.name.endswith(".json") and not blob.name.endswith("roster.json"):
                             try:
-                                data = json.loads(blob.download_as_text())
+                                data = json.loads(blob.download_as_text(**self._io_kwargs()))
                                 if isinstance(data, dict):
                                     slug = self._slugify(str(data.get("name", "")))
                                     if slug not in seen_slugs:
@@ -486,8 +524,8 @@ class GcsStorageManager:
 
                 for blob_path in paths_to_try:
                     blob = self._bucket.blob(blob_path)
-                    if blob.exists():
-                        data = json.loads(blob.download_as_text())
+                    if blob.exists(**self._io_kwargs()):
+                        data = json.loads(blob.download_as_text(**self._io_kwargs()))
                         if isinstance(data, dict):
                             self._mock_characters[clean_slug] = data
                             return data
@@ -534,8 +572,8 @@ class GcsStorageManager:
             try:
                 blob_path = f"sessions/{session_id}/characters/roster.json"
                 blob = self._bucket.blob(blob_path)
-                if blob.exists():
-                    data = json.loads(blob.download_as_text())
+                if blob.exists(**self._io_kwargs()):
+                    data = json.loads(blob.download_as_text(**self._io_kwargs()))
                     if isinstance(data, list):
                         self._mock_rosters[session_id] = data
                         return data
@@ -551,7 +589,9 @@ class GcsStorageManager:
             return default_sessions
 
         try:
-            blobs = self._client.list_blobs(self.bucket_name, prefix="sessions/", delimiter="/")
+            blobs = self._client.list_blobs(
+                self.bucket_name, prefix="sessions/", delimiter="/", **self._io_kwargs()
+            )
             for _ in blobs:
                 pass
             session_ids: list[str] = []

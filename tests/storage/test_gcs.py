@@ -1,9 +1,10 @@
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from omnimash.engine.omni_client import OmniFlashClient
+from omnimash.storage import gcs as gcs_mod
 from omnimash.storage.gcs import GcsStorageManager
 
 
@@ -147,6 +148,23 @@ def test_omni_client_session_gcs_persistence():
 def test_gcs_ensure_bucket_exists():
     gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
     assert gcs.ensure_bucket_exists() is True
+
+
+def test_managers_share_one_client_per_project():
+    if gcs_mod.storage is None:
+        pytest.skip("google-cloud-storage not installed")
+    gcs_mod._SHARED_CLIENTS.clear()
+    fake_client = MagicMock()
+    try:
+        with patch.object(gcs_mod.storage, "Client", return_value=fake_client) as mock_ctor:
+            m1 = GcsStorageManager(bucket_name="b1", project_id="proj-x", mock_mode=False)
+            m2 = GcsStorageManager(bucket_name="b2", project_id="proj-x", mock_mode=False)
+        # Same project => one shared client instance, built exactly once.
+        assert m1._client is fake_client
+        assert m2._client is fake_client
+        assert mock_ctor.call_count == 1
+    finally:
+        gcs_mod._SHARED_CLIENTS.clear()
 
 
 def test_save_and_load_character_gcs():

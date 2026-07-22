@@ -39,6 +39,10 @@ class OmniMashSettings(BaseSettings):
     deconstruct_pro_model: str = "gemini-3.1-pro-preview"
     deconstruct_flash_model: str = "gemini-2.5-flash"
 
+    # Wall-clock budget (seconds) for individual GCS upload/download/list calls,
+    # so a stalled network op fails fast instead of hanging a worker.
+    gcs_timeout: int = 60
+
     # --- ffmpeg render/stitch presets ------------------------------------------
     ffmpeg_timeout: int = 120
     ffmpeg_preset: str = "fast"
