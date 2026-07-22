@@ -2,7 +2,9 @@ import base64
 import logging
 import math
 import os
+import random
 import struct
+import time
 import uuid
 import wave
 from dataclasses import dataclass
@@ -508,6 +510,68 @@ def _get_relaxed_safety_settings() -> list[Any] | None:
 get_relaxed_safety_settings = _get_relaxed_safety_settings
 
 
+# HTTP statuses worth retrying: request timeout / conflict / too-early, rate
+# limiting, and the transient 5xx family. Everything else in 4xx is permanent.
+_RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+_PERMANENT_MARKERS = (
+    "invalid argument",
+    "invalidargument",
+    "permission denied",
+    "permissiondenied",
+    "failed precondition",
+    "not found",
+)
+_TRANSIENT_MARKERS = (
+    "timeout",
+    "timed out",
+    "deadline",
+    "unavailable",
+    "temporarily",
+    "connection reset",
+    "connection aborted",
+)
+
+
+def _extract_status_code(exc: Exception) -> int | None:
+    """Best-effort HTTP status extraction from a google-genai / API exception.
+
+    google-genai's ``APIError`` exposes an integer ``code``; other clients use
+    ``status_code``/``status``. Returns ``None`` when no numeric status is found.
+    """
+    for attr in ("code", "status_code", "status"):
+        val = getattr(exc, attr, None)
+        if isinstance(val, bool):
+            continue
+        if isinstance(val, int):
+            return val
+        if isinstance(val, str) and val.isdigit():
+            return int(val)
+    return None
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    """Classify an exception as transient (retry) vs permanent (give up).
+
+    Prefers a typed status code; only falls back to substring heuristics when no
+    code is exposed. Unknown errors default to retryable to preserve the prior
+    lenient behavior.
+    """
+    code = _extract_status_code(exc)
+    if code is not None:
+        if code in _RETRYABLE_STATUS:
+            return True
+        if 400 <= code < 500:
+            return False
+        if code >= 500:
+            return True
+    low = str(exc).lower()
+    if any(marker in low for marker in _PERMANENT_MARKERS):
+        return False
+    if any(marker in low for marker in _TRANSIENT_MARKERS):
+        return True
+    return True
+
+
 class OmniFlashClient:
     def __init__(
         self,
@@ -713,7 +777,6 @@ class OmniFlashClient:
             return False, None, msg
 
         max_attempts = 3
-        delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
         last_error: str | None = None
 
         safe_input = _abstract_prompt_for_responsible_ai(prompt)
@@ -791,59 +854,85 @@ class OmniFlashClient:
             except Exception as exc:
                 exc_str = str(exc)
                 last_error = exc_str
+                code = _extract_status_code(exc)
 
-                if (
-                    "401" in exc_str
+                is_auth = (
+                    code == 401
+                    or "401" in exc_str
                     or "UNAUTHENTICATED" in exc_str
                     or "API keys are not supported" in exc_str
-                ):
+                )
+                is_endpoint = code == 404 or "404" in exc_str or "Publisher model" in exc_str
+                is_param = (
+                    "safety_settings" in exc_str
+                    or "Unmarshaller" in exc_str
+                    or "ValidationError" in exc_str
+                    or "invalid_request" in exc_str
+                )
+                is_rate = code == 429 or "ResourceExhausted" in exc_str
+
+                retryable = True
+                # Auth-fallback retries immediately on the freshly switched client;
+                # no point sleeping first.
+                skip_sleep = False
+
+                if is_auth:
                     logger.warning(
                         "401 UNAUTHENTICATED on Vertex AI. Actively switching to Google AI Studio Developer API client."
                     )
                     self.switch_to_developer_api()
-                elif "404" in exc_str or "Publisher model" in exc_str:
+                    skip_sleep = True
+                elif is_endpoint:
                     logger.warning(
                         "Vertex AI endpoint unavailable (%s). Actively switching to Google AI Studio Developer API client.",
                         exc_str,
                     )
                     self.switch_to_developer_api()
-                elif (
-                    "safety_settings" in exc_str
-                    or "Unmarshaller" in exc_str
-                    or "ValidationError" in exc_str
-                    or "invalid_request" in exc_str
-                ):
+                elif is_param:
                     logger.warning(
                         "Interactions API parameter error (%s). Removing unsupported safety_settings kwarg and retrying.",
                         exc_str,
                     )
                     kwargs.pop("safety_settings", None)
-                elif "429" in exc_str or "ResourceExhausted" in exc_str:
+                elif is_rate:
                     logger.warning(
-                        "Retry attempt %d/%d after rate limit error (%s). Backoff delay: %.2fs",
+                        "Retry attempt %d/%d after rate limit error (%s).",
                         attempt,
                         max_attempts,
                         exc_str,
-                        delay,
                     )
                 else:
-                    logger.warning(
-                        "Omni Flash generation error on attempt %d/%d: %s",
-                        attempt,
-                        max_attempts,
-                        exc_str,
-                    )
+                    # Unrecognized error: retry only if it looks transient
+                    # (timeout / 5xx). Permanent client errors (400/403, invalid
+                    # argument, permission denied) abort immediately so we don't
+                    # burn attempts or hammer the API.
+                    retryable = _is_retryable_error(exc)
+                    if retryable:
+                        logger.warning(
+                            "Transient Omni Flash error on attempt %d/%d, will retry: %s",
+                            attempt,
+                            max_attempts,
+                            exc_str,
+                        )
+                    else:
+                        logger.warning(
+                            "Non-retryable Omni Flash error on attempt %d/%d, aborting: %s",
+                            attempt,
+                            max_attempts,
+                            exc_str,
+                        )
 
-                if attempt < max_attempts:
-                    if delay > 0 and not (
-                        "401" in exc_str
-                        or "UNAUTHENTICATED" in exc_str
-                        or "API keys are not supported" in exc_str
-                    ):
-                        import time
+                if not retryable:
+                    break
 
-                        time.sleep(delay)
-                    delay *= 2
+                if attempt < max_attempts and not skip_sleep and self.retry_delay > 0:
+                    # Exponential backoff with full jitter to avoid a thundering
+                    # herd across concurrent clip workers. A retry_delay of 0
+                    # (mock/dev/tests) disables sleeping entirely.
+                    backoff = self.retry_delay * 2 ** (attempt - 1)
+                    # Jitter is scheduling noise, not a security primitive.
+                    jitter = random.uniform(0, backoff / 2)  # noqa: S311
+                    time.sleep(backoff / 2 + jitter)
 
         return False, None, last_error
 
