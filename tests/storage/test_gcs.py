@@ -23,6 +23,32 @@ def test_gcs_session_blob_path():
     assert path == "sessions/session_abc/intermediate/clip_0.mp4"
 
 
+def test_sanitize_path_segment_blocks_traversal():
+    sanitize = GcsStorageManager.sanitize_path_segment
+    # Traversal and separators collapse to safe single segments.
+    assert "/" not in sanitize("../evil")
+    assert ".." not in sanitize("..")
+    assert "/" not in sanitize("a/../b")
+    assert sanitize("/leading") == "leading"
+    # Empty / whitespace fall back to the default.
+    assert sanitize("") == "global"
+    assert sanitize("   ") == "global"
+    assert sanitize(None) == "global"
+    assert sanitize("", default="misc") == "misc"
+    # Valid identifiers survive (colon normalized to underscore).
+    assert sanitize("user:project") == "user_project"
+    assert sanitize("session_abc-123") == "session_abc-123"
+
+
+def test_build_session_blob_path_stays_scoped():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    path = gcs.build_session_blob_path("../evil", "../x", "../../f.mp4")
+    assert path.startswith("sessions/")
+    assert ".." not in path
+    # Exactly four segments: sessions/{sid}/{category}/{filename}
+    assert len(path.split("/")) == 4
+
+
 def test_gcs_save_session_prompt():
     gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
     url = gcs.save_session_prompt(

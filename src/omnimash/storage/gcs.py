@@ -116,8 +116,8 @@ class GcsStorageManager:
         filename: str,
     ) -> str:
         """Constructs a hierarchical session-scoped blob path: sessions/{session_id}/{category}/{filename}."""
-        sid = session_id or "global"
-        clean_cat = category.strip("/")
+        sid = self.sanitize_path_segment(session_id)
+        clean_cat = self.sanitize_path_segment(category, default="misc")
         clean_file = os.path.basename(filename)
         return f"sessions/{sid}/{clean_cat}/{clean_file}"
 
@@ -366,6 +366,20 @@ class GcsStorageManager:
         """Converts a character or entity name into a normalized lowercase slug."""
         slug = re.sub(r"[^a-zA-Z0-9]+", "_", name).strip("_").lower()
         return slug or "character"
+
+    @staticmethod
+    def sanitize_path_segment(value: str | None, *, default: str = "global") -> str:
+        """Sanitize a single GCS key path segment: no traversal, no separators.
+
+        Unlike :meth:`_slugify`, this preserves case, ``-`` and ``_`` so real
+        identifiers (uuids, ``user:project`` -> ``user_project``) survive intact
+        while ``../`` / leading-slash payloads can never escape their prefix.
+        """
+        if not value or not value.strip():
+            return default
+        cleaned = re.sub(r"[^a-zA-Z0-9_-]", "_", value.strip())
+        cleaned = cleaned.strip("._-")  # kill leading/trailing dots and dashes
+        return cleaned or default
 
     def save_character(
         self,
