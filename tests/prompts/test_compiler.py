@@ -358,8 +358,8 @@ def test_parse_screenplay_script():
     )
 
     # Spoken dialogue extraction and formatting
-    assert 'Snape: "Silence, Potter!"' in result["dialogue"]
-    assert 'Harry: "It was the beat, professor!"' in result["dialogue"]
+    assert 'Role A (Severus Snape): "Silence, Potter!"' in result["dialogue"]
+    assert 'Role B (Harry Potter): "It was the beat, professor!"' in result["dialogue"]
 
 
 def test_compile_prompt_with_screenplay_text():
@@ -472,3 +472,25 @@ def test_compile_multi_role_prompt_with_screenplay_text():
     )
     assert '  Harry: (Bopping head to 120 BPM beat.) "No!"' in prompt
     assert "Scene 1 Audio Cues:" in prompt
+
+
+def test_parse_screenplay_script_bracketed_roles_and_parentheticals_before_colon():
+    from omnimash.prompts.compiler import parse_screenplay_script
+
+    chars = [
+        CharacterRole(role_id="Role A", name="Mr. Ice-Vander", description="Jeweler"),
+        CharacterRole(role_id="Role B", name="Harry Gucci", description="Wizard"),
+        CharacterRole(role_id="Role C", name="Swagrid Tha Plug", description="Giant"),
+    ]
+    script = (
+        '[Role A] (Resting hands on marble counter): "Ah, blood!"\n'
+        '[Role B] (Steps up to counter): "You got that real gas?"\n'
+        '[Role C] (looks with anticipation): "don t play"\n'
+        '[Role A] (Leans in close): "type shit"'
+    )
+    result = parse_screenplay_script(script, characters=chars)
+    assert result["active_roles"] == ["Role A", "Role B", "Role C"]
+    assert 'Role A (Mr. Ice-Vander): "Ah, blood!"' in result["dialogue"]
+    assert 'Role B (Harry Gucci): "You got that real gas?"' in result["dialogue"]
+    assert 'Role C (Swagrid Tha Plug): "don t play"' in result["dialogue"]
+    assert 'Role A (Mr. Ice-Vander): "type shit"' in result["dialogue"]
