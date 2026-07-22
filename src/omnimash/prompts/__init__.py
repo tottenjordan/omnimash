@@ -7,6 +7,7 @@ from omnimash.prompts.compiler import (
     PromptOptimizer,
     parse_screenplay_script,
 )
+from omnimash.prompts.storyboard_agent import StoryboardAgent, StoryboardShot
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
 
 __all__ = [
@@ -15,6 +16,9 @@ __all__ = [
     "PromptCompiler",
     "PromptOptimizer",
     "PromptTaxonomyEngine",
+    "StoryboardAgent",
+    "StoryboardShot",
     "StylePreset",
     "parse_screenplay_script",
 ]
+
