@@ -10,7 +10,7 @@ Always refer to [CODE_STANDARDS.md](CODE_STANDARDS.md) when writing code, making
 - **Run Commands:** Always run commands prefixed with `uv run` (e.g. `uv run pytest`, `uv run ruff check`).
 - **Linting & Formatting:** Use `ruff` for all linting and code formatting. Do not use `black` or `flake8`.
 - **Git Commits & PRs:** Never add `Co-Authored-By` trailers in commit messages or pull requests.
-- **Branching & PR Workflow:** ALWAYS create feature branches (`feature/<name>`) and open Pull Requests for user review. NEVER commit or push directly to `main`. NEVER merge any Pull Request without explicit user approval.
+- **Branching & PR Workflow:** ALWAYS create feature branches (`feature/<name>`) and open Pull Requests with detailed, comprehensive descriptions (including background context, root cause analysis, implementation details, and verification steps) for user review. NEVER commit or push directly to `main`. NEVER merge any Pull Request without explicit user approval.
 - **Cloud Redeployments:** Never redeploy any cloud resources (Cloud Run, Cloud Storage, Vertex AI) without explicit user approval.
 
 ## 🎬 Video Model Engine Rule
