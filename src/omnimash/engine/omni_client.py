@@ -396,6 +396,9 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         r"\bron\b": "a red-haired wizard student",
         r"\bdumbledore\b": "a wise elderly headmaster wizard with a long silver beard",
         r"\bhagrid\b": "a towering friendly giant gamekeeper with a bushy beard and heavy coat",
+        r"\bswagrid\b": "a towering friendly gamekeeper in a fur coat",
+        r"\bollivander\b": "an elderly shopkeeper wandmaker wizard",
+        r"\bice[- ]vander\b": "an elderly iced-out shopkeeper wandmaker wizard",
         r"\bmcgonagall\b": "a distinguished witch professor in emerald robes and pointed hat",
         r"\bhogwarts\b": "a grand gothic magical stone castle academy",
         r"\bdripwarts\b": "a high-fashion hip-hop magical castle academy",
@@ -748,11 +751,13 @@ class OmniFlashClient:
             kwargs: dict[str, Any] = {
                 "model": "gemini-omni-flash-preview",
                 "input": inputs,
+                "safety_settings": _get_relaxed_safety_settings(),
             }
         else:
             kwargs = {
                 "model": "gemini-omni-flash-preview",
                 "input": safe_input,
+                "safety_settings": _get_relaxed_safety_settings(),
             }
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id

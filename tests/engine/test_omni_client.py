@@ -503,7 +503,7 @@ def test_get_relaxed_safety_settings_fallback(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
-    """Verify that _generate_live_omni_flash_video passes clean kwargs to interactions.create without unsupported safety_settings."""
+    """Verify that _generate_live_omni_flash_video passes kwargs to interactions.create with safety_settings."""
     import base64
 
     client = OmniFlashClient(mock_mode=False)
@@ -530,7 +530,7 @@ def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
     assert call_kwargs["model"] == "gemini-omni-flash-preview"
-    assert "safety_settings" not in call_kwargs
+    assert "safety_settings" in call_kwargs
 
 
 def test_load_reference_images_as_input_returns_base64_objects() -> None:
@@ -715,3 +715,44 @@ def test_load_reference_images_logs_diagnostics(
         "Attaching 1 multimodal base64 reference image(s) to gemini-omni-flash-preview interaction payload."
         in caplog.text
     )
+
+
+def test_generate_live_omni_flash_video_includes_safety_settings(tmp_path: Any) -> None:
+    """Verify that _generate_live_omni_flash_video attaches relaxed safety_settings in kwargs."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_test_safety", output_video=mock_output_video
+    )
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "test_safety_out.mp4")
+    success, inter_id, error = client._generate_live_omni_flash_video(
+        prompt="A wizard duel", target_rel_path=target_file
+    )
+
+    assert success is True
+    assert mock_interactions.create.called
+    call_kwargs = mock_interactions.create.call_args.kwargs
+    assert "safety_settings" in call_kwargs
+    assert call_kwargs["safety_settings"] == _get_relaxed_safety_settings()
+
+
+def test_abstract_prompt_handles_parody_names() -> None:
+    """Verify abstract prompt for responsible AI replaces parody character names."""
+    prompt = "Swagrid and Ollivander talk to Ice-Vander and Ice Vander in the shop."
+    res = _abstract_prompt_for_responsible_ai(prompt)
+    assert "swagrid" not in res.lower()
+    assert "ollivander" not in res.lower()
+    assert "ice-vander" not in res.lower()
+    assert "ice vander" not in res.lower()
+    assert "a towering friendly gamekeeper in a fur coat" in res
+    assert "an elderly shopkeeper wandmaker wizard" in res
+    assert "an elderly iced-out shopkeeper wandmaker wizard" in res
