@@ -29,12 +29,40 @@ class VideoStitcher:
                 with open(out_path, "w") as f:
                     f.write("mock mp4 master video content")
         else:
-            if clip_paths:
+            resolved_clips: list[str] = []
+            for clip in clip_paths:
+                norm_clip = self.storage._normalize_media_source_path(clip)
+                if os.path.exists(norm_clip):
+                    resolved_clips.append(os.path.abspath(norm_clip))
+                elif norm_clip.startswith("/static/"):
+                    loc = os.path.join(os.getcwd(), norm_clip.lstrip("/"))
+                    if os.path.exists(loc):
+                        resolved_clips.append(loc)
+                elif (
+                    not self.mock_mode
+                    and self.storage._bucket
+                    and norm_clip.startswith("gs://")
+                ):
+                    try:
+                        blob_name = norm_clip.replace(
+                            f"gs://{self.storage.bucket_name}/", ""
+                        ).lstrip("/")
+                        tmp_clip_path = os.path.join(
+                            output_dir, f"clip_{uuid.uuid4().hex[:6]}.mp4"
+                        )
+                        blob = self.storage._bucket.blob(blob_name)
+                        blob.download_to_filename(tmp_clip_path)
+                        resolved_clips.append(tmp_clip_path)
+                    except Exception:
+                        resolved_clips.append(norm_clip)
+                else:
+                    resolved_clips.append(norm_clip)
+
+            if resolved_clips:
                 concat_list_path = os.path.join(output_dir, "concat_list.txt")
                 with open(concat_list_path, "w") as f:
-                    for clip in clip_paths:
-                        abs_path = os.path.abspath(clip)
-                        f.write(f"file '{abs_path}'\n")
+                    for clip_file in resolved_clips:
+                        f.write(f"file '{clip_file}'\n")
 
                 cmd_copy = [
                     "ffmpeg",
