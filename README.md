@@ -360,6 +360,20 @@ In **Act 3**, render your 720p HD parody cut with native synced audio, inspect t
 
 ---
 
+### 🎬 Multimodal Generation Showcase & Examples
+
+Below are live examples rendered natively by `gemini-omni-flash-preview` using OmniMash's structured prompt compiler and qualitative audio direction:
+
+<div align="center">
+  <picture>
+    <source srcset="imgs/wand_shop_example.webp" type="image/webp" />
+    <img src="imgs/wand_shop_example.gif" alt="Gemini Omni Flash 720p HD Wand Shop Parody Scene" width="100%" />
+  </picture>
+  <p><em>✨ <strong>Scene Example: Mr. Ice-Vander's Diamond District Wand Shop</strong> — Multi-character hip-hop dialogue scene featuring Mr. Ice-Vander, Harry "Gucci", and Swagrid Tha Plug in a gothic boutique with heavy 808s and synchronized rap delivery.</em></p>
+</div>
+
+---
+
 ## Quickstart
 
 **1. Clone and authenticate**
