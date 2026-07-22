@@ -756,9 +756,12 @@ class PromptCompiler:
             roles_str = ", ".join(roles_list)
 
             sp_text = (
-                scene.get("screenplay_text")
+                (scene.get("screenplay_text") or scene.get("screenplay_script"))
                 if isinstance(scene, dict)
-                else getattr(scene, "screenplay_text", None)
+                else (
+                    getattr(scene, "screenplay_text", None)
+                    or getattr(scene, "screenplay_script", None)
+                )
             )
 
             if sp_text and isinstance(sp_text, str) and sp_text.strip():

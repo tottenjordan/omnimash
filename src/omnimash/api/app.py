@@ -347,8 +347,10 @@ UI_HTML = r"""<!DOCTYPE html>
 
                 const sceneLines = scenes.map(s => {
                     const roles = (s.active_roles && s.active_roles.length > 0) ? s.active_roles.join(", ") : "All Roles";
-                    if (s.mode === "screenplay" && s.screenplay_script && s.screenplay_script.trim()) {
-                        return `- Scene ${s.scene_number} [${roles}] (Screenplay): ${s.screenplay_script.trim()}`;
+                    const spScript = s.screenplay_script || s.screenplay_text;
+                    if ((s.mode === "screenplay" || spScript) && spScript && spScript.trim()) {
+                        const indented = spScript.trim().split("\n").map(l => `  ${l}`).join("\n");
+                        return `- Scene ${s.scene_number} [${roles}] (Screenplay Script):\n${indented}`;
                     }
                     const diag = (s.dialogue && s.dialogue.trim()) ? ` | Dialogue: "${s.dialogue.trim()}"` : "";
                     return `- Scene ${s.scene_number} [${roles}]: ${s.action || "Action description"}${diag}`;
