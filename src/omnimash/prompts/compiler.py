@@ -206,20 +206,24 @@ def parse_screenplay_script(
 
     for line in lines:
         speaker_raw: str | None = None
+        matched_role_name: str | None = None
 
-        if ":" in line:
-            colon_idx = line.index(":")
-            paren_idx = line.find("(")
-            quote_idx = line.find('"')
-            smart_quote_idx = line.find("“")
+        colon_idx = line.find(":")
+        paren_idx = line.find("(")
+        quote_idx = line.find('"')
+        smart_quote_idx = line.find("“")
 
-            delim_indices = [
-                idx for idx in [paren_idx, quote_idx, smart_quote_idx] if idx != -1
-            ]
-            first_delim = min(delim_indices) if delim_indices else len(line)
-
-            if colon_idx < first_delim:
-                speaker_raw = line[:colon_idx].strip()
+        delim_indices = [
+            idx
+            for idx in [colon_idx, paren_idx, quote_idx, smart_quote_idx]
+            if idx != -1
+        ]
+        if delim_indices:
+            first_idx = min(delim_indices)
+            candidate = line[:first_idx].strip()
+            candidate_clean = re.sub(r"^[\[\(\s]+|[\]\)\:\s]+$", "", candidate).strip()
+            if candidate_clean:
+                speaker_raw = candidate_clean
 
         matched_role_id: str | None = None
         if speaker_raw:
@@ -230,12 +234,15 @@ def parse_screenplay_script(
                     char_name = char.name.strip().lower()
                     if spk_lower == char_role or spk_lower == char_name:
                         matched_role_id = char.role_id
+                        matched_role_name = char.name
                         break
                     if spk_lower in char_name or char_name in spk_lower:
                         matched_role_id = char.role_id
+                        matched_role_name = char.name
                         break
                     if char_role in spk_lower:
                         matched_role_id = char.role_id
+                        matched_role_name = char.name
                         break
 
             role_to_add = matched_role_id if matched_role_id else speaker_raw
@@ -291,7 +298,11 @@ def parse_screenplay_script(
         if quotes:
             spoken_text = " ".join(q.strip() for q in quotes if q.strip())
             if spoken_text:
-                speaker_display = speaker_raw if speaker_raw else "Speaker"
+                speaker_display = (
+                    f"{matched_role_id} ({matched_role_name})"
+                    if matched_role_id and matched_role_name
+                    else (speaker_raw if speaker_raw else "Speaker")
+                )
                 dialogue_parts.append(f'{speaker_display}: "{spoken_text}"')
 
     action_str = ". ".join(action_parts).strip()
