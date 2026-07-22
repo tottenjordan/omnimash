@@ -13,6 +13,10 @@ class OmniMashSettings(BaseSettings):
     google_api_key: str | None = None
     gemini_api_key: str | None = None
     model_armor_template_id: str = "omnimash-safety-filter"
+    # Read-only reference buckets the media proxy may serve in addition to the
+    # app's own bucket. Keeps the default character references loadable while
+    # blocking arbitrary cross-bucket reads (see download_blob_bytes).
+    allowed_read_buckets: list[str] = ["reference-images-jt-trend-trawler"]
     mock_mode: bool = True
     port: int = 8080
     log_level: str = "INFO"

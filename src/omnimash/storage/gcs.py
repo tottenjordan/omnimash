@@ -192,6 +192,12 @@ class GcsStorageManager:
 
         bucket_name, blob_path = parts[0], parts[1]
 
+        if not self._is_bucket_allowed(bucket_name):
+            # Reject cross-bucket reads: only the app bucket and explicitly
+            # allow-listed reference buckets may be proxied. Empty bytes make the
+            # media proxy return 404 without leaking which buckets exist.
+            return (b"", "")
+
         if self.mock_mode:
             return (b"mock_image_bytes", "image/jpeg")
 
@@ -380,6 +386,11 @@ class GcsStorageManager:
         cleaned = re.sub(r"[^a-zA-Z0-9_-]", "_", value.strip())
         cleaned = cleaned.strip("._-")  # kill leading/trailing dots and dashes
         return cleaned or default
+
+    def _is_bucket_allowed(self, bucket_name: str) -> bool:
+        """True if a bucket may be read via the proxy (app bucket + allow-list)."""
+        allowed = {self.bucket_name, *settings.allowed_read_buckets}
+        return bucket_name in allowed
 
     def save_character(
         self,

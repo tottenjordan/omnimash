@@ -224,8 +224,11 @@ def test_api_stitch_selected_clips():
 
 
 def test_api_media_proxy():
+    from omnimash.config import settings
+
     app = create_app(mock_mode=True)
     client = TestClient(app)
+    bucket = settings.gcs_bucket_name
 
     res_invalid = client.get("/api/media-proxy?uri=https://example.com/image.jpg")
     assert res_invalid.status_code == 400
@@ -233,10 +236,18 @@ def test_api_media_proxy():
     res_empty = client.get("/api/media-proxy?uri=gs://bucket_only")
     assert res_empty.status_code == 404
 
-    res_valid = client.get("/api/media-proxy?uri=gs://bucket/test_image.jpg")
+    res_valid = client.get(f"/api/media-proxy?uri=gs://{bucket}/test_image.jpg")
     assert res_valid.status_code == 200
     assert res_valid.headers["cache-control"] == "public, max-age=86400"
     assert res_valid.content == b"mock_image_bytes"
+
+
+def test_api_media_proxy_rejects_foreign_bucket():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    # A bucket outside the app bucket + allow-list must not be proxied.
+    res = client.get("/api/media-proxy?uri=gs://some-other-bucket/secret.mp4")
+    assert res.status_code == 404
 
 
 def test_api_list_sessions():

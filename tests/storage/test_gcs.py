@@ -49,6 +49,27 @@ def test_build_session_blob_path_stays_scoped():
     assert len(path.split("/")) == 4
 
 
+def test_download_blob_bytes_rejects_foreign_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    # A bucket outside the app bucket + allow-list yields empty bytes (-> 404).
+    data, ctype = gcs.download_blob_bytes("gs://some-other-bucket/secret.mp4")
+    assert data == b""
+    assert ctype == ""
+
+
+def test_download_blob_bytes_allows_app_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    data, _ = gcs.download_blob_bytes("gs://test-omnimash-bucket/sessions/s/clip.mp4")
+    assert data == b"mock_image_bytes"
+
+
+def test_download_blob_bytes_allows_reference_bucket():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    # Default reference bucket for the built-in characters stays readable.
+    data, _ = gcs.download_blob_bytes("gs://reference-images-jt-trend-trawler/harry_drip.jpeg")
+    assert data == b"mock_image_bytes"
+
+
 def test_gcs_save_session_prompt():
     gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
     url = gcs.save_session_prompt(
