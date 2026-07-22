@@ -439,3 +439,33 @@ def test_generate_endpoint_success_unaffected_by_error_handling():
     )
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+
+def test_import_and_create_app_do_not_run_ffmpeg_warmup(monkeypatch):
+    # The ffmpeg warm-up must only run inside the FastAPI lifespan (on startup),
+    # never at import time or during plain create_app()/TestClient construction.
+    import importlib
+
+    from omnimash.engine import omni_client
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        omni_client, "ensure_rendered_video", lambda *a, **k: calls.append("called")
+    )
+    # The module-level ``app = create_app()`` runs on reload; keep it in mock mode.
+    monkeypatch.setenv("MOCK_MODE", "true")
+
+    # Re-importing the app module must not trigger the warm-up.
+    import omnimash.api.app as app_module
+
+    importlib.reload(app_module)
+    assert calls == []
+
+    # Building the app (without entering its lifespan) must not either.
+    app_module.create_app(mock_mode=True)
+    assert calls == []
+
+    # Entering the lifespan via the TestClient context manager runs it exactly once.
+    with TestClient(app_module.create_app(mock_mode=True)):
+        pass
+    assert calls == ["called"]
