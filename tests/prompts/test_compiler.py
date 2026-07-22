@@ -190,7 +190,7 @@ def test_compile_storyboard_with_audio_and_vocal_direction():
 
     assert "[AUDIO & VOCAL DIRECTION]" in compiled
     assert (
-        "Background Beat: 140 BPM Heavy 808 Trap (ducked at 15% volume under dialogue)"
+        "Background Beat: 140 BPM Heavy 808 Trap (subtly ducked in the background beneath dialogue)"
         in compiled
     )
     assert (
@@ -205,6 +205,21 @@ def test_compile_storyboard_with_audio_and_vocal_direction():
         "Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync"
         in compiled
     )
+
+
+def test_prompt_optimizer():
+    from omnimash.prompts.compiler import PromptCompiler, PromptOptimizer
+
+    compiler = PromptCompiler(mock_mode=True)
+    optimizer = PromptOptimizer(compiler=compiler)
+
+    raw = "Background Beat: 140 BPM Trap (ducked at 15% volume under dialogue)"
+    optimized = optimizer.optimize(raw)
+    assert "(subtly ducked in the background beneath dialogue)" in optimized
+    assert "15% volume" not in optimized
+
+    compiler_opt = compiler.optimize_prompt_for_omni_flash(raw)
+    assert "(subtly ducked in the background beneath dialogue)" in compiler_opt
 
 
 def test_deconstruct_concept_3_tier_fallback():

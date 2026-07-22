@@ -45,7 +45,7 @@ class CompiledPromptParts:
             sound_directive = (
                 f"Sound design: Foreground spoken voiceover/dialogue is dominant, "
                 f"crystal-clear, and front-of-mix. Background beat ({self.audio_track}) "
-                f"is quietly ducked at 15% volume in the background"
+                f"is subtly ducked in the background beneath dialogue"
             )
         else:
             sound_directive = f"Sound design: {self.audio_track}"
@@ -312,6 +312,29 @@ def parse_screenplay_script(
     }
 
 
+class PromptOptimizer:
+    """Optimizes compiled storyboards into cohesive Gemini Omni Flash directives."""
+
+    def __init__(self, compiler: Any = None) -> None:
+        self.compiler = compiler
+
+    def optimize(self, compiled_prompt: str) -> str:
+        """Synthesizes structured block prompts into dense, qualitative directives."""
+        if not compiled_prompt or not compiled_prompt.strip():
+            return compiled_prompt
+
+        # Normalize quantitative audio mixing terms to qualitative descriptors
+        optimized = compiled_prompt.replace(
+            "(ducked at 15% volume under dialogue)",
+            "(subtly ducked in the background beneath dialogue)",
+        ).replace(
+            "is quietly ducked at 15% volume in the background",
+            "is subtly ducked in the background beneath dialogue",
+        )
+
+        return optimized
+
+
 class PromptCompiler:
     def __init__(self, mock_mode: bool = False) -> None:
         self.mock_mode = mock_mode
@@ -319,6 +342,11 @@ class PromptCompiler:
         self._flash_regional_client: Any = None
         if not self.mock_mode:
             self._init_deconstructor_clients()
+
+    def optimize_prompt_for_omni_flash(self, compiled_prompt: str) -> str:
+        """Optimizes a compiled prompt string for Gemini Omni Flash generation."""
+        optimizer = PromptOptimizer(compiler=self)
+        return optimizer.optimize(compiled_prompt)
 
     def _init_deconstructor_clients(self) -> None:
         try:
@@ -698,7 +726,7 @@ class PromptCompiler:
         audio_parts: list[str] = []
         if audio_beat and audio_beat.strip():
             audio_parts.append(
-                f"Background Beat: {audio_beat.strip()} (ducked at 15% volume under dialogue)"
+                f"Background Beat: {audio_beat.strip()} (subtly ducked in the background beneath dialogue)"
             )
         for char in characters:
             if char.voice_style and char.voice_style.strip():

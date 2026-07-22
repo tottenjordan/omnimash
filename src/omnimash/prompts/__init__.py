@@ -4,6 +4,7 @@ from omnimash.prompts.compiler import (
     CompiledDeltaPrompt,
     CompiledPromptParts,
     PromptCompiler,
+    PromptOptimizer,
     parse_screenplay_script,
 )
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
@@ -12,6 +13,7 @@ __all__ = [
     "CompiledDeltaPrompt",
     "CompiledPromptParts",
     "PromptCompiler",
+    "PromptOptimizer",
     "PromptTaxonomyEngine",
     "StylePreset",
     "parse_screenplay_script",

@@ -78,7 +78,7 @@ Aesthetic Tags: 2000s Atlanta Trap Disstrack, Heavy 808 Bass Lighting, Vintage S
 Environment: Abandoned urban house with working potion stoves
 
 [AUDIO & VOCAL DIRECTION]
-Background Beat: 140 BPM Heavy 808 Trap (ducked at 15% volume under dialogue)
+Background Beat: 140 BPM Heavy 808 Trap (subtly ducked in the background beneath dialogue)
 Voice Style (Role A): Fast-paced confident Atlanta rap flow with autotune
 Voice Style (Role B): Pompous, cynical British drawl with aggressive rap cadence
 Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync
@@ -91,7 +91,7 @@ Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized
 ### Why This Structured Block Matters for Gemini Omni Flash:
 1. **Decoupled Acoustic Conditioning:** Separating beat, voice style, and delivery into explicit key-value pairs prevents acoustic instructions from bleeding into visual scene descriptions.
 2. **Multi-Speaker Vocal Timbre Disambiguation:** By explicitly labeling `Voice Style (Role A)` and `Voice Style (Role B)`, Gemini Omni Flash assigns distinct vocal formants and pitches to each character turn in the storyboard sequence.
-3. **Automated Background Ducking:** Explicitly stating `(ducked at 15% volume under dialogue)` instructs the neural audio generator to attenuate instrumental frequencies whenever dialogue lines are active.
+3. **Automated Background Ducking:** Stating `(subtly ducked in the background beneath dialogue)` provides a natural qualitative cue instructing the neural audio generator to attenuate instrumental frequencies whenever dialogue lines are active.
 
 ---
 
