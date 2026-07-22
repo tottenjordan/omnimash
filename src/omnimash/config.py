@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,7 +18,8 @@ class OmniMashSettings(BaseSettings):
     # app's own bucket. Keeps the default character references loadable while
     # blocking arbitrary cross-bucket reads (see download_blob_bytes).
     allowed_read_buckets: list[str] = ["reference-images-jt-trend-trawler"]
-    mock_mode: bool = True
+    # Real generation is the default; opt into offline fakes with MOCK_MODE=true.
+    mock_mode: bool = False
     port: int = 8080
     log_level: str = "INFO"
 
@@ -26,6 +28,26 @@ class OmniMashSettings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _require_real_credentials(self) -> "OmniMashSettings":
+        """In real mode, fail fast on a broken config instead of serving fakes.
+
+        Requires either an explicit API key or a GCP project (for Application
+        Default Credentials + bucket derivation). Mock mode is unconstrained so
+        offline dev/tests keep working. This does not touch guardrail behavior.
+        """
+        if self.mock_mode:
+            return self
+        has_api_key = bool(self.google_api_key or self.gemini_api_key)
+        has_adc = bool(self.google_cloud_project)
+        if not (has_api_key or has_adc):
+            raise ValueError(
+                "Real mode requires credentials: set GOOGLE_API_KEY / GEMINI_API_KEY, "
+                "or GOOGLE_CLOUD_PROJECT for Application Default Credentials. "
+                "Set MOCK_MODE=true for offline development."
+            )
+        return self
 
     @property
     def gcs_bucket_name(self) -> str:
