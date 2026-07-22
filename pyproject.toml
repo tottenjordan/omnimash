@@ -1,7 +1,7 @@
 [project]
 name = "omnimash-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "OmniMash — AI parody/mashup video studio built on Gemini Omni Flash."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
