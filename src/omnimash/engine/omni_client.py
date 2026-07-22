@@ -225,61 +225,116 @@ def ensure_rendered_video(
     # Extract voiceover / dialogue if not explicitly passed
     effective_silent = is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
 
-    wav_silent_path = "static/rendered/temp_silent.wav"
-    _generate_dynamic_audio_wav(
-        wav_silent_path,
-        prompt=prompt,
-        voiceover=voiceover,
-        is_silent=effective_silent,
-    )
-    target_audio_wav = wav_silent_path
+    # Unique per-call temp file names so concurrent renders never clobber each
+    # other's audio/subtitle scratch files; cleaned up in the finally below.
+    render_dir = os.path.dirname(rel_path) or "static/rendered"
+    token = uuid.uuid4().hex[:8]
+    wav_silent_path = os.path.join(render_dir, f"temp_silent_{token}.wav")
+    txt_prompt_path = os.path.join(render_dir, f"temp_prompt_{token}.txt")
+    txt_sub_path = os.path.join(render_dir, f"temp_subtitles_{token}.txt")
+    _temp_files = [wav_silent_path, txt_prompt_path, txt_sub_path]
 
-    effective_voiceover = voiceover or extract_clean_dialogue_summary(prompt) or ""
-    clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
-    clean_subtitles = effective_voiceover.replace("'", "").replace('"', "")[:100]
+    try:
+        _generate_dynamic_audio_wav(
+            wav_silent_path,
+            prompt=prompt,
+            voiceover=voiceover,
+            is_silent=effective_silent,
+        )
+        target_audio_wav = wav_silent_path
 
-    # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
-    txt_prompt_path = "static/rendered/temp_prompt.txt"
-    txt_sub_path = "static/rendered/temp_subtitles.txt"
-    with open(txt_prompt_path, "w", encoding="utf-8") as f:
-        f.write(f"PROMPT: {clean_prompt}")
-    with open(txt_sub_path, "w", encoding="utf-8") as f:
-        f.write(f"🗣️ {clean_subtitles}")
+        effective_voiceover = voiceover or extract_clean_dialogue_summary(prompt) or ""
+        clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
+        clean_subtitles = effective_voiceover.replace("'", "").replace('"', "")[:100]
 
-    # Discover crisp vector TrueType font
-    font_arg = ""
-    font_candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ]
-    for fc in font_candidates:
-        if os.path.exists(fc):
-            font_arg = f":fontfile={fc}"
-            break
+        # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
+        with open(txt_prompt_path, "w", encoding="utf-8") as f:
+            f.write(f"PROMPT: {clean_prompt}")
+        with open(txt_sub_path, "w", encoding="utf-8") as f:
+            f.write(f"🗣️ {clean_subtitles}")
 
-    banner_img = "imgs/omnimash_banner.png"
+        # Discover crisp vector TrueType font
+        font_arg = ""
+        font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for fc in font_candidates:
+            if os.path.exists(fc):
+                font_arg = f":fontfile={fc}"
+                break
 
-    if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
+        banner_img = "imgs/omnimash_banner.png"
+
+        if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
+            try:
+                filter_str = (
+                    f"[0:v]scale=1280:720,zoompan=z='min(1.04+0.02*abs(sin(2*PI*0.5*in_time)),1.12)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,"
+                    f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
+                    f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
+                    f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
+                    f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
+                    f"drawtext=textfile={txt_prompt_path}{font_arg}:fontcolor=0x94A3B8:fontsize=18:x=90:y=h-135,"
+                    f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95[v]; [1:a]aresample=async=1:first_pts=0[a]"
+                )
+                cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-loop",
+                    "1",
+                    "-i",
+                    banner_img,
+                    "-i",
+                    target_audio_wav,
+                    "-filter_complex",
+                    filter_str,
+                    "-map",
+                    "[v]",
+                    "-map",
+                    "[a]",
+                    "-r",
+                    "24",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "fast",
+                    "-crf",
+                    "18",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                    "-shortest",
+                    "-movflags",
+                    "+faststart",
+                    rel_path,
+                ]
+                if ffmpeg_ok(cmd, timeout=DEFAULT_FFMPEG_TIMEOUT):
+                    return
+            except Exception as exc:
+                logger.warning("Primary banner render failed, falling back: %s", exc)
+
+        # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
         try:
+            audio_inputs = (
+                ["-i", target_audio_wav]
+                if os.path.exists(target_audio_wav)
+                else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
+            )
             filter_str = (
-                f"[0:v]scale=1280:720,zoompan=z='min(1.04+0.02*abs(sin(2*PI*0.5*in_time)),1.12)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,"
+                f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
                 f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
-                f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
                 f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
                 f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
-                f"drawtext=textfile={txt_prompt_path}{font_arg}:fontcolor=0x94A3B8:fontsize=18:x=90:y=h-135,"
-                f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95[v]; [1:a]aresample=async=1:first_pts=0[a]"
+                f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]"
             )
             cmd = [
                 "ffmpeg",
                 "-y",
-                "-loop",
-                "1",
-                "-i",
-                banner_img,
-                "-i",
-                target_audio_wav,
+                *audio_inputs,
                 "-filter_complex",
                 filter_str,
                 "-map",
@@ -298,63 +353,22 @@ def ensure_rendered_video(
                 "yuv420p",
                 "-c:a",
                 "aac",
-                "-b:a",
-                "192k",
                 "-shortest",
                 "-movflags",
                 "+faststart",
                 rel_path,
             ]
-            if ffmpeg_ok(cmd, timeout=DEFAULT_FFMPEG_TIMEOUT):
-                return
+            if not ffmpeg_ok(cmd, timeout=DEFAULT_FFMPEG_TIMEOUT):
+                logger.warning("Fallback visualizer render failed for %s", rel_path)
         except Exception as exc:
-            logger.warning("Primary banner render failed, falling back: %s", exc)
-
-    # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
-    try:
-        audio_inputs = (
-            ["-i", target_audio_wav]
-            if os.path.exists(target_audio_wav)
-            else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
-        )
-        filter_str = (
-            f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
-            f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
-            f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
-            f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
-            f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]"
-        )
-        cmd = [
-            "ffmpeg",
-            "-y",
-            *audio_inputs,
-            "-filter_complex",
-            filter_str,
-            "-map",
-            "[v]",
-            "-map",
-            "[a]",
-            "-r",
-            "24",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-shortest",
-            "-movflags",
-            "+faststart",
-            rel_path,
-        ]
-        if not ffmpeg_ok(cmd, timeout=DEFAULT_FFMPEG_TIMEOUT):
-            logger.warning("Fallback visualizer render failed for %s", rel_path)
-    except Exception as exc:
-        logger.warning("Fallback visualizer render errored for %s: %s", rel_path, exc)
+            logger.warning("Fallback visualizer render errored for %s: %s", rel_path, exc)
+    finally:
+        for _tf in _temp_files:
+            try:
+                if os.path.exists(_tf):
+                    os.remove(_tf)
+            except OSError:
+                pass
 
 
 def _abstract_prompt_for_responsible_ai(prompt: str) -> str:

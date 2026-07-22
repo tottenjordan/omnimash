@@ -132,19 +132,6 @@ class MediaExtractor:
             "#34A853",
         )
 
-        # Also copy to /tmp for backward compatibility
-        import shutil
-
-        for src, dst in [
-            (f1_path, "/tmp/mock_frame_1.jpg"),
-            (f2_path, "/tmp/mock_frame_2.jpg"),
-            (f3_path, "/tmp/mock_frame_3.jpg"),
-        ]:
-            try:
-                shutil.copyfile(src, dst)
-            except Exception:
-                pass
-
         # Upload all 3 JPEG keyframe files to GCS
         url_1 = self.storage.upload_file(
             f1_path,

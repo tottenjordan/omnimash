@@ -50,12 +50,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S108"]  # asserts and /tmp scratch paths are fine in tests
-# The entries below suppress lint for patterns that dedicated tasks in this same
-# remediation PR replace outright. Trim each as its task lands:
-#   Task 2.3 (fix engine): unique/cleaned temp files (media_extractor/stitcher S108/S110/SIM105)
+# The entry below suppresses lint for a pattern that a dedicated task in this same
+# remediation PR replaces outright. Trim it as its task lands:
 #   Task 2.5 (fix storage): surface GCS errors instead of swallowing (gcs S110)
-"src/omnimash/ingestion/media_extractor.py" = ["S108", "S110", "SIM105"]
-"src/omnimash/stitching/stitcher.py" = ["S108"]
 "src/omnimash/storage/gcs.py" = ["S110"]
 
 [tool.ty.environment]

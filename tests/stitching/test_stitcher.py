@@ -59,22 +59,37 @@ def test_stitch_clips_live_mode_copy_success(tmp_path):
     clip2 = str(tmp_path / "clip2.mp4")
     clip_paths = [clip1, clip2]
 
+    # The concat list is unique-named and removed in a finally, so capture its
+    # path and contents from inside the mocked ffmpeg call.
+    captured = {}
+
+    def _run(cmd, *args, **kwargs):
+        concat_path = cmd[cmd.index("-i") + 1]
+        captured["concat_path"] = concat_path
+        with open(concat_path) as cf:
+            captured["lines"] = cf.read().splitlines()
+        with open(cmd[-1], "wb") as f:
+            f.write(b"stitched master bytes")
+        res = MagicMock()
+        res.returncode = 0
+        res.stderr = b""
+        return res
+
     with (
-        patch("subprocess.run", side_effect=_ffmpeg_producing(0)) as mock_subproc,
+        patch("subprocess.run", side_effect=_run) as mock_subproc,
         patch.object(stitcher.storage, "upload_file") as mock_upload,
     ):
         out_path = stitcher.concatenate_clips(
             clip_paths, output_dir=str(tmp_path), session_id="test_session"
         )
 
-        # Verify concat_list.txt was created
-        concat_file = tmp_path / "concat_list.txt"
-        assert concat_file.exists()
-        lines = concat_file.read_text().splitlines()
-        assert lines == [
+        # Concat list captured during the call had the expected escaped entries.
+        assert captured["lines"] == [
             f"file '{os.path.abspath(clip1)}'",
             f"file '{os.path.abspath(clip2)}'",
         ]
+        # It is cleaned up afterwards.
+        assert not os.path.exists(captured["concat_path"])
 
         # Verify subprocess call
         mock_subproc.assert_called_once()
@@ -87,7 +102,7 @@ def test_stitch_clips_live_mode_copy_success(tmp_path):
             "-safe",
             "0",
             "-i",
-            str(concat_file),
+            captured["concat_path"],
             "-c",
             "copy",
         ]
@@ -99,6 +114,37 @@ def test_stitch_clips_live_mode_copy_success(tmp_path):
         assert call_kwargs.get("category") == "final_masters" or "final_masters" in call_kwargs.get(
             "destination_blob_name", ""
         )
+
+
+def test_stitch_clips_escapes_single_quotes_in_paths(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    # A clip whose filename contains an apostrophe must be escaped for the
+    # ffmpeg concat demuxer ('  ->  '\'' ) so the list is not corrupted.
+    weird_dir = tmp_path / "o'brien"
+    weird_dir.mkdir()
+    clip = str(weird_dir / "clip.mp4")
+
+    captured = {}
+
+    def _run(cmd, *args, **kwargs):
+        concat_path = cmd[cmd.index("-i") + 1]
+        with open(concat_path) as cf:
+            captured["lines"] = cf.read().splitlines()
+        with open(cmd[-1], "wb") as f:
+            f.write(b"stitched master bytes")
+        res = MagicMock()
+        res.returncode = 0
+        res.stderr = b""
+        return res
+
+    with (
+        patch("subprocess.run", side_effect=_run),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        stitcher.concatenate_clips([clip], output_dir=str(tmp_path))
+
+    escaped = os.path.abspath(clip).replace("'", "'\\''")
+    assert captured["lines"] == [f"file '{escaped}'"]
 
 
 def test_stitch_clips_live_mode_reencode_fallback(tmp_path):
