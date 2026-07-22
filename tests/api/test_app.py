@@ -1,6 +1,30 @@
 from fastapi.testclient import TestClient
 
-from omnimash.api.app import create_app
+from omnimash.api.app import (
+    GenerateRequest,
+    SaveFinalRequest,
+    StitchClipsRequest,
+    create_app,
+)
+
+
+def test_identifier_fields_are_sanitized():
+    # Traversal payloads in identifier fields collapse to safe segments.
+    gen = GenerateRequest(session_name="../../x", prompt="Snape spicy rap")
+    assert gen.session_name is not None
+    assert "/" not in gen.session_name
+    assert ".." not in gen.session_name
+    # Free-text creative fields are left untouched (guardrails stay relaxed).
+    assert gen.prompt == "Snape spicy rap"
+
+    final = SaveFinalRequest(
+        session_name="../evil", video_url="/static/x.mp4", master_title="../../boom"
+    )
+    assert ".." not in final.master_title
+    assert "/" not in final.master_title
+
+    stitch = StitchClipsRequest(session_name="ok", clip_urls=[])
+    assert stitch.master_title == "custom_stitched_cut"
 
 
 def test_api_generate_endpoint():

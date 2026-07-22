@@ -1,15 +1,35 @@
 import os
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel
 
 from omnimash.agent.orchestrator import OmniMashAgent
 from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
+from omnimash.storage.gcs import GcsStorageManager
+
+
+def _sanitize_identifier(value: str | None) -> str | None:
+    """Normalize an identifier that flows into a GCS key (traversal-safe).
+
+    Applied only to structured identifiers (session names, titles, slugs) —
+    never to free-text creative fields (prompts, descriptions, dialogue), which
+    stay untouched so content behavior remains permissive.
+    """
+    if value is None:
+        return None
+    return GcsStorageManager.sanitize_path_segment(value)
+
+
+# Required identifier: sanitized, still mandatory.
+SafeIdentifier = Annotated[str, AfterValidator(_sanitize_identifier)]
+# Optional identifier: sanitized when present, None passes through.
+OptSafeIdentifier = Annotated[str | None, AfterValidator(_sanitize_identifier)]
 
 
 class CharacterRoleModel(BaseModel):
@@ -22,7 +42,7 @@ class CharacterRoleModel(BaseModel):
 
 
 class SaveCharacterRequest(BaseModel):
-    session_name: str | None = None
+    session_name: OptSafeIdentifier = None
     character: CharacterRoleModel
     is_library: bool = True
 
@@ -42,12 +62,12 @@ class CharacterListResponse(BaseModel):
 
 
 class LoadCharacterRequest(BaseModel):
-    slug: str
-    session_name: str | None = None
+    slug: SafeIdentifier
+    session_name: OptSafeIdentifier = None
 
 
 class SaveRosterRequest(BaseModel):
-    session_name: str
+    session_name: SafeIdentifier
     characters: list[CharacterRoleModel]
 
 
@@ -71,7 +91,7 @@ class ResearchRequest(BaseModel):
 
 class ExtractReferenceRequest(BaseModel):
     url: str
-    session_name: str | None = None
+    session_name: OptSafeIdentifier = None
 
 
 class GenerateRequest(BaseModel):
@@ -86,7 +106,7 @@ class GenerateRequest(BaseModel):
     is_silent: bool = False
     on_screen_text: str | None = None
     compiled_override: str | None = None
-    session_name: str | None = None
+    session_name: OptSafeIdentifier = None
     concept: str | None = None
     characters: list[CharacterRoleModel | dict] | None = None
     scenes: list[dict] | None = None
@@ -101,19 +121,19 @@ class CommitRequest(BaseModel):
     project_id: str = "prj_default"
     turn_id: str
     next_prompt: str = ""
-    session_name: str | None = None
+    session_name: OptSafeIdentifier = None
 
 
 class SaveFinalRequest(BaseModel):
-    session_name: str | None = None
+    session_name: OptSafeIdentifier = None
     video_url: str
-    master_title: str
+    master_title: SafeIdentifier
 
 
 class StitchClipsRequest(BaseModel):
-    session_name: str
+    session_name: SafeIdentifier
     clip_urls: list[str]
-    master_title: str = "custom_stitched_cut"
+    master_title: SafeIdentifier = "custom_stitched_cut"
 
 
 class SaveFinalResponse(BaseModel):
@@ -123,7 +143,7 @@ class SaveFinalResponse(BaseModel):
 
 
 class ExtendSceneRequest(BaseModel):
-    session_name: str | None = None
+    session_name: OptSafeIdentifier = None
     turn_id: str | None = None
     next_scene_action: str = ""
     dialogue: str | None = None
