@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+
 from omnimash.api.app import create_app
 
 
@@ -128,14 +129,8 @@ def test_api_generate_and_extend_scene_with_vocal_delivery_and_voice_style():
     assert gen_res.status_code == 200
     gen_data = gen_res.json()
     assert gen_data["success"] is True
-    assert (
-        "Voice Style (Role A): Melodic autotune trap flow"
-        in gen_data["raw_compiled_prompt"]
-    )
-    assert (
-        "Vocal Delivery: Dynamic studio vocal projection"
-        in gen_data["raw_compiled_prompt"]
-    )
+    assert "Voice Style (Role A): Melodic autotune trap flow" in gen_data["raw_compiled_prompt"]
+    assert "Vocal Delivery: Dynamic studio vocal projection" in gen_data["raw_compiled_prompt"]
 
     turn_id = gen_data["turn_id"]
     res_extend = client.post(
@@ -211,9 +206,7 @@ def test_api_stitch_selected_clips():
         },
     )
     assert res_empty.status_code == 400
-    assert (
-        res_empty.json()["detail"] == "At least one clip URL is required for stitching."
-    )
+    assert res_empty.json()["detail"] == "At least one clip URL is required for stitching."
 
     res_valid = client.post(
         "/api/stitch-clips",

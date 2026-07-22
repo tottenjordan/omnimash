@@ -38,9 +38,7 @@ class CompiledPromptParts:
 
         lower_audio = self.audio_track.lower().strip()
         if self.is_silent or lower_audio in ("none", "mute", "silent"):
-            sound_directive = (
-                "Sound design: Silent video. No background music, no audio"
-            )
+            sound_directive = "Sound design: Silent video. No background music, no audio"
         elif self.voiceover and self.voiceover.strip():
             sound_directive = (
                 f"Sound design: Foreground spoken voiceover/dialogue is dominant, "
@@ -76,8 +74,7 @@ class CompiledDeltaPrompt:
 
     def to_delta_prompt(self) -> str:
         return (
-            f"[PRESERVATION LOCK]: {self.preservation_lock} | "
-            f"[ISOLATED DIFF]: {self.isolated_diff}"
+            f"[PRESERVATION LOCK]: {self.preservation_lock} | [ISOLATED DIFF]: {self.isolated_diff}"
         )
 
 
@@ -213,9 +210,7 @@ def parse_screenplay_script(
             quote_idx = line.find('"')
             smart_quote_idx = line.find("“")
 
-            delim_indices = [
-                idx for idx in [paren_idx, quote_idx, smart_quote_idx] if idx != -1
-            ]
+            delim_indices = [idx for idx in [paren_idx, quote_idx, smart_quote_idx] if idx != -1]
             first_delim = min(delim_indices) if delim_indices else len(line)
 
             if colon_idx < first_delim:
@@ -228,7 +223,7 @@ def parse_screenplay_script(
                 for char in characters:
                     char_role = char.role_id.strip().lower()
                     char_name = char.name.strip().lower()
-                    if spk_lower == char_role or spk_lower == char_name:
+                    if spk_lower in (char_role, char_name):
                         matched_role_id = char.role_id
                         break
                     if spk_lower in char_name or char_name in spk_lower:
@@ -279,12 +274,10 @@ def parse_screenplay_script(
                         ]
                     )
                 )
-                if not is_pure_audio:
-                    if seg not in action_parts:
-                        action_parts.append(seg)
-                if has_audio_kw:
-                    if seg not in audio_cue_parts:
-                        audio_cue_parts.append(seg)
+                if not is_pure_audio and seg not in action_parts:
+                    action_parts.append(seg)
+                if has_audio_kw and seg not in audio_cue_parts:
+                    audio_cue_parts.append(seg)
 
         # Quoted text extraction
         quotes = re.findall(r'["“]([^"”]+)["”]', line)
@@ -334,9 +327,9 @@ class PromptOptimizer:
 
         # Tier 2: LLM Optimization Pass via Gemini Flash (if requested and client available)
         if use_llm and self.compiler:
-            client = getattr(
-                self.compiler, "_flash_regional_client", None
-            ) or getattr(self.compiler, "_pro_global_client", None)
+            client = getattr(self.compiler, "_flash_regional_client", None) or getattr(
+                self.compiler, "_pro_global_client", None
+            )
             if client:
                 try:
                     system_instruction = (
@@ -370,9 +363,7 @@ class PromptCompiler:
         if not self.mock_mode:
             self._init_deconstructor_clients()
 
-    def optimize_prompt_for_omni_flash(
-        self, compiled_prompt: str, use_llm: bool = False
-    ) -> str:
+    def optimize_prompt_for_omni_flash(self, compiled_prompt: str, use_llm: bool = False) -> str:
         """Optimizes a compiled prompt string for Gemini Omni Flash generation."""
         optimizer = PromptOptimizer(compiler=self)
         return optimizer.optimize(compiled_prompt, use_llm=use_llm)
@@ -536,9 +527,7 @@ class PromptCompiler:
                 break
 
         # 2. Resolve Style Signifiers
-        preset_key = str(
-            style_preset.value if hasattr(style_preset, "value") else style_preset
-        )
+        preset_key = str(style_preset.value if hasattr(style_preset, "value") else style_preset)
         style_info = AESTHETIC_SIGNIFIERS.get(
             preset_key,
             AESTHETIC_SIGNIFIERS["90s_rap_video"],
@@ -648,29 +637,21 @@ class PromptCompiler:
             parsed_dialogue = parsed.get("dialogue", "")
 
         action_components = [
-            comp
-            for comp in [raw_prompt, scene_action, parsed_action]
-            if comp and comp.strip()
+            comp for comp in [raw_prompt, scene_action, parsed_action] if comp and comp.strip()
         ]
         effective_raw_prompt = (
             ". ".join(action_components) if action_components else "Cinematic shot"
         )
 
         audio_components = [
-            comp
-            for comp in [audio_stem, scene_audio, parsed_audio]
-            if comp and comp.strip()
+            comp for comp in [audio_stem, scene_audio, parsed_audio] if comp and comp.strip()
         ]
         effective_audio_stem = ". ".join(audio_components) if audio_components else None
 
         dialogue_components = [
-            comp
-            for comp in [voiceover, scene_dialogue, parsed_dialogue]
-            if comp and comp.strip()
+            comp for comp in [voiceover, scene_dialogue, parsed_dialogue] if comp and comp.strip()
         ]
-        effective_voiceover = (
-            " / ".join(dialogue_components) if dialogue_components else None
-        )
+        effective_voiceover = " / ".join(dialogue_components) if dialogue_components else None
 
         return self.compile(
             raw_prompt=effective_raw_prompt,
@@ -726,14 +707,8 @@ class PromptCompiler:
                 )
                 img_idx += 1
 
-            style_str = (
-                f" [Style: {', '.join(char.aesthetic_tags)}]"
-                if char.aesthetic_tags
-                else ""
-            )
-            role_lines.append(
-                f"- {char.role_id} ({char.name}): {char.description}{style_str}"
-            )
+            style_str = f" [Style: {', '.join(char.aesthetic_tags)}]" if char.aesthetic_tags else ""
+            role_lines.append(f"- {char.role_id} ({char.name}): {char.description}{style_str}")
 
         image_roles_block = ""
         if image_role_lines:
@@ -748,9 +723,7 @@ class PromptCompiler:
             aesthetic_parts.append(f"Aesthetic Tags: {', '.join(aesthetic_tags)}")
         if environment_tag and environment_tag.strip():
             aesthetic_parts.append(f"Environment: {environment_tag.strip()}")
-        aesthetic_block = (
-            "\n".join(aesthetic_parts) if aesthetic_parts else "Default Aesthetic"
-        )
+        aesthetic_block = "\n".join(aesthetic_parts) if aesthetic_parts else "Default Aesthetic"
 
         audio_parts: list[str] = []
         if audio_beat and audio_beat.strip():
@@ -759,9 +732,7 @@ class PromptCompiler:
             )
         for char in characters:
             if char.voice_style and char.voice_style.strip():
-                audio_parts.append(
-                    f"Voice Style ({char.role_id}): {char.voice_style.strip()}"
-                )
+                audio_parts.append(f"Voice Style ({char.role_id}): {char.voice_style.strip()}")
         if vocal_delivery and vocal_delivery.strip():
             audio_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
 
@@ -778,9 +749,7 @@ class PromptCompiler:
                 else getattr(scene, "active_roles", [])
             )
             roles_list: list[str] = (
-                [str(r) for r in raw_roles]
-                if isinstance(raw_roles, (list, tuple))
-                else []
+                [str(r) for r in raw_roles] if isinstance(raw_roles, (list, tuple)) else []
             )
             roles_str = ", ".join(roles_list)
 
@@ -796,12 +765,8 @@ class PromptCompiler:
             if sp_text and isinstance(sp_text, str) and sp_text.strip():
                 parsed = parse_screenplay_script(sp_text, characters=characters)
                 if parsed.get("audio_cues"):
-                    audio_parts.append(
-                        f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}"
-                    )
-                indented_script = "\n".join(
-                    f"  {line}" for line in sp_text.strip().splitlines()
-                )
+                    audio_parts.append(f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}")
+                indented_script = "\n".join(f"  {line}" for line in sp_text.strip().splitlines())
                 scene_lines.append(
                     f"- Scene {scene_num} [{roles_str}] (Screenplay Script):\n{indented_script}"
                 )
@@ -817,17 +782,11 @@ class PromptCompiler:
                     else getattr(scene, "dialogue", "")
                 )
                 diag_str = (
-                    f' | Dialogue: "{dialogue}"'
-                    if dialogue and str(dialogue).strip()
-                    else ""
+                    f' | Dialogue: "{dialogue}"' if dialogue and str(dialogue).strip() else ""
                 )
-                scene_lines.append(
-                    f"- Scene {scene_num} [{roles_str}]: {action}{diag_str}"
-                )
+                scene_lines.append(f"- Scene {scene_num} [{roles_str}]: {action}{diag_str}")
 
-        audio_block = (
-            "\n".join(audio_parts) if audio_parts else "Default Audio & Voice Direction"
-        )
+        audio_block = "\n".join(audio_parts) if audio_parts else "Default Audio & Voice Direction"
         scenes_block = "\n".join(scene_lines) if scene_lines else "- No scenes"
 
         return (
@@ -973,9 +932,7 @@ class PromptCompiler:
                     "samurai": "Stoic disciplined hip-hop cadence with sharp precision",
                     "ninja": "Fast whisper-rap flow with rhythmic syncopation",
                 }
-                return voice_map.get(
-                    k, "Fast-paced rhythmic rap cadence with confident delivery"
-                )
+                return voice_map.get(k, "Fast-paced rhythmic rap cadence with confident delivery")
             elif any(
                 t in lower
                 for t in (
@@ -1014,9 +971,7 @@ class PromptCompiler:
                     "samurai": "Deep honorable warrior voice with classic anime dub inflection",
                     "ninja": "Quiet masked assassin voice with sharp dramatic whispers",
                 }
-                return voice_map.get(
-                    k, "Expressive retro anime dub voice with dramatic flair"
-                )
+                return voice_map.get(k, "Expressive retro anime dub voice with dramatic flair")
             else:
                 voice_map = {
                     "harry": "Youthful British accent with determined heroic cadence",
@@ -1142,12 +1097,7 @@ class PromptCompiler:
             vocal_delivery = "High-energy back-and-forth rap battle delivery with synchronized lip-sync and punchy cadence"
             env_tag = (
                 "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze"
-                if (
-                    "harry" in lower
-                    or "draco" in lower
-                    or "hogwarts" in lower
-                    or "snape" in lower
-                )
+                if ("harry" in lower or "draco" in lower or "hogwarts" in lower or "snape" in lower)
                 else "Urban street alley with neon stage lights and atmospheric fog"
             )
             cam_tag = "Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights"
@@ -1167,15 +1117,12 @@ class PromptCompiler:
                 "Anamorphic Lens Flare",
             ]
             audio_beat = "110 BPM Cyberpunk Synthwave Groove"
-            vocal_delivery = "Futuristic vocoded dialogue with sharp synthesized delivery and spatial reverb"
+            vocal_delivery = (
+                "Futuristic vocoded dialogue with sharp synthesized delivery and spatial reverb"
+            )
             env_tag = (
                 "Futuristic neon kitchen colosseum with holographic spectator screens"
-                if (
-                    "chef" in lower
-                    or "ramsay" in lower
-                    or "julia" in lower
-                    or "kitchen" in lower
-                )
+                if ("chef" in lower or "ramsay" in lower or "julia" in lower or "kitchen" in lower)
                 else "Neon-lit cyberpunk arcade showdown arena"
             )
             cam_tag = "Anamorphic widescreen tracking shot with high-gloss neon reflections and holographic bloom"
@@ -1189,9 +1136,7 @@ class PromptCompiler:
             audio_beat = "85 BPM VHS Lo-Fi City Pop"
             vocal_delivery = "Expressive 80s anime dub voiceover with dramatic dynamic range and emotional emphasis"
             env_tag = "Retro 80s anime cityscape bathed in sunset pastel lighting"
-            cam_tag = (
-                "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
-            )
+            cam_tag = "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
         else:
             aesthetic_tags = [
                 "High-Contrast Cinematic Parody",

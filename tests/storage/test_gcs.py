@@ -1,6 +1,7 @@
 import os
-from omnimash.storage.gcs import GcsStorageManager
+
 from omnimash.engine.omni_client import OmniFlashClient
+from omnimash.storage.gcs import GcsStorageManager
 
 
 def test_gcs_storage_manager_urls():
@@ -71,9 +72,7 @@ def test_save_and_load_character_gcs():
         "aesthetic_tags": ["Red Gucci Tracksuit"],
         "voice_style": "Atlanta trap flow",
     }
-    pub_url, gcs_uri = storage.save_character(
-        char_data, session_id="test_session", is_library=True
-    )
+    pub_url, gcs_uri = storage.save_character(char_data, session_id="test_session", is_library=True)
     assert "library/characters/harry.json" in gcs_uri
     assert (
         pub_url

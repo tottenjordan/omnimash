@@ -1,5 +1,6 @@
 import base64
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from omnimash.engine.omni_client import GenerationResult, OmniFlashClient
@@ -133,9 +134,7 @@ def test_generation_result_modes_success_and_fallback() -> None:
             return_value=(True, "live_thread_123", None),
         ),
         patch.object(client.storage, "upload_file"),
-        patch.object(
-            client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"
-        ),
+        patch.object(client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"),
     ):
         res = client.generate_clip("Prompt test")
         assert res.generation_mode == "LIVE_OMNI_FLASH"
@@ -146,9 +145,7 @@ def test_generation_result_modes_success_and_fallback() -> None:
         assert res_diff.generation_mode == "LIVE_OMNI_FLASH"
         assert res_diff.error_message is None
 
-        res_reanchor = client.start_thread_from_video(
-            "/static/test.mp4", "Reanchor test"
-        )
+        res_reanchor = client.start_thread_from_video("/static/test.mp4", "Reanchor test")
         assert res_reanchor.generation_mode == "LIVE_OMNI_FLASH"
         assert res_reanchor.error_message is None
 
@@ -161,17 +158,13 @@ def test_generation_result_modes_success_and_fallback() -> None:
         ),
         patch("omnimash.engine.omni_client.ensure_rendered_video"),
         patch.object(client.storage, "upload_file"),
-        patch.object(
-            client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"
-        ),
+        patch.object(client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"),
     ):
         res_fallback = client.generate_clip("Prompt fallback")
         assert res_fallback.generation_mode == "LOCAL_PROCEDURAL_ANIMATION"
         assert res_fallback.error_message == "Vertex AI 404 Endpoint Not Found"
 
-        res_diff_fallback = client.apply_interaction_diff(
-            "live_thread_123", "Diff fallback"
-        )
+        res_diff_fallback = client.apply_interaction_diff("live_thread_123", "Diff fallback")
         assert res_diff_fallback.generation_mode == "LOCAL_PROCEDURAL_ANIMATION"
         assert res_diff_fallback.error_message == "Vertex AI 404 Endpoint Not Found"
 

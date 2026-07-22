@@ -18,10 +18,7 @@ def test_prompt_compiler_anchor_and_inject():
     )
     assert isinstance(parts, CompiledPromptParts)
     assert "gaunt" in parts.subject_anchor or "hooked nose" in parts.subject_anchor
-    assert (
-        "puffer jacket" in parts.aesthetic_injection
-        or "Cuban link" in parts.aesthetic_injection
-    )
+    assert "puffer jacket" in parts.aesthetic_injection or "Cuban link" in parts.aesthetic_injection
     assert "dungeon" in parts.environment
     assert "fisheye lens" in parts.camera_lighting
     assert "10-second" in parts.motion or "bopping" in parts.motion
@@ -56,10 +53,7 @@ def test_prompt_compiler_voiceover_and_dialogue():
         voiceover="Gaunt wizard speaking with a deep sarcastic British drawl",
     )
     full_vo = parts_vo.to_full_prompt()
-    assert (
-        "Voiceover: Gaunt wizard speaking with a deep sarcastic British drawl."
-        in full_vo
-    )
+    assert "Voiceover: Gaunt wizard speaking with a deep sarcastic British drawl." in full_vo
 
     # 2. Multi-Subject Dialogue
     parts_diag = compiler.compile(
@@ -98,9 +92,7 @@ def test_prompt_compiler_lock_and_isolate_delta():
 
 def test_compiler_applies_audio_ducking_when_voiceover_present():
     compiler = PromptCompiler()
-    parts = compiler.compile(
-        "Snape rap", voiceover="Gaunt wizard speaking: Potter explain"
-    )
+    parts = compiler.compile("Snape rap", voiceover="Gaunt wizard speaking: Potter explain")
     prompt = parts.to_full_prompt()
     assert "ducked" in prompt.lower() or "foreground" in prompt.lower()
     assert "Voiceover:" in prompt or "Dialogue between subjects:" in prompt
@@ -132,11 +124,7 @@ def test_character_role_specific_aesthetic_tags():
             aesthetic_tags=["Red Gucci Tracksuit", "Cartier Glasses"],
         )
     ]
-    scenes = [
-        SceneDirective(
-            scene_number=1, active_roles=["Role A"], action="Cooking potions"
-        )
-    ]
+    scenes = [SceneDirective(scene_number=1, active_roles=["Role A"], action="Cooking potions")]
     prompt = compiler.compile_storyboard(
         concept="Harry Trap",
         characters=chars,
@@ -193,13 +181,9 @@ def test_compile_storyboard_with_audio_and_vocal_direction():
         "Background Beat: 140 BPM Heavy 808 Trap (subtly ducked in the background beneath dialogue)"
         in compiled
     )
+    assert "Voice Style (Role A): Fast-paced confident Atlanta rap flow with autotune" in compiled
     assert (
-        "Voice Style (Role A): Fast-paced confident Atlanta rap flow with autotune"
-        in compiled
-    )
-    assert (
-        "Voice Style (Role B): Pompous, cynical British drawl with aggressive cadence"
-        in compiled
+        "Voice Style (Role B): Pompous, cynical British drawl with aggressive cadence" in compiled
     )
     assert (
         "Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync"
@@ -234,9 +218,7 @@ def test_deconstruct_concept_3_tier_fallback():
     assert compiler_mock._pro_global_client is None
     assert compiler_mock._flash_regional_client is None
 
-    tags_mock = compiler_mock.deconstruct_concept(
-        "Harry Potter vs Draco Malfoy rap battle"
-    )
+    tags_mock = compiler_mock.deconstruct_concept("Harry Potter vs Draco Malfoy rap battle")
     assert isinstance(tags_mock, MetaPromptTags)
     assert len(tags_mock.characters) >= 2
 
@@ -293,14 +275,10 @@ def test_deconstruct_concept_3_tier_fallback():
 
         # 4. Test Tier 1 failure -> Tier 2 fallback success
         mock_pro_client.models.generate_content.reset_mock()
-        mock_pro_client.models.generate_content.side_effect = RuntimeError(
-            "Quota exceeded on Pro"
-        )
+        mock_pro_client.models.generate_content.side_effect = RuntimeError("Quota exceeded on Pro")
 
         mock_flash_response = MagicMock()
-        mock_flash_response.text = json_payload.replace(
-            "Hogwarts dungeon", "Flash regional stage"
-        )
+        mock_flash_response.text = json_payload.replace("Hogwarts dungeon", "Flash regional stage")
         mock_flash_client.models.generate_content.return_value = mock_flash_response
 
         tags_t2 = compiler.deconstruct_concept("Harry Potter in trap video")
@@ -309,25 +287,17 @@ def test_deconstruct_concept_3_tier_fallback():
 
         # 5. Test Tier 1 failure & Tier 2 failure -> Tier 3 fallback
         mock_pro_client.models.generate_content.side_effect = RuntimeError("Pro error")
-        mock_flash_client.models.generate_content.side_effect = RuntimeError(
-            "Flash error"
-        )
+        mock_flash_client.models.generate_content.side_effect = RuntimeError("Flash error")
 
-        tags_t3 = compiler.deconstruct_concept(
-            "Harry Potter vs Draco Malfoy rap battle"
-        )
+        tags_t3 = compiler.deconstruct_concept("Harry Potter vs Draco Malfoy rap battle")
         assert isinstance(tags_t3, MetaPromptTags)
         assert len(tags_t3.characters) >= 2
 
 
 def test_parse_screenplay_script():
     characters = [
-        CharacterRole(
-            role_id="Role A", name="Severus Snape", description="Gaunt wizard"
-        ),
-        CharacterRole(
-            role_id="Role B", name="Harry Potter", description="Young wizard"
-        ),
+        CharacterRole(role_id="Role A", name="Severus Snape", description="Gaunt wizard"),
+        CharacterRole(role_id="Role B", name="Harry Potter", description="Young wizard"),
     ]
 
     script_text = (
@@ -352,10 +322,7 @@ def test_parse_screenplay_script():
     assert "Bopping head" in result["action"]
 
     # Parenthetical audio cues extraction
-    assert (
-        "thunder" in result["audio_cues"].lower()
-        or "beat" in result["audio_cues"].lower()
-    )
+    assert "thunder" in result["audio_cues"].lower() or "beat" in result["audio_cues"].lower()
 
     # Spoken dialogue extraction and formatting
     assert 'Snape: "Silence, Potter!"' in result["dialogue"]
@@ -364,11 +331,7 @@ def test_parse_screenplay_script():
 
 def test_compile_prompt_with_screenplay_text():
     compiler = PromptCompiler()
-    characters = [
-        CharacterRole(
-            role_id="Role A", name="Severus Snape", description="Gaunt wizard"
-        )
-    ]
+    characters = [CharacterRole(role_id="Role A", name="Severus Snape", description="Gaunt wizard")]
     scene = SceneDirective(
         scene_number=1,
         active_roles=["Role A"],
@@ -466,9 +429,6 @@ def test_compile_multi_role_prompt_with_screenplay_text():
     )
 
     assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in prompt
-    assert (
-        '  Snape: (Standing in the dungeon. Low bass rumble.) "Silence, Potter!"'
-        in prompt
-    )
+    assert '  Snape: (Standing in the dungeon. Low bass rumble.) "Silence, Potter!"' in prompt
     assert '  Harry: (Bopping head to 120 BPM beat.) "No!"' in prompt
     assert "Scene 1 Audio Cues:" in prompt

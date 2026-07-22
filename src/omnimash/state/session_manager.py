@@ -1,5 +1,6 @@
 import re
 import uuid
+
 from pydantic import BaseModel, Field
 
 
@@ -62,10 +63,7 @@ class SessionManager:
         depth = 0
         if parent_turn_id and parent_turn_id in session.turns:
             parent = session.turns[parent_turn_id]
-            if (
-                parent.interaction_thread_id == interaction_thread_id
-                and not is_checkpoint
-            ):
+            if parent.interaction_thread_id == interaction_thread_id and not is_checkpoint:
                 depth = parent.edit_depth_in_thread + 1
 
         turn = TurnNode(

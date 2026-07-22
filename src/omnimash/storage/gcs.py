@@ -92,9 +92,7 @@ class GcsStorageManager:
             loc = location or settings.google_cloud_region or "us-central1"
             bucket = self._client.lookup_bucket(self.bucket_name)
             if not bucket:
-                self._bucket = self._client.create_bucket(
-                    self.bucket_name, location=loc
-                )
+                self._bucket = self._client.create_bucket(self.bucket_name, location=loc)
             else:
                 self._bucket = bucket
             return True
@@ -228,28 +226,18 @@ class GcsStorageManager:
             return self.download_blob_bytes(gs_uri_or_path)
 
         if isinstance(gs_uri_or_path, str):
-            path = (
-                gs_uri_or_path
-                if os.path.exists(gs_uri_or_path)
-                else gs_uri_or_path.lstrip("/")
-            )
+            path = gs_uri_or_path if os.path.exists(gs_uri_or_path) else gs_uri_or_path.lstrip("/")
             if os.path.exists(path):
                 try:
                     with open(path, "rb") as f:
                         data = f.read()
-                    mime = (
-                        "image/png" if path.lower().endswith(".png") else "image/jpeg"
-                    )
+                    mime = "image/png" if path.lower().endswith(".png") else "image/jpeg"
                     return (data, mime)
                 except Exception:
                     pass
 
         if self.mock_mode:
-            mime = (
-                "image/png"
-                if str(gs_uri_or_path).lower().endswith(".png")
-                else "image/jpeg"
-            )
+            mime = "image/png" if str(gs_uri_or_path).lower().endswith(".png") else "image/jpeg"
             return (b"mock_image_bytes", mime)
 
         return (b"", "image/jpeg")
@@ -324,9 +312,7 @@ class GcsStorageManager:
         prompt_data: dict[str, Any] | str | None = None,
     ) -> tuple[str, str]:
         """Copies or uploads video files to sessions/{session_id}/final_masters/{master_title}.mp4 in GCS."""
-        title_base = (
-            master_title[:-4] if master_title.endswith(".mp4") else master_title
-        )
+        title_base = master_title[:-4] if master_title.endswith(".mp4") else master_title
         clean_title = f"{title_base}.mp4"
         dest_blob_path = self.build_session_blob_path(
             session_id, "final_masters", clean_title
@@ -348,9 +334,9 @@ class GcsStorageManager:
                     blob = self._bucket.blob(dest_blob_path)
                     blob.upload_from_filename(local_path, content_type="video/mp4")
                 else:
-                    src_blob_name = source_rel_path.replace(
-                        f"gs://{self.bucket_name}/", ""
-                    ).lstrip("/")
+                    src_blob_name = source_rel_path.replace(f"gs://{self.bucket_name}/", "").lstrip(
+                        "/"
+                    )
                     src_blob = self._bucket.blob(src_blob_name)
                     if src_blob.exists():
                         self._bucket.copy_blob(src_blob, self._bucket, dest_blob_path)
@@ -421,9 +407,7 @@ class GcsStorageManager:
                 for prefix in prefixes:
                     blobs = self._bucket.list_blobs(prefix=prefix)
                     for blob in blobs:
-                        if blob.name.endswith(".json") and not blob.name.endswith(
-                            "roster.json"
-                        ):
+                        if blob.name.endswith(".json") and not blob.name.endswith("roster.json"):
                             try:
                                 data = json.loads(blob.download_as_text())
                                 if isinstance(data, dict):
@@ -453,9 +437,7 @@ class GcsStorageManager:
             try:
                 paths_to_try: list[str] = []
                 if session_id:
-                    paths_to_try.append(
-                        f"sessions/{session_id}/characters/{clean_slug}.json"
-                    )
+                    paths_to_try.append(f"sessions/{session_id}/characters/{clean_slug}.json")
                 paths_to_try.append(f"library/characters/{clean_slug}.json")
 
                 for blob_path in paths_to_try:
@@ -525,9 +507,7 @@ class GcsStorageManager:
             return default_sessions
 
         try:
-            blobs = self._client.list_blobs(
-                self.bucket_name, prefix="sessions/", delimiter="/"
-            )
+            blobs = self._client.list_blobs(self.bucket_name, prefix="sessions/", delimiter="/")
             for _ in blobs:
                 pass
             session_ids: list[str] = []

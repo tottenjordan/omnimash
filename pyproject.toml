@@ -29,3 +29,34 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "S"]
+ignore = [
+    # Line width is owned by `ruff format`; E501 otherwise just flags long
+    # strings/URLs the formatter intentionally leaves intact.
+    "E501",
+    # subprocess invocation with a partial path is intentional (ffmpeg) and
+    # centralized behind a bounded runner (see engine/media_utils.py).
+    "S603",
+    "S607",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S108"]  # asserts and /tmp scratch paths are fine in tests
+# The entries below suppress lint for patterns that dedicated tasks in this same
+# remediation PR replace outright. Trim each as its task lands:
+#   Task 2.2 (fix engine): route ffmpeg through a bounded runner (omni_client S110)
+#   Task 2.3 (fix engine): unique/cleaned temp files (media_extractor/stitcher S108/S110/SIM105)
+#   Task 2.5 (fix storage): surface GCS errors instead of swallowing (gcs S110)
+"src/omnimash/engine/omni_client.py" = ["S110"]
+"src/omnimash/ingestion/media_extractor.py" = ["S108", "S110", "SIM105"]
+"src/omnimash/stitching/stitcher.py" = ["S108"]
+"src/omnimash/storage/gcs.py" = ["S110"]
+
+[tool.ty.environment]
+python-version = "3.12"

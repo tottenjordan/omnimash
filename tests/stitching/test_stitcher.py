@@ -1,5 +1,6 @@
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from omnimash.stitching.stitcher import VideoStitcher
 
 
@@ -13,9 +14,7 @@ def test_stitch_clips_mock(tmp_path):
         assert os.path.exists(output_path)
         mock_upload.assert_called_once()
         call_kwargs = mock_upload.call_args.kwargs
-        assert call_kwargs.get(
-            "category"
-        ) == "final_masters" or "final_masters" in call_kwargs.get(
+        assert call_kwargs.get("category") == "final_masters" or "final_masters" in call_kwargs.get(
             "destination_blob_name", ""
         )
 
@@ -31,9 +30,7 @@ def test_stitch_clips_single_clip_mock(tmp_path):
             content = f.read()
         assert content == b"dummy clip content"
         call_kwargs = mock_upload.call_args.kwargs
-        assert call_kwargs.get(
-            "category"
-        ) == "final_masters" or "final_masters" in call_kwargs.get(
+        assert call_kwargs.get("category") == "final_masters" or "final_masters" in call_kwargs.get(
             "destination_blob_name", ""
         )
 
@@ -84,9 +81,7 @@ def test_stitch_clips_live_mode_copy_success(tmp_path):
         # Verify GCS upload category final_masters
         mock_upload.assert_called_once()
         call_kwargs = mock_upload.call_args.kwargs
-        assert call_kwargs.get(
-            "category"
-        ) == "final_masters" or "final_masters" in call_kwargs.get(
+        assert call_kwargs.get("category") == "final_masters" or "final_masters" in call_kwargs.get(
             "destination_blob_name", ""
         )
 

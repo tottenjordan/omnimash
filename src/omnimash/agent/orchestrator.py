@@ -71,9 +71,7 @@ class OmniMashAgent:
         # Step 0: Process reference URL if provided
         reference_analysis = None
         if reference_url:
-            self.media_extractor.process_youtube_url(
-                reference_url, session_id=session.session_id
-            )
+            self.media_extractor.process_youtube_url(reference_url, session_id=session.session_id)
             report = self.media_extractor.analyze_youtube_reference(
                 reference_url, session_id=session.session_id
             )
@@ -139,9 +137,7 @@ class OmniMashAgent:
                 override_prompt=compiled_override,
             )
             raw_compiled_prompt = delta_prompt
-            self.storage.save_session_prompt(
-                session.session_id, turn_index, delta_prompt
-            )
+            self.storage.save_session_prompt(session.session_id, turn_index, delta_prompt)
             gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
                 turn_index=turn_index,
@@ -167,7 +163,9 @@ class OmniMashAgent:
                                     active_roles=s.get("active_roles", []),
                                     action=s.get("action", ""),
                                     dialogue=s.get("dialogue", ""),
-                                    screenplay_text=sp_script if isinstance(sp_script, str) else None,
+                                    screenplay_text=sp_script
+                                    if isinstance(sp_script, str)
+                                    else None,
                                     audio_cues=s.get("audio_cues", ""),
                                 )
                             )
@@ -180,9 +178,7 @@ class OmniMashAgent:
                     audio_beat=audio_stem,
                     vocal_delivery=vocal_delivery,
                 )
-                meta_prompt = (
-                    compiled_override if compiled_override else storyboard_prompt
-                )
+                meta_prompt = compiled_override if compiled_override else storyboard_prompt
             else:
                 meta_prompt = self.taxonomy.build_initial_prompt(
                     base_character=guard_res.sanitized_prompt,
@@ -199,9 +195,7 @@ class OmniMashAgent:
                     meta_prompt, use_llm=True
                 )
             raw_compiled_prompt = meta_prompt
-            self.storage.save_session_prompt(
-                session.session_id, turn_index, meta_prompt
-            )
+            self.storage.save_session_prompt(session.session_id, turn_index, meta_prompt)
             gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
                 turn_index=turn_index,
@@ -226,9 +220,7 @@ class OmniMashAgent:
             parent_turn_id=parent_turn_id,
         )
 
-        status_event = (
-            "COMMIT_RECOMMENDED" if turn_node.edit_depth_in_thread >= 3 else "COMPLETED"
-        )
+        status_event = "COMMIT_RECOMMENDED" if turn_node.edit_depth_in_thread >= 3 else "COMPLETED"
 
         return AgentTurnResponse(
             success=True,
@@ -357,9 +349,7 @@ class OmniMashAgent:
         if session and session.turns:
             clip_paths = [t.video_url for t in session.turns.values() if t.video_url]
 
-        stitched_path = self.stitcher.concatenate_clips(
-            clip_paths, session_id=session_name
-        )
+        stitched_path = self.stitcher.concatenate_clips(clip_paths, session_id=session_name)
         return self.storage.save_final_master(
             session_id=session_name,
             source_rel_path=stitched_path,

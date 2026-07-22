@@ -128,9 +128,7 @@ def test_orchestrator_save_final_master_with_raw_compiled_prompt(monkeypatch):
     agent = OmniMashAgent(mock_mode=True)
     calls = []
 
-    def mock_save_final_master(
-        session_id, source_rel_path, master_title, prompt_data=None
-    ):
+    def mock_save_final_master(session_id, source_rel_path, master_title, prompt_data=None):
         calls.append((session_id, source_rel_path, master_title, prompt_data))
         return "https://pub/master.mp4", "gs://bucket/master.mp4"
 

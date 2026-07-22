@@ -2,15 +2,14 @@ import os
 import shutil
 import subprocess
 import uuid
+
 from omnimash.storage.gcs import GcsStorageManager
 
 
 class VideoStitcher:
     def __init__(self, mock_mode: bool = True, bucket_name: str | None = None):
         self.mock_mode = mock_mode
-        self.storage = GcsStorageManager(
-            bucket_name=bucket_name, mock_mode=self.mock_mode
-        )
+        self.storage = GcsStorageManager(bucket_name=bucket_name, mock_mode=self.mock_mode)
 
     def concatenate_clips(
         self,

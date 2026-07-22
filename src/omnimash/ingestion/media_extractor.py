@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from omnimash.storage.gcs import GcsStorageManager
 
 from PIL import Image, ImageDraw
+
+from omnimash.storage.gcs import GcsStorageManager
 
 
 @dataclass
@@ -46,13 +47,9 @@ class ReferenceAnalysisReport:
 class MediaExtractor:
     def __init__(self, mock_mode: bool = True, bucket_name: str | None = None):
         self.mock_mode = mock_mode
-        self.storage = GcsStorageManager(
-            bucket_name=bucket_name, mock_mode=self.mock_mode
-        )
+        self.storage = GcsStorageManager(bucket_name=bucket_name, mock_mode=self.mock_mode)
 
-    def _generate_keyframe_jpeg(
-        self, path: str, label: str, timestamp: str, color_hex: str
-    ) -> str:
+    def _generate_keyframe_jpeg(self, path: str, label: str, timestamp: str, color_hex: str) -> str:
         """Generates a high-quality annotated 1280x720 JPEG keyframe image file on disk."""
         if dirname := os.path.dirname(path):
             os.makedirs(dirname, exist_ok=True)
@@ -84,9 +81,7 @@ class MediaExtractor:
                 )
         return path
 
-    def process_youtube_url(
-        self, url: str, session_id: str | None = None
-    ) -> ExtractedReference:
+    def process_youtube_url(self, url: str, session_id: str | None = None) -> ExtractedReference:
         sid = session_id or "default"
         blob_path = self.storage.build_session_blob_path(
             session_id=sid,
@@ -197,9 +192,7 @@ class MediaExtractor:
         self.storage.save_reference_analysis(session_id=sid, report=report)
         return report
 
-    def research_parody_clash(
-        self, subject: str, aesthetic: str
-    ) -> ParodyResearchResult:
+    def research_parody_clash(self, subject: str, aesthetic: str) -> ParodyResearchResult:
         return ParodyResearchResult(
             synopsis="Dripwarts: Harry & The Brick Factory - A high-fashion parody mashup blending Hogwarts wizard rivalry with 2010s Atlanta trap music beef (Gucci vs. Jeezy).",
             suggested_props=[

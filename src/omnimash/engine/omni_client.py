@@ -4,10 +4,11 @@ import math
 import os
 import struct
 import subprocess
-from typing import Any
 import uuid
 import wave
 from dataclasses import dataclass
+from typing import Any
+
 from omnimash.config import settings
 from omnimash.prompts.compiler import CharacterRole
 from omnimash.storage.gcs import GcsStorageManager
@@ -72,11 +73,7 @@ def _generate_dynamic_audio_wav(
 
     beat_interval = 60 / bpm
     has_vocal = bool(
-        voiceover
-        or "voiceover" in lower
-        or "dialogue" in lower
-        or ":" in prompt
-        or '"' in prompt
+        voiceover or "voiceover" in lower or "dialogue" in lower or ":" in prompt or '"' in prompt
     )
 
     audio_data = []
@@ -94,9 +91,7 @@ def _generate_dynamic_audio_wav(
                 if kick_t < 0.2:
                     slide_freq = 140 * math.exp(-kick_t * 15) + 38
                     val += (
-                        0.7
-                        * math.sin(2 * math.pi * slide_freq * kick_t)
-                        * math.exp(-kick_t * 10)
+                        0.7 * math.sin(2 * math.pi * slide_freq * kick_t) * math.exp(-kick_t * 10)
                     )
             if beat_index in [1, 3]:
                 snare_t = beat_pos
@@ -128,11 +123,7 @@ def _generate_dynamic_audio_wav(
             for f in chord_freqs:
                 val += 0.12 * math.sin(2 * math.pi * f * t)
             if beat_index == 0 and beat_pos < 0.3:
-                val += (
-                    0.5
-                    * math.sin(2 * math.pi * 50 * beat_pos)
-                    * math.exp(-beat_pos * 8)
-                )
+                val += 0.5 * math.sin(2 * math.pi * 50 * beat_pos) * math.exp(-beat_pos * 8)
             crackle = ((i * 37911 + 71) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
             val += 0.04 * crackle
 
@@ -142,11 +133,7 @@ def _generate_dynamic_audio_wav(
                 kick_t = beat_pos
                 if kick_t < 0.25:
                     freq = 120 * math.exp(-kick_t * 20) + 45
-                    val += (
-                        0.6
-                        * math.sin(2 * math.pi * freq * kick_t)
-                        * math.exp(-kick_t * 12)
-                    )
+                    val += 0.6 * math.sin(2 * math.pi * freq * kick_t) * math.exp(-kick_t * 12)
             if beat_index in [1, 3]:
                 snare_t = beat_pos
                 if snare_t < 0.2:
@@ -215,9 +202,7 @@ def extract_clean_dialogue_summary(prompt: str) -> str:
         line.strip()
         for line in cleaned.splitlines()
         if line.strip()
-        and not line.strip().startswith(
-            ("Role ", "Active Roles:", "Environment:", "Aesthetic:")
-        )
+        and not line.strip().startswith(("Role ", "Active Roles:", "Environment:", "Aesthetic:"))
     ]
     return " ".join(lines)[:100] or "AI Parody Storyboard Preview"
 
@@ -238,9 +223,7 @@ def ensure_rendered_video(
     os.makedirs(os.path.dirname(rel_path), exist_ok=True)
 
     # Extract voiceover / dialogue if not explicitly passed
-    effective_silent = (
-        is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
-    )
+    effective_silent = is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
 
     wav_silent_path = "static/rendered/temp_silent.wav"
     _generate_dynamic_audio_wav(
@@ -521,9 +504,7 @@ class OmniFlashClient:
     ):
         self.api_key = api_key
         self.mock_mode = mock_mode
-        self.retry_delay = (
-            retry_delay if retry_delay is not None else (0.0 if mock_mode else 0.5)
-        )
+        self.retry_delay = retry_delay if retry_delay is not None else (0.0 if mock_mode else 0.5)
         self.project = os.environ.get(
             "GOOGLE_CLOUD_PROJECT",
             getattr(settings, "google_cloud_project", "hybrid-vertex"),
@@ -636,34 +617,24 @@ class OmniFlashClient:
                 and ref_url.startswith("gs://")
             ):
                 try:
-                    img_bytes, downloaded_mime = self.storage.download_blob_bytes(
-                        ref_url
-                    )
+                    img_bytes, downloaded_mime = self.storage.download_blob_bytes(ref_url)
                     if downloaded_mime:
                         mime_type = downloaded_mime
                 except Exception as exc:
-                    logger.warning(
-                        "Failed to download blob bytes for %s: %s", ref_url, exc
-                    )
+                    logger.warning("Failed to download blob bytes for %s: %s", ref_url, exc)
 
-            if not img_bytes and (
-                os.path.exists(ref_url) or os.path.exists(ref_url.lstrip("/"))
-            ):
+            if not img_bytes and (os.path.exists(ref_url) or os.path.exists(ref_url.lstrip("/"))):
                 path = ref_url if os.path.exists(ref_url) else ref_url.lstrip("/")
                 try:
                     with open(path, "rb") as f:
                         img_bytes = f.read()
                 except Exception as exc:
-                    logger.warning(
-                        "Failed to read local reference image file %s: %s", path, exc
-                    )
+                    logger.warning("Failed to read local reference image file %s: %s", path, exc)
 
             if img_bytes:
                 if ref_url.lower().endswith(".png"):
                     mime_type = "image/png"
-                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(
-                    ".jpeg"
-                ):
+                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
                     mime_type = "image/jpeg"
 
                 b64_str = base64.b64encode(img_bytes).decode("utf-8")
@@ -699,8 +670,7 @@ class OmniFlashClient:
                 )
 
         loaded_roles = [
-            c.role_id if hasattr(c, "role_id") else c.get("role_id")
-            for c in loaded_chars
+            c.role_id if hasattr(c, "role_id") else c.get("role_id") for c in loaded_chars
         ]
         logger.info(
             "Loaded %d reference image(s) for characters: %s",
@@ -733,9 +703,7 @@ class OmniFlashClient:
         last_error: str | None = None
 
         safe_input = _abstract_prompt_for_responsible_ai(prompt)
-        logger.info(
-            "Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input
-        )
+        logger.info("Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input)
         image_objects = self._load_reference_images_as_input(
             session_id=session_id, characters=characters
         )
@@ -770,9 +738,7 @@ class OmniFlashClient:
                     max_attempts,
                     prompt,
                 )
-                if not self._genai_client or not hasattr(
-                    self._genai_client, "interactions"
-                ):
+                if not self._genai_client or not hasattr(self._genai_client, "interactions"):
                     last_error = "Gemini client or interactions API not available"
                     break
 
@@ -795,9 +761,7 @@ class OmniFlashClient:
                         or getattr(output_vid, "video", None)
                     )
                     if data:
-                        video_bytes = (
-                            base64.b64decode(data) if isinstance(data, str) else data
-                        )
+                        video_bytes = base64.b64decode(data) if isinstance(data, str) else data
                         os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
                         with open(target_rel_path, "wb") as f:
                             f.write(video_bytes)
@@ -808,9 +772,7 @@ class OmniFlashClient:
                         )
                         return True, inter_id, None
 
-                last_error = (
-                    "Gemini Omni Flash returned interaction without video output data"
-                )
+                last_error = "Gemini Omni Flash returned interaction without video output data"
                 logger.warning(last_error)
             except Exception as exc:
                 exc_str = str(exc)
@@ -883,9 +845,7 @@ class OmniFlashClient:
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
-            f"turn_{turn_index}_video.mp4"
-            if turn_index is not None
-            else f"{thread_id}_turn0.mp4"
+            f"turn_{turn_index}_video.mp4" if turn_index is not None else f"{thread_id}_turn0.mp4"
         )
         url = f"/static/rendered/{filename}"
         rel_path = url.lstrip("/")

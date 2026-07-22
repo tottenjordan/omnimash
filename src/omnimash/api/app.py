@@ -1,8 +1,10 @@
 import os
+
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
 from omnimash.agent.orchestrator import OmniMashAgent
 from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
@@ -2130,9 +2132,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 status_code=400,
                 detail="At least one clip URL is required for stitching.",
             )
-        stitched_path = agent.stitcher.concatenate_clips(
-            req.clip_urls, session_id=req.session_name
-        )
+        stitched_path = agent.stitcher.concatenate_clips(req.clip_urls, session_id=req.session_name)
         _pub_url, gcs_uri = agent.storage.save_final_master(
             session_id=req.session_name,
             source_rel_path=stitched_path,
