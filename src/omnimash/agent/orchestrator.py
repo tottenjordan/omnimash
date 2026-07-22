@@ -1,3 +1,4 @@
+import logging
 import re
 import urllib.parse
 from dataclasses import asdict, dataclass
@@ -6,6 +7,7 @@ from typing import Any
 from google.adk.agents import Agent
 
 from omnimash.engine.omni_client import OmniFlashClient
+from omnimash.errors import sanitized_error_message
 from omnimash.ingestion.media_extractor import MediaExtractor
 from omnimash.prompts.compiler import CharacterRole, MetaPromptTags, SceneDirective
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
@@ -13,6 +15,8 @@ from omnimash.security.guardrail import ModelArmorGuardrail
 from omnimash.state.session_manager import SessionManager
 from omnimash.stitching.stitcher import VideoStitcher
 from omnimash.storage.gcs import GcsStorageManager
+
+log = logging.getLogger("omnimash.orchestrator")
 
 
 @dataclass
@@ -71,11 +75,21 @@ class OmniMashAgent:
         # Step 0: Process reference URL if provided
         reference_analysis = None
         if reference_url:
-            self.media_extractor.process_youtube_url(reference_url, session_id=session.session_id)
-            report = self.media_extractor.analyze_youtube_reference(
-                reference_url, session_id=session.session_id
-            )
-            reference_analysis = asdict(report)
+            try:
+                self.media_extractor.process_youtube_url(
+                    reference_url, session_id=session.session_id
+                )
+                report = self.media_extractor.analyze_youtube_reference(
+                    reference_url, session_id=session.session_id
+                )
+                reference_analysis = asdict(report)
+            except Exception as exc:
+                log.warning("Reference processing failed: %s", exc, exc_info=True)
+                return AgentTurnResponse(
+                    success=False,
+                    status_event="ERROR",
+                    error_message=sanitized_error_message(exc),
+                )
 
         # Step 1: Model Armor Gate
         input_prompt = prompt or concept or ""
@@ -129,96 +143,110 @@ class OmniMashAgent:
                     )
 
         turn_index = len(session.turns)
-        if parent_turn_id and parent_turn_id in session.turns:
-            parent_turn = session.turns[parent_turn_id]
-            delta_prompt = self.taxonomy.build_delta_prompt(
-                parent_turn.prompt,
-                guard_res.sanitized_prompt,
-                override_prompt=compiled_override,
-            )
-            raw_compiled_prompt = delta_prompt
-            self.storage.save_session_prompt(session.session_id, turn_index, delta_prompt)
-            gen_res = self._execute_turn_generation(
-                session_id=session.session_id,
-                turn_index=turn_index,
-                prompt=delta_prompt,
-                parent_thread_id=parent_turn.interaction_thread_id,
-                voiceover=voiceover,
-                is_silent=is_silent,
-                audio_stem=audio_stem,
-                characters=char_objs,
-            )
-        else:
-            if characters or scenes:
-                scene_objs: list[SceneDirective] = []
-                if scenes:
-                    for s in scenes:
-                        if isinstance(s, SceneDirective):
-                            scene_objs.append(s)
-                        elif isinstance(s, dict):
-                            sp_script = s.get("screenplay_text") or s.get("screenplay_script")
-                            scene_objs.append(
-                                SceneDirective(
-                                    scene_number=s.get("scene_number", 0),
-                                    active_roles=s.get("active_roles", []),
-                                    action=s.get("action", ""),
-                                    dialogue=s.get("dialogue", ""),
-                                    screenplay_text=sp_script
-                                    if isinstance(sp_script, str)
-                                    else None,
-                                    audio_cues=s.get("audio_cues", ""),
-                                )
-                            )
-                storyboard_prompt = self.taxonomy.compiler.compile_storyboard(
-                    concept=concept or guard_res.sanitized_prompt,
-                    characters=char_objs,
-                    scenes=scene_objs,
-                    aesthetic_tags=aesthetic_tags,
-                    environment_tag=environment_tag,
-                    audio_beat=audio_stem,
-                    vocal_delivery=vocal_delivery,
-                )
-                meta_prompt = compiled_override if compiled_override else storyboard_prompt
-            else:
-                meta_prompt = self.taxonomy.build_initial_prompt(
-                    base_character=guard_res.sanitized_prompt,
-                    style_preset=StylePreset.NINETIES_RAP_VIDEO,
-                    custom_instructions="parody skit",
-                    audio_stem=audio_stem,
-                    voiceover=voiceover,
-                    is_silent=is_silent,
-                    on_screen_text=on_screen_text,
+        raw_compiled_prompt = None
+        try:
+            if parent_turn_id and parent_turn_id in session.turns:
+                parent_turn = session.turns[parent_turn_id]
+                delta_prompt = self.taxonomy.build_delta_prompt(
+                    parent_turn.prompt,
+                    guard_res.sanitized_prompt,
                     override_prompt=compiled_override,
                 )
-            if optimize_prompt:
-                meta_prompt = self.taxonomy.compiler.optimize_prompt_for_omni_flash(
-                    meta_prompt, use_llm=True
+                raw_compiled_prompt = delta_prompt
+                self.storage.save_session_prompt(session.session_id, turn_index, delta_prompt)
+                gen_res = self._execute_turn_generation(
+                    session_id=session.session_id,
+                    turn_index=turn_index,
+                    prompt=delta_prompt,
+                    parent_thread_id=parent_turn.interaction_thread_id,
+                    voiceover=voiceover,
+                    is_silent=is_silent,
+                    audio_stem=audio_stem,
+                    characters=char_objs,
                 )
-            raw_compiled_prompt = meta_prompt
-            self.storage.save_session_prompt(session.session_id, turn_index, meta_prompt)
-            gen_res = self._execute_turn_generation(
-                session_id=session.session_id,
-                turn_index=turn_index,
-                prompt=meta_prompt,
-                parent_thread_id=None,
-                voiceover=voiceover,
-                is_silent=is_silent,
-                audio_stem=audio_stem,
-                characters=char_objs,
-            )
+            else:
+                if characters or scenes:
+                    scene_objs: list[SceneDirective] = []
+                    if scenes:
+                        for s in scenes:
+                            if isinstance(s, SceneDirective):
+                                scene_objs.append(s)
+                            elif isinstance(s, dict):
+                                sp_script = s.get("screenplay_text") or s.get("screenplay_script")
+                                scene_objs.append(
+                                    SceneDirective(
+                                        scene_number=s.get("scene_number", 0),
+                                        active_roles=s.get("active_roles", []),
+                                        action=s.get("action", ""),
+                                        dialogue=s.get("dialogue", ""),
+                                        screenplay_text=sp_script
+                                        if isinstance(sp_script, str)
+                                        else None,
+                                        audio_cues=s.get("audio_cues", ""),
+                                    )
+                                )
+                    storyboard_prompt = self.taxonomy.compiler.compile_storyboard(
+                        concept=concept or guard_res.sanitized_prompt,
+                        characters=char_objs,
+                        scenes=scene_objs,
+                        aesthetic_tags=aesthetic_tags,
+                        environment_tag=environment_tag,
+                        audio_beat=audio_stem,
+                        vocal_delivery=vocal_delivery,
+                    )
+                    meta_prompt = compiled_override if compiled_override else storyboard_prompt
+                else:
+                    meta_prompt = self.taxonomy.build_initial_prompt(
+                        base_character=guard_res.sanitized_prompt,
+                        style_preset=StylePreset.NINETIES_RAP_VIDEO,
+                        custom_instructions="parody skit",
+                        audio_stem=audio_stem,
+                        voiceover=voiceover,
+                        is_silent=is_silent,
+                        on_screen_text=on_screen_text,
+                        override_prompt=compiled_override,
+                    )
+                if optimize_prompt:
+                    meta_prompt = self.taxonomy.compiler.optimize_prompt_for_omni_flash(
+                        meta_prompt, use_llm=True
+                    )
+                raw_compiled_prompt = meta_prompt
+                self.storage.save_session_prompt(session.session_id, turn_index, meta_prompt)
+                gen_res = self._execute_turn_generation(
+                    session_id=session.session_id,
+                    turn_index=turn_index,
+                    prompt=meta_prompt,
+                    parent_thread_id=None,
+                    voiceover=voiceover,
+                    is_silent=is_silent,
+                    audio_stem=audio_stem,
+                    characters=char_objs,
+                )
 
-        # Step 3: Persist Turn in Session Version Tree
-        proxy_video_url = self._get_media_proxy_video_url(
-            getattr(gen_res, "gcs_uri", None), gen_res.video_url
-        )
-        turn_node = self.session_manager.add_turn(
-            session_id=session.session_id,
-            clip_index=clip_index,
-            prompt=guard_res.sanitized_prompt,
-            interaction_thread_id=gen_res.interaction_thread_id,
-            video_url=proxy_video_url,
-            parent_turn_id=parent_turn_id,
-        )
+            # Step 3: Persist Turn in Session Version Tree
+            proxy_video_url = self._get_media_proxy_video_url(
+                getattr(gen_res, "gcs_uri", None), gen_res.video_url
+            )
+            turn_node = self.session_manager.add_turn(
+                session_id=session.session_id,
+                clip_index=clip_index,
+                prompt=guard_res.sanitized_prompt,
+                interaction_thread_id=gen_res.interaction_thread_id,
+                video_url=proxy_video_url,
+                parent_turn_id=parent_turn_id,
+            )
+        except Exception as exc:
+            # Any downstream failure (generation, storage, ffmpeg, session) becomes
+            # a typed error response instead of a raw 500. Messages are sanitized so
+            # internal identifiers (buckets, URIs, paths) never reach the client.
+            log.error("Turn generation failed: %s", exc, exc_info=True)
+            return AgentTurnResponse(
+                success=False,
+                status_event="ERROR",
+                error_message=sanitized_error_message(exc),
+                raw_compiled_prompt=raw_compiled_prompt,
+                reference_analysis=reference_analysis,
+            )
 
         status_event = "COMMIT_RECOMMENDED" if turn_node.edit_depth_in_thread >= 3 else "COMPLETED"
 
@@ -260,24 +288,32 @@ class OmniMashAgent:
                 error_message=f"Turn {turn_id} not found in session.",
             )
 
-        committed_turn = self.session_manager.commit_turn(session.session_id, turn_id)
-        gen_res = self.omni_client.start_thread_from_video(
-            base_video_url=committed_turn.video_url,
-            initial_prompt=guard_res.sanitized_prompt,
-            session_id=session.session_id,
-        )
-        proxy_video_url = self._get_media_proxy_video_url(
-            getattr(gen_res, "gcs_uri", None), gen_res.video_url
-        )
-        new_node = self.session_manager.add_turn(
-            session_id=session.session_id,
-            clip_index=committed_turn.clip_index,
-            prompt=guard_res.sanitized_prompt,
-            interaction_thread_id=gen_res.interaction_thread_id,
-            video_url=proxy_video_url,
-            parent_turn_id=turn_id,
-            is_checkpoint=True,
-        )
+        try:
+            committed_turn = self.session_manager.commit_turn(session.session_id, turn_id)
+            gen_res = self.omni_client.start_thread_from_video(
+                base_video_url=committed_turn.video_url,
+                initial_prompt=guard_res.sanitized_prompt,
+                session_id=session.session_id,
+            )
+            proxy_video_url = self._get_media_proxy_video_url(
+                getattr(gen_res, "gcs_uri", None), gen_res.video_url
+            )
+            new_node = self.session_manager.add_turn(
+                session_id=session.session_id,
+                clip_index=committed_turn.clip_index,
+                prompt=guard_res.sanitized_prompt,
+                interaction_thread_id=gen_res.interaction_thread_id,
+                video_url=proxy_video_url,
+                parent_turn_id=turn_id,
+                is_checkpoint=True,
+            )
+        except Exception as exc:
+            log.error("Commit-and-branch failed: %s", exc, exc_info=True)
+            return AgentTurnResponse(
+                success=False,
+                status_event="ERROR",
+                error_message=sanitized_error_message(exc),
+            )
         return AgentTurnResponse(
             success=True,
             status_event="REANCHORED",

@@ -305,3 +305,55 @@ def test_api_list_sessions():
     data = res.json()
     assert "sessions" in data
     assert "parody_session_1" in data["sessions"]
+
+
+def test_save_final_returns_502_when_no_uri(monkeypatch):
+    # An empty save result must not be reported as success.
+    from omnimash.agent.orchestrator import OmniMashAgent
+
+    monkeypatch.setattr(OmniMashAgent, "save_final_master", lambda self, **kw: ("", ""))
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/save-final",
+        json={"session_name": "s1", "video_url": "/static/x.mp4", "master_title": "m1"},
+    )
+    assert resp.status_code == 502
+
+
+def test_external_service_error_maps_to_sanitized_502(monkeypatch):
+    from omnimash.agent.orchestrator import OmniMashAgent
+    from omnimash.engine.media_utils import FfmpegError
+
+    def boom(self, **kwargs):
+        raise FfmpegError("ffmpeg failed on /tmp/secret_path.mp4", stderr="gs://bucket/leak")
+
+    monkeypatch.setattr(OmniMashAgent, "save_final_master", boom)
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/save-final",
+        json={"session_name": "s1", "video_url": "/static/x.mp4", "master_title": "m1"},
+    )
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert "secret_path" not in detail
+    assert "/tmp" not in detail
+    assert "gs://" not in detail
+
+
+def test_generate_endpoint_success_unaffected_by_error_handling():
+    # Regression: happy path still returns 200/success with error handling wired in.
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_ok",
+            "project_id": "prj_ok",
+            "prompt": "Snape spicy 90s rap video",
+            "clip_index": 0,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True

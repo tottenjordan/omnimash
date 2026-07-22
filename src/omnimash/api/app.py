@@ -1,18 +1,22 @@
+import logging
 import os
 from typing import Annotated
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AfterValidator, BaseModel, field_validator
 
 from omnimash.agent.orchestrator import OmniMashAgent
+from omnimash.errors import is_external_service_error, sanitized_error_message
 from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
 from omnimash.storage.gcs import GcsStorageManager
+
+log = logging.getLogger("omnimash.api")
 
 
 def _sanitize_identifier(value: str | None) -> str | None:
@@ -2073,6 +2077,21 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         prompt="Trapwarts trailer",
     )
 
+    @app.exception_handler(Exception)
+    def handle_external_service_error(request: Request, exc: Exception) -> Response:
+        # Known storage/engine failures (GCS, ffmpeg) become a sanitized 502 so
+        # callers get a clear "upstream failed" signal without leaking bucket
+        # names, URIs, or stack traces. Anything else re-raises as a normal 500.
+        if isinstance(exc, HTTPException):
+            raise exc
+        if is_external_service_error(exc):
+            log.error("External service error on %s: %s", request.url.path, exc, exc_info=True)
+            return JSONResponse(
+                status_code=502,
+                content={"detail": sanitized_error_message(exc)},
+            )
+        raise exc
+
     @app.get("/", response_class=HTMLResponse)
     def get_dashboard() -> HTMLResponse:
         return HTMLResponse(content=UI_HTML)
@@ -2163,6 +2182,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             video_url=req.video_url,
             master_title=req.master_title,
         )
+        if not gcs_uri:
+            raise HTTPException(
+                status_code=502,
+                detail="Save produced no artifact; the master was not persisted.",
+            )
         return SaveFinalResponse(
             success=True,
             gcs_uri=gcs_uri,
@@ -2182,6 +2206,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             source_rel_path=stitched_path,
             master_title=req.master_title,
         )
+        if not gcs_uri:
+            raise HTTPException(
+                status_code=502,
+                detail="Stitching produced no artifact; the master was not persisted.",
+            )
         return SaveFinalResponse(
             success=True,
             gcs_uri=gcs_uri,
