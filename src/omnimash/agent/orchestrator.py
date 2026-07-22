@@ -159,12 +159,15 @@ class OmniMashAgent:
                         if isinstance(s, SceneDirective):
                             scene_objs.append(s)
                         elif isinstance(s, dict):
+                            sp_script = s.get("screenplay_text") or s.get("screenplay_script")
                             scene_objs.append(
                                 SceneDirective(
                                     scene_number=s.get("scene_number", 0),
                                     active_roles=s.get("active_roles", []),
                                     action=s.get("action", ""),
                                     dialogue=s.get("dialogue", ""),
+                                    screenplay_text=sp_script if isinstance(sp_script, str) else None,
+                                    audio_cues=s.get("audio_cues", ""),
                                 )
                             )
                 storyboard_prompt = self.taxonomy.compiler.compile_storyboard(

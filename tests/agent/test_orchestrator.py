@@ -220,3 +220,33 @@ def test_orchestrator_passes_characters_to_omni_client(monkeypatch):
     assert res.success is True
     assert "characters" in captured_kwargs
     assert captured_kwargs["characters"] == [char]
+
+
+def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
+    agent = OmniMashAgent(mock_mode=True)
+    chars = [
+        {"role_id": "Role A", "name": "Harry", "description": "Young wizard"},
+        {"role_id": "Role B", "name": "Ollivander", "description": "Wandmaker"},
+    ]
+    sp_script = 'Harry: (Holds wand) "Is this it?"\nOllivander: (Nods) "Yes!"'
+    scenes = [
+        {
+            "scene_number": 1,
+            "active_roles": ["Role A", "Role B"],
+            "screenplay_script": sp_script,
+            "mode": "screenplay",
+        }
+    ]
+
+    res = agent.process_user_turn(
+        user_id="u_sp",
+        project_id="p_sp",
+        concept="Harry and Ollivander",
+        characters=chars,
+        scenes=scenes,
+    )
+    assert res.success is True
+    assert res.raw_compiled_prompt is not None
+    assert "[STORYBOARD SEQUENCE]" in res.raw_compiled_prompt
+    assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in res.raw_compiled_prompt
+    assert '  Harry: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
