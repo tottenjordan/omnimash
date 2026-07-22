@@ -1,5 +1,4 @@
 import logging
-import re
 import urllib.parse
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -362,17 +361,7 @@ class OmniMashAgent:
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:
-        if not session_id:
-            return None
-        if session_id in self.session_manager._sessions:
-            return self.session_manager._sessions[session_id]
-        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
-        if sanitized in self.session_manager._sessions:
-            return self.session_manager._sessions[sanitized]
-        for session in self.session_manager._sessions.values():
-            if session.session_id in (session_id, sanitized):
-                return session
-        return None
+        return self.session_manager.find_session(session_id)
 
     def stitch_session_master(
         self,

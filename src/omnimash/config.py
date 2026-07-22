@@ -20,6 +20,9 @@ class OmniMashSettings(BaseSettings):
     allowed_read_buckets: list[str] = ["reference-images-jt-trend-trawler"]
     # Real generation is the default; opt into offline fakes with MOCK_MODE=true.
     mock_mode: bool = False
+    # Upper bound on in-memory sessions before LRU eviction kicks in. Bounds
+    # memory for long-running processes; 0 disables eviction.
+    max_sessions: int = 512
     port: int = 8080
     log_level: str = "INFO"
 
