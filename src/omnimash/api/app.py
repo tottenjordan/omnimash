@@ -2084,17 +2084,17 @@ UI_HTML = r"""<!DOCTYPE html>
 
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-800">
                                                 <div>
-                                                    <label className="text-xs font-bold text-purple-300 block mb-1">🖼️ Reference Image Asset (URL or GCS Path)</label>
+                                                    <label className="block text-xs font-bold text-purple-300 uppercase tracking-wider mb-1">
+                                                        🎵 Audio Beat &amp; Music Genre
+                                                    </label>
                                                     <input
                                                         type="text"
-                                                        value={stageRefImage}
-                                                        onChange={(e) => setStageRefImage(e.target.value)}
-                                                        placeholder="https://example.com/character.jpg or gs://..."
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                                                        value={audioBeat}
+                                                        onChange={(e) => setAudioBeat(e.target.value)}
+                                                        placeholder="e.g. 140 BPM Heavy 808 Trap"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500 mb-2"
                                                     />
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs font-bold text-purple-300 block mb-1">🎵 Reference Audio Stem / Track (URL or GCS Path)</label>
+                                                    <label className="text-[11px] font-bold text-gray-400 block mb-1">Master Audio Stem / Track (URL or GCS Path)</label>
                                                     <input
                                                         type="text"
                                                         value={stageRefAudio}
@@ -2102,6 +2102,83 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         placeholder="https://example.com/beat.mp3 or gs://..."
                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-purple-500"
                                                     />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-xs font-bold text-pink-300 uppercase tracking-wider mb-1">
+                                                        🎙️ Vocal Delivery / Voiceover Style
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={vocalDelivery}
+                                                        onChange={(e) => setVocalDelivery(e.target.value)}
+                                                        placeholder="e.g. High-energy rap battle flow with autotune..."
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-pink-500 mb-2"
+                                                    />
+                                                    <label className="text-[11px] font-bold text-gray-400 block mb-1">Primary Character Reference Image (URL or GCS Path)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={stageRefImage}
+                                                        onChange={(e) => setStageRefImage(e.target.value)}
+                                                        placeholder="https://example.com/character.jpg or gs://..."
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-pink-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Character Roles & Reference Image URLs (Gemini Omni Image Roles) */}
+                                            <div className="pt-3 border-t border-gray-800 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                        <span>👥</span>
+                                                        <span>Character Roles &amp; Reference Image URLs (Gemini Omni Image Roles)</span>
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={addCharacter}
+                                                        className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-2.5 py-1 rounded-lg transition"
+                                                    >
+                                                        + Add Character Role
+                                                    </button>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    {characters.map((char, cIdx) => (
+                                                        <div key={cIdx} className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-2">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs font-bold font-mono bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800">
+                                                                    {char.role_id}
+                                                                </span>
+                                                                <input
+                                                                    type="text"
+                                                                    value={char.name}
+                                                                    onChange={(e) => updateCharacter(cIdx, "name", e.target.value)}
+                                                                    placeholder="Character Name..."
+                                                                    className="bg-gray-900 border border-gray-800 rounded px-2 py-1 text-xs text-white font-bold focus:outline-none focus:border-purple-500"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] text-gray-400 mb-0.5">🖼️ Reference Image URL (Gemini Omni Image Role)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={char.reference_url || ""}
+                                                                    onChange={(e) => updateCharacter(cIdx, "reference_url", e.target.value)}
+                                                                    placeholder="https://example.com/character.jpg"
+                                                                    className="w-full bg-gray-900 border border-gray-800 rounded p-1.5 text-xs text-white font-mono"
+                                                                />
+                                                                {char.reference_url && (
+                                                                    <div className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded p-1.5 mt-1.5">
+                                                                        <img
+                                                                            src={getDisplayableRefUrl(char.reference_url)}
+                                                                            alt={char.name || char.role_id}
+                                                                            className="w-8 h-8 object-cover rounded border border-purple-500/50"
+                                                                        />
+                                                                        <span className="text-[10px] text-purple-300 font-mono truncate">{char.reference_url}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
 
