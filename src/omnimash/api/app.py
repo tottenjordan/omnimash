@@ -8,7 +8,7 @@ from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
-from omnimash.prompts.compiler import CharacterRole
+from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
 
 
 class CharacterRoleModel(BaseModel):
