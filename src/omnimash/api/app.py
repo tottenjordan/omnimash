@@ -431,6 +431,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     } else if (data && data.shots && data.shots.length > 0) {
                         setStageShots(data.shots);
                         setActiveStage(2);
+                        // Automatically generate keyframe images for all expanded shots
+                        setTimeout(() => handleGenerateAllKeyframes(data.shots), 100);
                     }
                 } catch (err) {
                     console.error("Storyboard expansion failed:", err);
@@ -459,6 +461,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     const data = await res.json();
                     if (data && data.keyframe_image_url) {
                         updateStageShot(idx, "keyframe_image_url", data.keyframe_image_url);
+                        return data.keyframe_image_url;
                     } else if (data && data.error) {
                         setLastError(data.error);
                     }
@@ -467,6 +470,14 @@ UI_HTML = r"""<!DOCTYPE html>
                     setLastError(err.message || String(err));
                 } finally {
                     setKeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: false }));
+                }
+                return null;
+            };
+
+            const handleGenerateAllKeyframes = async (shotsToGenerate) => {
+                const list = shotsToGenerate || stageShots;
+                for (let i = 0; i < list.length; i++) {
+                    await handleGenerateKeyframeImage(i, list[i]);
                 }
             };
 
@@ -2504,13 +2515,24 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     Each shot card defines 5 structured directives: Action/Subject, Location, Style &amp; Lighting, Framing &amp; Motion, Audio.
                                                 </p>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={addStageShot}
-                                                className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition"
-                                            >
-                                                + Add Shot Card
-                                            </button>
+                                            <div className="flex items-center space-x-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleGenerateAllKeyframes()}
+                                                    className="bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5"
+                                                    title="Generate keyframe images for all shot cards concurrently"
+                                                >
+                                                    <span>🖼️</span>
+                                                    <span>Generate All Keyframes</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={addStageShot}
+                                                    className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition"
+                                                >
+                                                    + Add Shot Card
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
