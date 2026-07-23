@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from omnimash.config import settings
+from omnimash.prompts.compiler import sanitize_real_names
 
 logger = logging.getLogger(__name__)
 
@@ -168,12 +169,14 @@ class StoryboardAgent:
                 f"Expand the following video concept into exactly {num_shots} storyboard shots for a {target_duration}s video.\n"
                 f'Concept: "{concept}"\n'
                 f'Style & Tone: "{style_tone}"\n\n'
+                f"CRITICAL SAFETY RULE: Do NOT use real celebrity or public figure full names in the output JSON. Replace any real celebrity names with descriptive fictional parody visual roles (e.g., use 'Fiery Master Chef' instead of 'Gordon Ramsay', 'Atlanta Rap Legend' instead of 'Jeezy', 'Melodic Rap Star' instead of 'Drake').\n\n"
                 f"Each shot MUST be <= 10.0 seconds in duration.\n"
                 f"Return ONLY a JSON array of shot objects with schema:\n"
                 f"[\n"
                 f"  {{\n"
                 f'    "shot_index": 1,\n'
                 f'    "duration_seconds": 10.0,\n'
+                f'    "summary": "One-line shot summary",\n'
                 f'    "action": "Visual description of action/subject",\n'
                 f'    "location": "Environment and location details",\n'
                 f'    "style_lighting": "Aesthetic, color grading, and lighting",\n'
@@ -219,11 +222,12 @@ class StoryboardAgent:
                             duration_seconds=min(
                                 10.0, float(item.get("duration_seconds", 10.0))
                             ),
-                            action=str(item.get("action", "")),
-                            location=str(item.get("location", "")),
-                            style_lighting=str(item.get("style_lighting", style_tone)),
-                            framing_motion=str(item.get("framing_motion", "")),
-                            audio=str(item.get("audio", "")),
+                            summary=sanitize_real_names(str(item.get("summary", ""))),
+                            action=sanitize_real_names(str(item.get("action", ""))),
+                            location=sanitize_real_names(str(item.get("location", ""))),
+                            style_lighting=sanitize_real_names(str(item.get("style_lighting", style_tone))),
+                            framing_motion=sanitize_real_names(str(item.get("framing_motion", ""))),
+                            audio=sanitize_real_names(str(item.get("audio", ""))),
                         )
                     )
                 return shots

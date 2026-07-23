@@ -378,6 +378,7 @@ UI_HTML = r"""<!DOCTYPE html>
             // Handlers for 4-Stage Journey
             const handleExpandStoryboard = async () => {
                 setExpandLoading(true);
+                setLastError(null);
                 try {
                     const res = await fetch("/api/storyboard/expand", {
                         method: "POST",
@@ -389,12 +390,15 @@ UI_HTML = r"""<!DOCTYPE html>
                         })
                     });
                     const data = await res.json();
-                    if (data && data.shots && data.shots.length > 0) {
+                    if (data && data.error) {
+                        setLastError(data.error);
+                    } else if (data && data.shots && data.shots.length > 0) {
                         setStageShots(data.shots);
                         setActiveStage(2);
                     }
                 } catch (err) {
                     console.error("Storyboard expansion failed:", err);
+                    setLastError(err.message || String(err));
                 } finally {
                     setExpandLoading(false);
                 }
@@ -1369,7 +1373,39 @@ UI_HTML = r"""<!DOCTYPE html>
                     )}
 
                     {/* Main Stage Studio Container */}
-                    <main className="flex-1 max-w-7xl w-full mx-auto p-6 overflow-y-auto custom-scrollbar">
+                    <main className="flex-1 max-w-7xl w-full mx-auto p-6 overflow-y-auto custom-scrollbar space-y-6">
+
+                        {/* Global Prominent Error Alert Banner */}
+                        {lastError && (
+                            <div className="bg-red-950/60 border-2 border-red-500/80 rounded-2xl p-5 shadow-2xl text-red-200 space-y-3 animate-fade-in">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 font-bold text-red-300 text-xs uppercase tracking-wider">
+                                        <span className="text-xl">⚠️</span>
+                                        <span className="text-sm font-extrabold text-red-200">Gemini Omni Flash Alert / Generation Notice</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLastError(null)}
+                                        className="text-red-300 hover:text-white text-xs font-extrabold px-3 py-1.5 rounded-lg border border-red-700 bg-red-900/80 hover:bg-red-800 transition"
+                                    >
+                                        ✕ Dismiss Notice
+                                    </button>
+                                </div>
+                                <div className="bg-black/70 border border-red-800 rounded-xl p-4 text-xs font-mono text-red-200 break-words whitespace-pre-wrap leading-relaxed shadow-inner">
+                                    <span className="text-red-400 font-bold block mb-1.5">Error Message:</span>
+                                    {lastError}
+                                </div>
+                                {String(lastError).includes("real people") && (
+                                    <div className="bg-amber-950/50 border border-amber-500/50 rounded-xl p-3 text-amber-300 text-xs flex items-start gap-2">
+                                        <span className="text-base">💡</span>
+                                        <div>
+                                            <span className="font-bold block">Model Safety Tip (Real Names / Likenesses):</span>
+                                            <span>Gemini Omni Flash blocks real celebrity/artist names. Replace real names with fictional parody descriptions (e.g., use <em>"Gaunt Wizard in Black Puffer Jacket"</em> instead of real celebrity names).</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* ========================================================= */}
                         {/* 🎭 ACT 1: THE CONCEPT & CAST MANAGER                      */}

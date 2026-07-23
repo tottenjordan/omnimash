@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -11,6 +12,29 @@ from omnimash.config import settings
 
 if TYPE_CHECKING:
     from omnimash.prompts.taxonomy import StylePreset
+
+REAL_NAME_PARODY_MAP: dict[str, str] = {
+    r"\bGordon Ramsay\b": "Fiery Master Chef",
+    r"\bJulia Child\b": "Classic Vintage Chef",
+    r"\bYoung Jeezy\b": "Atlanta Rap Legend",
+    r"\bJeezy\b": "Atlanta Rap Artist",
+    r"\bDrake\b": "Melodic Rap Star",
+    r"\bKanye West\b": "Avant-Garde Rap Producer",
+    r"\bKanye\b": "Avant-Garde Rap Producer",
+    r"\bTravis Scott\b": "Rodeo Trap Star",
+    r"\bTaylor Swift\b": "Pop Icon Vocalist",
+}
+
+
+def sanitize_real_names(text: str) -> str:
+    """Sanitizes real celebrity and public figure full names into safe visual parody role descriptors to adhere to Gemini Omni Flash safety guidelines."""
+    if not text:
+        return text
+    result = text
+    for pattern, replacement in REAL_NAME_PARODY_MAP.items():
+        result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+    return result
+
 
 logger = logging.getLogger(__name__)
 
@@ -841,13 +865,14 @@ class PromptCompiler:
         )
         scenes_block = "\n".join(scene_lines) if scene_lines else "- No scenes"
 
-        return (
+        compiled_result = (
             f"{image_roles_block}"
             f"[ROLE DEFINITIONS]\n{roles_block}\n\n"
             f"[AESTHETIC INJECTION]\n{aesthetic_block}\n\n"
             f"[AUDIO & VOCAL DIRECTION]\n{audio_block}\n\n"
             f"[STORYBOARD SEQUENCE]\n{scenes_block}"
         )
+        return sanitize_real_names(compiled_result)
 
     def compile_storyboard(
         self,
@@ -1070,12 +1095,12 @@ class PromptCompiler:
                 "Lord Voldemort, a pale serpentine figure with slit-like nostrils, no hair, chalk-white skin, and piercing cold eyes",
             ),
             "ramsay": (
-                "Gordon Ramsay",
-                "Gordon Ramsay, a fiery celebrity chef with sharp blond hair, intense focused gaze, and crisp white chef jacket",
+                "Fiery Chef Ramsay",
+                "A fiery master chef with sharp blond hair, intense focused gaze, and crisp white chef jacket",
             ),
             "julia": (
-                "Julia Child",
-                "Julia Child, an iconic tall cheerful culinary master with curly brown hair, expressive warm smile, and classic vintage apron",
+                "Vintage Chef Julia",
+                "An iconic tall cheerful culinary master with curly brown hair, expressive warm smile, and classic vintage apron",
             ),
             "samurai": (
                 "Neon Samurai",
