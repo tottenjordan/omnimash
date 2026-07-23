@@ -1,4 +1,9 @@
-from omnimash.prompts.storyboard_agent import StoryboardAgent, StoryboardShot
+from omnimash.prompts.compiler import CharacterRole
+from omnimash.prompts.storyboard_agent import (
+    StoryboardAgent,
+    StoryboardShot,
+    parse_timecoded_script,
+)
 
 
 def test_storyboard_shot_5_part_structure():
@@ -101,3 +106,76 @@ def test_expand_vision_live_fallback():
     )
     assert len(shots) >= 3
     assert all(s.duration_seconds <= 10.0 for s in shots)
+
+
+def test_parse_timecoded_script():
+    script_text = (
+        "[0-3s] Character A enters dungeon\n"
+        "[3-6s] Character B turns up 808 trap beat\n"
+        "[6-10s] Character A and Character B perform synchronized dance\n"
+        "[0-5.5s] Half-time intro scene\n"
+        "[0-3] Plain numbers without s suffix"
+    )
+    parsed = parse_timecoded_script(script_text)
+    assert len(parsed) == 5
+    assert parsed[0] == (3.0, "Character A enters dungeon")
+    assert parsed[1] == (3.0, "Character B turns up 808 trap beat")
+    assert parsed[2] == (4.0, "Character A and Character B perform synchronized dance")
+    assert parsed[3] == (5.5, "Half-time intro scene")
+    assert parsed[4] == (3.0, "Plain numbers without s suffix")
+
+
+def test_parse_timecoded_script_empty_or_invalid():
+    assert parse_timecoded_script("") == []
+    assert parse_timecoded_script("No timecodes here at all.") == []
+
+
+def test_expand_vision_with_screenplay_script():
+    agent = StoryboardAgent(mock_mode=True)
+    script = (
+        "[0-3s] Snape enters the potion room with dramatic flair.\n"
+        "[3-7s] Dumbledore nods in approval while 808 sub-bass drops.\n"
+        "[7-10s] Both wizards strike a final freeze-frame pose."
+    )
+    chars = [
+        CharacterRole(role_id="Role A", name="Snape", description="Severe wizard"),
+        CharacterRole(role_id="Role B", name="Dumbledore", description="Elderly headmaster"),
+    ]
+    shots = agent.expand_vision(
+        concept="Wizard rap duel",
+        style_tone="Cinematic Trap Parody",
+        target_duration=10.0,
+        characters=chars,
+        screenplay_script=script,
+    )
+    assert len(shots) == 3
+    assert shots[0].duration_seconds == 3.0
+    assert shots[1].duration_seconds == 4.0
+    assert shots[2].duration_seconds == 3.0
+    assert shots[0].shot_index == 1
+    assert shots[1].shot_index == 2
+    assert shots[2].shot_index == 3
+    assert "Role A (Snape)" in shots[0].action
+    assert "Role B (Dumbledore)" in shots[1].action
+
+
+def test_expand_vision_celebrity_sanitization():
+    agent = StoryboardAgent(mock_mode=True)
+    script = (
+        "[0-4s] Gordon Ramsay yells at line cook in high energy kitchen.\n"
+        "[4-10s] Drake drops a melodic verse while Jeezy counts cash."
+    )
+    shots = agent.expand_vision(
+        concept="Celebrity kitchen rap battle",
+        style_tone="Trap Parody",
+        target_duration=10.0,
+        screenplay_script=script,
+    )
+    assert len(shots) == 2
+    assert "Gordon Ramsay" not in shots[0].action
+    assert "Fiery Master Chef" in shots[0].action
+    assert "Drake" not in shots[1].action
+    assert "Melodic Rap Star" in shots[1].action
+    assert "Jeezy" not in shots[1].action
+    assert ("Atlanta Rap Artist" in shots[1].action or "Atlanta Rap Legend" in shots[1].action)
+
