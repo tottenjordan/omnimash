@@ -179,3 +179,22 @@ def test_expand_vision_celebrity_sanitization():
     assert "Jeezy" not in shots[1].action
     assert ("Atlanta Rap Artist" in shots[1].action or "Atlanta Rap Legend" in shots[1].action)
 
+
+def test_expand_vision_location_directives_formatting_and_sanitization():
+    agent = StoryboardAgent(mock_mode=True)
+    chars = [
+        CharacterRole(role_id="Role A", name="Snape", description="Severe wizard"),
+    ]
+    shots = agent.expand_vision(
+        concept="Gordon Ramsay in Snape's dungeon",
+        style_tone="Parody",
+        target_duration=10.0,
+        characters=chars,
+    )
+    assert len(shots) >= 1
+    for s in shots:
+        assert "Gordon Ramsay" not in s.location
+        assert "Gordon Ramsay" not in s.action
+        assert "Gordon Ramsay" not in s.summary
+
+

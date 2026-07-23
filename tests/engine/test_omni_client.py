@@ -828,5 +828,7 @@ def test_generate_keyframe_image_fallback_on_failure(
         client = OmniFlashClient(mock_mode=False)
         uri = client.generate_keyframe_image("Failing prompt", style_tone="dark")
         assert uri.startswith("data:image/svg+xml;utf8,")
-        assert "Failing prompt" in uri
+        import urllib.parse
+        assert "Failing prompt" in urllib.parse.unquote(uri)
+
 

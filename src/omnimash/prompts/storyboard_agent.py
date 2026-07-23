@@ -198,13 +198,14 @@ class StoryboardAgent:
             tmpl = mock_templates[i % len(mock_templates)]
             action = _format_character_references(tmpl[1], characters)
             summary = _format_character_references(tmpl[0], characters)
+            location = _format_character_references(tmpl[2], characters)
             shots.append(
                 StoryboardShot(
                     shot_index=i + 1,
                     duration_seconds=per_shot_dur,
                     summary=sanitize_real_names(summary),
                     action=sanitize_real_names(action),
-                    location=sanitize_real_names(tmpl[2]),
+                    location=sanitize_real_names(location),
                     style_lighting=sanitize_real_names(tmpl[3]),
                     framing_motion=sanitize_real_names(tmpl[4]),
                     audio=sanitize_real_names(tmpl[5]),
@@ -253,6 +254,7 @@ class StoryboardAgent:
                     formatted_action = _format_character_references(action_text, characters)
                     summary_text = action_text.splitlines()[0] if action_text else f"Shot {i + 1}"
                     formatted_summary = _format_character_references(summary_text, characters)
+                    formatted_location = _format_character_references(tmpl[1], characters)
 
                     shots.append(
                         StoryboardShot(
@@ -260,7 +262,7 @@ class StoryboardAgent:
                             duration_seconds=duration,
                             summary=sanitize_real_names(formatted_summary),
                             action=sanitize_real_names(formatted_action),
-                            location=sanitize_real_names(tmpl[1]),
+                            location=sanitize_real_names(formatted_location),
                             style_lighting=sanitize_real_names(tmpl[2]),
                             framing_motion=sanitize_real_names(tmpl[3]),
                             audio=sanitize_real_names(tmpl[4]),
@@ -340,8 +342,10 @@ class StoryboardAgent:
                 for item in data:
                     raw_summary = str(item.get("summary", ""))
                     raw_action = str(item.get("action", ""))
+                    raw_location = str(item.get("location", ""))
                     formatted_summary = _format_character_references(raw_summary, characters)
                     formatted_action = _format_character_references(raw_action, characters)
+                    formatted_location = _format_character_references(raw_location, characters)
                     shots.append(
                         StoryboardShot(
                             shot_index=int(item.get("shot_index", len(shots) + 1)),
@@ -350,7 +354,7 @@ class StoryboardAgent:
                             ),
                             summary=sanitize_real_names(formatted_summary),
                             action=sanitize_real_names(formatted_action),
-                            location=sanitize_real_names(str(item.get("location", ""))),
+                            location=sanitize_real_names(formatted_location),
                             style_lighting=sanitize_real_names(str(item.get("style_lighting", style_tone))),
                             framing_motion=sanitize_real_names(str(item.get("framing_motion", ""))),
                             audio=sanitize_real_names(str(item.get("audio", ""))),

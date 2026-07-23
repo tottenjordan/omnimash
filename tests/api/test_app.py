@@ -299,3 +299,83 @@ def test_api_save_final_with_master_audio():
     assert data["success"] is True
     assert "master_with_audio_track.mp4" in data["gcs_uri"]
 
+
+def test_api_storyboard_expand_with_screenplay_script_and_characters():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/storyboard/expand",
+        json={
+            "concept": "Wizard battle in Hogwarts classroom",
+            "style_tone": "Cinematic Parody",
+            "target_duration": 30.0,
+            "screenplay_script": "[0-5s] Role A enters the room.\n[5-10s] Role B challenges Role A.",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Harry",
+                    "description": "Young wizard",
+                },
+                {
+                    "role_id": "Role B",
+                    "name": "Draco",
+                    "description": "Rival wizard",
+                },
+            ],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "shots" in data
+    assert len(data["shots"]) > 0
+    shot = data["shots"][0]
+    assert "shot_index" in shot
+    assert "action" in shot
+
+
+def test_api_storyboard_keyframe_image_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/storyboard/keyframe-image",
+        json={
+            "shot_index": 1,
+            "action": "Harry casts a levitation spell",
+            "location": "Dungeon classroom",
+            "style_lighting": "High contrast neon lighting",
+            "summary": "Levitation preview",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "keyframe_image_url" in data
+    assert data["keyframe_image_url"].startswith("data:image/svg+xml")
+
+
+def test_api_generate_shot_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/generate-shot",
+        json={
+            "session_name": "shot_test_session",
+            "shot_index": 1,
+            "shot_directive": "Dramatic close-up of Harry preparing potions",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Harry",
+                    "description": "Young wizard",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "video_url" in data
+    assert "turn_id" in data
+    assert data["status"] in ("COMPLETED", "COMMIT_RECOMMENDED")
+
+

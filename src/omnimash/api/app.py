@@ -8,6 +8,7 @@ from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
+from omnimash.prompts.compiler import CharacterRole
 
 
 class CharacterRoleModel(BaseModel):
@@ -126,10 +127,39 @@ class StoryboardExpandRequest(BaseModel):
     concept: str
     style_tone: str = "Cinematic Trap Parody"
     target_duration: float = 30.0
+    characters: list[CharacterRoleModel | dict] | None = None
+    screenplay_script: str = ""
 
 
 class StoryboardExpandResponse(BaseModel):
     shots: list[StoryboardShotModel]
+
+
+class KeyframeImageRequest(BaseModel):
+    shot_index: int = 1
+    action: str = ""
+    location: str = ""
+    style_lighting: str = ""
+    summary: str = ""
+
+
+class KeyframeImageResponse(BaseModel):
+    success: bool = True
+    keyframe_image_url: str
+
+
+class GenerateShotRequest(BaseModel):
+    session_name: str | None = "parody_session_1"
+    shot_index: int = 1
+    shot_directive: str = ""
+    characters: list[CharacterRoleModel | dict] | None = None
+
+
+class GenerateShotResponse(BaseModel):
+    success: bool = True
+    video_url: str | None = None
+    turn_id: str | None = None
+    status: str = "COMPLETED"
 
 
 class StitchClipsRequest(BaseModel):
@@ -3075,10 +3105,52 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/storyboard/expand", response_model=StoryboardExpandResponse)
     def expand_storyboard(req: StoryboardExpandRequest) -> StoryboardExpandResponse:
-        shots = agent.expand_storyboard(
+        char_objs: list[CharacterRole] = []
+        if req.characters:
+            for c in req.characters:
+                if isinstance(c, CharacterRole):
+                    char_objs.append(c)
+                elif isinstance(c, CharacterRoleModel):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.role_id,
+                            name=c.name,
+                            description=c.description,
+                            reference_url=c.reference_url,
+                            aesthetic_tags=c.aesthetic_tags,
+                            voice_style=c.voice_style,
+                        )
+                    )
+                elif isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", ""),
+                            name=c.get("name", ""),
+                            description=c.get("description", ""),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=c.get("aesthetic_tags", []),
+                            voice_style=c.get("voice_style", ""),
+                        )
+                    )
+                elif hasattr(c, "model_dump"):
+                    cd = c.model_dump()
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=cd.get("role_id", ""),
+                            name=cd.get("name", ""),
+                            description=cd.get("description", ""),
+                            reference_url=cd.get("reference_url"),
+                            aesthetic_tags=cd.get("aesthetic_tags", []),
+                            voice_style=cd.get("voice_style", ""),
+                        )
+                    )
+
+        shots = agent.storyboard_agent.expand_vision(
             concept=req.concept,
             style_tone=req.style_tone,
             target_duration=req.target_duration,
+            characters=char_objs if char_objs else None,
+            screenplay_script=req.screenplay_script,
         )
         return StoryboardExpandResponse(
             shots=[
@@ -3090,9 +3162,44 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     style_lighting=s.style_lighting,
                     framing_motion=s.framing_motion,
                     audio=s.audio,
+                    summary=s.summary,
                 )
                 for s in shots
             ]
+        )
+
+    @app.post(
+        "/api/storyboard/keyframe-image", response_model=KeyframeImageResponse
+    )
+    def generate_keyframe_image(
+        req: KeyframeImageRequest,
+    ) -> KeyframeImageResponse:
+        prompt_parts = [p for p in [req.action, req.location] if p]
+        prompt = (
+            ", ".join(prompt_parts)
+            if prompt_parts
+            else (req.summary or f"Shot {req.shot_index}")
+        )
+        image_url = agent.omni_client.generate_keyframe_image(
+            prompt, style_tone=req.style_lighting
+        )
+        return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
+
+    @app.post("/api/generate-shot", response_model=GenerateShotResponse)
+    def generate_shot(req: GenerateShotRequest) -> GenerateShotResponse:
+        agent_turn = agent.process_user_turn(
+            user_id="usr_default",
+            project_id="prj_default",
+            prompt=req.shot_directive,
+            clip_index=req.shot_index,
+            session_name=req.session_name,
+            characters=req.characters,
+        )
+        return GenerateShotResponse(
+            success=agent_turn.success,
+            video_url=agent_turn.video_url,
+            turn_id=agent_turn.turn_id,
+            status=agent_turn.status_event,
         )
 
     @app.post("/api/stitch-clips", response_model=SaveFinalResponse)
