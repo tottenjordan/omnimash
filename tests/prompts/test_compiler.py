@@ -467,7 +467,7 @@ def test_compile_multi_role_prompt_with_screenplay_text():
 
     assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in prompt
     assert (
-        '  Snape: (Standing in the dungeon. Low bass rumble.) "Silence, Potter!"'
+        '  Gothic Potion Master: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard!"'
         in prompt
     )
     assert '  Harry: (Bopping head to 120 BPM beat.) "No!"' in prompt
