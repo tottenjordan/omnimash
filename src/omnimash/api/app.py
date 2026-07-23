@@ -119,6 +119,7 @@ class StoryboardShotModel(BaseModel):
     style_lighting: str
     framing_motion: str
     audio: str
+    summary: str = ""
 
 
 class StoryboardExpandRequest(BaseModel):
@@ -341,6 +342,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 {
                     shot_index: 1,
                     duration_seconds: 10.0,
+                    summary: "Entrance & Concept Setup",
                     action: "Establishing shot for concept: key characters enter the scene.",
                     location: "Dimly lit stone dungeon classroom with bubbling cauldrons",
                     style_lighting: "Cinematic Trap Parody, high-contrast lighting with warm shadows",
@@ -350,6 +352,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 {
                     shot_index: 2,
                     duration_seconds: 10.0,
+                    summary: "Dramatic Action & Potion Drink",
                     action: "Key character performs dramatic action, reacting in surprise.",
                     location: "Gothic potion classroom with floating candles",
                     style_lighting: "Cinematic Trap Parody, vibrant dramatic color grading",
@@ -359,6 +362,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 {
                     shot_index: 3,
                     duration_seconds: 10.0,
+                    summary: "Transformation Reveal & Drip Climax",
                     action: "Subject is transformed, stepping forward in upgraded aesthetic wardrobe.",
                     location: "High contrast Hogwarts courtyard with stage smoke and ambient flares",
                     style_lighting: "Cinematic Trap Parody, polished commercial lighting",
@@ -2157,13 +2161,24 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     </div>
 
                                                     <div className="space-y-2.5 text-xs">
+                                                        <div className="bg-amber-950/40 border border-amber-500/30 rounded-lg p-2">
+                                                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 block mb-1">⚡ Shot One-Line Summary</label>
+                                                            <input
+                                                                type="text"
+                                                                value={shot.summary || ""}
+                                                                onChange={(e) => updateStageShot(idx, "summary", e.target.value)}
+                                                                placeholder="e.g. Entrance & Concept Setup..."
+                                                                className="w-full bg-gray-950 border border-amber-500/50 rounded-lg p-2 text-amber-200 font-bold text-xs focus:outline-none focus:border-amber-400"
+                                                            />
+                                                        </div>
                                                         <div>
                                                             <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5">1. Action / Subject</label>
                                                             <textarea
-                                                                rows={2}
+                                                                rows={5}
                                                                 value={shot.action}
                                                                 onChange={(e) => updateStageShot(idx, "action", e.target.value)}
-                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-pink-500 text-[11px]"
+                                                                placeholder="Describe what is happening at the center of the shot in detail..."
+                                                                className="w-full min-h-[110px] bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-pink-500 text-[11px] font-mono leading-relaxed"
                                                             />
                                                         </div>
                                                         <div>

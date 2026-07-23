@@ -21,6 +21,7 @@ class StoryboardShot:
     style_lighting: str
     framing_motion: str
     audio: str
+    summary: str = ""
 
     def to_omni_flash_prompt(self, role_mappings: str = "") -> str:
         prompt_parts: list[str] = []
@@ -85,6 +86,7 @@ class StoryboardAgent:
 
         mock_templates = [
             (
+                "Entrance & Setup",
                 f"Establishing shot for concept: '{concept}'. Key characters enter the scene.",
                 "A dimly lit stone dungeon classroom with bubbling cauldrons and soft ambient smoke",
                 f"{style_tone}, cinematic high-contrast lighting with warm shadows",
@@ -92,6 +94,7 @@ class StoryboardAgent:
                 "Slow heavy 808 trap beat with bubbling liquid sound and quiet vinyl crackle",
             ),
             (
+                "Dramatic Action & Potion Consumption",
                 "Key character performs the central dramatic action or consumes a potion, reacting in surprise.",
                 "Gothic potion classroom with floating candles and glowing mystical symbols",
                 f"{style_tone}, vibrant dramatic color grading and neon rim lights",
@@ -99,6 +102,7 @@ class StoryboardAgent:
                 "Trap beat drop with sub-bass and crisp snare trills",
             ),
             (
+                "Transformation Reveal & Aesthetic Drip",
                 "Subject is transformed, stepping forward in upgraded aesthetic wardrobe with high confidence.",
                 "High contrast Hogwarts courtyard with dramatic stage smoke and ambient flares",
                 f"{style_tone}, polished commercial lighting and anamorphic lens flares",
@@ -106,6 +110,7 @@ class StoryboardAgent:
                 "Aggressive 90s hip hop beat with heavy kick drum and vocal sample",
             ),
             (
+                "Secondary Reaction & High-Energy Clash",
                 "Secondary characters react in awe as the scene reaches high energy performance.",
                 "Grand hall entrance with towering archways and laser fog reflections",
                 f"{style_tone}, pulse-synced strobing spotlights and atmospheric beam flares",
@@ -113,6 +118,7 @@ class StoryboardAgent:
                 "Blown-out 808 bass slides with rapid 16th-note trap hi-hats",
             ),
             (
+                "Group Synchronized Pose & Motion",
                 "Group dynamic shot with synchronized gestures and striking visual poses.",
                 "Rain-slicked cobblestone alleyway lit by atmospheric green and purple lights",
                 f"{style_tone}, wet asphalt reflections and sharp rim highlights",
@@ -120,6 +126,7 @@ class StoryboardAgent:
                 "Synthesizer arpeggios layering over heavy boom-bap rhythm",
             ),
             (
+                "Climactic Freeze-Frame & Outro",
                 "Climactic resolution pose facing the camera directly as scene fades out.",
                 "Spotlit center stage with receding back-lighting and lingering smoke effect",
                 f"{style_tone}, golden hour backlight with volumetric rim light",
@@ -135,11 +142,12 @@ class StoryboardAgent:
                 StoryboardShot(
                     shot_index=i + 1,
                     duration_seconds=per_shot_dur,
-                    action=tmpl[0],
-                    location=tmpl[1],
-                    style_lighting=tmpl[2],
-                    framing_motion=tmpl[3],
-                    audio=tmpl[4],
+                    summary=tmpl[0],
+                    action=tmpl[1],
+                    location=tmpl[2],
+                    style_lighting=tmpl[3],
+                    framing_motion=tmpl[4],
+                    audio=tmpl[5],
                 )
             )
         return shots
