@@ -2606,7 +2606,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5">1. Action / Subject</label>
                                                             <textarea
                                                                 rows={5}
-                                                                value={shot.action}
+                                                                value={shot.action || ""}
                                                                 onChange={(e) => updateStageShot(idx, "action", e.target.value)}
                                                                 placeholder="Describe what is happening at the center of the shot in detail..."
                                                                 className="w-full min-h-[110px] bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-pink-500 text-[11px] font-mono leading-relaxed"
@@ -2616,7 +2616,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <label className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-0.5">2. Location</label>
                                                             <input
                                                                 type="text"
-                                                                value={shot.location}
+                                                                value={shot.location || ""}
                                                                 onChange={(e) => updateStageShot(idx, "location", e.target.value)}
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-purple-500 text-[11px]"
                                                             />
@@ -2625,7 +2625,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-0.5">3. Style &amp; Lighting</label>
                                                             <input
                                                                 type="text"
-                                                                value={shot.style_lighting}
+                                                                value={shot.style_lighting || ""}
                                                                 onChange={(e) => updateStageShot(idx, "style_lighting", e.target.value)}
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-[11px]"
                                                             />
@@ -2634,7 +2634,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <label className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block mb-0.5">4. Framing &amp; Motion</label>
                                                             <input
                                                                 type="text"
-                                                                value={shot.framing_motion}
+                                                                value={shot.framing_motion || ""}
                                                                 onChange={(e) => updateStageShot(idx, "framing_motion", e.target.value)}
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-cyan-500 text-[11px]"
                                                             />
@@ -2643,7 +2643,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">5. Audio Soundscape</label>
                                                             <input
                                                                 type="text"
-                                                                value={shot.audio}
+                                                                value={shot.audio || ""}
                                                                 onChange={(e) => updateStageShot(idx, "audio", e.target.value)}
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-[11px]"
                                                             />
