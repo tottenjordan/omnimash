@@ -2135,7 +2135,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     </label>
                                                     <button
                                                         type="button"
-                                                        onClick={addCharacter}
+                                                        onClick={addCharacterRole}
                                                         className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-2.5 py-1 rounded-lg transition"
                                                     >
                                                         + Add Character Role
