@@ -254,3 +254,48 @@ def test_api_list_sessions():
     data = res.json()
     assert "sessions" in data
     assert "parody_session_1" in data["sessions"]
+
+
+def test_api_storyboard_expand_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/storyboard/expand",
+        json={
+            "concept": "Severus Snape in a 90s East Coast boom-bap rap video",
+            "style_tone": "Gritty 90s Rap Video",
+            "target_duration": 30.0,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "shots" in data
+    assert len(data["shots"]) == 3
+    shot = data["shots"][0]
+    assert "shot_index" in shot
+    assert "duration_seconds" in shot
+    assert "action" in shot
+    assert "location" in shot
+    assert "style_lighting" in shot
+    assert "framing_motion" in shot
+    assert "audio" in shot
+    assert shot["shot_index"] == 1
+
+
+def test_api_save_final_with_master_audio():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/save-final",
+        json={
+            "session_name": "master_audio_session",
+            "video_url": "/static/rendered/mock.mp4",
+            "master_title": "master_with_audio_track",
+            "master_audio_url": "gs://my_bucket/audio_stem.mp3",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "master_with_audio_track.mp4" in data["gcs_uri"]
+

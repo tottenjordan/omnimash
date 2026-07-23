@@ -8,6 +8,7 @@ from google.adk.agents import Agent
 from omnimash.engine.omni_client import OmniFlashClient
 from omnimash.ingestion.media_extractor import MediaExtractor
 from omnimash.prompts.compiler import CharacterRole, MetaPromptTags, SceneDirective
+from omnimash.prompts.storyboard_agent import StoryboardAgent, StoryboardShot
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
 from omnimash.security.guardrail import ModelArmorGuardrail
 from omnimash.state.session_manager import SessionManager
@@ -38,9 +39,119 @@ class OmniMashAgent:
         self.media_extractor = MediaExtractor(mock_mode=mock_mode)
         self.storage = GcsStorageManager(mock_mode=mock_mode)
         self.stitcher = VideoStitcher(mock_mode=mock_mode)
+        self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         return self.taxonomy.deconstruct_concept(concept)
+
+    def expand_storyboard(
+        self,
+        concept: str,
+        style_tone: str = "Cinematic Trap Parody",
+        target_duration: float = 30.0,
+    ) -> list[StoryboardShot]:
+        return self.storyboard_agent.expand_vision(
+            concept, style_tone=style_tone, target_duration=target_duration
+        )
+
+    def validate_conversational_edit(self, edit_prompt: str) -> tuple[bool, str]:
+        """Validates that a conversational edit prompt contains only a single change.
+
+        Enforces Google's Golden Rule for Gemini Omni Flash edits: One change per turn.
+        """
+        rejection_msg = (
+            "Gemini Omni Flash performs best with one edit per turn to maintain scene coherence. "
+            "Please split your request into single edits (e.g. first change the outfit, then adjust camera angle)."
+        )
+
+        if not edit_prompt or not edit_prompt.strip():
+            return True, ""
+
+        prompt_clean = edit_prompt.strip().lower()
+
+        # Check for sequential/compound connectors
+        connectors = [
+            r"\bthen\b",
+            r"\balso\b",
+            r"\badditionally\b",
+            r"\bplus\b",
+            r"\bas well as\b",
+            r"\balong with\b",
+            r"\band also\b",
+            r"\bafter that\b",
+        ]
+        for conn in connectors:
+            if re.search(conn, prompt_clean):
+                return False, rejection_msg
+
+        # Match edit action verbs
+        action_verbs = [
+            "add",
+            "adding",
+            "change",
+            "changing",
+            "switch",
+            "switching",
+            "replace",
+            "replacing",
+            "remove",
+            "removing",
+            "make",
+            "making",
+            "adjust",
+            "adjusting",
+            "swap",
+            "swapping",
+            "turn",
+            "turning",
+            "alter",
+            "altering",
+            "modify",
+            "modifying",
+            "set",
+            "setting",
+            "zoom",
+            "zooming",
+            "pan",
+            "panning",
+            "rotate",
+            "rotating",
+            "shift",
+            "shifting",
+            "transform",
+            "transforming",
+            "update",
+            "updating",
+        ]
+        verb_pattern = r"\b(" + "|".join(action_verbs) + r")\b"
+        matched_verbs = re.findall(verb_pattern, prompt_clean)
+
+        if len(matched_verbs) >= 2:
+            return False, rejection_msg
+
+        # Check for comma or semicolon separated clauses/actions
+        comma_parts = [p.strip() for p in re.split(r"[,;]", prompt_clean) if p.strip()]
+        if len(comma_parts) >= 2:
+            if len(comma_parts) >= 3:
+                return False, rejection_msg
+            p2 = comma_parts[1]
+            if (
+                re.search(verb_pattern, p2)
+                or re.search(r"\bto\b", p2)
+                or re.search(r"\binto\b", p2)
+                or p2.startswith("and ")
+            ):
+                return False, rejection_msg
+
+        # Check for "and" joining two distinct edit clauses
+        and_parts = [p.strip() for p in re.split(r"\band\b", prompt_clean) if p.strip()]
+        if len(and_parts) >= 2:
+            if re.search(r"\bto\b", and_parts[0]) and re.search(r"\bto\b", and_parts[1]):
+                return False, rejection_msg
+            if len(and_parts) >= 3:
+                return False, rejection_msg
+
+        return True, ""
 
     def process_user_turn(
         self,
@@ -132,6 +243,15 @@ class OmniMashAgent:
 
         turn_index = len(session.turns)
         if parent_turn_id and parent_turn_id in session.turns:
+            is_valid, edit_err = self.validate_conversational_edit(
+                guard_res.sanitized_prompt
+            )
+            if not is_valid:
+                return AgentTurnResponse(
+                    success=False,
+                    status_event="MULTI_CHANGE_REJECTED",
+                    error_message=edit_err,
+                )
             parent_turn = session.turns[parent_turn_id]
             delta_prompt = self.taxonomy.build_delta_prompt(
                 parent_turn.prompt,
@@ -351,6 +471,7 @@ class OmniMashAgent:
         session_name: str | None,
         master_title: str,
         raw_compiled_prompt: str | None = None,
+        master_audio_path: str | None = None,
     ) -> tuple[str, str]:
         session = self._get_session(session_name)
         clip_paths: list[str] = []
@@ -358,7 +479,9 @@ class OmniMashAgent:
             clip_paths = [t.video_url for t in session.turns.values() if t.video_url]
 
         stitched_path = self.stitcher.concatenate_clips(
-            clip_paths, session_id=session_name
+            clip_paths,
+            session_id=session_name,
+            master_audio_path=master_audio_path,
         )
         return self.storage.save_final_master(
             session_id=session_name,
@@ -374,6 +497,7 @@ class OmniMashAgent:
         master_title: str = "",
         session_name: str | None = None,
         raw_compiled_prompt: str | None = None,
+        master_audio_path: str | None = None,
     ) -> tuple[str, str]:
         s_id = session_id if session_id is not None else session_name
         session = self._get_session(s_id)
@@ -384,6 +508,7 @@ class OmniMashAgent:
                     session_name=s_id,
                     master_title=master_title,
                     raw_compiled_prompt=raw_compiled_prompt,
+                    master_audio_path=master_audio_path,
                 )
         return self.storage.save_final_master(
             session_id=s_id,
