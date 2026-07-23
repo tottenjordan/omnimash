@@ -431,8 +431,6 @@ UI_HTML = r"""<!DOCTYPE html>
                     } else if (data && data.shots && data.shots.length > 0) {
                         setStageShots(data.shots);
                         setActiveStage(2);
-                        // Automatically generate keyframe images for all expanded shots
-                        setTimeout(() => handleGenerateAllKeyframes(data.shots), 100);
                     }
                 } catch (err) {
                     console.error("Storyboard expansion failed:", err);
@@ -516,9 +514,13 @@ UI_HTML = r"""<!DOCTYPE html>
             };
 
             const updateStageShot = (idx, field, value) => {
-                const updated = [...stageShots];
-                updated[idx] = { ...updated[idx], [field]: value };
-                setStageShots(updated);
+                setStageShots((prevShots) => {
+                    const updated = [...prevShots];
+                    if (updated[idx]) {
+                        updated[idx] = { ...updated[idx], [field]: value };
+                    }
+                    return updated;
+                });
             };
 
             const addStageShot = () => {
