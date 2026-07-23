@@ -2162,12 +2162,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </div>
                                             </div>
 
-                                            {/* Character Roles & Reference Image URLs (Gemini Omni Image Roles) */}
+                                            {/* Character Roles & Character Vault (Gemini Omni Image Roles) */}
                                             <div className="pt-3 border-t border-gray-800 space-y-3">
                                                 <div className="flex items-center justify-between">
                                                     <label className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
                                                         <span>👥</span>
-                                                        <span>Character Roles &amp; Reference Image URLs (Gemini Omni Image Roles)</span>
+                                                        <span>Character Roles &amp; Character Vault (Gemini Omni Image Roles)</span>
                                                     </label>
                                                     <button
                                                         type="button"
@@ -2178,32 +2178,161 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     </button>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {/* 🏛️ Character Vault & Saved Library */}
+                                                <div className="bg-gray-950/80 border border-purple-900/50 rounded-xl p-3 space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                            <span>🏛️</span>
+                                                            <span>Character Vault Library</span>
+                                                        </label>
+                                                        <span className="text-[10px] text-gray-400 font-mono">
+                                                            {savedVaultCharacters.length} Preset(s) Available
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {savedVaultCharacters.map((c, vIdx) => {
+                                                            const chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
+                                                            return (
+                                                                <button
+                                                                    key={vIdx}
+                                                                    type="button"
+                                                                    onClick={() => handleLoadVaultCharacter(c)}
+                                                                    className="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 hover:border-purple-500 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                                                                    title={`Click to load ${c.name || c.role_id} into roster`}
+                                                                >
+                                                                    {c.reference_url && (
+                                                                        <img
+                                                                            src={getDisplayableRefUrl(c.reference_url)}
+                                                                            alt={c.name || "Preset"}
+                                                                            className="w-4 h-4 rounded-full object-cover border border-purple-400/50"
+                                                                        />
+                                                                    )}
+                                                                    <span>+</span>
+                                                                    <span>{chipText}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {savedVaultCharacters.length === 0 && (
+                                                            <span className="text-xs text-gray-500 italic py-0.5">
+                                                                No characters in vault yet. Save character roles below to build your library.
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     {characters.map((char, cIdx) => (
-                                                        <div key={cIdx} className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-2">
+                                                        <div key={cIdx} className="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-3">
                                                             <div className="flex items-center justify-between">
                                                                 <span className="text-xs font-bold font-mono bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800">
                                                                     {char.role_id}
                                                                 </span>
+                                                                <div className="flex items-center space-x-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleSaveCharacterToVault(char)}
+                                                                        className="bg-gray-900 hover:bg-purple-950 text-purple-300 hover:text-purple-200 border border-purple-900/60 hover:border-purple-700 text-xs px-2 py-0.5 rounded-lg transition flex items-center gap-1 font-medium"
+                                                                        title="Save character to vault library"
+                                                                    >
+                                                                        <span>💾</span>
+                                                                        <span>Save Vault</span>
+                                                                    </button>
+                                                                    {characters.length > 1 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => removeCharacter(cIdx)}
+                                                                            className="text-gray-500 hover:text-red-400 text-xs px-1.5 py-0.5 transition"
+                                                                            title="Remove Character Role"
+                                                                        >
+                                                                            🗑️
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div>
+                                                                <label className="block text-[11px] text-gray-400 mb-1">Character Name</label>
                                                                 <input
                                                                     type="text"
                                                                     value={char.name}
                                                                     onChange={(e) => updateCharacter(cIdx, "name", e.target.value)}
-                                                                    placeholder="Character Name..."
-                                                                    className="bg-gray-900 border border-gray-800 rounded px-2 py-1 text-xs text-white font-bold focus:outline-none focus:border-purple-500"
+                                                                    placeholder="e.g. Harry"
+                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-medium"
                                                                 />
                                                             </div>
+
                                                             <div>
-                                                                <label className="block text-[10px] text-gray-400 mb-0.5">🖼️ Reference Image URL (Gemini Omni Image Role)</label>
+                                                                <label className="block text-[11px] text-gray-400 mb-1">Visual Likeness &amp; Description</label>
+                                                                <textarea
+                                                                    rows={2}
+                                                                    value={char.description}
+                                                                    onChange={(e) => updateCharacter(cIdx, "description", e.target.value)}
+                                                                    placeholder="Visual description for prompt compiler..."
+                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                />
+                                                            </div>
+
+                                                            {/* Character Style Signifiers (Aesthetic Tags) */}
+                                                            <div>
+                                                                <label className="block text-[11px] font-bold text-pink-400 uppercase tracking-wider mb-1">
+                                                                    🎨 Character Style Signifiers (Aesthetic Tags)
+                                                                </label>
+                                                                <div className="flex flex-wrap gap-1.5 mb-2">
+                                                                    {(char.aesthetic_tags || []).map((tag, tIdx) => (
+                                                                        <span
+                                                                            key={tIdx}
+                                                                            className="bg-purple-950/70 border border-purple-800/80 text-purple-200 text-xs px-2 py-0.5 rounded-lg flex items-center gap-1.5"
+                                                                        >
+                                                                            <span>{tag}</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => removeCharAestheticTag(cIdx, tag)}
+                                                                                className="text-purple-400 hover:text-white font-bold text-xs"
+                                                                                title="Remove Style Tag"
+                                                                            >
+                                                                                ×
+                                                                            </button>
+                                                                        </span>
+                                                                    ))}
+                                                                    {(!char.aesthetic_tags || char.aesthetic_tags.length === 0) && (
+                                                                        <span className="text-[10px] text-gray-500 italic">No specific character style tags</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex gap-1.5">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={charTagInputs[cIdx] || ""}
+                                                                        onChange={(e) => setCharTagInputs({ ...charTagInputs, [cIdx]: e.target.value })}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === "Enter") {
+                                                                                e.preventDefault();
+                                                                                addCharAestheticTag(cIdx);
+                                                                            }
+                                                                        }}
+                                                                        placeholder="e.g. Red Gucci Tracksuit..."
+                                                                        className="flex-1 bg-gray-900 border border-gray-800 rounded-lg p-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => addCharAestheticTag(cIdx)}
+                                                                        className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs px-2.5 py-1.5 rounded-lg shadow transition"
+                                                                    >
+                                                                        + Add Style
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            <div>
+                                                                <label className="block text-[11px] text-gray-400 mb-1">🖼️ Reference Image URL (Gemini Omni Image Role)</label>
                                                                 <input
                                                                     type="text"
                                                                     value={char.reference_url || ""}
                                                                     onChange={(e) => updateCharacter(cIdx, "reference_url", e.target.value)}
                                                                     placeholder="https://example.com/character.jpg"
-                                                                    className="w-full bg-gray-900 border border-gray-800 rounded p-1.5 text-xs text-white font-mono"
+                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white font-mono"
                                                                 />
                                                                 {char.reference_url && (
-                                                                    <div className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded p-1.5 mt-1.5">
+                                                                    <div className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2 mt-2">
                                                                         <img
                                                                             src={getDisplayableRefUrl(char.reference_url)}
                                                                             alt={char.name || char.role_id}
