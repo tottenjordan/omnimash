@@ -49,9 +49,15 @@ class OmniMashAgent:
         concept: str,
         style_tone: str = "Cinematic Trap Parody",
         target_duration: float = 30.0,
+        characters: list[CharacterRole] | None = None,
+        screenplay_script: str = "",
     ) -> list[StoryboardShot]:
         return self.storyboard_agent.expand_vision(
-            concept, style_tone=style_tone, target_duration=target_duration
+            concept,
+            style_tone=style_tone,
+            target_duration=target_duration,
+            characters=characters,
+            screenplay_script=screenplay_script,
         )
 
     def validate_conversational_edit(self, edit_prompt: str) -> tuple[bool, str]:

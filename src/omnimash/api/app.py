@@ -8,6 +8,7 @@ from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
+from omnimash.prompts.compiler import CharacterRole
 
 
 class CharacterRoleModel(BaseModel):
@@ -126,10 +127,39 @@ class StoryboardExpandRequest(BaseModel):
     concept: str
     style_tone: str = "Cinematic Trap Parody"
     target_duration: float = 30.0
+    characters: list[CharacterRoleModel | dict] | None = None
+    screenplay_script: str = ""
 
 
 class StoryboardExpandResponse(BaseModel):
     shots: list[StoryboardShotModel]
+
+
+class KeyframeImageRequest(BaseModel):
+    shot_index: int = 1
+    action: str = ""
+    location: str = ""
+    style_lighting: str = ""
+    summary: str = ""
+
+
+class KeyframeImageResponse(BaseModel):
+    success: bool = True
+    keyframe_image_url: str
+
+
+class GenerateShotRequest(BaseModel):
+    session_name: str | None = "parody_session_1"
+    shot_index: int = 1
+    shot_directive: str = ""
+    characters: list[CharacterRoleModel | dict] | None = None
+
+
+class GenerateShotResponse(BaseModel):
+    success: bool = True
+    video_url: str | None = None
+    turn_id: str | None = None
+    status: str = "COMPLETED"
 
 
 class StitchClipsRequest(BaseModel):
@@ -338,6 +368,10 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stageTargetDuration, setStageTargetDuration] = useState(30.0);
             const [stageRefImage, setStageRefImage] = useState("");
             const [stageRefAudio, setStageRefAudio] = useState("");
+            const [screenplayScript, setScreenplayScript] = useState("");
+            const [keyframeLoadingMap, setKeyframeLoadingMap] = useState({});
+            const [shotGeneratingMap, setShotGeneratingMap] = useState({});
+            const [selectedShotIndex, setSelectedShotIndex] = useState(1);
             const [stageShots, setStageShots] = useState([
                 {
                     shot_index: 1,
@@ -386,7 +420,9 @@ UI_HTML = r"""<!DOCTYPE html>
                         body: JSON.stringify({
                             concept: concept || "Parody music video clash",
                             style_tone: stageStyleTone,
-                            target_duration: parseFloat(stageTargetDuration) || 30.0
+                            target_duration: parseFloat(stageTargetDuration) || 30.0,
+                            characters: characters,
+                            screenplay_script: screenplayScript
                         })
                     });
                     const data = await res.json();
@@ -395,12 +431,87 @@ UI_HTML = r"""<!DOCTYPE html>
                     } else if (data && data.shots && data.shots.length > 0) {
                         setStageShots(data.shots);
                         setActiveStage(2);
+                        // Automatically generate keyframe images for all expanded shots
+                        setTimeout(() => handleGenerateAllKeyframes(data.shots), 100);
                     }
                 } catch (err) {
                     console.error("Storyboard expansion failed:", err);
                     setLastError(err.message || String(err));
                 } finally {
                     setExpandLoading(false);
+                }
+            };
+
+            const handleGenerateKeyframeImage = async (idx, shot) => {
+                const shotIdx = shot.shot_index || (idx + 1);
+                setKeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: true }));
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/storyboard/keyframe-image", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            shot_index: shotIdx,
+                            action: shot.action || "",
+                            location: shot.location || "",
+                            style_lighting: shot.style_lighting || stageStyleTone,
+                            summary: shot.summary || ""
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.keyframe_image_url) {
+                        updateStageShot(idx, "keyframe_image_url", data.keyframe_image_url);
+                        return data.keyframe_image_url;
+                    } else if (data && data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    console.error("Keyframe image generation failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setKeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: false }));
+                }
+                return null;
+            };
+
+            const handleGenerateAllKeyframes = async (shotsToGenerate) => {
+                const list = shotsToGenerate || stageShots;
+                for (let i = 0; i < list.length; i++) {
+                    await handleGenerateKeyframeImage(i, list[i]);
+                }
+            };
+
+            const handleGenerateShotVideo = async (idx, shot) => {
+                const shotIdx = shot.shot_index || (idx + 1);
+                setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: true }));
+                setLastError(null);
+                try {
+                    const directive = `${shot.action || ""} | Location: ${shot.location || ""} | Style: ${shot.style_lighting || ""} | Motion: ${shot.framing_motion || ""} | Audio: ${shot.audio || ""}`;
+                    const res = await fetch("/api/generate-shot", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName,
+                            shot_index: shotIdx,
+                            shot_directive: directive,
+                            characters: characters
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.video_url) {
+                        updateStageShot(idx, "video_url", data.video_url);
+                        updateStageShot(idx, "turn_id", data.turn_id);
+                        setCurrentVideo(data.video_url);
+                        if (data.turn_id) setParentTurnId(data.turn_id);
+                    }
+                    if (data && data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    console.error("Generate shot video failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: false }));
                 }
             };
 
@@ -744,7 +855,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         user_id: "usr_studio",
                         project_id: "prj_director",
                         prompt: deltaPrompt || concept,
-                        clip_index: 0,
+                        clip_index: (selectedShotIndex - 1) >= 0 ? (selectedShotIndex - 1) : 0,
                         parent_turn_id: parentTurnId || null,
                         session_name: sessionName,
                         concept: concept,
@@ -784,6 +895,22 @@ UI_HTML = r"""<!DOCTYPE html>
                         setStatus(data.status);
                         setDeltaPrompt("");
                         setActiveAct(3);
+
+                        if (studioMode === "stages" || activeStage >= 2) {
+                            setStageShots((prevShots) => {
+                                const updated = [...prevShots];
+                                const targetIdx = prevShots.findIndex(s => (s.shot_index || (prevShots.indexOf(s) + 1)) === selectedShotIndex);
+                                if (targetIdx >= 0) {
+                                    updated[targetIdx] = {
+                                        ...updated[targetIdx],
+                                        video_url: data.video_url,
+                                        turn_id: data.turn_id
+                                    };
+                                }
+                                return updated;
+                            });
+                        }
+
                         if (data.status === "COMMIT_RECOMMENDED") {
                             setShowCommitModal(true);
                         }
@@ -2092,6 +2219,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                             />
 
                                             <div>
+                                                <label className="text-xs font-bold text-amber-300 block mb-1">
+                                                    📜 Screenplay Script with Timecodes (Optional)
+                                                </label>
+                                                <textarea
+                                                    rows={3}
+                                                    value={screenplayScript}
+                                                    onChange={(e) => setScreenplayScript(e.target.value)}
+                                                    placeholder={`[0-3s] Snape Dawg enters potion lab\n[3-6s] Flocka Weasley turns up 808 trap beat\n[6-10s] Both perform rap duel climax`}
+                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                                />
+                                            </div>
+
+                                            <div>
                                                 <label className="text-xs font-bold text-gray-300 block mb-2">Style &amp; Tone Preset Pills:</label>
                                                 <div className="flex flex-wrap gap-2">
                                                     {[
@@ -2375,13 +2515,24 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     Each shot card defines 5 structured directives: Action/Subject, Location, Style &amp; Lighting, Framing &amp; Motion, Audio.
                                                 </p>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={addStageShot}
-                                                className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition"
-                                            >
-                                                + Add Shot Card
-                                            </button>
+                                            <div className="flex items-center space-x-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleGenerateAllKeyframes()}
+                                                    className="bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5"
+                                                    title="Generate keyframe images for all shot cards concurrently"
+                                                >
+                                                    <span>🖼️</span>
+                                                    <span>Generate All Keyframes</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={addStageShot}
+                                                    className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition"
+                                                >
+                                                    + Add Shot Card
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -2391,20 +2542,58 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         <span className="text-xs font-extrabold text-amber-400 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-700">
                                                             Shot #{shot.shot_index || idx + 1} ({shot.duration_seconds || 10}s)
                                                         </span>
-                                                        {stageShots.length > 1 && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => removeStageShot(idx)}
-                                                                className="text-xs text-red-400 hover:text-red-300 font-bold px-2 py-0.5"
-                                                            >
-                                                                ✕ Remove
-                                                            </button>
+                                                        <div className="flex items-center space-x-2">
+                                                            {shot.video_url && (
+                                                                <span className="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded font-bold">
+                                                                    ✓ Video
+                                                                </span>
+                                                            )}
+                                                            {stageShots.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeStageShot(idx)}
+                                                                    className="text-xs text-red-400 hover:text-red-300 font-bold px-2 py-0.5"
+                                                                >
+                                                                    ✕ Remove
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 16:9 Large Keyframe Reference Image Container */}
+                                                    <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group">
+                                                        {shot.keyframe_image_url ? (
+                                                            <img
+                                                                src={getDisplayableRefUrl(shot.keyframe_image_url)}
+                                                                alt={`Keyframe Shot #${shot.shot_index || idx + 1}`}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <div className="p-4 text-center space-y-1 text-gray-500">
+                                                                <span className="text-2xl block">🖼️</span>
+                                                                <span className="text-xs italic block">No Keyframe Preview Image</span>
+                                                            </div>
                                                         )}
                                                     </div>
 
+                                                    {/* Keyframe Image Button */}
+                                                    <button
+                                                        type="button"
+                                                        disabled={keyframeLoadingMap[shot.shot_index || idx + 1]}
+                                                        onClick={() => handleGenerateKeyframeImage(idx, shot)}
+                                                        className="w-full bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 font-bold text-xs py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                                                    >
+                                                        <span>🖼️</span>
+                                                        <span>
+                                                            {keyframeLoadingMap[shot.shot_index || idx + 1]
+                                                                ? "Generating Keyframe..."
+                                                                : "🖼️ Keyframe Image (Gemini 3.1 Flash)"}
+                                                        </span>
+                                                    </button>
+
                                                     <div className="space-y-2.5 text-xs">
                                                         <div className="bg-amber-950/40 border border-amber-500/30 rounded-lg p-2">
-                                                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 block mb-1">⚡ Shot One-Line Summary</label>
+                                                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 block mb-1">⚡ Action Summary</label>
                                                             <input
                                                                 type="text"
                                                                 value={shot.summary || ""}
@@ -2460,13 +2649,26 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             />
                                                         </div>
                                                     </div>
+
+                                                    {/* Per-Shot Video Generation Control */}
+                                                    <button
+                                                        type="button"
+                                                        disabled={shotGeneratingMap[shot.shot_index || idx + 1]}
+                                                        onClick={() => handleGenerateShotVideo(idx, shot)}
+                                                        className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2 px-3 rounded-xl shadow transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                                    >
+                                                        <span>🎬</span>
+                                                        <span>
+                                                            {shotGeneratingMap[shot.shot_index || idx + 1]
+                                                                ? "Rendering Shot Video..."
+                                                                : `🎬 Generate Video for Shot #${shot.shot_index || idx + 1}`}
+                                                        </span>
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>
 
-                                        <div className="pt-3 flex justify-end">
-                                            <button
-                                                type="button"
+                                        <div className="pt-3 flex justify-end gap-3">
                                             <button
                                                 type="button"
                                                 disabled={loading}
@@ -2517,36 +2719,87 @@ UI_HTML = r"""<!DOCTYPE html>
                                             )}
                                         </div>
 
+                                        {/* Shot Selector Tabs / Dropdown */}
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-bold text-pink-300 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>🎯</span>
+                                                    <span>Select Shot Card to Inspect &amp; Diff</span>
+                                                </label>
+                                                <select
+                                                    value={selectedShotIndex}
+                                                    onChange={(e) => setSelectedShotIndex(parseInt(e.target.value))}
+                                                    className="bg-gray-950 border border-gray-700 rounded text-xs font-mono px-3 py-1.5 text-pink-300 focus:outline-none focus:border-pink-500"
+                                                >
+                                                    {stageShots.map((s, i) => {
+                                                        const sIdx = s.shot_index || (i + 1);
+                                                        return (
+                                                            <option key={sIdx} value={sIdx}>
+                                                                Shot #{sIdx} {s.summary ? `— ${s.summary}` : ""} {s.video_url ? "(✓ Video)" : ""}
+                                                            </option>
+                                                        );
+                                                    })}
+                                                </select>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-800">
+                                                {stageShots.map((s, i) => {
+                                                    const sIdx = s.shot_index || (i + 1);
+                                                    const isSelected = selectedShotIndex === sIdx;
+                                                    return (
+                                                        <button
+                                                            key={sIdx}
+                                                            type="button"
+                                                            onClick={() => setSelectedShotIndex(sIdx)}
+                                                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? "bg-pink-600 text-white shadow-md shadow-pink-900/50 border border-pink-400"
+                                                                    : "bg-gray-950 text-gray-300 hover:bg-gray-800 border border-gray-800"
+                                                            }`}
+                                                        >
+                                                            <span>Shot #{sIdx}</span>
+                                                            {s.video_url && <span className="text-[10px] text-green-400 font-extrabold">✓</span>}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-bold text-purple-300">Active Clip (Current Turn)</span>
+                                                    <span className="text-xs font-bold text-purple-300">Active Clip (Shot #{selectedShotIndex})</span>
                                                     <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${parentTurnId ? "bg-green-950 text-green-400 border-green-800" : "bg-amber-950 text-amber-300 border-amber-800"}`}>
                                                         {parentTurnId ? "LIVE" : "READY TO GENERATE"}
                                                     </span>
                                                 </div>
-                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group">
-                                                    {parentTurnId ? (
-                                                        <video src={getDisplayableRefUrl(currentVideo)} controls className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="p-6 text-center space-y-3">
-                                                            <span className="text-4xl block animate-bounce">🎬</span>
-                                                            <div className="text-xs text-gray-300 font-bold">No initial clip generated yet for this session.</div>
-                                                            <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
-                                                                Click below to compile your Stage 1 vision and Stage 2 Shot #1 directive with Gemini Omni Flash!
-                                                            </p>
-                                                            <button
-                                                                type="button"
-                                                                disabled={loading}
-                                                                onClick={handleGenerate}
-                                                                className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg inline-flex items-center gap-2 transition disabled:opacity-50"
-                                                            >
-                                                                <span>⚡</span>
-                                                                <span>{loading ? "Generating Initial Video..." : "Generate Initial Video Clip Now"}</span>
-                                                            </button>
+                                                {(() => {
+                                                    const currentShot = stageShots.find(s => (s.shot_index || (stageShots.indexOf(s) + 1)) === selectedShotIndex) || stageShots[0];
+                                                    const shotVideo = currentShot?.video_url || currentVideo;
+                                                    return (
+                                                        <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group">
+                                                            {shotVideo ? (
+                                                                <video src={getDisplayableRefUrl(shotVideo)} controls className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="p-6 text-center space-y-3">
+                                                                    <span className="text-4xl block animate-bounce">🎬</span>
+                                                                    <div className="text-xs text-gray-300 font-bold">No clip generated yet for Shot #{selectedShotIndex}.</div>
+                                                                    <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
+                                                                        Click below or generate video on Shot #{selectedShotIndex}'s card in Stage 2!
+                                                                    </p>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={loading}
+                                                                        onClick={handleGenerate}
+                                                                        className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg inline-flex items-center gap-2 transition disabled:opacity-50"
+                                                                    >
+                                                                        <span>⚡</span>
+                                                                        <span>{loading ? "Generating Initial Video..." : `Generate Video for Shot #${selectedShotIndex}`}</span>
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                </div>
+                                                    );
+                                                })()}
                                             </div>
 
                                             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl space-y-3">
@@ -3075,10 +3328,52 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/storyboard/expand", response_model=StoryboardExpandResponse)
     def expand_storyboard(req: StoryboardExpandRequest) -> StoryboardExpandResponse:
-        shots = agent.expand_storyboard(
+        char_objs: list[CharacterRole] = []
+        if req.characters:
+            for c in req.characters:
+                if isinstance(c, CharacterRole):
+                    char_objs.append(c)
+                elif isinstance(c, CharacterRoleModel):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.role_id,
+                            name=c.name,
+                            description=c.description,
+                            reference_url=c.reference_url,
+                            aesthetic_tags=c.aesthetic_tags,
+                            voice_style=c.voice_style,
+                        )
+                    )
+                elif isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", ""),
+                            name=c.get("name", ""),
+                            description=c.get("description", ""),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=c.get("aesthetic_tags", []),
+                            voice_style=c.get("voice_style", ""),
+                        )
+                    )
+                elif hasattr(c, "model_dump"):
+                    cd = c.model_dump()
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=cd.get("role_id", ""),
+                            name=cd.get("name", ""),
+                            description=cd.get("description", ""),
+                            reference_url=cd.get("reference_url"),
+                            aesthetic_tags=cd.get("aesthetic_tags", []),
+                            voice_style=cd.get("voice_style", ""),
+                        )
+                    )
+
+        shots = agent.storyboard_agent.expand_vision(
             concept=req.concept,
             style_tone=req.style_tone,
             target_duration=req.target_duration,
+            characters=char_objs if char_objs else None,
+            screenplay_script=req.screenplay_script,
         )
         return StoryboardExpandResponse(
             shots=[
@@ -3090,9 +3385,44 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     style_lighting=s.style_lighting,
                     framing_motion=s.framing_motion,
                     audio=s.audio,
+                    summary=s.summary,
                 )
                 for s in shots
             ]
+        )
+
+    @app.post(
+        "/api/storyboard/keyframe-image", response_model=KeyframeImageResponse
+    )
+    def generate_keyframe_image(
+        req: KeyframeImageRequest,
+    ) -> KeyframeImageResponse:
+        prompt_parts = [p for p in [req.action, req.location] if p]
+        prompt = (
+            ", ".join(prompt_parts)
+            if prompt_parts
+            else (req.summary or f"Shot {req.shot_index}")
+        )
+        image_url = agent.omni_client.generate_keyframe_image(
+            prompt, style_tone=req.style_lighting
+        )
+        return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
+
+    @app.post("/api/generate-shot", response_model=GenerateShotResponse)
+    def generate_shot(req: GenerateShotRequest) -> GenerateShotResponse:
+        agent_turn = agent.process_user_turn(
+            user_id="usr_default",
+            project_id="prj_default",
+            prompt=req.shot_directive,
+            clip_index=req.shot_index,
+            session_name=req.session_name,
+            characters=req.characters,
+        )
+        return GenerateShotResponse(
+            success=agent_turn.success,
+            video_url=agent_turn.video_url,
+            turn_id=agent_turn.turn_id,
+            status=agent_turn.status_event,
         )
 
     @app.post("/api/stitch-clips", response_model=SaveFinalResponse)

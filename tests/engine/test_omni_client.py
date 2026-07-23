@@ -756,3 +756,79 @@ def test_abstract_prompt_handles_parody_names() -> None:
     assert "a towering friendly gamekeeper in a fur coat" in res
     assert "an elderly shopkeeper wandmaker wizard" in res
     assert "an elderly iced-out shopkeeper wandmaker wizard" in res
+
+
+def test_generate_keyframe_image_mock_mode() -> None:
+    """Verify generate_keyframe_image returns a valid SVG data URI in mock mode."""
+    client = OmniFlashClient(mock_mode=True)
+    uri = client.generate_keyframe_image(
+        prompt="A dramatic wizard duel at dusk", style_tone="cinematic"
+    )
+    assert uri.startswith("data:image/svg+xml;utf8,")
+    assert "dramatic" in uri or "Keyframe" in uri
+    assert "cinematic" in uri
+
+
+def test_generate_keyframe_image_verifies_global_location(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify generate_keyframe_image uses location='global' when creating GenAI client."""
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj-keyframe")
+    monkeypatch.setenv("GEMINI_LOCATION", "us-central1")
+
+    created_clients: list[MagicMock] = []
+
+    def mock_client_factory(**kwargs: Any) -> Any:
+        mock = MagicMock()
+        mock.init_kwargs = kwargs
+
+        fake_img = MagicMock()
+        fake_img.image.image_bytes = b"fake_png_bytes"
+        fake_resp = MagicMock()
+        fake_resp.generated_images = [fake_img]
+        mock.models.generate_images.return_value = fake_resp
+        created_clients.append(mock)
+        return mock
+
+    with patch("google.genai.Client", side_effect=mock_client_factory):
+        client = OmniFlashClient(mock_mode=False)
+        created_clients.clear()
+
+        uri = client.generate_keyframe_image(
+            prompt="Cyberpunk street keyframe", style_tone="neon"
+        )
+
+        assert len(created_clients) == 1
+        client_init = created_clients[0].init_kwargs
+        assert client_init.get("vertexai") is True
+        assert client_init.get("project") == "test-proj-keyframe"
+        assert client_init.get("location") == "global"
+
+        created_clients[0].models.generate_images.assert_called_once()
+        gen_kwargs = created_clients[0].models.generate_images.call_args.kwargs
+        assert gen_kwargs.get("model") == "gemini-3.1-flash-image"
+        assert "Cyberpunk street keyframe" in gen_kwargs.get("prompt", "")
+        assert "neon" in gen_kwargs.get("prompt", "")
+        assert uri is not None
+
+
+def test_generate_keyframe_image_fallback_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify generate_keyframe_image falls back to SVG data URI when client call fails."""
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj-fail")
+
+    def mock_client_factory(**kwargs: Any) -> Any:
+        mock = MagicMock()
+        mock.models.generate_images.side_effect = RuntimeError("Generation failed")
+        mock.models.generate_content.side_effect = RuntimeError("Generation failed")
+        return mock
+
+    with patch("google.genai.Client", side_effect=mock_client_factory):
+        client = OmniFlashClient(mock_mode=False)
+        uri = client.generate_keyframe_image("Failing prompt", style_tone="dark")
+        assert uri.startswith("data:image/svg+xml;utf8,")
+        import urllib.parse
+        assert "Failing prompt" in urllib.parse.unquote(uri)
+
+

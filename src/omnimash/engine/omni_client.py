@@ -5,6 +5,7 @@ import os
 import struct
 import subprocess
 from typing import Any
+import urllib.parse
 import uuid
 import wave
 from dataclasses import dataclass
@@ -1020,3 +1021,104 @@ class OmniFlashClient:
             error_message=error_message if not success else None,
             generation_mode=generation_mode,
         )
+
+    def generate_keyframe_image(self, prompt: str, style_tone: str = "") -> str:
+        """Generates a visual keyframe image using Gemini 3.1 Flash Image with Vertex AI global location.
+
+        Falls back to an SVG data URI or mock image URL when in mock_mode or on client failure.
+        """
+        full_prompt = f"{prompt}, style: {style_tone}" if style_tone else prompt
+
+        def _get_mock_keyframe() -> str:
+            clean_prompt = (
+                prompt.replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+            )
+            clean_style = (
+                style_tone.replace('"', "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+            style_text = f" (Style: {clean_style})" if clean_style else ""
+            svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720">'
+                '<rect width="100%" height="100%" fill="#1a1a24"/>'
+                f'<text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" fill="#00f0ff" font-size="28" font-family="sans-serif">Keyframe: {clean_prompt[:60]}</text>'
+                f'<text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" fill="#94a3b8" font-size="20" font-family="sans-serif">{style_text}</text>'
+                "</svg>"
+            )
+            return f"data:image/svg+xml;utf8,{urllib.parse.quote(svg)}"
+
+        if self.mock_mode or not genai:
+            return _get_mock_keyframe()
+
+        try:
+            vertex_image_client = genai.Client(
+                vertexai=True,
+                project=self.project,
+                location="global",
+            )
+
+            try:
+                response = vertex_image_client.models.generate_images(
+                    model="gemini-3.1-flash-image",
+                    prompt=full_prompt,
+                )
+                if (
+                    response
+                    and hasattr(response, "generated_images")
+                    and response.generated_images
+                ):
+                    img = response.generated_images[0]
+                    img_bytes = getattr(
+                        getattr(img, "image", None), "image_bytes", None
+                    )
+                    if img_bytes:
+                        blob_name = f"keyframes/keyframe_{uuid.uuid4().hex[:8]}.png"
+                        return self.storage.upload_bytes(
+                            img_bytes, blob_name, content_type="image/png"
+                        )
+            except Exception as e:
+                logger.warning(
+                    "generate_images failed for keyframe: %s. Trying generate_content.",
+                    e,
+                )
+                try:
+                    response = vertex_image_client.models.generate_content(
+                        model="gemini-3.1-flash-image",
+                        contents=full_prompt,
+                    )
+                    if (
+                        response
+                        and hasattr(response, "candidates")
+                        and response.candidates
+                    ):
+                        for candidate in response.candidates:
+                            content = getattr(candidate, "content", None)
+                            parts = getattr(content, "parts", []) if content else []
+                            for part in parts:
+                                inline_data = getattr(part, "inline_data", None)
+                                if inline_data and getattr(inline_data, "data", None):
+                                    data = inline_data.data
+                                    img_bytes = (
+                                        base64.b64decode(data)
+                                        if isinstance(data, str)
+                                        else data
+                                    )
+                                    blob_name = (
+                                        f"keyframes/keyframe_{uuid.uuid4().hex[:8]}.png"
+                                    )
+                                    return self.storage.upload_bytes(
+                                        img_bytes, blob_name, content_type="image/png"
+                                    )
+                except Exception as inner_e:
+                    logger.warning(
+                        "generate_content failed for keyframe: %s", inner_e
+                    )
+
+            return _get_mock_keyframe()
+        except Exception as exc:
+            logger.warning(
+                "Failed to generate keyframe image via GenAI client: %s", exc
+            )
+            return _get_mock_keyframe()
+
