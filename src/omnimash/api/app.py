@@ -121,6 +121,8 @@ class StoryboardShotModel(BaseModel):
     framing_motion: str
     audio: str
     summary: str = ""
+    keyframe_image_url: str = ""
+    video_url: str = ""
 
 
 class StoryboardExpandRequest(BaseModel):
@@ -3388,6 +3390,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     framing_motion=s.framing_motion,
                     audio=s.audio,
                     summary=s.summary,
+                    keyframe_image_url=getattr(s, "keyframe_image_url", ""),
+                    video_url=getattr(s, "video_url", ""),
                 )
                 for s in shots
             ]
