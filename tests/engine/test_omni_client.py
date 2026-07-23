@@ -759,20 +759,22 @@ def test_abstract_prompt_handles_parody_names() -> None:
 
 
 def test_generate_keyframe_image_mock_mode() -> None:
-    """Verify generate_keyframe_image returns a valid SVG data URI in mock mode."""
+    """Verify generate_keyframe_image returns a valid base64 SVG data URI in mock mode."""
     client = OmniFlashClient(mock_mode=True)
     uri = client.generate_keyframe_image(
         prompt="A dramatic wizard duel at dusk", style_tone="cinematic"
     )
-    assert uri.startswith("data:image/svg+xml;utf8,")
-    assert "dramatic" in uri or "Keyframe" in uri
-    assert "cinematic" in uri
+    assert uri.startswith("data:image/svg+xml;base64,")
+    import base64
+    decoded = base64.b64decode(uri.split("base64,")[1]).decode("utf-8")
+    assert "KEYFRAME PREVIEW DIRECTIVE" in decoded
+    assert "dramatic wizard duel" in decoded
 
 
-def test_generate_keyframe_image_verifies_global_location(
+def test_generate_keyframe_image_verifies_gemini_flash_location(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify generate_keyframe_image uses location='global' when creating GenAI client."""
+    """Verify generate_keyframe_image uses Gemini 2.5 Flash when creating GenAI client."""
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj-keyframe")
     monkeypatch.setenv("GEMINI_LOCATION", "us-central1")
 
@@ -781,12 +783,9 @@ def test_generate_keyframe_image_verifies_global_location(
     def mock_client_factory(**kwargs: Any) -> Any:
         mock = MagicMock()
         mock.init_kwargs = kwargs
-
-        fake_img = MagicMock()
-        fake_img.image.image_bytes = b"fake_png_bytes"
         fake_resp = MagicMock()
-        fake_resp.generated_images = [fake_img]
-        mock.models.generate_images.return_value = fake_resp
+        fake_resp.candidates = []
+        mock.models.generate_content.return_value = fake_resp
         created_clients.append(mock)
         return mock
 
@@ -802,33 +801,31 @@ def test_generate_keyframe_image_verifies_global_location(
         client_init = created_clients[0].init_kwargs
         assert client_init.get("vertexai") is True
         assert client_init.get("project") == "test-proj-keyframe"
-        assert client_init.get("location") == "global"
 
-        created_clients[0].models.generate_images.assert_called_once()
-        gen_kwargs = created_clients[0].models.generate_images.call_args.kwargs
-        assert gen_kwargs.get("model") == "gemini-3.1-flash-image"
-        assert "Cyberpunk street keyframe" in gen_kwargs.get("prompt", "")
-        assert "neon" in gen_kwargs.get("prompt", "")
+        created_clients[0].models.generate_content.assert_called_once()
+        gen_kwargs = created_clients[0].models.generate_content.call_args.kwargs
+        assert gen_kwargs.get("model") == "gemini-2.5-flash"
+        assert "Cyberpunk street keyframe" in gen_kwargs.get("contents", "")
         assert uri is not None
 
 
 def test_generate_keyframe_image_fallback_on_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify generate_keyframe_image falls back to SVG data URI when client call fails."""
+    """Verify generate_keyframe_image falls back to base64 SVG data URI when client call fails."""
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj-fail")
 
     def mock_client_factory(**kwargs: Any) -> Any:
         mock = MagicMock()
-        mock.models.generate_images.side_effect = RuntimeError("Generation failed")
         mock.models.generate_content.side_effect = RuntimeError("Generation failed")
         return mock
 
     with patch("google.genai.Client", side_effect=mock_client_factory):
         client = OmniFlashClient(mock_mode=False)
         uri = client.generate_keyframe_image("Failing prompt", style_tone="dark")
-        assert uri.startswith("data:image/svg+xml;utf8,")
-        import urllib.parse
-        assert "Failing prompt" in urllib.parse.unquote(uri)
+        assert uri.startswith("data:image/svg+xml;base64,")
+        import base64
+        decoded = base64.b64decode(uri.split("base64,")[1]).decode("utf-8")
+        assert "Failing prompt" in decoded
 
 
