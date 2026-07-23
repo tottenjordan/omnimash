@@ -2467,11 +2467,25 @@ UI_HTML = r"""<!DOCTYPE html>
                                         <div className="pt-3 flex justify-end">
                                             <button
                                                 type="button"
+                                            <button
+                                                type="button"
+                                                disabled={loading}
+                                                onClick={async (e) => {
+                                                    setActiveStage(3);
+                                                    await handleGenerate(e);
+                                                }}
+                                                className="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
+                                            >
+                                                <span>🎬</span>
+                                                <span>{loading ? "Generating Initial Video..." : "Generate Initial Video Clip & Proceed to Stage 3 ➔"}</span>
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={() => setActiveStage(3)}
-                                                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2"
+                                                className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 font-bold text-xs py-3 px-4 rounded-xl transition flex items-center gap-2"
                                             >
                                                 <span>📽️</span>
-                                                <span>Proceed to Stage 3: The Dailies &amp; Diff ➔</span>
+                                                <span>View Stage 3 Dailies ➔</span>
                                             </button>
                                         </div>
                                     </div>
@@ -2480,24 +2494,58 @@ UI_HTML = r"""<!DOCTYPE html>
                                 {/* STAGE 3: THE DAILIES & CONVERSATIONAL DIFF */}
                                 {activeStage === 3 && (
                                     <div className="space-y-6">
-                                        <div className="bg-gradient-to-r from-pink-950/40 via-purple-950/40 to-indigo-950/40 border border-pink-800/50 rounded-2xl p-5 shadow-xl">
-                                            <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
-                                                <span>📽️</span>
-                                                <span>Stage 3: The Dailies &amp; Single-Change Conversational Diff</span>
-                                            </h2>
-                                            <p className="text-xs text-gray-400 mt-1">
-                                                Review generated clip iterations side-by-side. Perform single-change conversational diffs adhering to the Gemini Omni Flash golden rule.
-                                            </p>
+                                        <div className="bg-gradient-to-r from-pink-950/40 via-purple-950/40 to-indigo-950/40 border border-pink-800/50 rounded-2xl p-5 shadow-xl flex items-center justify-between">
+                                            <div>
+                                                <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
+                                                    <span>📽️</span>
+                                                    <span>Stage 3: The Dailies &amp; Single-Change Conversational Diff</span>
+                                                </h2>
+                                                <p className="text-xs text-gray-400 mt-1">
+                                                    Review generated clip iterations side-by-side. Perform single-change conversational diffs adhering to the Gemini Omni Flash golden rule.
+                                                </p>
+                                            </div>
+                                            {!parentTurnId && (
+                                                <button
+                                                    type="button"
+                                                    disabled={loading}
+                                                    onClick={handleGenerate}
+                                                    className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
+                                                >
+                                                    <span>⚡</span>
+                                                    <span>{loading ? "Generating..." : "Generate Initial Video Clip"}</span>
+                                                </button>
+                                            )}
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl space-y-3">
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-xs font-bold text-purple-300">Active Clip (Current Turn)</span>
-                                                    <span className="text-[10px] bg-green-950 text-green-400 px-2 py-0.5 rounded border border-green-800">LIVE</span>
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${parentTurnId ? "bg-green-950 text-green-400 border-green-800" : "bg-amber-950 text-amber-300 border-amber-800"}`}>
+                                                        {parentTurnId ? "LIVE" : "READY TO GENERATE"}
+                                                    </span>
                                                 </div>
-                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center">
-                                                    <video src={getDisplayableRefUrl(currentVideo)} controls className="w-full h-full object-cover" />
+                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group">
+                                                    {parentTurnId ? (
+                                                        <video src={getDisplayableRefUrl(currentVideo)} controls className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="p-6 text-center space-y-3">
+                                                            <span className="text-4xl block animate-bounce">🎬</span>
+                                                            <div className="text-xs text-gray-300 font-bold">No initial clip generated yet for this session.</div>
+                                                            <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
+                                                                Click below to compile your Stage 1 vision and Stage 2 Shot #1 directive with Gemini Omni Flash!
+                                                            </p>
+                                                            <button
+                                                                type="button"
+                                                                disabled={loading}
+                                                                onClick={handleGenerate}
+                                                                className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg inline-flex items-center gap-2 transition disabled:opacity-50"
+                                                            >
+                                                                <span>⚡</span>
+                                                                <span>{loading ? "Generating Initial Video..." : "Generate Initial Video Clip Now"}</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
 
