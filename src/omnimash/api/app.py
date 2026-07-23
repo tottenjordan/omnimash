@@ -3416,10 +3416,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/generate-shot", response_model=GenerateShotResponse)
     def generate_shot(req: GenerateShotRequest) -> GenerateShotResponse:
+        sanitized_directive = sanitize_real_names(req.shot_directive)
         agent_turn = agent.process_user_turn(
             user_id="usr_default",
             project_id="prj_default",
-            prompt=req.shot_directive,
+            prompt=sanitized_directive,
             clip_index=req.shot_index,
             session_name=req.session_name,
             characters=req.characters,

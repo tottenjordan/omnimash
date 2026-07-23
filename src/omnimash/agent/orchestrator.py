@@ -324,6 +324,7 @@ class OmniMashAgent:
                 meta_prompt = self.taxonomy.compiler.optimize_prompt_for_omni_flash(
                     meta_prompt, use_llm=True
                 )
+            meta_prompt = sanitize_real_names(meta_prompt)
             raw_compiled_prompt = meta_prompt
             self.storage.save_session_prompt(
                 session.session_id, turn_index, meta_prompt
