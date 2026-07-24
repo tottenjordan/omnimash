@@ -1130,9 +1130,10 @@ class OmniFlashClient:
                                     else data
                                 )
                                 blob_name = f"keyframes/keyframe_{uuid.uuid4().hex[:8]}.png"
-                                gcs_uri = self.storage.upload_bytes(
+                                self.storage.upload_bytes(
                                     img_bytes, blob_name, content_type="image/png"
                                 )
+                                gcs_uri = self.storage.get_gcs_uri(blob_name)
                                 return f"/api/media-proxy?uri={quote(gcs_uri, safe='')}"
             except Exception as e:
                 logger.warning("gemini-3.1-flash-image generation failed for keyframe: %s", e)

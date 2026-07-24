@@ -3567,10 +3567,22 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.get("/api/media-proxy")
     def media_proxy(uri: str) -> Response:
-        if not uri or not uri.startswith("gs://"):
+        if not uri:
+            raise HTTPException(status_code=400, detail="Missing URI parameter")
+
+        if uri.startswith("https://storage.googleapis.com/"):
+            parts = uri.replace("https://storage.googleapis.com/", "").split("/", 1)
+            if len(parts) == 2:
+                uri = f"gs://{parts[0]}/{parts[1]}"
+        elif uri.startswith("https://storage.cloud.google.com/"):
+            parts = uri.replace("https://storage.cloud.google.com/", "").split("/", 1)
+            if len(parts) == 2:
+                uri = f"gs://{parts[0]}/{parts[1]}"
+
+        if not uri.startswith("gs://"):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid GCS URI. Must start with gs://",
+                detail="Invalid GCS URI. Must start with gs:// or https://storage.googleapis.com/",
             )
         data, content_type = agent.storage.download_blob_bytes(uri)
         if not data:
