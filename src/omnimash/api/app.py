@@ -362,7 +362,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stitchResultGcs, setStitchResultGcs] = useState(null);
 
             // Studio Mode Switcher State ("acts" | "stages")
-            const [studioMode, setStudioMode] = useState("acts");
+            const [studioMode, setStudioMode] = useState("stages");
 
             // 4-Stage Journey State (1: Vision, 2: Storyboard, 3: The Dailies, 4: The Final Cut)
             const [activeStage, setActiveStage] = useState(1);
