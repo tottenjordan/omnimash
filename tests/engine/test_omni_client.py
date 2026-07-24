@@ -638,7 +638,7 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
         "mime_type": "image/png",
     }
     assert input_arg[1]["type"] == "text"
-    assert "young wizard" in input_arg[1]["text"]
+    assert "Spectacled Wizard Student" in input_arg[1]["text"]
 
 
 def test_load_reference_images_logs_diagnostics(

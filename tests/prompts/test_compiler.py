@@ -142,12 +142,9 @@ def test_character_role_specific_aesthetic_tags():
         characters=chars,
         scenes=scenes,
     )
-    assert "[Style: Red Gucci Tracksuit, Cartier Glasses]" in prompt
-    assert (
-        "- Role A (Harry): Wizard with round glasses [Style: Red Gucci Tracksuit, Cartier Glasses]"
-        in prompt
-    )
-    assert "- [IMAGE 1]: Reference image for Role A (Harry)." in prompt
+    assert "Role A (Spectacled Wizard Student)" in prompt
+    assert "Red Designer Drip Rapper Tracksuit" in prompt
+    assert "- [IMAGE 1]: Reference image for Role A (Spectacled Wizard Student)." in prompt
 
 
 def test_compile_storyboard_with_audio_and_vocal_direction():
@@ -423,7 +420,7 @@ def test_compile_multi_role_prompt_with_clean_image_role_tags():
     )
 
     assert compiled.startswith("[IMAGE ROLES]\n")
-    assert "- [IMAGE 1]: Reference image for Role A (Harry)." in compiled
+    assert "- [IMAGE 1]: Reference image for Role A (Spectacled Wizard Student)." in compiled
     assert "- [IMAGE 2]: Reference image for Role B (Ollivander)." in compiled
     assert "[ROLE DEFINITIONS]" in compiled
     assert compiled.index("[IMAGE ROLES]") < compiled.index("[ROLE DEFINITIONS]")
@@ -470,7 +467,7 @@ def test_compile_multi_role_prompt_with_screenplay_text():
         '  Gothic Potion Master: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard!"'
         in prompt
     )
-    assert '  Harry: (Bopping head to 120 BPM beat.) "No!"' in prompt
+    assert '  Spectacled Wizard Student: (Bopping head to 120 BPM beat.) "No!"' in prompt
     assert "Scene 1 Audio Cues:" in prompt
 
 

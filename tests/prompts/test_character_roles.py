@@ -45,8 +45,8 @@ def test_compile_with_character_roles_and_scenes():
         audio_beat="140 BPM Heavy 808 Trap",
     )
     assert "[ROLE DEFINITIONS]" in compiled
-    assert "Role A (Harry)" in compiled
-    assert "Role B (Draco)" in compiled
+    assert "Role A (Spectacled Wizard Student)" in compiled
+    assert "Role B (Platinum Rival Wizard)" in compiled
     assert "[AESTHETIC INJECTION]" in compiled
     assert "2000s Atlanta Trap" in compiled
     assert "[STORYBOARD SEQUENCE]" in compiled
@@ -100,7 +100,7 @@ def test_compile_storyboard_minimal_args():
         scenes=scenes,
     )
     assert "[ROLE DEFINITIONS]" in compiled
-    assert "Role A (Harry)" in compiled
+    assert "Role A (Spectacled Wizard Student)" in compiled
     assert "[AESTHETIC INJECTION]" in compiled
     assert "[STORYBOARD SEQUENCE]" in compiled
     assert "Scene 1 [Role A]" in compiled

@@ -10,7 +10,7 @@ import wave
 from dataclasses import dataclass
 from urllib.parse import quote
 from omnimash.config import settings
-from omnimash.prompts.compiler import CharacterRole
+from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
 from omnimash.storage.gcs import GcsStorageManager
 
 logger = logging.getLogger("omnimash.engine")
@@ -733,7 +733,8 @@ class OmniFlashClient:
         delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
         last_error: str | None = None
 
-        safe_input = _abstract_prompt_for_responsible_ai(prompt)
+        sanitized_input = sanitize_real_names(prompt) if prompt else ""
+        safe_input = _abstract_prompt_for_responsible_ai(sanitized_input)
         logger.info(
             "Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input
         )
