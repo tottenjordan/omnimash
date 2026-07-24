@@ -516,12 +516,12 @@ class OmniFlashClient:
     def __init__(
         self,
         api_key: str | None = None,
-        mock_mode: bool = True,
+        mock_mode: bool | None = None,
         bucket_name: str | None = None,
         retry_delay: float | None = None,
     ):
         self.api_key = api_key
-        self.mock_mode = mock_mode
+        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         self.retry_delay = (
             retry_delay if retry_delay is not None else (0.0 if mock_mode else 0.5)
         )

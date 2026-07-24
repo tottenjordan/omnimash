@@ -13,7 +13,7 @@ class OmniMashSettings(BaseSettings):
     google_api_key: str | None = None
     gemini_api_key: str | None = None
     model_armor_template_id: str = "omnimash-safety-filter"
-    mock_mode: bool = True
+    mock_mode: bool = False
     port: int = 8080
     log_level: str = "INFO"
 

@@ -3,6 +3,7 @@ import urllib.parse
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from omnimash.config import settings
 from google.adk.agents import Agent
 
 from omnimash.engine.omni_client import OmniFlashClient
@@ -35,8 +36,8 @@ class AgentTurnResponse:
 
 
 class OmniMashAgent:
-    def __init__(self, mock_mode: bool = True):
-        self.mock_mode = mock_mode
+    def __init__(self, mock_mode: bool | None = None):
+        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         self.guardrail = ModelArmorGuardrail(mock_mode=mock_mode)
         self.session_manager = SessionManager()
         self.omni_client = OmniFlashClient(mock_mode=mock_mode)
@@ -570,9 +571,10 @@ class OmniMashAgent:
         )
 
 
-def build_adk_agent(mock_mode: bool = True) -> Agent:
+def build_adk_agent(mock_mode: bool | None = None) -> Agent:
     """Builds and returns the official Google ADK Agent instance for OmniMash."""
-    orchestrator = OmniMashAgent(mock_mode=mock_mode)
+    is_mock = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
+    orchestrator = OmniMashAgent(mock_mode=is_mock)
 
     def generate_parody_clip(
         user_id: str,
@@ -622,4 +624,4 @@ def build_adk_agent(mock_mode: bool = True) -> Agent:
     )
 
 
-root_agent = build_adk_agent(mock_mode=True)
+root_agent = build_adk_agent(mock_mode=getattr(settings, "mock_mode", False))
