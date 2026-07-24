@@ -2570,7 +2570,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <img
                                                                 src={getDisplayableRefUrl(shot.keyframe_image_url)}
                                                                 alt={`Keyframe Shot #${shot.shot_index || idx + 1}`}
-                                                                className="w-full h-full object-cover"
+                                                                className="w-full h-full object-contain bg-gray-950"
                                                             />
                                                         ) : (
                                                             <div className="p-4 text-center space-y-1 text-gray-500">

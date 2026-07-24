@@ -5,7 +5,6 @@ import os
 import struct
 import subprocess
 from typing import Any
-import urllib.parse
 import uuid
 import wave
 from dataclasses import dataclass
@@ -1040,7 +1039,7 @@ class OmniFlashClient:
             )
             style_text = f" (Style: {clean_style})" if clean_style else ""
             svg = (
-                '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">'
+                '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">'
                 '<rect width="100%" height="100%" fill="#111827"/>'
                 '<rect x="20" y="20" width="1240" height="680" fill="none" stroke="#a855f7" stroke-width="4" stroke-dasharray="12 6" rx="16"/>'
                 '<text x="50%" y="40%" dominant-baseline="middle" text-anchor="middle" fill="#38bdf8" font-size="32" font-weight="bold" font-family="sans-serif">🎬 KEYFRAME PREVIEW DIRECTIVE</text>'
