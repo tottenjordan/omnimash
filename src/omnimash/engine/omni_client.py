@@ -8,6 +8,7 @@ from typing import Any
 import uuid
 import wave
 from dataclasses import dataclass
+from urllib.parse import quote
 from omnimash.config import settings
 from omnimash.prompts.compiler import CharacterRole
 from omnimash.storage.gcs import GcsStorageManager
@@ -1108,17 +1109,33 @@ class OmniFlashClient:
             vertex_client = genai.Client(
                 vertexai=True,
                 project=self.project,
-                location=self.location,
+                location="global",
             )
             try:
                 response = vertex_client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=f"Generate a visual keyframe description and rendering directive for: {full_prompt}",
+                    model="gemini-3.1-flash-image",
+                    contents=f"High quality cinematic 16:9 visual keyframe concept art for: {full_prompt}",
                 )
-                if response and hasattr(response, "text") and response.text:
-                    pass
+                if response and hasattr(response, "candidates") and response.candidates:
+                    for candidate in response.candidates:
+                        content = getattr(candidate, "content", None)
+                        parts = getattr(content, "parts", []) if content else []
+                        for part in parts:
+                            inline_data = getattr(part, "inline_data", None)
+                            if inline_data and getattr(inline_data, "data", None):
+                                data = inline_data.data
+                                img_bytes = (
+                                    base64.b64decode(data)
+                                    if isinstance(data, str)
+                                    else data
+                                )
+                                blob_name = f"keyframes/keyframe_{uuid.uuid4().hex[:8]}.png"
+                                gcs_uri = self.storage.upload_bytes(
+                                    img_bytes, blob_name, content_type="image/png"
+                                )
+                                return f"/api/media-proxy?uri={quote(gcs_uri, safe='')}"
             except Exception as e:
-                logger.warning("gemini-2.5-flash content generation failed for keyframe: %s", e)
+                logger.warning("gemini-3.1-flash-image generation failed for keyframe: %s", e)
 
             return _get_mock_keyframe()
         except Exception as exc:

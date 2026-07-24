@@ -804,7 +804,7 @@ def test_generate_keyframe_image_verifies_gemini_flash_location(
 
         created_clients[0].models.generate_content.assert_called_once()
         gen_kwargs = created_clients[0].models.generate_content.call_args.kwargs
-        assert gen_kwargs.get("model") == "gemini-2.5-flash"
+        assert gen_kwargs.get("model") == "gemini-3.1-flash-image"
         assert "Cyberpunk street keyframe" in gen_kwargs.get("contents", "")
         assert uri is not None
 
