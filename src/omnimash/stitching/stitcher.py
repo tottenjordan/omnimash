@@ -6,8 +6,10 @@ from omnimash.storage.gcs import GcsStorageManager
 
 
 class VideoStitcher:
-    def __init__(self, mock_mode: bool = True, bucket_name: str | None = None):
-        self.mock_mode = mock_mode
+    def __init__(self, mock_mode: bool | None = None, bucket_name: str | None = None):
+        from omnimash.config import settings
+
+        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         self.storage = GcsStorageManager(
             bucket_name=bucket_name, mock_mode=self.mock_mode
         )

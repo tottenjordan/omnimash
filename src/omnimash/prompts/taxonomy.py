@@ -27,8 +27,11 @@ class StylePreset(str, Enum):
 
 
 class PromptTaxonomyEngine:
-    def __init__(self, mock_mode: bool = True) -> None:
-        self.compiler = PromptCompiler(mock_mode=mock_mode)
+    def __init__(self, mock_mode: bool | None = None) -> None:
+        from omnimash.config import settings
+
+        is_mock = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
+        self.compiler = PromptCompiler(mock_mode=is_mock)
 
     def get_preset_contribution(self, preset: StylePreset | str) -> PresetContribution:
         preset_key = str(preset.value if hasattr(preset, "value") else preset)

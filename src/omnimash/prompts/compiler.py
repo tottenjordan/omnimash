@@ -451,8 +451,10 @@ class PromptOptimizer:
 
 
 class PromptCompiler:
-    def __init__(self, mock_mode: bool = False) -> None:
-        self.mock_mode = mock_mode
+    def __init__(self, mock_mode: bool | None = None) -> None:
+        from omnimash.config import settings
+
+        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         self._pro_global_client: Any = None
         self._flash_regional_client: Any = None
         if not self.mock_mode:

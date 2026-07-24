@@ -92,8 +92,10 @@ class StoryboardShot:
 class StoryboardAgent:
     """Expands a 30-60s vision into 3-6 distinct <=10s shot cards adhering to DeepMind prompt guidelines."""
 
-    def __init__(self, mock_mode: bool = False) -> None:
-        self.mock_mode = mock_mode
+    def __init__(self, mock_mode: bool | None = None) -> None:
+        from omnimash.config import settings
+
+        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         self._genai_client: Any = None
         if not self.mock_mode:
             self._init_genai_client()

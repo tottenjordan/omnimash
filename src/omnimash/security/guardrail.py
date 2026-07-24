@@ -9,8 +9,10 @@ class GuardrailResult:
 
 
 class ModelArmorGuardrail:
-    def __init__(self, mock_mode: bool = True):
-        self.mock_mode = mock_mode
+    def __init__(self, mock_mode: bool | None = None):
+        from omnimash.config import settings
+
+        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
 
     def validate_prompt(self, prompt: str) -> GuardrailResult:
         lowered = prompt.lower()
