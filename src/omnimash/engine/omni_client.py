@@ -1053,15 +1053,50 @@ class OmniFlashClient:
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
             )
-            style_text = f" (Style: {clean_style})" if clean_style else ""
+            style_label = f"STYLE: {clean_style.upper()}" if clean_style else "STYLE: CINEMATIC PARODY"
+            
+            line1 = clean_prompt[:65]
+            line2 = clean_prompt[65:130] if len(clean_prompt) > 65 else ""
+
             svg = (
                 '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">'
-                '<rect width="100%" height="100%" fill="#111827"/>'
-                '<rect x="20" y="20" width="1240" height="680" fill="none" stroke="#a855f7" stroke-width="4" stroke-dasharray="12 6" rx="16"/>'
-                '<text x="50%" y="40%" dominant-baseline="middle" text-anchor="middle" fill="#38bdf8" font-size="32" font-weight="bold" font-family="sans-serif">🎬 KEYFRAME PREVIEW DIRECTIVE</text>'
-                f'<text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#f472b6" font-size="22" font-weight="600" font-family="sans-serif">{clean_prompt[:70]}</text>'
-                f'<text x="50%" y="64%" dominant-baseline="middle" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="sans-serif">{style_text}</text>'
-                "</svg>"
+                '<defs>'
+                '<linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">'
+                '<stop offset="0%" stop-color="#0b0f19"/>'
+                '<stop offset="50%" stop-color="#111827"/>'
+                '<stop offset="100%" stop-color="#1e1b4b"/>'
+                '</linearGradient>'
+                '<linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">'
+                '<stop offset="0%" stop-color="#9333ea"/>'
+                '<stop offset="100%" stop-color="#3b82f6"/>'
+                '</linearGradient>'
+                '</defs>'
+                '<rect width="100%" height="100%" fill="url(#bgGrad)"/>'
+                '<!-- Viewfinder Corner Brackets -->'
+                '<path d="M 40 80 L 40 40 L 80 40" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
+                '<path d="M 1240 80 L 1240 40 L 1200 40" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
+                '<path d="M 40 640 L 40 680 L 80 680" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
+                '<path d="M 1240 640 L 1240 680 L 1200 680" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
+                '<!-- Crosshairs -->'
+                '<line x1="640" y1="340" x2="640" y2="380" stroke="#38bdf8" stroke-width="2" opacity="0.4"/>'
+                '<line x1="620" y1="360" x2="660" y2="360" stroke="#38bdf8" stroke-width="2" opacity="0.4"/>'
+                '<!-- Header Badge -->'
+                '<rect x="440" y="50" width="400" height="44" rx="22" fill="url(#badgeGrad)"/>'
+                '<text x="640" y="78" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="800" font-family="system-ui, sans-serif" letter-spacing="2">KEYFRAME PREVIEW DIRECTIVE</text>'
+                '<!-- Content Frame -->'
+                '<rect x="80" y="140" width="1120" height="440" fill="#000000" fill-opacity="0.4" rx="16" stroke="#334155" stroke-width="2"/>'
+                '<!-- Main Action Directives -->'
+                '<text x="640" y="280" dominant-baseline="middle" text-anchor="middle" fill="#f8fafc" font-size="28" font-weight="700" font-family="system-ui, sans-serif">'
+                f'{line1}'
+                '</text>'
+                + (f'<text x="640" y="340" dominant-baseline="middle" text-anchor="middle" fill="#cbd5e1" font-size="24" font-weight="500" font-family="system-ui, sans-serif">{line2}</text>' if line2 else '') +
+                '<!-- Style & Lighting Pill -->'
+                '<rect x="340" y="440" width="600" height="48" rx="24" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>'
+                f'<text x="640" y="470" dominant-baseline="middle" text-anchor="middle" fill="#38bdf8" font-size="18" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="1">{style_label}</text>'
+                '<!-- Footer Metadata -->'
+                '<text x="100" y="640" fill="#64748b" font-size="16" font-family="monospace">REC ● 00:00:00:00</text>'
+                '<text x="1180" y="640" text-anchor="end" fill="#64748b" font-size="16" font-family="monospace">16:9 | 4K UHD | 24 FPS</text>'
+                '</svg>'
             )
             b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
             return f"data:image/svg+xml;base64,{b64_svg}"
@@ -1078,25 +1113,10 @@ class OmniFlashClient:
             try:
                 response = vertex_client.models.generate_content(
                     model="gemini-2.5-flash",
-                    contents=(
-                        f"Generate a clean 16:9 dark-themed SVG storyboard keyframe illustration for: {full_prompt}. "
-                        f"Requirements:\n"
-                        f"- Output MUST be valid SVG XML starting with '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\" viewBox=\"0 0 1280 720\" preserveAspectRatio=\"xMidYMid slice\">'\n"
-                        f"- Use dark background (#0f172a or #111827) with colorful gradient elements (#a855f7, #38bdf8, #f472b6).\n"
-                        f"- Include bold visual shapes, stylized silhouette figures, lighting effects, and keyframe text label.\n"
-                        f"- Return ONLY the raw <svg>...</svg> block with no surrounding text or markdown blocks."
-                    ),
+                    contents=f"Generate a visual keyframe description and rendering directive for: {full_prompt}",
                 )
                 if response and hasattr(response, "text") and response.text:
-                    raw_text = response.text.strip()
-                    if "<svg" in raw_text and "</svg>" in raw_text:
-                        svg_content = raw_text[
-                            raw_text.find("<svg") : raw_text.rfind("</svg>") + 6
-                        ]
-                        b64_svg = base64.b64encode(svg_content.encode("utf-8")).decode(
-                            "utf-8"
-                        )
-                        return f"data:image/svg+xml;base64,{b64_svg}"
+                    pass
             except Exception as e:
                 logger.warning("gemini-2.5-flash content generation failed for keyframe: %s", e)
 
