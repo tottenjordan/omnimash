@@ -162,6 +162,7 @@ class GenerateShotResponse(BaseModel):
     video_url: str | None = None
     turn_id: str | None = None
     status: str = "COMPLETED"
+    generation_mode: str = "LIVE_OMNI_FLASH"
 
 
 class StitchClipsRequest(BaseModel):
@@ -3430,6 +3431,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             video_url=agent_turn.video_url,
             turn_id=agent_turn.turn_id,
             status=agent_turn.status_event,
+            generation_mode=getattr(agent_turn, "generation_mode", "LIVE_OMNI_FLASH"),
         )
 
     @app.post("/api/stitch-clips", response_model=SaveFinalResponse)

@@ -895,17 +895,25 @@ class OmniFlashClient:
             prompt, rel_path, characters=characters, session_id=session_id
         )
 
-        # 2. Fallback: Local prompt-rendered animated video
         generation_mode = "LIVE_OMNI_FLASH"
         if not success:
-            generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
-            ensure_rendered_video(
-                url,
-                prompt=prompt,
-                voiceover=voiceover,
-                is_silent=is_silent,
-                audio_stem=audio_stem,
-            )
+            if self.mock_mode:
+                generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
+                ensure_rendered_video(
+                    url,
+                    prompt=prompt,
+                    voiceover=voiceover,
+                    is_silent=is_silent,
+                    audio_stem=audio_stem,
+                )
+            else:
+                return GenerationResult(
+                    interaction_thread_id=inter_id or thread_id,
+                    video_url="",
+                    gcs_uri=None,
+                    error_message=error_message or "Gemini Omni Flash video generation failed",
+                    generation_mode="LIVE_OMNI_FLASH",
+                )
 
         # Persist media artifact to Google Cloud Storage under session subfolder
         gcs_blob = self.storage.build_session_blob_path(
@@ -950,17 +958,25 @@ class OmniFlashClient:
             session_id=session_id,
         )
 
-        # 2. Fallback: Local prompt-rendered animated video
         generation_mode = "LIVE_OMNI_FLASH"
         if not success:
-            generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
-            ensure_rendered_video(
-                url,
-                prompt=diff_prompt,
-                voiceover=voiceover,
-                is_silent=is_silent,
-                audio_stem=audio_stem,
-            )
+            if self.mock_mode:
+                generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
+                ensure_rendered_video(
+                    url,
+                    prompt=diff_prompt,
+                    voiceover=voiceover,
+                    is_silent=is_silent,
+                    audio_stem=audio_stem,
+                )
+            else:
+                return GenerationResult(
+                    interaction_thread_id=inter_id or interaction_thread_id,
+                    video_url="",
+                    gcs_uri=None,
+                    error_message=error_message or "Gemini Omni Flash interaction diff generation failed",
+                    generation_mode="LIVE_OMNI_FLASH",
+                )
 
         # Persist media artifact to Google Cloud Storage under session subfolder
         gcs_blob = self.storage.build_session_blob_path(
@@ -1062,25 +1078,25 @@ class OmniFlashClient:
             try:
                 response = vertex_client.models.generate_content(
                     model="gemini-2.5-flash",
-                    contents=f"Generate a visual keyframe description and rendering directive for: {full_prompt}",
+                    contents=(
+                        f"Generate a clean 16:9 dark-themed SVG storyboard keyframe illustration for: {full_prompt}. "
+                        f"Requirements:\n"
+                        f"- Output MUST be valid SVG XML starting with '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\" viewBox=\"0 0 1280 720\" preserveAspectRatio=\"xMidYMid slice\">'\n"
+                        f"- Use dark background (#0f172a or #111827) with colorful gradient elements (#a855f7, #38bdf8, #f472b6).\n"
+                        f"- Include bold visual shapes, stylized silhouette figures, lighting effects, and keyframe text label.\n"
+                        f"- Return ONLY the raw <svg>...</svg> block with no surrounding text or markdown blocks."
+                    ),
                 )
-                if response and hasattr(response, "candidates") and response.candidates:
-                    for candidate in response.candidates:
-                        content = getattr(candidate, "content", None)
-                        parts = getattr(content, "parts", []) if content else []
-                        for part in parts:
-                            inline_data = getattr(part, "inline_data", None)
-                            if inline_data and getattr(inline_data, "data", None):
-                                data = inline_data.data
-                                img_bytes = (
-                                    base64.b64decode(data)
-                                    if isinstance(data, str)
-                                    else data
-                                )
-                                blob_name = f"keyframes/keyframe_{uuid.uuid4().hex[:8]}.png"
-                                return self.storage.upload_bytes(
-                                    img_bytes, blob_name, content_type="image/png"
-                                )
+                if response and hasattr(response, "text") and response.text:
+                    raw_text = response.text.strip()
+                    if "<svg" in raw_text and "</svg>" in raw_text:
+                        svg_content = raw_text[
+                            raw_text.find("<svg") : raw_text.rfind("</svg>") + 6
+                        ]
+                        b64_svg = base64.b64encode(svg_content.encode("utf-8")).decode(
+                            "utf-8"
+                        )
+                        return f"data:image/svg+xml;base64,{b64_svg}"
             except Exception as e:
                 logger.warning("gemini-2.5-flash content generation failed for keyframe: %s", e)
 

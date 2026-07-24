@@ -7,7 +7,12 @@ from google.adk.agents import Agent
 
 from omnimash.engine.omni_client import OmniFlashClient
 from omnimash.ingestion.media_extractor import MediaExtractor
-from omnimash.prompts.compiler import CharacterRole, MetaPromptTags, SceneDirective
+from omnimash.prompts.compiler import (
+    CharacterRole,
+    MetaPromptTags,
+    SceneDirective,
+    sanitize_real_names,
+)
 from omnimash.prompts.storyboard_agent import StoryboardAgent, StoryboardShot
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine, StylePreset
 from omnimash.security.guardrail import ModelArmorGuardrail
@@ -340,7 +345,15 @@ class OmniMashAgent:
                 characters=char_objs,
             )
 
-        # Step 3: Persist Turn in Session Version Tree
+        if gen_res.error_message and not gen_res.video_url:
+            return AgentTurnResponse(
+                success=False,
+                status_event="GENERATION_FAILED",
+                error_message=gen_res.error_message,
+                generation_mode=gen_res.generation_mode,
+                raw_compiled_prompt=raw_compiled_prompt,
+                reference_analysis=reference_analysis,
+            )
         proxy_video_url = self._get_media_proxy_video_url(
             getattr(gen_res, "gcs_uri", None), gen_res.video_url
         )

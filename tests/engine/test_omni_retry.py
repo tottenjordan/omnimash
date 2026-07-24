@@ -152,31 +152,20 @@ def test_generation_result_modes_success_and_fallback() -> None:
         assert res_reanchor.generation_mode == "LIVE_OMNI_FLASH"
         assert res_reanchor.error_message is None
 
-    # 2. Fallback case
-    with (
-        patch.object(
-            client,
-            "_generate_live_omni_flash_video",
-            return_value=(False, None, "Vertex AI 404 Endpoint Not Found"),
-        ),
-        patch("omnimash.engine.omni_client.ensure_rendered_video"),
-        patch.object(client.storage, "upload_file"),
-        patch.object(
-            client.storage, "get_gcs_uri", return_value="gs://bucket/test.mp4"
-        ),
+    # 2. Live error case (no fallback video generated in live mode)
+    with patch.object(
+        client,
+        "_generate_live_omni_flash_video",
+        return_value=(False, None, "Vertex AI 404 Endpoint Not Found"),
     ):
-        res_fallback = client.generate_clip("Prompt fallback")
-        assert res_fallback.generation_mode == "LOCAL_PROCEDURAL_ANIMATION"
-        assert res_fallback.error_message == "Vertex AI 404 Endpoint Not Found"
+        res_error = client.generate_clip("Prompt failure")
+        assert res_error.generation_mode == "LIVE_OMNI_FLASH"
+        assert res_error.error_message == "Vertex AI 404 Endpoint Not Found"
+        assert res_error.video_url == ""
 
-        res_diff_fallback = client.apply_interaction_diff(
-            "live_thread_123", "Diff fallback"
+        res_diff_error = client.apply_interaction_diff(
+            "live_thread_123", "Diff failure"
         )
-        assert res_diff_fallback.generation_mode == "LOCAL_PROCEDURAL_ANIMATION"
-        assert res_diff_fallback.error_message == "Vertex AI 404 Endpoint Not Found"
-
-        res_reanchor_fallback = client.start_thread_from_video(
-            "/static/test.mp4", "Reanchor fallback"
-        )
-        assert res_reanchor_fallback.generation_mode == "LOCAL_PROCEDURAL_ANIMATION"
-        assert res_reanchor_fallback.error_message == "Vertex AI 404 Endpoint Not Found"
+        assert res_diff_error.generation_mode == "LIVE_OMNI_FLASH"
+        assert res_diff_error.error_message == "Vertex AI 404 Endpoint Not Found"
+        assert res_diff_error.video_url == ""
