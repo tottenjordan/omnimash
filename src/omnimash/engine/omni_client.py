@@ -670,9 +670,10 @@ class OmniFlashClient:
                 b64_str = base64.b64encode(img_bytes).decode("utf-8")
                 image_objects.append(
                     {
-                        "type": "image",
-                        "data": b64_str,
-                        "mime_type": mime_type,
+                        "inline_data": {
+                            "data": b64_str,
+                            "mime_type": mime_type,
+                        }
                     }
                 )
                 loaded_chars.append(char)
@@ -746,9 +747,9 @@ class OmniFlashClient:
                 "Attaching %d multimodal base64 reference image(s) to gemini-omni-flash-preview interaction payload.",
                 len(image_objects),
             )
-            inputs: list[dict[str, Any]] = [
+            inputs: list[Any] = [
                 *image_objects,
-                {"type": "text", "text": safe_input},
+                safe_input,
             ]
             kwargs: dict[str, Any] = {
                 "model": "gemini-omni-flash-preview",

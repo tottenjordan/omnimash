@@ -573,14 +573,16 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
 
     assert len(imgs) == 2
     assert imgs[0] == {
-        "type": "image",
-        "data": base64.b64encode(b"fake_png_data").decode("utf-8"),
-        "mime_type": "image/png",
+        "inline_data": {
+            "data": base64.b64encode(b"fake_png_data").decode("utf-8"),
+            "mime_type": "image/png",
+        }
     }
     assert imgs[1] == {
-        "type": "image",
-        "data": base64.b64encode(b"fake_jpg_data").decode("utf-8"),
-        "mime_type": "image/jpeg",
+        "inline_data": {
+            "data": base64.b64encode(b"fake_jpg_data").decode("utf-8"),
+            "mime_type": "image/jpeg",
+        }
     }
 
 
@@ -633,12 +635,12 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
     assert isinstance(input_arg, list)
     assert len(input_arg) == 2
     assert input_arg[0] == {
-        "type": "image",
-        "data": base64.b64encode(b"fake_image_bytes").decode("utf-8"),
-        "mime_type": "image/png",
+        "inline_data": {
+            "data": base64.b64encode(b"fake_image_bytes").decode("utf-8"),
+            "mime_type": "image/png",
+        }
     }
-    assert input_arg[1]["type"] == "text"
-    assert "Spectacled Wizard Student" in input_arg[1]["text"]
+    assert "Spectacled Wizard Student" in input_arg[1]
 
 
 def test_load_reference_images_logs_diagnostics(
