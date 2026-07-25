@@ -739,29 +739,11 @@ class OmniFlashClient:
         logger.info(
             "Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input
         )
-        image_objects = self._load_reference_images_as_input(
-            session_id=session_id, characters=characters
-        )
-        if image_objects:
-            logger.info(
-                "Attaching %d multimodal base64 reference image(s) to gemini-omni-flash-preview interaction payload.",
-                len(image_objects),
-            )
-            inputs: list[Any] = [
-                *image_objects,
-                safe_input,
-            ]
-            kwargs: dict[str, Any] = {
-                "model": "gemini-omni-flash-preview",
-                "input": inputs,
-                "safety_settings": _get_relaxed_safety_settings(),
-            }
-        else:
-            kwargs = {
-                "model": "gemini-omni-flash-preview",
-                "input": safe_input,
-                "safety_settings": _get_relaxed_safety_settings(),
-            }
+        kwargs: dict[str, Any] = {
+            "model": "gemini-omni-flash-preview",
+            "input": safe_input,
+            "safety_settings": _get_relaxed_safety_settings(),
+        }
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id
 

@@ -632,15 +632,8 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
     assert call_kwargs["model"] == "gemini-omni-flash-preview"
 
     input_arg = call_kwargs["input"]
-    assert isinstance(input_arg, list)
-    assert len(input_arg) == 2
-    assert input_arg[0] == {
-        "inline_data": {
-            "data": base64.b64encode(b"fake_image_bytes").decode("utf-8"),
-            "mime_type": "image/png",
-        }
-    }
-    assert "Spectacled Wizard Student" in input_arg[1]
+    assert isinstance(input_arg, str)
+    assert "Spectacled Wizard Student" in input_arg
 
 
 def test_load_reference_images_logs_diagnostics(
@@ -712,11 +705,6 @@ def test_load_reference_images_logs_diagnostics(
                 target_rel_path=target_file,
                 characters=[char1],
             )
-
-    assert (
-        "Attaching 1 multimodal base64 reference image(s) to gemini-omni-flash-preview interaction payload."
-        in caplog.text
-    )
 
 
 def test_generate_live_omni_flash_video_includes_safety_settings(tmp_path: Any) -> None:
