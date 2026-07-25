@@ -223,10 +223,11 @@ UI_HTML = r"""<!DOCTYPE html>
 
         const getDisplayableRefUrl = (url) => {
             if (!url) return "";
-            if (url.startsWith("gs://")) {
-                return `/api/media-proxy?uri=${encodeURIComponent(url)}`;
+            const clean = String(url).trim();
+            if (clean.startsWith("gs://") || clean.startsWith("https://storage.googleapis.com/") || clean.startsWith("https://storage.cloud.google.com/")) {
+                return `/api/media-proxy?uri=${encodeURIComponent(clean)}`;
             }
-            return url;
+            return clean;
         };
 
         const getNextAvailableRoleId = (charList) => {
@@ -434,6 +435,9 @@ UI_HTML = r"""<!DOCTYPE html>
                     } else if (data && data.shots && data.shots.length > 0) {
                         setStageShots(data.shots);
                         setActiveStage(2);
+                        setTimeout(() => {
+                            handleGenerateAllKeyframes(data.shots);
+                        }, 100);
                     }
                 } catch (err) {
                     console.error("Storyboard expansion failed:", err);
@@ -3255,10 +3259,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/generate", response_model=GenerateResponse)
     @app.post("/api/diff", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
+        sanitized_prompt = sanitize_real_names(req.prompt) if req.prompt else ""
         agent_turn = agent.process_user_turn(
             user_id=req.user_id,
             project_id=req.project_id,
-            prompt=req.prompt,
+            prompt=sanitized_prompt,
             clip_index=req.clip_index,
             parent_turn_id=req.parent_turn_id,
             reference_url=req.reference_url,
@@ -3290,11 +3295,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/commit", response_model=GenerateResponse)
     def commit_and_branch(req: CommitRequest) -> GenerateResponse:
+        sanitized_prompt = sanitize_real_names(req.next_prompt) if req.next_prompt else ""
         agent_turn = agent.commit_and_branch(
             user_id=req.user_id,
             project_id=req.project_id,
             turn_id=req.turn_id,
-            prompt=req.next_prompt,
+            prompt=sanitized_prompt,
             session_name=req.session_name,
         )
         return GenerateResponse(
