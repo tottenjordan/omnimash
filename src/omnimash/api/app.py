@@ -163,6 +163,7 @@ class GenerateShotResponse(BaseModel):
     turn_id: str | None = None
     status: str = "COMPLETED"
     generation_mode: str = "LIVE_OMNI_FLASH"
+    error: str | None = None
 
 
 class StitchClipsRequest(BaseModel):
@@ -503,14 +504,16 @@ UI_HTML = r"""<!DOCTYPE html>
                         })
                     });
                     const data = await res.json();
+                    const errMsg = (data && (data.error || data.error_message || data.detail)) || null;
+                    if (!res.ok || (data && data.success === false) || errMsg) {
+                        const finalErr = typeof errMsg === "string" ? errMsg : (errMsg ? JSON.stringify(errMsg) : `Server returned status ${res.status}`);
+                        setLastError(finalErr);
+                    }
                     if (data && data.video_url) {
                         updateStageShot(idx, "video_url", data.video_url);
                         updateStageShot(idx, "turn_id", data.turn_id);
                         setCurrentVideo(data.video_url);
                         if (data.turn_id) setParentTurnId(data.turn_id);
-                    }
-                    if (data && data.error) {
-                        setLastError(data.error);
                     }
                 } catch (err) {
                     console.error("Generate shot video failed:", err);
@@ -3438,6 +3441,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             turn_id=agent_turn.turn_id,
             status=agent_turn.status_event,
             generation_mode=getattr(agent_turn, "generation_mode", "LIVE_OMNI_FLASH"),
+            error=agent_turn.error_message,
         )
 
     @app.post("/api/stitch-clips", response_model=SaveFinalResponse)
