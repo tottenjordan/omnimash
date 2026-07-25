@@ -834,10 +834,24 @@ class OmniFlashClient:
                     )
                     self.switch_to_developer_api()
                 elif (
+                    "Input blocked" in exc_str
+                    or "real people's names" in exc_str
+                ):
+                    logger.warning(
+                        "Gemini Omni Flash blocked real name/likeness (%s). Aggressively abstracting prompt for retry.",
+                        exc_str,
+                    )
+                    fallback_prompt = re.sub(r"\b[A-Z][a-z]+\b", "Character", safe_input)
+                    if isinstance(kwargs.get("input"), list):
+                        for item in kwargs["input"]:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                item["text"] = fallback_prompt
+                    else:
+                        kwargs["input"] = fallback_prompt
+                elif (
                     "safety_settings" in exc_str
                     or "Unmarshaller" in exc_str
                     or "ValidationError" in exc_str
-                    or "invalid_request" in exc_str
                 ):
                     logger.warning(
                         "Interactions API parameter error (%s). Removing unsupported safety_settings kwarg and retrying.",
