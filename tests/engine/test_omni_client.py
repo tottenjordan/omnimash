@@ -530,7 +530,7 @@ def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
     assert call_kwargs["model"] == "gemini-omni-flash-preview"
-    assert "safety_settings" in call_kwargs
+    assert "safety_settings" not in call_kwargs
 
 
 def test_load_reference_images_as_input_returns_base64_objects() -> None:
@@ -731,8 +731,7 @@ def test_generate_live_omni_flash_video_includes_safety_settings(tmp_path: Any) 
     assert success is True
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
-    assert "safety_settings" in call_kwargs
-    assert call_kwargs["safety_settings"] == _get_relaxed_safety_settings()
+    assert "safety_settings" not in call_kwargs
 
 
 def test_abstract_prompt_handles_parody_names() -> None:
