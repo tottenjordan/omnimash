@@ -217,16 +217,25 @@ class OmniMashAgent:
         if characters:
             for c in characters:
                 if isinstance(c, CharacterRole):
-                    char_objs.append(c)
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.role_id,
+                            name=sanitize_real_names(c.name),
+                            description=sanitize_real_names(c.description),
+                            reference_url=c.reference_url,
+                            aesthetic_tags=[sanitize_real_names(t) for t in (c.aesthetic_tags or [])],
+                            voice_style=sanitize_real_names(c.voice_style or ""),
+                        )
+                    )
                 elif isinstance(c, dict):
                     char_objs.append(
                         CharacterRole(
                             role_id=c.get("role_id", ""),
-                            name=c.get("name", ""),
-                            description=c.get("description", ""),
+                            name=sanitize_real_names(c.get("name", "")),
+                            description=sanitize_real_names(c.get("description", "")),
                             reference_url=c.get("reference_url"),
-                            aesthetic_tags=c.get("aesthetic_tags", []),
-                            voice_style=c.get("voice_style", ""),
+                            aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
+                            voice_style=sanitize_real_names(c.get("voice_style", "")),
                         )
                     )
                 elif hasattr(c, "model_dump"):
@@ -234,22 +243,22 @@ class OmniMashAgent:
                     char_objs.append(
                         CharacterRole(
                             role_id=cd.get("role_id", ""),
-                            name=cd.get("name", ""),
-                            description=cd.get("description", ""),
+                            name=sanitize_real_names(cd.get("name", "")),
+                            description=sanitize_real_names(cd.get("description", "")),
                             reference_url=cd.get("reference_url"),
-                            aesthetic_tags=cd.get("aesthetic_tags", []),
-                            voice_style=cd.get("voice_style", ""),
+                            aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
+                            voice_style=sanitize_real_names(cd.get("voice_style", "")),
                         )
                     )
                 elif hasattr(c, "role_id"):
                     char_objs.append(
                         CharacterRole(
                             role_id=getattr(c, "role_id", ""),
-                            name=getattr(c, "name", ""),
-                            description=getattr(c, "description", ""),
+                            name=sanitize_real_names(getattr(c, "name", "")),
+                            description=sanitize_real_names(getattr(c, "description", "")),
                             reference_url=getattr(c, "reference_url", None),
-                            aesthetic_tags=getattr(c, "aesthetic_tags", []),
-                            voice_style=getattr(c, "voice_style", ""),
+                            aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
+                            voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
                         )
                     )
 

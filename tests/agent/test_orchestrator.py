@@ -218,8 +218,8 @@ def test_orchestrator_passes_characters_to_omni_client(monkeypatch):
     )
 
     assert res.success is True
-    assert "characters" in captured_kwargs
-    assert captured_kwargs["characters"] == [char]
+    assert captured_kwargs["characters"][0].name == "Gothic Potion Master"
+    assert captured_kwargs["characters"][0].role_id == "r1"
 
 
 def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():

@@ -477,7 +477,7 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
     for pattern, archetype in replacements.items():
         abstracted = re.sub(pattern, archetype, abstracted, flags=re.IGNORECASE)
 
-    return abstracted
+    return sanitize_real_names(abstracted)
 
 
 def _get_relaxed_safety_settings() -> list[Any] | None:
