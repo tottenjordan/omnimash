@@ -155,6 +155,8 @@ class GenerateShotRequest(BaseModel):
     shot_index: int = 1
     shot_directive: str = ""
     characters: list[CharacterRoleModel | dict] | None = None
+    duration_seconds: float = 10.0
+    parent_turn_id: str | None = None
 
 
 class GenerateShotResponse(BaseModel):
@@ -488,12 +490,16 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
-            const handleGenerateShotVideo = async (idx, shot) => {
+            const handleGenerateShotVideo = async (idx, shot, parentIdOverride = null) => {
                 const shotIdx = shot.shot_index || (idx + 1);
                 setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
                 try {
-                    const directive = `${shot.action || ""} | Location: ${shot.location || ""} | Style: ${shot.style_lighting || ""} | Motion: ${shot.framing_motion || ""} | Audio: ${shot.audio || ""}`;
+                    let directive = `${shot.action || ""} | Location: ${shot.location || ""} | Style: ${shot.style_lighting || ""} | Motion: ${shot.framing_motion || ""} | Audio: ${shot.audio || ""}`;
+                    if (shot.dialogue && shot.dialogue.trim()) {
+                        directive += ` | Dialogue: "${shot.dialogue.strip ? shot.dialogue.strip() : shot.dialogue.trim()}"`;
+                    }
+                    const parentTurnId = parentIdOverride || (idx > 0 && stageShots[idx - 1] ? stageShots[idx - 1].turn_id : null);
                     const res = await fetch("/api/generate-shot", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -501,7 +507,9 @@ UI_HTML = r"""<!DOCTYPE html>
                             session_name: sessionName,
                             shot_index: shotIdx,
                             shot_directive: directive,
-                            characters: characters
+                            characters: characters,
+                            duration_seconds: parseFloat(shot.duration_seconds) || 10.0,
+                            parent_turn_id: parentTurnId
                         })
                     });
                     const data = await res.json();
@@ -515,12 +523,24 @@ UI_HTML = r"""<!DOCTYPE html>
                         updateStageShot(idx, "turn_id", data.turn_id);
                         setCurrentVideo(data.video_url);
                         if (data.turn_id) setParentTurnId(data.turn_id);
+                        return data.turn_id;
                     }
                 } catch (err) {
                     console.error("Generate shot video failed:", err);
                     setLastError(err.message || String(err));
                 } finally {
                     setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: false }));
+                }
+                return null;
+            };
+
+            const handleGenerateAllShotVideosSequentially = async () => {
+                let lastTurnId = null;
+                for (let i = 0; i < stageShots.length; i++) {
+                    const createdTurnId = await handleGenerateShotVideo(i, stageShots[i], lastTurnId);
+                    if (createdTurnId) {
+                        lastTurnId = createdTurnId;
+                    }
                 }
             };
 
@@ -2550,6 +2570,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </button>
                                                 <button
                                                     type="button"
+                                                    onClick={handleGenerateAllShotVideosSequentially}
+                                                    className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md"
+                                                    title="Generate videos for all shot cards sequentially in order, chaining visual context from shot 1 to shot N"
+                                                >
+                                                    <span>🎬</span>
+                                                    <span>Generate All Shots (1 ➔ N)</span>
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     onClick={addStageShot}
                                                     className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition"
                                                 >
@@ -2669,6 +2698,16 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 value={shot.audio || ""}
                                                                 onChange={(e) => updateStageShot(idx, "audio", e.target.value)}
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-[11px]"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block mb-0.5">6. Dialogue &amp; On-Screen Text</label>
+                                                            <input
+                                                                type="text"
+                                                                value={shot.dialogue || ""}
+                                                                onChange={(e) => updateStageShot(idx, "dialogue", e.target.value)}
+                                                                placeholder='e.g. Spoken dialogue or text overlay: "Check the potion beat"'
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-rose-500 text-[11px]"
                                                             />
                                                         </div>
                                                     </div>
@@ -3443,7 +3482,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             user_id="usr_default",
             project_id="prj_default",
             prompt=sanitized_directive,
+            parent_turn_id=req.parent_turn_id,
             clip_index=req.shot_index,
+            duration_seconds=req.duration_seconds,
             session_name=req.session_name,
             characters=req.characters,
         )

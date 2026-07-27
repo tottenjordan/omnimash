@@ -70,6 +70,7 @@ class StoryboardShot:
     framing_motion: str
     audio: str
     summary: str = ""
+    dialogue: str = ""
 
     def to_omni_flash_prompt(self, role_mappings: str = "") -> str:
         prompt_parts: list[str] = []
@@ -77,14 +78,18 @@ class StoryboardShot:
             prompt_parts.append(role_mappings.strip())
 
         shot_end = int(round(self.duration_seconds))
-        directive = (
-            f"[SHOT DIRECTIVE: Shot {self.shot_index} (0-{shot_end}s)]\n"
-            f"- Action / Subject: {self.action}\n"
-            f"- Location: {self.location}\n"
-            f"- Style & Lighting: {self.style_lighting}\n"
-            f"- Shot Framing & Motion: {self.framing_motion}\n"
-            f"- Audio Soundscape: {self.audio}"
-        )
+        parts = [
+            f"[SHOT DIRECTIVE: Shot {self.shot_index} (0-{shot_end}s)]",
+            f"- Action / Subject: {self.action}",
+            f"- Location: {self.location}",
+            f"- Style & Lighting: {self.style_lighting}",
+            f"- Shot Framing & Motion: {self.framing_motion}",
+            f"- Audio Soundscape: {self.audio}",
+        ]
+        if self.dialogue and self.dialogue.strip():
+            parts.append(f'- Dialogue / Text Overlay: "{self.dialogue.strip()}"')
+
+        directive = "\n".join(parts)
         prompt_parts.append(directive)
         return "\n\n".join(prompt_parts)
 

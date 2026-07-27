@@ -1,3 +1,4 @@
+import math
 import re
 import urllib.parse
 from dataclasses import asdict, dataclass
@@ -172,6 +173,7 @@ class OmniMashAgent:
         prompt: str = "",
         clip_index: int = 0,
         parent_turn_id: str | None = None,
+        duration_seconds: float = 10.0,
         reference_url: str | None = None,
         audio_stem: str | None = None,
         voiceover: str | None = None,
@@ -190,6 +192,61 @@ class OmniMashAgent:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
         )
+
+        num_chunks = max(1, int(math.ceil(duration_seconds / 10.0)))
+        if num_chunks > 1:
+            chunk_urls: list[str] = []
+            curr_parent_turn_id = parent_turn_id
+            last_resp: AgentTurnResponse | None = None
+
+            for c_idx in range(num_chunks):
+                c_prompt = prompt if num_chunks == 1 else f"{prompt} (Part {c_idx + 1}/{num_chunks})"
+                turn_resp = self.process_user_turn(
+                    user_id=user_id,
+                    project_id=project_id,
+                    prompt=c_prompt,
+                    clip_index=clip_index,
+                    parent_turn_id=curr_parent_turn_id,
+                    duration_seconds=10.0,
+                    reference_url=reference_url,
+                    audio_stem=audio_stem,
+                    voiceover=voiceover,
+                    is_silent=is_silent,
+                    on_screen_text=on_screen_text,
+                    compiled_override=compiled_override,
+                    session_name=session_name,
+                    concept=concept,
+                    characters=characters,
+                    scenes=scenes,
+                    aesthetic_tags=aesthetic_tags,
+                    environment_tag=environment_tag,
+                    vocal_delivery=vocal_delivery,
+                    optimize_prompt=optimize_prompt,
+                )
+                if not turn_resp.success:
+                    return turn_resp
+                curr_parent_turn_id = turn_resp.turn_id
+                if turn_resp.video_url:
+                    chunk_urls.append(turn_resp.video_url)
+                last_resp = turn_resp
+
+            if len(chunk_urls) > 1:
+                stitched_path = self.stitcher.concatenate_clips(
+                    chunk_urls, session_id=session.session_id
+                )
+                _pub_url, gcs_uri = self.storage.save_final_master(
+                    session_id=session.session_id,
+                    source_rel_path=stitched_path,
+                    master_title=f"shot_{clip_index}_{int(duration_seconds)}s",
+                )
+                proxy_url = self._get_media_proxy_video_url(gcs_uri, _pub_url)
+                return AgentTurnResponse(
+                    success=True,
+                    status_event="COMPLETED",
+                    video_url=proxy_url,
+                    turn_id=last_resp.turn_id if last_resp else None,
+                    generation_mode=last_resp.generation_mode if last_resp else "LIVE_OMNI_FLASH",
+                )
 
         # Step 0: Process reference URL if provided
         reference_analysis = None
