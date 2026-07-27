@@ -794,7 +794,7 @@ def test_generate_keyframe_image_verifies_gemini_flash_location(
         created_clients[0].models.generate_content.assert_called_once()
         gen_kwargs = created_clients[0].models.generate_content.call_args.kwargs
         assert gen_kwargs.get("model") == "gemini-3.1-flash-image"
-        assert "Cyberpunk street keyframe" in gen_kwargs.get("contents", "")
+        assert any("Cyberpunk street keyframe" in str(c) for c in gen_kwargs.get("contents", []))
         assert uri is not None
 
 
@@ -816,5 +816,41 @@ def test_generate_keyframe_image_fallback_on_failure(
         import base64
         decoded = base64.b64decode(uri.split("base64,")[1]).decode("utf-8")
         assert "Failing prompt" in decoded
+
+
+def test_generate_keyframe_image_with_reference_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify generate_keyframe_image passes reference images to gemini-3.1-flash-image."""
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj-ref")
+
+    created_clients: list[MagicMock] = []
+
+    def mock_client_factory(**kwargs: Any) -> Any:
+        mock = MagicMock()
+        mock.init_kwargs = kwargs
+        fake_resp = MagicMock()
+        fake_resp.candidates = []
+        mock.models.generate_content.return_value = fake_resp
+        created_clients.append(mock)
+        return mock
+
+    with patch("google.genai.Client", side_effect=mock_client_factory):
+        client = OmniFlashClient(mock_mode=False)
+        created_clients.clear()
+
+        ref_data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        uri = client.generate_keyframe_image(
+            prompt="Character in magical duel",
+            style_tone="cinematic",
+            reference_image_urls=[ref_data_uri],
+        )
+
+        assert len(created_clients) == 1
+        gen_kwargs = created_clients[0].models.generate_content.call_args.kwargs
+        contents = gen_kwargs.get("contents", [])
+        assert len(contents) >= 2
+        assert uri is not None
+
 
 

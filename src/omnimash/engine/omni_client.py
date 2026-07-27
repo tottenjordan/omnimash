@@ -7,8 +7,9 @@ import subprocess
 from typing import Any
 import uuid
 import wave
+import urllib.request
 from dataclasses import dataclass
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 from omnimash.config import settings
 from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
 from omnimash.storage.gcs import GcsStorageManager
@@ -1026,10 +1027,45 @@ class OmniFlashClient:
             generation_mode=generation_mode,
         )
 
-    def generate_keyframe_image(self, prompt: str, style_tone: str = "") -> str:
-        """Generates a visual keyframe image directive using Gemini 2.5 Flash.
+    def _fetch_image_bytes(self, ref_url: str) -> tuple[bytes, str]:
+        if not ref_url or not isinstance(ref_url, str):
+            return b"", "image/png"
+        if ref_url.startswith("gs://"):
+            return self.storage.download_blob_bytes(ref_url)
+        if "/api/media-proxy?uri=" in ref_url:
+            try:
+                parsed = urlparse(ref_url)
+                qs = parse_qs(parsed.query)
+                if "uri" in qs and qs["uri"]:
+                    return self.storage.download_blob_bytes(qs["uri"][0])
+            except Exception as e:
+                logger.warning("Failed to parse media-proxy url %s: %s", ref_url, e)
+        if ref_url.startswith("data:image/"):
+            try:
+                header, encoded = ref_url.split(",", 1)
+                mime = header.split(";")[0].split(":")[1] if ":" in header else "image/png"
+                return base64.b64decode(encoded), mime
+            except Exception as e:
+                logger.warning("Failed to decode data URI image: %s", e)
+        if ref_url.startswith("http://") or ref_url.startswith("https://"):
+            try:
+                req = urllib.request.Request(ref_url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    ct = resp.headers.get("Content-Type", "image/png")
+                    return resp.read(), ct
+            except Exception as err:
+                logger.warning("Failed to download HTTP image from %s: %s", ref_url, err)
+        return b"", "image/png"
 
-        Falls back to a clean base64 SVG data URI or mock image URL when in mock_mode or on client failure.
+    def generate_keyframe_image(
+        self,
+        prompt: str,
+        style_tone: str = "",
+        reference_image_urls: list[str] | None = None,
+    ) -> str:
+        """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
+
+        Supports multimodal character reference image inputs and falls back to a clean base64 SVG URI on failure.
         """
         full_prompt = f"{prompt}, style: {style_tone}" if style_tone else prompt
 
@@ -1100,9 +1136,22 @@ class OmniFlashClient:
                 location="global",
             )
             try:
+                contents: list[Any] = []
+                if reference_image_urls:
+                    for ref_url in reference_image_urls:
+                        img_bytes, mime_type = self._fetch_image_bytes(ref_url)
+                        if img_bytes:
+                            if hasattr(genai, "types") and hasattr(genai.types, "Part"):
+                                contents.append(genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type))
+                            else:
+                                contents.append({"inline_data": {"mime_type": mime_type, "data": base64.b64encode(img_bytes).decode("utf-8")}})
+
+                prompt_text = f"High quality cinematic 16:9 visual keyframe concept art featuring character references for: {full_prompt}"
+                contents.append(prompt_text)
+
                 response = vertex_client.models.generate_content(
                     model="gemini-3.1-flash-image",
-                    contents=f"High quality cinematic 16:9 visual keyframe concept art for: {full_prompt}",
+                    contents=contents,
                 )
                 if response and hasattr(response, "candidates") and response.candidates:
                     for candidate in response.candidates:

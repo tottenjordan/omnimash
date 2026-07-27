@@ -143,6 +143,8 @@ class KeyframeImageRequest(BaseModel):
     location: str = ""
     style_lighting: str = ""
     summary: str = ""
+    characters: list[CharacterRoleModel | dict] | None = None
+    reference_image_urls: list[str] | None = None
 
 
 class KeyframeImageResponse(BaseModel):
@@ -466,7 +468,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             action: shot.action || "",
                             location: shot.location || "",
                             style_lighting: shot.style_lighting || stageStyleTone,
-                            summary: shot.summary || ""
+                            summary: shot.summary || "",
+                            characters: characters
                         })
                     });
                     const data = await res.json();
@@ -3498,8 +3501,15 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             if prompt_parts
             else (req.summary or f"Shot {req.shot_index}")
         )
+        ref_urls: list[str] = list(req.reference_image_urls or [])
+        if req.characters:
+            for c in req.characters:
+                ref = c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None)
+                if ref and ref not in ref_urls:
+                    ref_urls.append(ref)
+
         image_url = agent.omni_client.generate_keyframe_image(
-            prompt, style_tone=req.style_lighting
+            prompt, style_tone=req.style_lighting, reference_image_urls=ref_urls
         )
         return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
 
