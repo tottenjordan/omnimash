@@ -739,8 +739,7 @@ class OmniFlashClient:
             "model": "gemini-omni-flash-preview",
             "input": sanitized_input,
         }
-        if previous_interaction_id:
-            kwargs["previous_interaction_id"] = previous_interaction_id
+        # Note: gemini-omni-flash-preview API path does not accept previous_interaction_id kwarg
 
         for attempt in range(1, max_attempts + 1):
             try:

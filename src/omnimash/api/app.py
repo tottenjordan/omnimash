@@ -416,6 +416,8 @@ UI_HTML = r"""<!DOCTYPE html>
             const [masterAudioUrl, setMasterAudioUrl] = useState("");
             const [stageSaveGcs, setStageSaveGcs] = useState(null);
             const [stageSaveLoading, setStageSaveLoading] = useState(false);
+            const [isBatchGeneratingVideos, setIsBatchGeneratingVideos] = useState(false);
+            const [batchVideoProgress, setBatchVideoProgress] = useState({ current: 0, total: 0, activeShotIndex: 0 });
 
             // Handlers for 4-Stage Journey
             const handleExpandStoryboard = async () => {
@@ -534,13 +536,28 @@ UI_HTML = r"""<!DOCTYPE html>
                 return null;
             };
 
-            const handleGenerateAllShotVideosSequentially = async () => {
+            const handleGenerateAllShotVideosSequentially = async (autoNavigateToStage3 = false) => {
+                if (!stageShots || stageShots.length === 0) return;
+                setIsBatchGeneratingVideos(true);
+                setBatchVideoProgress({ current: 0, total: stageShots.length, activeShotIndex: 1 });
                 let lastTurnId = null;
-                for (let i = 0; i < stageShots.length; i++) {
-                    const createdTurnId = await handleGenerateShotVideo(i, stageShots[i], lastTurnId);
-                    if (createdTurnId) {
-                        lastTurnId = createdTurnId;
+                try {
+                    for (let i = 0; i < stageShots.length; i++) {
+                        const shot = stageShots[i];
+                        const shotIdx = shot.shot_index || (i + 1);
+                        setBatchVideoProgress({ current: i + 1, total: stageShots.length, activeShotIndex: shotIdx });
+                        const createdTurnId = await handleGenerateShotVideo(i, shot, lastTurnId);
+                        if (createdTurnId) {
+                            lastTurnId = createdTurnId;
+                        }
                     }
+                    if (autoNavigateToStage3) {
+                        setActiveStage(3);
+                    }
+                } catch (err) {
+                    console.error("Batch video generation failed:", err);
+                } finally {
+                    setIsBatchGeneratingVideos(false);
                 }
             };
 
@@ -2570,8 +2587,9 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={handleGenerateAllShotVideosSequentially}
-                                                    className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md"
+                                                    disabled={isBatchGeneratingVideos}
+                                                    onClick={() => handleGenerateAllShotVideosSequentially(false)}
+                                                    className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
                                                     title="Generate videos for all shot cards sequentially in order, chaining visual context from shot 1 to shot N"
                                                 >
                                                     <span>🎬</span>
@@ -2589,7 +2607,14 @@ UI_HTML = r"""<!DOCTYPE html>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                             {stageShots.map((shot, idx) => (
-                                                <div key={idx} className="bg-gray-900 border border-gray-800 hover:border-purple-500/50 rounded-2xl p-4 shadow-xl flex flex-col justify-between space-y-3 transition">
+                                                <div
+                                                    key={idx}
+                                                    className={`bg-gray-900 border rounded-2xl p-4 shadow-xl flex flex-col justify-between space-y-3 transition ${
+                                                        isBatchGeneratingVideos && (shot.shot_index || idx + 1) === batchVideoProgress.activeShotIndex
+                                                            ? "border-pink-500 ring-2 ring-pink-500/50 shadow-pink-900/40 animate-pulse"
+                                                            : "border-gray-800 hover:border-purple-500/50"
+                                                    }`}
+                                                >
                                                     <div className="flex items-center justify-between border-b border-gray-800 pb-2">
                                                         <span className="text-xs font-extrabold text-amber-400 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-700">
                                                             Shot #{shot.shot_index || idx + 1} ({shot.duration_seconds || 10}s)
@@ -2733,15 +2758,16 @@ UI_HTML = r"""<!DOCTYPE html>
                                         <div className="pt-3 flex justify-end gap-3">
                                             <button
                                                 type="button"
-                                                disabled={loading}
-                                                onClick={async (e) => {
-                                                    setActiveStage(3);
-                                                    await handleGenerate(e);
-                                                }}
-                                                className="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
+                                                disabled={isBatchGeneratingVideos}
+                                                onClick={() => handleGenerateAllShotVideosSequentially(true)}
+                                                className="bg-gradient-to-r from-pink-600 via-purple-600 to-teal-600 hover:from-pink-500 hover:to-teal-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
                                             >
                                                 <span>🎬</span>
-                                                <span>{loading ? "Generating Initial Video..." : "Generate Initial Video Clip & Proceed to Stage 3 ➔"}</span>
+                                                <span>
+                                                    {isBatchGeneratingVideos
+                                                        ? `Rendering Shot ${batchVideoProgress.current}/${batchVideoProgress.total}...`
+                                                        : "Generate All Video Shots & Proceed to Stage 3 ➔"}
+                                                </span>
                                             </button>
                                             <button
                                                 type="button"
