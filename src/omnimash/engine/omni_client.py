@@ -735,13 +735,9 @@ class OmniFlashClient:
         last_error: str | None = None
 
         sanitized_input = sanitize_real_names(prompt) if prompt else ""
-        safe_input = _abstract_prompt_for_responsible_ai(sanitized_input)
-        logger.info(
-            "Using Responsible AI abstracted prompt for Omni Flash: %s", safe_input
-        )
         kwargs: dict[str, Any] = {
             "model": "gemini-omni-flash-preview",
-            "input": safe_input,
+            "input": sanitized_input,
         }
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id
@@ -819,17 +815,13 @@ class OmniFlashClient:
                     "Input blocked" in exc_str
                     or "real people's names" in exc_str
                 ):
+                    fallback_prompt = _abstract_prompt_for_responsible_ai(sanitized_input)
                     logger.warning(
-                        "Gemini Omni Flash blocked real name/likeness (%s). Aggressively abstracting prompt for retry.",
+                        "Gemini Omni Flash blocked real name/likeness (%s). Abstracting prompt for retry: %s",
                         exc_str,
+                        fallback_prompt,
                     )
-                    fallback_prompt = re.sub(r"\b[A-Z][a-z]+\b", "Character", safe_input)
-                    if isinstance(kwargs.get("input"), list):
-                        for item in kwargs["input"]:
-                            if isinstance(item, dict) and item.get("type") == "text":
-                                item["text"] = fallback_prompt
-                    else:
-                        kwargs["input"] = fallback_prompt
+                    kwargs["input"] = fallback_prompt
                 elif (
                     "safety_settings" in exc_str
                     or "Unmarshaller" in exc_str
