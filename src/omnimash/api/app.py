@@ -914,12 +914,14 @@ UI_HTML = r"""<!DOCTYPE html>
                 if (e && e.preventDefault) e.preventDefault();
                 setLoading(true);
                 try {
+                    const selectedShotObj = stageShots.find(s => (s.shot_index || (stageShots.indexOf(s) + 1)) === selectedShotIndex);
+                    const shotTurnId = selectedShotObj?.turn_id || parentTurnId || null;
                     const payload = {
                         user_id: "usr_studio",
                         project_id: "prj_director",
                         prompt: deltaPrompt || concept,
                         clip_index: (selectedShotIndex - 1) >= 0 ? (selectedShotIndex - 1) : 0,
-                        parent_turn_id: parentTurnId || null,
+                        parent_turn_id: shotTurnId,
                         session_name: sessionName,
                         concept: concept,
                         characters: characters,
@@ -929,7 +931,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         audio_stem: audioBeat,
                         vocal_delivery: vocalDelivery
                     };
-                    const endpoint = parentTurnId ? "/api/diff" : "/api/generate";
+                    const endpoint = shotTurnId ? "/api/diff" : "/api/generate";
                     const res = await fetch(endpoint, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },

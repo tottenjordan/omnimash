@@ -735,7 +735,21 @@ class OmniFlashClient:
         delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
         last_error: str | None = None
 
-        sanitized_input = sanitize_real_names(prompt) if prompt else ""
+        character_roster_header = ""
+        if characters:
+            char_lines: list[str] = ["# Character Roster & Visual Directives:"]
+            for c in characters:
+                name = getattr(c, "name", "")
+                role_id = getattr(c, "role_id", "")
+                desc = getattr(c, "description", "")
+                ref = getattr(c, "reference_url", "")
+                tags = getattr(c, "aesthetic_tags", [])
+                tag_str = f" [Style: {', '.join(tags)}]" if tags else ""
+                ref_str = f" (Reference Image: {ref})" if ref else ""
+                char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
+            character_roster_header = "\n".join(char_lines) + "\n\n"
+
+        sanitized_input = character_roster_header + (sanitize_real_names(prompt) if prompt else "")
         kwargs: dict[str, Any] = {
             "model": "gemini-omni-flash-preview",
             "input": sanitized_input,
