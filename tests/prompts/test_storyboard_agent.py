@@ -155,8 +155,8 @@ def test_expand_vision_with_screenplay_script():
     assert shots[0].shot_index == 1
     assert shots[1].shot_index == 2
     assert shots[2].shot_index == 3
-    assert "Role A (Snape)" in shots[0].action
-    assert "Role B (Dumbledore)" in shots[1].action
+    assert "Role A (Gothic Potion Master)" in shots[0].action
+    assert "Role B (Venerable High Wizard)" in shots[1].action
 
 
 def test_expand_vision_celebrity_sanitization():
@@ -196,5 +196,27 @@ def test_expand_vision_location_directives_formatting_and_sanitization():
         assert "Gordon Ramsay" not in s.location
         assert "Gordon Ramsay" not in s.action
         assert "Gordon Ramsay" not in s.summary
+
+
+def test_storyboard_shot_narrative_continuity():
+    shot = StoryboardShot(
+        shot_index=2,
+        duration_seconds=10.0,
+        action="Retainer Grainger reacts to the glowing spell",
+        location="Gothic potions classroom",
+        style_lighting="High contrast neon rim lights",
+        framing_motion="Dolly zoom in",
+        audio="Trap beat drop with sub-bass",
+        narrative_stage="Rising Action",
+        preceding_context="Retainer Grainger raised her glowing wand",
+        camera_transition="Continuous match cut",
+        character_continuity="Maintain red tracksuit and gold glasses",
+    )
+    prompt = shot.to_omni_flash_prompt()
+    assert "[SCENE CONTINUATION & VISUAL FLOW]" in prompt
+    assert "- Story Arc Phase: Rising Action" in prompt
+    assert "- Preceding Shot Context: Retainer Grainger raised her glowing wand" in prompt
+    assert "- Camera & Scene Transition: Continuous match cut" in prompt
+    assert "- Character Continuity: Maintain red tracksuit and gold glasses" in prompt
 
 

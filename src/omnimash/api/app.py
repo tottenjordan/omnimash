@@ -123,6 +123,10 @@ class StoryboardShotModel(BaseModel):
     summary: str = ""
     keyframe_image_url: str = ""
     video_url: str = ""
+    narrative_stage: str = "Rising Action"
+    preceding_context: str = ""
+    camera_transition: str = "Continuous match cut"
+    character_continuity: str = "Maintain subject outfit, posture, and facial expression from preceding shot"
 
 
 class StoryboardExpandRequest(BaseModel):
@@ -500,9 +504,13 @@ UI_HTML = r"""<!DOCTYPE html>
                 setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
                 try {
-                    let directive = `${shot.action || ""} | Location: ${shot.location || ""} | Style: ${shot.style_lighting || ""} | Motion: ${shot.framing_motion || ""} | Audio: ${shot.audio || ""}`;
+                    let directive = `[SHOT DIRECTIVE: Shot ${shotIdx}]\n- Action / Subject: ${shot.action || ""}\n- Location: ${shot.location || ""}\n- Style & Lighting: ${shot.style_lighting || ""}\n- Framing & Motion: ${shot.framing_motion || ""}\n- Audio Soundscape: ${shot.audio || ""}`;
                     if (shot.dialogue && shot.dialogue.trim()) {
-                        directive += ` | Dialogue: "${shot.dialogue.strip ? shot.dialogue.strip() : shot.dialogue.trim()}"`;
+                        directive += `\n- Dialogue / Text Overlay: "${shot.dialogue.trim()}"`;
+                    }
+                    const precContext = shot.preceding_context || (idx > 0 && stageShots[idx - 1] ? (stageShots[idx - 1].action || stageShots[idx - 1].summary) : "");
+                    if (shotIdx > 1 || precContext) {
+                        directive += `\n\n[SCENE CONTINUATION & VISUAL FLOW]\n- Story Arc Phase: ${shot.narrative_stage || "Rising Action"}\n- Preceding Shot Context (Shot #${shotIdx - 1}): ${precContext || "Direct visual continuation from previous scene"}\n- Camera & Scene Transition: ${shot.camera_transition || "Continuous match cut"}\n- Character Continuity: ${shot.character_continuity || "Maintain subject outfit, posture, and facial expression from preceding shot"}`;
                     }
                     const parentTurnId = parentIdOverride || (idx > 0 && stageShots[idx - 1] ? stageShots[idx - 1].turn_id : null);
                     const res = await fetch("/api/generate-shot", {
@@ -2616,14 +2624,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     key={idx}
                                                     className={`bg-gray-900 border rounded-2xl p-4 shadow-xl flex flex-col justify-between space-y-3 transition ${
                                                         isBatchGeneratingVideos && (shot.shot_index || idx + 1) === batchVideoProgress.activeShotIndex
-                                                            ? "border-pink-500 ring-2 ring-pink-500/50 shadow-pink-900/40 animate-pulse"
-                                                            : "border-gray-800 hover:border-purple-500/50"
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center justify-between border-b border-gray-800 pb-2">
-                                                        <span className="text-xs font-extrabold text-amber-400 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-700">
-                                                            Shot #{shot.shot_index || idx + 1} ({shot.duration_seconds || 10}s)
-                                                        </span>
+                                                                                      <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <span className="text-xs font-extrabold text-amber-400 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-700">
+                                                                Shot #{shot.shot_index || idx + 1} ({shot.duration_seconds || 10}s)
+                                                            </span>
+                                                            <span className="text-[10px] font-bold text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
+                                                                🎭 {shot.narrative_stage || "Rising Action"}
+                                                            </span>
+                                                        </div>
                                                         <div className="flex items-center space-x-2">
                                                             {shot.video_url && (
                                                                 <span className="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded font-bold">
@@ -2668,7 +2677,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         <span>🖼️</span>
                                                         <span>
                                                             {keyframeLoadingMap[shot.shot_index || idx + 1]
-                                                                ? "Generating Keyframe..."
+                                                                ? "Rendering Keyframe..."
                                                                 : "🖼️ Keyframe Image (Gemini 3.1 Flash)"}
                                                         </span>
                                                     </button>
@@ -2739,6 +2748,39 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 placeholder='e.g. Spoken dialogue or text overlay: "Check the potion beat"'
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-rose-500 text-[11px]"
                                                             />
+                                                        </div>
+
+                                                        {/* Narrative & Visual Continuity Chaining Controls */}
+                                                        <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-lg p-2.5 space-y-2 mt-2">
+                                                            <div className="flex items-center justify-between border-b border-indigo-900/50 pb-1">
+                                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                                                                    <span>🔗</span>
+                                                                    <span>Shot Continuity &amp; Visual Flow</span>
+                                                                </span>
+                                                                <span className="text-[9px] bg-indigo-900/80 text-indigo-200 px-1.5 py-0.5 rounded font-mono">
+                                                                    {idx === 0 ? "Initial Shot" : `Chained from Shot #${idx}`}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[9px] font-bold uppercase text-indigo-400 block mb-0.5">Transition Instruction</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={shot.camera_transition || "Continuous match cut"}
+                                                                    onChange={(e) => updateStageShot(idx, "camera_transition", e.target.value)}
+                                                                    placeholder="e.g. Continuous match cut from previous shot..."
+                                                                    className="w-full bg-gray-950 border border-indigo-800/60 rounded p-1.5 text-indigo-200 text-[10px]"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[9px] font-bold uppercase text-indigo-400 block mb-0.5">Character &amp; Costume Continuity</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={shot.character_continuity || "Maintain subject outfit, posture, and facial expression from preceding shot"}
+                                                                    onChange={(e) => updateStageShot(idx, "character_continuity", e.target.value)}
+                                                                    placeholder="e.g. Retainer Grainger maintains red tracksuit and gold glasses..."
+                                                                    className="w-full bg-gray-950 border border-indigo-800/60 rounded p-1.5 text-indigo-200 text-[10px]"
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
 
@@ -3525,6 +3567,10 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     summary=s.summary,
                     keyframe_image_url=getattr(s, "keyframe_image_url", ""),
                     video_url=getattr(s, "video_url", ""),
+                    narrative_stage=getattr(s, "narrative_stage", "Rising Action"),
+                    preceding_context=getattr(s, "preceding_context", ""),
+                    camera_transition=getattr(s, "camera_transition", "Continuous match cut"),
+                    character_continuity=getattr(s, "character_continuity", "Maintain subject outfit, posture, and facial expression from preceding shot"),
                 )
                 for s in shots
             ]

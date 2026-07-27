@@ -71,6 +71,10 @@ class StoryboardShot:
     audio: str
     summary: str = ""
     dialogue: str = ""
+    narrative_stage: str = "Rising Action"
+    preceding_context: str = ""
+    camera_transition: str = "Continuous match cut"
+    character_continuity: str = "Maintain subject outfit, posture, and facial expression from preceding shot"
 
     def to_omni_flash_prompt(self, role_mappings: str = "") -> str:
         prompt_parts: list[str] = []
@@ -88,6 +92,15 @@ class StoryboardShot:
         ]
         if self.dialogue and self.dialogue.strip():
             parts.append(f'- Dialogue / Text Overlay: "{self.dialogue.strip()}"')
+
+        if self.shot_index > 1 or (self.preceding_context and self.preceding_context.strip()):
+            parts.append(
+                f"\n[SCENE CONTINUATION & VISUAL FLOW]\n"
+                f"- Story Arc Phase: {self.narrative_stage}\n"
+                f"- Preceding Shot Context: {self.preceding_context or 'Direct narrative continuation from previous scene'}\n"
+                f"- Camera & Scene Transition: {self.camera_transition}\n"
+                f"- Character Continuity: {self.character_continuity}"
+            )
 
         directive = "\n".join(parts)
         prompt_parts.append(directive)
@@ -312,7 +325,11 @@ class StoryboardAgent:
                 f'    "location": "Environment and location details",\n'
                 f'    "style_lighting": "Aesthetic, color grading, and lighting",\n'
                 f'    "framing_motion": "Camera angle, framing, and movement",\n'
-                f'    "audio": "Sound design, music beat, and vocal cues"\n'
+                f'    "audio": "Sound design, music beat, and vocal cues",\n'
+                f'    "narrative_stage": "Setup | Inciting Incident | Rising Action | Climax | Resolution",\n'
+                f'    "preceding_context": "Recap of preceding shot action or setup",\n'
+                f'    "camera_transition": "Transition instruction e.g. Match cut from previous shot",\n'
+                f'    "character_continuity": "Costume/prop retention directive"\n'
                 f"  }}\n"
                 f"]"
             )
@@ -365,6 +382,10 @@ class StoryboardAgent:
                             style_lighting=sanitize_real_names(str(item.get("style_lighting", style_tone))),
                             framing_motion=sanitize_real_names(str(item.get("framing_motion", ""))),
                             audio=sanitize_real_names(str(item.get("audio", ""))),
+                            narrative_stage=sanitize_real_names(str(item.get("narrative_stage", "Rising Action"))),
+                            preceding_context=sanitize_real_names(str(item.get("preceding_context", ""))),
+                            camera_transition=sanitize_real_names(str(item.get("camera_transition", "Continuous match cut"))),
+                            character_continuity=sanitize_real_names(str(item.get("character_continuity", "Maintain subject outfit, posture, and facial expression from preceding shot"))),
                         )
                     )
                 return shots
