@@ -3313,12 +3313,14 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/diff", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
         sanitized_prompt = sanitize_real_names(req.prompt) if req.prompt else ""
+        is_edit = bool(req.parent_turn_id and not (req.scenes or req.concept))
         agent_turn = agent.process_user_turn(
             user_id=req.user_id,
             project_id=req.project_id,
             prompt=sanitized_prompt,
             clip_index=req.clip_index,
             parent_turn_id=req.parent_turn_id,
+            is_conversational_edit=is_edit,
             reference_url=req.reference_url,
             audio_stem=req.audio_stem,
             voiceover=req.voiceover,
@@ -3485,6 +3487,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             parent_turn_id=req.parent_turn_id,
             clip_index=req.shot_index,
             duration_seconds=req.duration_seconds,
+            is_conversational_edit=False,
             session_name=req.session_name,
             characters=req.characters,
         )

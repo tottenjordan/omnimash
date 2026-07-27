@@ -65,6 +65,7 @@ def test_process_user_turn_single_change_success():
         prompt="Change the jacket to green",
         clip_index=0,
         parent_turn_id=r1.turn_id,
+        is_conversational_edit=True,
     )
     assert r2.success is True
     assert r2.status_event in ["COMPLETED", "COMMIT_RECOMMENDED"]
@@ -91,6 +92,7 @@ def test_process_user_turn_compound_multi_change_rejection():
         prompt="Change the jacket to green, switch background to studio, and add sunglasses",
         clip_index=0,
         parent_turn_id=r1.turn_id,
+        is_conversational_edit=True,
     )
     assert r2.success is False
     assert r2.status_event == "MULTI_CHANGE_REJECTED"

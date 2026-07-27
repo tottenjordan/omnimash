@@ -174,6 +174,7 @@ class OmniMashAgent:
         clip_index: int = 0,
         parent_turn_id: str | None = None,
         duration_seconds: float = 10.0,
+        is_conversational_edit: bool = False,
         reference_url: str | None = None,
         audio_stem: str | None = None,
         voiceover: str | None = None,
@@ -320,7 +321,10 @@ class OmniMashAgent:
                     )
 
         turn_index = len(session.turns)
-        if parent_turn_id and parent_turn_id in session.turns:
+        parent_turn = session.turns.get(parent_turn_id) if parent_turn_id else None
+        parent_thread_id = parent_turn.interaction_thread_id if parent_turn else None
+
+        if is_conversational_edit and parent_turn:
             is_valid, edit_err = self.validate_conversational_edit(
                 guard_res.sanitized_prompt
             )
@@ -330,7 +334,6 @@ class OmniMashAgent:
                     status_event="MULTI_CHANGE_REJECTED",
                     error_message=edit_err,
                 )
-            parent_turn = session.turns[parent_turn_id]
             delta_prompt = self.taxonomy.build_delta_prompt(
                 parent_turn.prompt,
                 guard_res.sanitized_prompt,
@@ -344,7 +347,7 @@ class OmniMashAgent:
                 session_id=session.session_id,
                 turn_index=turn_index,
                 prompt=delta_prompt,
-                parent_thread_id=parent_turn.interaction_thread_id,
+                parent_thread_id=parent_thread_id,
                 voiceover=voiceover,
                 is_silent=is_silent,
                 audio_stem=audio_stem,
@@ -405,7 +408,7 @@ class OmniMashAgent:
                 session_id=session.session_id,
                 turn_index=turn_index,
                 prompt=meta_prompt,
-                parent_thread_id=None,
+                parent_thread_id=parent_thread_id,
                 voiceover=voiceover,
                 is_silent=is_silent,
                 audio_stem=audio_stem,
