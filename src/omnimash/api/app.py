@@ -2866,28 +2866,67 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 {(() => {
                                                     const currentShot = stageShots.find(s => (s.shot_index || (stageShots.indexOf(s) + 1)) === selectedShotIndex) || stageShots[0];
                                                     const shotVideo = currentShot?.video_url || currentVideo;
+
+                                                    const promptLines = currentShot ? [
+                                                        currentShot.action ? `- Action / Subject: ${currentShot.action}` : "",
+                                                        currentShot.location ? `- Location / Setting: ${currentShot.location}` : "",
+                                                        currentShot.style_lighting ? `- Style & Lighting: ${currentShot.style_lighting}` : "",
+                                                        currentShot.framing_motion ? `- Framing & Motion: ${currentShot.framing_motion}` : "",
+                                                        currentShot.audio ? `- Audio Directives: ${currentShot.audio}` : "",
+                                                        currentShot.dialogue ? `- Dialogue / Text Overlay: "${currentShot.dialogue}"` : ""
+                                                    ].filter(Boolean) : [];
+                                                    const formattedPrompt = promptLines.join("\n");
+
                                                     return (
-                                                        <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group">
-                                                            {shotVideo ? (
-                                                                <video src={getDisplayableRefUrl(shotVideo)} controls className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <div className="p-6 text-center space-y-3">
-                                                                    <span className="text-4xl block animate-bounce">🎬</span>
-                                                                    <div className="text-xs text-gray-300 font-bold">No clip generated yet for Shot #{selectedShotIndex}.</div>
-                                                                    <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
-                                                                        Click below or generate video on Shot #{selectedShotIndex}'s card in Stage 2!
-                                                                    </p>
+                                                        <div className="space-y-3">
+                                                            <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group">
+                                                                {shotVideo ? (
+                                                                    <video src={getDisplayableRefUrl(shotVideo)} controls className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <div className="p-6 text-center space-y-3">
+                                                                        <span className="text-4xl block animate-bounce">🎬</span>
+                                                                        <div className="text-xs text-gray-300 font-bold">No clip generated yet for Shot #{selectedShotIndex}.</div>
+                                                                        <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
+                                                                            Click below or generate video on Shot #{selectedShotIndex}'s card in Stage 2!
+                                                                        </p>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={loading}
+                                                                            onClick={handleGenerate}
+                                                                            className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg inline-flex items-center gap-2 transition disabled:opacity-50"
+                                                                        >
+                                                                            <span>⚡</span>
+                                                                            <span>{loading ? "Generating Initial Video..." : `Generate Video for Shot #${selectedShotIndex}`}</span>
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Active Shot Video Generation Prompt Display */}
+                                                            <div className="bg-gray-950 border border-purple-900/40 rounded-xl p-3 space-y-2">
+                                                                <div className="flex items-center justify-between border-b border-gray-800/80 pb-1.5">
+                                                                    <span className="text-[11px] font-bold text-purple-300 flex items-center gap-1.5">
+                                                                        <span>📜</span>
+                                                                        <span>Gemini Omni Flash Prompt (Shot #{selectedShotIndex})</span>
+                                                                    </span>
                                                                     <button
                                                                         type="button"
-                                                                        disabled={loading}
-                                                                        onClick={handleGenerate}
-                                                                        className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg inline-flex items-center gap-2 transition disabled:opacity-50"
+                                                                        onClick={() => {
+                                                                            if (formattedPrompt) {
+                                                                                navigator.clipboard.writeText(formattedPrompt);
+                                                                                alert("Video prompt copied to clipboard!");
+                                                                            }
+                                                                        }}
+                                                                        className="text-[10px] bg-purple-950 hover:bg-purple-900 text-purple-200 border border-purple-800 px-2 py-0.5 rounded transition flex items-center gap-1 font-bold"
                                                                     >
-                                                                        <span>⚡</span>
-                                                                        <span>{loading ? "Generating Initial Video..." : `Generate Video for Shot #${selectedShotIndex}`}</span>
+                                                                        <span>📋</span>
+                                                                        <span>Copy</span>
                                                                     </button>
                                                                 </div>
-                                                            )}
+                                                                <pre className="text-[11px] font-mono text-pink-200/90 bg-gray-900/80 border border-gray-800/80 rounded-lg p-2.5 whitespace-pre-wrap overflow-x-auto leading-relaxed">
+                                                                    {formattedPrompt || "No prompt details specified for this shot."}
+                                                                </pre>
+                                                            </div>
                                                         </div>
                                                     );
                                                 })()}
