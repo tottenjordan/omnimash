@@ -176,6 +176,7 @@ class SaveFinalResponse(BaseModel):
     success: bool
     gcs_uri: str
     message: str
+    video_url: str | None = None
 
 
 class ExtendSceneRequest(BaseModel):
@@ -577,11 +578,21 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data && data.gcs_uri) {
                         setStageSaveGcs(data.gcs_uri);
                     }
+                    if (data && data.video_url) {
+                        setCurrentVideo(data.video_url);
+                    }
                 } catch (err) {
                     console.error("Stage final save failed:", err);
                 } finally {
                     setStageSaveLoading(false);
                 }
+            };
+
+            const handleProceedToStage4 = async () => {
+                setActiveStage(4);
+                setTimeout(() => {
+                    handleStageSaveFinal();
+                }, 50);
             };
 
             const [history, setHistory] = useState([
@@ -1499,7 +1510,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             </button>
                             <span className="text-gray-700 font-bold">➔</span>
                             <button
-                                onClick={() => setActiveStage(4)}
+                                onClick={handleProceedToStage4}
                                 className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
                                     activeStage === 4
                                         ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500 shadow-md shadow-emerald-900/20"
@@ -2872,7 +2883,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => setActiveStage(4)}
+                                                onClick={handleProceedToStage4}
                                                 className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2"
                                             >
                                                 <span>🏆</span>
@@ -3322,13 +3333,13 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     def save_final(req: SaveFinalRequest) -> SaveFinalResponse:
         audio = req.master_audio_path or req.master_audio_url
         if req.is_single_clip:
-            _pub_url, gcs_uri = agent.storage.save_final_master(
+            pub_url, gcs_uri = agent.storage.save_final_master(
                 session_id=req.session_name,
                 source_rel_path=req.video_url,
                 master_title=req.master_title,
             )
         else:
-            _pub_url, gcs_uri = agent.save_final_master(
+            pub_url, gcs_uri = agent.save_final_master(
                 session_name=req.session_name,
                 video_url=req.video_url,
                 master_title=req.master_title,
@@ -3337,6 +3348,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         return SaveFinalResponse(
             success=True,
             gcs_uri=gcs_uri,
+            video_url=pub_url,
             message=f"Final master successfully saved to {gcs_uri}",
         )
 
