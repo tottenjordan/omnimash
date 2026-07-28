@@ -1,3 +1,4 @@
+import logging
 import os
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
@@ -9,6 +10,8 @@ from omnimash.ingestion.media_extractor import (
     ReferenceAnalysisReport,
 )
 from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
+
+logger = logging.getLogger(__name__)
 
 
 class CharacterRoleModel(BaseModel):
@@ -163,11 +166,14 @@ class GenerateShotRequest(BaseModel):
     characters: list[CharacterRoleModel | dict] | None = None
     duration_seconds: float = 10.0
     parent_turn_id: str | None = None
+    keyframe_image_url: str | None = None
+    style_lighting: str = ""
 
 
 class GenerateShotResponse(BaseModel):
     success: bool = True
     video_url: str | None = None
+    keyframe_image_url: str | None = None
     turn_id: str | None = None
     status: str = "COMPLETED"
     generation_mode: str = "LIVE_OMNI_FLASH"
@@ -3607,6 +3613,25 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/generate-shot", response_model=GenerateShotResponse)
     def generate_shot(req: GenerateShotRequest) -> GenerateShotResponse:
         sanitized_directive = sanitize_real_names(req.shot_directive)
+        keyframe_url = req.keyframe_image_url
+
+        # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor
+        if not keyframe_url and sanitized_directive:
+            ref_urls: list[str] = []
+            if req.characters:
+                for c in req.characters:
+                    ref = c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None)
+                    if ref and ref not in ref_urls:
+                        ref_urls.append(ref)
+            try:
+                keyframe_url = agent.omni_client.generate_keyframe_image(
+                    sanitized_directive,
+                    style_tone=req.style_lighting,
+                    reference_image_urls=ref_urls,
+                )
+            except Exception as exc:
+                logger.warning("Auto keyframe image generation before video generation failed: %s", exc)
+
         agent_turn = agent.process_user_turn(
             user_id="usr_default",
             project_id="prj_default",
@@ -3617,10 +3642,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             is_conversational_edit=False,
             session_name=req.session_name,
             characters=req.characters,
+            keyframe_image_url=keyframe_url,
         )
         return GenerateShotResponse(
             success=agent_turn.success,
             video_url=agent_turn.video_url,
+            keyframe_image_url=keyframe_url,
             turn_id=agent_turn.turn_id,
             status=agent_turn.status_event,
             generation_mode=getattr(agent_turn, "generation_mode", "LIVE_OMNI_FLASH"),

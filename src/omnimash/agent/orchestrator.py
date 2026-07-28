@@ -189,6 +189,7 @@ class OmniMashAgent:
         environment_tag: str | None = None,
         vocal_delivery: str | None = None,
         optimize_prompt: bool = False,
+        keyframe_image_url: str | None = None,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
@@ -352,6 +353,7 @@ class OmniMashAgent:
                 is_silent=is_silent,
                 audio_stem=audio_stem,
                 characters=char_objs,
+                keyframe_image_url=keyframe_image_url,
             )
         else:
             if characters or scenes:
@@ -413,6 +415,7 @@ class OmniMashAgent:
                 is_silent=is_silent,
                 audio_stem=audio_stem,
                 characters=char_objs,
+                keyframe_image_url=keyframe_image_url,
             )
 
         if gen_res.error_message and not gen_res.video_url:
@@ -521,6 +524,7 @@ class OmniMashAgent:
         is_silent: bool = False,
         audio_stem: str | None = None,
         characters: list[CharacterRole] | None = None,
+        keyframe_image_url: str | None = None,
     ) -> Any:
         if parent_thread_id:
             return self.omni_client.apply_interaction_diff(
@@ -541,6 +545,7 @@ class OmniMashAgent:
             audio_stem=audio_stem,
             turn_index=turn_index,
             characters=characters,
+            keyframe_image_url=keyframe_image_url,
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:

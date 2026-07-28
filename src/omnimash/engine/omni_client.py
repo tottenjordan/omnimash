@@ -719,6 +719,7 @@ class OmniFlashClient:
         previous_interaction_id: str | None = None,
         characters: list[CharacterRole] | None = None,
         session_id: str | None = None,
+        keyframe_image_url: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -734,6 +735,19 @@ class OmniFlashClient:
         delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
         last_error: str | None = None
 
+        keyframe_image_parts: list[dict[str, Any]] = []
+        if keyframe_image_url:
+            img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
+            if img_bytes:
+                b64_str = base64.b64encode(img_bytes).decode("utf-8")
+                keyframe_image_parts.append(
+                    {
+                        "type": "image",
+                        "data": b64_str,
+                        "mime_type": mime_type,
+                    }
+                )
+
         character_roster_header = ""
         if characters:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
@@ -748,11 +762,17 @@ class OmniFlashClient:
                 char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
-        sanitized_input = character_roster_header + (sanitize_real_names(prompt) if prompt else "")
+        tone_header = ""
+        if keyframe_image_parts:
+            tone_header = "# Visual Tone & Starting Frame Anchor:\nThe first attached image is the keyframe starting frame for this shot. Begin the video clip from this frame and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
+
+        sanitized_input = tone_header + character_roster_header + (sanitize_real_names(prompt) if prompt else "")
         ref_image_parts = self._load_reference_images_as_input(session_id, characters)
-        if ref_image_parts:
+        all_image_parts = keyframe_image_parts + ref_image_parts
+
+        if all_image_parts:
             text_part = {"type": "text", "text": sanitized_input}
-            input_payload: Any = [{"type": "user_input", "content": ref_image_parts + [text_part]}]
+            input_payload: Any = [{"type": "user_input", "content": all_image_parts + [text_part]}]
         else:
             input_payload = sanitized_input
 
@@ -894,6 +914,7 @@ class OmniFlashClient:
         audio_stem: str | None = None,
         turn_index: int | None = None,
         characters: list[CharacterRole] | None = None,
+        keyframe_image_url: str | None = None,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -906,7 +927,11 @@ class OmniFlashClient:
 
         # 1. Primary: Gemini Omni Flash via Interactions API (Native Video + Audio + Reasoning)
         success, inter_id, error_message = self._generate_live_omni_flash_video(
-            prompt, rel_path, characters=characters, session_id=session_id
+            prompt,
+            rel_path,
+            characters=characters,
+            session_id=session_id,
+            keyframe_image_url=keyframe_image_url,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"

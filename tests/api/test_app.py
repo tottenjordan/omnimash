@@ -362,6 +362,7 @@ def test_api_generate_shot_endpoint():
             "session_name": "shot_test_session",
             "shot_index": 1,
             "shot_directive": "Dramatic close-up of Harry preparing potions",
+            "style_lighting": "Gothic neon trap lighting",
             "characters": [
                 {
                     "role_id": "Role A",
@@ -375,6 +376,8 @@ def test_api_generate_shot_endpoint():
     data = res.json()
     assert data["success"] is True
     assert "video_url" in data
+    assert "keyframe_image_url" in data
+    assert data["keyframe_image_url"] is not None
     assert "turn_id" in data
     assert data["status"] in ("COMPLETED", "COMMIT_RECOMMENDED")
 

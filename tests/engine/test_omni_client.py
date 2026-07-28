@@ -637,6 +637,58 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
     assert any("Spectacled Wizard Bruv" in str(x) for x in input_arg[0]["content"])
 
 
+def test_generate_live_omni_flash_video_with_keyframe_starting_image_seed(
+    tmp_path: Any,
+) -> None:
+    """Verify that keyframe_image_url is prepended as the starting image seed and tone anchor in multimodal payload."""
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_keyframe_123", output_video=MagicMock(data=b"fake_mp4_video_bytes")
+    )
+    client._genai_client = MagicMock(interactions=mock_interactions)
+
+    char = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Harry Potter",
+        reference_url="gs://test-bucket/harry.png",
+    )
+
+    with patch.object(
+        client.storage,
+        "download_blob_bytes",
+        return_value=(b"fake_image_bytes", "image/png"),
+    ):
+        target_file = str(tmp_path / "test_keyframe_seed_out.mp4")
+        success, inter_id, error = client._generate_live_omni_flash_video(
+            prompt="Harry Potter Climax Duel",
+            target_rel_path=target_file,
+            characters=[char],
+            session_id="session_keyframe",
+            keyframe_image_url="gs://test-bucket/keyframe_start.png",
+        )
+
+    assert success is True
+    assert inter_id == "inter_keyframe_123"
+    assert error is None
+
+    assert mock_interactions.create.called
+    call_kwargs = mock_interactions.create.call_args.kwargs
+    input_arg = call_kwargs["input"]
+    assert isinstance(input_arg, list)
+    assert input_arg[0]["type"] == "user_input"
+    content_list = input_arg[0]["content"]
+    # Should have 2 image content dicts (keyframe seed + char ref) + 1 text directive dict
+    assert len(content_list) == 3
+    assert content_list[0]["type"] == "image"
+    assert content_list[1]["type"] == "image"
+    assert content_list[2]["type"] == "text"
+    assert "Visual Tone & Starting Frame Anchor" in content_list[2]["text"]
+
+
 def test_load_reference_images_logs_diagnostics(
     caplog: pytest.LogCaptureFixture, tmp_path: Any
 ) -> None:
