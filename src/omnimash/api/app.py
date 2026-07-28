@@ -586,6 +586,16 @@ UI_HTML = r"""<!DOCTYPE html>
                     }
                     return updated;
                 });
+            const handleGlobalStyleToneChange = (newTone, applyToAllShots = true) => {
+                setStageStyleTone(newTone);
+                if (applyToAllShots) {
+                    setStageShots((prevShots) =>
+                        prevShots.map((shot) => ({
+                            ...shot,
+                            style_lighting: `${newTone}, high-contrast lighting`
+                        }))
+                    );
+                }
             };
 
             const addStageShot = () => {
@@ -2324,7 +2334,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         <button
                                                             key={tone}
                                                             type="button"
-                                                            onClick={() => setStageStyleTone(tone)}
+                                                            onClick={() => handleGlobalStyleToneChange(tone, true)}
                                                             className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
                                                                 stageStyleTone === tone
                                                                     ? "bg-amber-500 text-black font-extrabold shadow-md shadow-amber-900/50"
@@ -2594,6 +2604,29 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <p className="text-xs text-gray-400 mt-1">
                                                     Each shot card defines 5 structured directives: Action/Subject, Location, Style &amp; Lighting, Framing &amp; Motion, Audio.
                                                 </p>
+                                                <div className="flex items-center gap-2 bg-gray-950/80 border border-gray-800 rounded-xl px-3 py-1.5 mt-2">
+                                                    <span className="text-xs font-bold text-amber-400">🎨 Master Art Style:</span>
+                                                    <select
+                                                        value={stageStyleTone}
+                                                        onChange={(e) => handleGlobalStyleToneChange(e.target.value, true)}
+                                                        className="bg-gray-900 border border-gray-700 rounded-lg text-xs font-semibold text-white px-2 py-1 focus:outline-none focus:border-amber-500"
+                                                    >
+                                                        <option value="🎨 90s Cel-Shaded Anime">🎨 90s Cel-Shaded Anime</option>
+                                                        <option value="🍿 3D Stylized Animation (Arcane)">🍿 3D Stylized Animation</option>
+                                                        <option value="💥 Comic Book Graphic Novel">💥 Comic Book Graphic Novel</option>
+                                                        <option value="🖌️ Lo-Fi Vector Toon Parody">🖌️ Lo-Fi Vector Toon</option>
+                                                        <option value="🎬 Cinematic Trap Parody">🎬 Cinematic Trap Parody</option>
+                                                        <option value="📹 Gritty 90s Rap Video">📹 Gritty 90s Rap Video</option>
+                                                    </select>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleGlobalStyleToneChange(stageStyleTone, true)}
+                                                        className="text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2 py-1 rounded transition"
+                                                        title="Cascade master art style to all shot cards"
+                                                    >
+                                                        Cascade to All Shots
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div className="flex items-center space-x-2">
                                                 <button
