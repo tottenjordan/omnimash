@@ -623,50 +623,7 @@ class OmniFlashClient:
             if not ref_url or not isinstance(ref_url, str):
                 continue
 
-            img_bytes: bytes = b""
-            mime_type: str = "image/jpeg"
-
-            if hasattr(self.storage, "load_bytes"):
-                try:
-                    res = self.storage.load_bytes(ref_url)
-                    if isinstance(res, tuple):
-                        img_bytes, mime_type = res[0], res[1] or mime_type
-                    elif isinstance(res, bytes):
-                        img_bytes = res
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to load reference image via storage.load_bytes for %s: %s",
-                        ref_url,
-                        exc,
-                    )
-
-            if (
-                not img_bytes
-                and hasattr(self.storage, "download_blob_bytes")
-                and ref_url.startswith("gs://")
-            ):
-                try:
-                    img_bytes, downloaded_mime = self.storage.download_blob_bytes(
-                        ref_url
-                    )
-                    if downloaded_mime:
-                        mime_type = downloaded_mime
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to download blob bytes for %s: %s", ref_url, exc
-                    )
-
-            if not img_bytes and (
-                os.path.exists(ref_url) or os.path.exists(ref_url.lstrip("/"))
-            ):
-                path = ref_url if os.path.exists(ref_url) else ref_url.lstrip("/")
-                try:
-                    with open(path, "rb") as f:
-                        img_bytes = f.read()
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to read local reference image file %s: %s", path, exc
-                    )
+            img_bytes, mime_type = self._fetch_image_bytes(ref_url)
 
             if img_bytes:
                 if ref_url.lower().endswith(".png"):
