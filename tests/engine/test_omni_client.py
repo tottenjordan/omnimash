@@ -633,7 +633,7 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
 
     input_arg = call_kwargs["input"]
     assert isinstance(input_arg, str)
-    assert "Spectacled Wizard Student" in input_arg
+    assert "Spectacled Wizard Bruv" in input_arg
 
 
 def test_load_reference_images_logs_diagnostics(

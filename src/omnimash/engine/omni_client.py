@@ -1163,9 +1163,16 @@ class OmniFlashClient:
                 prompt_text = f"High quality cinematic 16:9 visual keyframe concept art featuring character references for: {full_prompt}"
                 contents.append(prompt_text)
 
+                config = None
+                if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig"):
+                    config = genai.types.GenerateContentConfig(
+                        safety_settings=_get_relaxed_safety_settings(),
+                    )
+
                 response = vertex_client.models.generate_content(
                     model="gemini-3.1-flash-image",
                     contents=contents,
+                    config=config,
                 )
                 if response and hasattr(response, "candidates") and response.candidates:
                     for candidate in response.candidates:

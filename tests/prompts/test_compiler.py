@@ -142,9 +142,9 @@ def test_character_role_specific_aesthetic_tags():
         characters=chars,
         scenes=scenes,
     )
-    assert "Role A (Spectacled Wizard Student)" in prompt
-    assert "Red Designer Drip Rapper Tracksuit" in prompt
-    assert "- [IMAGE 1]: Reference image for Role A (Spectacled Wizard Student)." in prompt
+    assert "Role A (Spectacled Wizard Bruv)" in prompt
+    assert "Red Designer Drip Tracksuit" in prompt
+    assert "- [IMAGE 1]: Reference image for Role A (Spectacled Wizard Bruv)." in prompt
 
 
 def test_compile_storyboard_with_audio_and_vocal_direction():
@@ -420,7 +420,7 @@ def test_compile_multi_role_prompt_with_clean_image_role_tags():
     )
 
     assert compiled.startswith("[IMAGE ROLES]\n")
-    assert "- [IMAGE 1]: Reference image for Role A (Spectacled Wizard Student)." in compiled
+    assert "- [IMAGE 1]: Reference image for Role A (Spectacled Wizard Bruv)." in compiled
     assert "- [IMAGE 2]: Reference image for Role B (Ollivander)." in compiled
     assert "[ROLE DEFINITIONS]" in compiled
     assert compiled.index("[IMAGE ROLES]") < compiled.index("[ROLE DEFINITIONS]")
@@ -464,10 +464,10 @@ def test_compile_multi_role_prompt_with_screenplay_text():
 
     assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in prompt
     assert (
-        '  Gothic Potion Master: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard!"'
+        '  Potion Master Fam: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard Fam!"'
         in prompt
     )
-    assert '  Spectacled Wizard Student: (Bopping head to 120 BPM beat.) "No!"' in prompt
+    assert '  Spectacled Wizard Bruv: (Bopping head to 120 BPM beat.) "No!"' in prompt
     assert "Scene 1 Audio Cues:" in prompt
 
 

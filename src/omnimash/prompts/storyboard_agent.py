@@ -335,10 +335,12 @@ class StoryboardAgent:
             )
             try:
                 from google.genai import types
+                from omnimash.engine.omni_client import get_relaxed_safety_settings
 
                 config = types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.7,
+                    safety_settings=get_relaxed_safety_settings(),
                 )
                 response = self._genai_client.models.generate_content(
                     model="gemini-2.5-flash",

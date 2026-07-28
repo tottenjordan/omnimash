@@ -155,8 +155,8 @@ def test_expand_vision_with_screenplay_script():
     assert shots[0].shot_index == 1
     assert shots[1].shot_index == 2
     assert shots[2].shot_index == 3
-    assert "Role A (Gothic Potion Master)" in shots[0].action
-    assert "Role B (Venerable High Wizard)" in shots[1].action
+    assert "Role A (Potion Master Fam)" in shots[0].action
+    assert "Role B (Venerable High Wizard Bruv)" in shots[1].action
 
 
 def test_expand_vision_celebrity_sanitization():
@@ -173,11 +173,11 @@ def test_expand_vision_celebrity_sanitization():
     )
     assert len(shots) == 2
     assert "Gordon Ramsay" not in shots[0].action
-    assert "Fiery Master Chef" in shots[0].action
+    assert "Fiery Chef Blood" in shots[0].action
     assert "Drake" not in shots[1].action
-    assert "Melodic Rap Star" in shots[1].action
+    assert "Drizzy Bruv" in shots[1].action
     assert "Jeezy" not in shots[1].action
-    assert ("Atlanta Rap Artist" in shots[1].action or "Atlanta Rap Legend" in shots[1].action)
+    assert "Trap Legend Fam" in shots[1].action
 
 
 def test_expand_vision_location_directives_formatting_and_sanitization():
