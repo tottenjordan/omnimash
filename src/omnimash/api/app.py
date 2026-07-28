@@ -3606,7 +3606,10 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     ref_urls.append(ref)
 
         image_url = agent.omni_client.generate_keyframe_image(
-            prompt, style_tone=req.style_lighting, reference_image_urls=ref_urls
+            prompt,
+            style_tone=req.style_lighting,
+            reference_image_urls=ref_urls,
+            characters=req.characters,
         )
         return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
 
@@ -3628,6 +3631,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     sanitized_directive,
                     style_tone=req.style_lighting,
                     reference_image_urls=ref_urls,
+                    characters=req.characters,
                 )
             except Exception as exc:
                 logger.warning("Auto keyframe image generation before video generation failed: %s", exc)

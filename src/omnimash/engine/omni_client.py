@@ -1124,19 +1124,45 @@ class OmniFlashClient:
         prompt: str,
         style_tone: str = "",
         reference_image_urls: list[str] | None = None,
-        characters: list[CharacterRole] | None = None,
+        characters: list[Any] | None = None,
     ) -> str:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 
-        Supports multimodal character reference image inputs and falls back to a clean base64 SVG URI on failure.
+        Supports multimodal character reference image inputs and full character roster metadata.
         """
-        full_prompt = f"{prompt}, style: {style_tone}" if style_tone else prompt
-        if characters and not reference_image_urls:
+        sanitized_prompt = sanitize_real_names(prompt)
+        full_prompt = f"{sanitized_prompt}, style: {style_tone}" if style_tone else sanitized_prompt
+
+        char_objs: list[CharacterRole] = []
+        if characters:
+            for c in characters:
+                if isinstance(c, CharacterRole):
+                    char_objs.append(c)
+                elif isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", ""),
+                            name=c.get("name", ""),
+                            description=c.get("description", ""),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=c.get("aesthetic_tags", []),
+                            voice_style=c.get("voice_style", ""),
+                        )
+                    )
+
+        if char_objs and not reference_image_urls:
             reference_image_urls = [
-                str(getattr(c, "reference_url", "") if not isinstance(c, dict) else c.get("reference_url", ""))
-                for c in characters
-                if (getattr(c, "reference_url", None) if not isinstance(c, dict) else c.get("reference_url"))
+                c.reference_url for c in char_objs if c.reference_url
             ]
+
+        character_roster_header = ""
+        if char_objs:
+            char_lines: list[str] = ["# Character Roster & Visual Directives:"]
+            for c in char_objs:
+                tag_str = f" [Style: {', '.join(c.aesthetic_tags)}]" if c.aesthetic_tags else ""
+                ref_str = f" (Reference Image: {c.reference_url})" if c.reference_url else ""
+                char_lines.append(f"- {c.role_id} ({c.name}): {c.description}{tag_str}{ref_str}")
+            character_roster_header = "\n".join(char_lines) + "\n\n"
 
         def _get_mock_keyframe() -> str:
             clean_prompt = (
@@ -1219,7 +1245,12 @@ class OmniFlashClient:
                             else:
                                 contents.append({"inline_data": {"mime_type": mime_type, "data": base64.b64encode(img_bytes).decode("utf-8")}})
 
-                prompt_text = f"High quality cinematic 16:9 visual keyframe concept art featuring character references for: {full_prompt}"
+                prompt_text = (
+                    f"High quality cinematic 16:9 visual keyframe concept art.\n\n"
+                    f"{character_roster_header}"
+                    f"# Scene Action & Lighting:\n{full_prompt}\n\n"
+                    f"VISUAL CONSISTENCY INSTRUCTION: Render all character roles matching their exact outfits, hair, facial features, accessories, and aesthetic style tags specified in the character roster."
+                )
                 contents.append(prompt_text)
 
                 config = None
