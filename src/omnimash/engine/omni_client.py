@@ -978,6 +978,7 @@ class OmniFlashClient:
         audio_stem: str | None = None,
         turn_index: int | None = None,
         characters: list[CharacterRole] | None = None,
+        keyframe_image_url: str | None = None,
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -987,13 +988,14 @@ class OmniFlashClient:
         url = f"/static/rendered/{filename}"
         rel_path = url.lstrip("/")
 
-        # 1. Primary: Gemini Omni Flash stateful conversational diff via previous_interaction_id
+        # 1. Primary: Gemini Omni Flash stateful conversational diff via previous_interaction_id & keyframe seed anchor
         success, inter_id, error_message = self._generate_live_omni_flash_video(
             diff_prompt,
             rel_path,
             previous_interaction_id=interaction_thread_id,
             characters=characters,
             session_id=session_id,
+            keyframe_image_url=keyframe_image_url,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"

@@ -689,6 +689,38 @@ def test_generate_live_omni_flash_video_with_keyframe_starting_image_seed(
     assert "Visual Tone & Starting Frame Anchor" in content_list[2]["text"]
 
 
+def test_apply_interaction_diff_with_keyframe_starting_image_seed(
+    tmp_path: Any,
+) -> None:
+    """Verify that apply_interaction_diff passes keyframe_image_url to anchor conversational edits to the existing starting frame."""
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_diff_999", output_video=MagicMock(data=b"fake_diff_video_bytes")
+    )
+    client._genai_client = MagicMock(interactions=mock_interactions)
+
+    with patch.object(
+        client.storage,
+        "download_blob_bytes",
+        return_value=(b"fake_keyframe_bytes", "image/png"),
+    ), patch.object(client.storage, "upload_file"):
+        gen_res = client.apply_interaction_diff(
+            interaction_thread_id="inter_parent_111",
+            diff_prompt="Change lighting to neon green",
+            keyframe_image_url="gs://test-bucket/existing_keyframe.png",
+        )
+
+    assert gen_res.interaction_thread_id == "inter_diff_999"
+    assert mock_interactions.create.called
+    call_kwargs = mock_interactions.create.call_args.kwargs
+    input_arg = call_kwargs["input"]
+    assert isinstance(input_arg, list)
+    content_list = input_arg[0]["content"]
+    assert content_list[0]["type"] == "image"
+    assert "Visual Tone & Starting Frame Anchor" in content_list[1]["text"]
+
+
 def test_load_reference_images_logs_diagnostics(
     caplog: pytest.LogCaptureFixture, tmp_path: Any
 ) -> None:

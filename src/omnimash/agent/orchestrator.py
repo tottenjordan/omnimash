@@ -536,6 +536,7 @@ class OmniMashAgent:
                 audio_stem=audio_stem,
                 turn_index=turn_index,
                 characters=characters,
+                keyframe_image_url=keyframe_image_url,
             )
         return self.omni_client.generate_clip(
             prompt,
