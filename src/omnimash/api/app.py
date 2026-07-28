@@ -384,7 +384,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
             // 4-Stage Journey State (1: Vision, 2: Storyboard, 3: The Dailies, 4: The Final Cut)
             const [activeStage, setActiveStage] = useState(1);
-            const [stageStyleTone, setStageStyleTone] = useState("Cinematic Trap Parody");
+            const [stageStyleTone, setStageStyleTone] = useState("🎨 90s Cel-Shaded Anime");
             const [stageTargetDuration, setStageTargetDuration] = useState(30.0);
             const [stageRefImage, setStageRefImage] = useState("");
             const [stageRefAudio, setStageRefAudio] = useState("");
@@ -399,7 +399,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     summary: "Entrance & Concept Setup",
                     action: "Establishing shot for concept: key characters enter the scene.",
                     location: "Dimly lit stone dungeon classroom with bubbling cauldrons",
-                    style_lighting: "Cinematic Trap Parody, high-contrast lighting with warm shadows",
+                    style_lighting: "🎨 90s Cel-Shaded Anime, vibrant flat colors with sharp ink linework",
                     framing_motion: "Static medium shot with subtle handheld drift",
                     audio: "Slow heavy 808 trap beat with bubbling liquid sound"
                 },
@@ -409,7 +409,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     summary: "Dramatic Action & Potion Drink",
                     action: "Key character performs dramatic action, reacting in surprise.",
                     location: "Gothic potion classroom with floating candles",
-                    style_lighting: "Cinematic Trap Parody, vibrant dramatic color grading",
+                    style_lighting: "🎨 90s Cel-Shaded Anime, expressive cel shading with dramatic rim light",
                     framing_motion: "Dynamic dolly zoom in on character face",
                     audio: "Trap beat drop with sub-bass and crisp snare trills"
                 },
@@ -418,8 +418,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     duration_seconds: 10.0,
                     summary: "Transformation Reveal & Drip Climax",
                     action: "Subject is transformed, stepping forward in upgraded aesthetic wardrobe.",
-                    location: "High contrast Hogwarts courtyard with stage smoke and ambient flares",
-                    style_lighting: "Cinematic Trap Parody, polished commercial lighting",
+                    location: "High contrast courtyard with stage smoke and ambient flares",
+                    style_lighting: "🎨 90s Cel-Shaded Anime, vivid pop art lighting with bold ink outlines",
                     framing_motion: "Low angle pedestal shot moving upward slowly",
                     audio: "Aggressive 90s hip hop beat with heavy kick drum"
                 }
@@ -2314,11 +2314,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <label className="text-xs font-bold text-gray-300 block mb-2">Style &amp; Tone Preset Pills:</label>
                                                 <div className="flex flex-wrap gap-2">
                                                     {[
-                                                        "Gritty 90s Rap Video",
-                                                        "Gothic Trap Parody",
-                                                        "Cinematic Documentary",
-                                                        "80s Anime Disstrack",
-                                                        "Cinematic Trap Parody"
+                                                        "🎨 90s Cel-Shaded Anime",
+                                                        "🍿 3D Stylized Animation (Arcane)",
+                                                        "💥 Comic Book Graphic Novel",
+                                                        "🖌️ Lo-Fi Vector Toon Parody",
+                                                        "🎬 Cinematic Trap Parody",
+                                                        "📹 Gritty 90s Rap Video"
                                                     ].map((tone) => (
                                                         <button
                                                             key={tone}
@@ -2730,6 +2731,18 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 onChange={(e) => updateStageShot(idx, "style_lighting", e.target.value)}
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-[11px]"
                                                             />
+                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                {["🎨 90s Anime", "🍿 3D Stylized", "💥 Comic Book", "🖌️ Lo-Fi Toon", "🎬 Cinematic"].map((preset) => (
+                                                                    <button
+                                                                        key={preset}
+                                                                        type="button"
+                                                                        onClick={() => updateStageShot(idx, "style_lighting", `${preset}, high-contrast lighting`)}
+                                                                        className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-900 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40 transition"
+                                                                    >
+                                                                        {preset}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                         <div>
                                                             <label className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block mb-0.5">4. Framing &amp; Motion</label>
