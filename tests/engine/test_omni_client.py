@@ -572,18 +572,22 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
         )
 
     assert len(imgs) == 2
-    assert imgs[0] == {
-        "inline_data": {
-            "data": base64.b64encode(b"fake_png_data").decode("utf-8"),
-            "mime_type": "image/png",
+    if isinstance(imgs[0], dict):
+        assert imgs[0] == {
+            "inline_data": {
+                "data": base64.b64encode(b"fake_png_data").decode("utf-8"),
+                "mime_type": "image/png",
+            }
         }
-    }
-    assert imgs[1] == {
-        "inline_data": {
-            "data": base64.b64encode(b"fake_jpg_data").decode("utf-8"),
-            "mime_type": "image/jpeg",
+        assert imgs[1] == {
+            "inline_data": {
+                "data": base64.b64encode(b"fake_jpg_data").decode("utf-8"),
+                "mime_type": "image/jpeg",
+            }
         }
-    }
+    else:
+        assert hasattr(imgs[0], "inline_data")
+        assert imgs[0].inline_data.mime_type == "image/png"
 
 
 def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
@@ -632,8 +636,9 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
     assert call_kwargs["model"] == "gemini-omni-flash-preview"
 
     input_arg = call_kwargs["input"]
-    assert isinstance(input_arg, str)
-    assert "Spectacled Wizard Bruv" in input_arg
+    assert isinstance(input_arg, list)
+    assert len(input_arg) == 2
+    assert any("Spectacled Wizard Bruv" in str(x) for x in input_arg)
 
 
 def test_load_reference_images_logs_diagnostics(

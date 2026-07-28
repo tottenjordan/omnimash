@@ -597,12 +597,12 @@ class OmniFlashClient:
         self,
         session_id: str | None,
         characters: list[CharacterRole] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[Any]:
         """Loads reference images for characters, base64-encoding them into Gemini multimodal input dicts."""
         if not characters:
             return []
 
-        image_objects: list[dict[str, Any]] = []
+        image_objects: list[Any] = []
         loaded_chars: list[Any] = []
         failed_chars: list[Any] = []
 
@@ -668,15 +668,20 @@ class OmniFlashClient:
                 ):
                     mime_type = "image/jpeg"
 
-                b64_str = base64.b64encode(img_bytes).decode("utf-8")
-                image_objects.append(
-                    {
-                        "inline_data": {
-                            "data": b64_str,
-                            "mime_type": mime_type,
+                if genai and hasattr(genai, "types") and hasattr(genai.types, "Part"):
+                    image_objects.append(
+                        genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
+                    )
+                else:
+                    b64_str = base64.b64encode(img_bytes).decode("utf-8")
+                    image_objects.append(
+                        {
+                            "inline_data": {
+                                "data": b64_str,
+                                "mime_type": mime_type,
+                            }
                         }
-                    }
-                )
+                    )
                 loaded_chars.append(char)
             else:
                 failed_chars.append(char)
@@ -750,9 +755,15 @@ class OmniFlashClient:
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         sanitized_input = character_roster_header + (sanitize_real_names(prompt) if prompt else "")
+        ref_image_parts = self._load_reference_images_as_input(session_id, characters)
+        if ref_image_parts:
+            input_payload: Any = ref_image_parts + [sanitized_input]
+        else:
+            input_payload = sanitized_input
+
         kwargs: dict[str, Any] = {
             "model": "gemini-omni-flash-preview",
-            "input": sanitized_input,
+            "input": input_payload,
         }
         # Note: gemini-omni-flash-preview API path does not accept previous_interaction_id kwarg
 
@@ -1076,12 +1087,19 @@ class OmniFlashClient:
         prompt: str,
         style_tone: str = "",
         reference_image_urls: list[str] | None = None,
+        characters: list[CharacterRole] | None = None,
     ) -> str:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 
         Supports multimodal character reference image inputs and falls back to a clean base64 SVG URI on failure.
         """
         full_prompt = f"{prompt}, style: {style_tone}" if style_tone else prompt
+        if characters and not reference_image_urls:
+            reference_image_urls = [
+                str(getattr(c, "reference_url", "") if not isinstance(c, dict) else c.get("reference_url", ""))
+                for c in characters
+                if (getattr(c, "reference_url", None) if not isinstance(c, dict) else c.get("reference_url"))
+            ]
 
         def _get_mock_keyframe() -> str:
             clean_prompt = (
