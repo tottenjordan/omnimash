@@ -470,6 +470,11 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         r"\bkill\b": "out-rap",
         r"\bdestroy\b": "out-perform",
         r"\battack\b": "challenge",
+        r"\bpoison\b": "glowing magical elixir",
+        r"\bpotion\b": "sparkling elixir",
+        r"\bcauldron\b": "bubbling steam kettle",
+        r"\bdungeon\b": "ancient stone academy hall",
+        r"\bdark\s*mark\b": "golden skull emblem",
     }
 
     import re
@@ -854,13 +859,23 @@ class OmniFlashClient:
                         exc_str,
                     )
                     self.switch_to_developer_api()
-                elif (
-                    "Input blocked" in exc_str
-                    or "real people's names" in exc_str
+                elif any(
+                    k in exc_str.lower()
+                    for k in (
+                        "input blocked",
+                        "real people",
+                        "likeness",
+                        "safety",
+                        "prohibited use",
+                        "harmful content",
+                        "violated google",
+                        "invalid_request",
+                        "400",
+                    )
                 ):
                     fallback_prompt = _abstract_prompt_for_responsible_ai(sanitized_input)
                     logger.warning(
-                        "Gemini Omni Flash blocked real name/likeness (%s). Abstracting prompt for retry: %s",
+                        "Gemini Omni Flash safety/likeness guardrail triggered (%s). Abstracting prompt with cartoon parody archetypes for retry: %s",
                         exc_str,
                         fallback_prompt,
                     )

@@ -282,7 +282,7 @@ def test_ensure_rendered_video_clean_voiceover_fallback() -> None:
             ],
             [
                 "young wizard student",
-                "potion master wizard",
+                "master wizard",
                 "witch student",
                 "red-haired wizard student",
                 "blonde rival wizard student",
