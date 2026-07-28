@@ -719,7 +719,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
             // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
             const handleDeconstructConcept = async (conceptOverride) => {
-                const targetConcept = conceptOverride || concept;
+                const targetConcept = (typeof conceptOverride === "string" && conceptOverride.trim()) ? conceptOverride : concept;
                 if (!targetConcept || !targetConcept.trim()) return;
                 setParentTurnId(null);
                 setRawCompiledPrompt("");
@@ -1922,6 +1922,44 @@ UI_HTML = r"""<!DOCTYPE html>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                     {/* Aesthetic Tags & Audio Beat */}
                                     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                        <div className="pb-3 border-b border-gray-800">
+                                            <label className="text-xs font-bold text-amber-400 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+                                                <span>🎨</span>
+                                                <span>Cartoon &amp; Art Style Presets:</span>
+                                            </label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {[
+                                                    "🎨 90s Cel-Shaded Anime",
+                                                    "🍿 3D Stylized Animation (Arcane)",
+                                                    "💥 Comic Book Graphic Novel",
+                                                    "🖌️ 2D Vector Toon Parody",
+                                                    "👾 16-Bit Pixel Art Anime",
+                                                    "🏰 1930s Rubber Hose Toon",
+                                                    "🐉 Claymation Stop-Motion",
+                                                    "✨ Cyberpunk Neon Anime",
+                                                    "🎬 Cinematic Trap Parody",
+                                                    "📹 Gritty 90s Rap Video"
+                                                ].map((tone) => (
+                                                    <button
+                                                        key={tone}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            handleGlobalStyleToneChange(tone, true);
+                                                            if (!aestheticTags.includes(tone)) setAestheticTags([tone, ...aestheticTags]);
+                                                            setCameraLightingTag(`${tone}, high-contrast lighting`);
+                                                        }}
+                                                        className={`px-2.5 py-1 rounded-full text-xs font-semibold transition ${
+                                                            stageStyleTone === tone
+                                                                ? "bg-amber-500 text-black font-extrabold shadow-md shadow-amber-900/50"
+                                                                : "bg-gray-950 text-gray-300 hover:bg-gray-800 border border-gray-800"
+                                                        }`}
+                                                    >
+                                                        {stageStyleTone === tone && "✓ "}
+                                                        {tone}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                         <div>
                                             <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                                                 <span>🎨</span>
@@ -2583,7 +2621,17 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </div>
                                             </div>
 
-                                            <div className="pt-3 flex justify-end">
+                                            <div className="pt-3 flex flex-wrap justify-end gap-3">
+                                                <button
+                                                    type="button"
+                                                    disabled={deconstructLoading || !concept.trim()}
+                                                    onClick={() => handleDeconstructConcept(concept)}
+                                                    className="bg-gray-900 hover:bg-gray-800 border border-purple-800 text-purple-300 font-bold text-xs py-3 px-5 rounded-xl shadow-lg flex items-center gap-2 transition disabled:opacity-50"
+                                                    title="Analyze concept prompt to automatically extract characters, aesthetics, audio beat, and style tags"
+                                                >
+                                                    <span>✨</span>
+                                                    <span>{deconstructLoading ? "Deconstructing Concept..." : "Deconstruct & Extract Cast (AI)"}</span>
+                                                </button>
                                                 <button
                                                     type="button"
                                                     disabled={expandLoading || !concept.trim()}
