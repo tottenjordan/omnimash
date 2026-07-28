@@ -841,7 +841,11 @@ class OmniFlashClient:
                         exc_str,
                         fallback_prompt,
                     )
-                    kwargs["input"] = fallback_prompt
+                    if ref_image_parts:
+                        text_part = {"type": "text", "text": fallback_prompt}
+                        kwargs["input"] = [{"type": "user_input", "content": ref_image_parts + [text_part]}]
+                    else:
+                        kwargs["input"] = fallback_prompt
                 elif (
                     "safety_settings" in exc_str
                     or "Unmarshaller" in exc_str
@@ -1075,6 +1079,15 @@ class OmniFlashClient:
                     return resp.read(), ct
             except Exception as err:
                 logger.warning("Failed to download HTTP image from %s: %s", ref_url, err)
+        if os.path.exists(ref_url) and os.path.isfile(ref_url):
+            try:
+                mime_type = "image/png"
+                if ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
+                    mime_type = "image/jpeg"
+                with open(ref_url, "rb") as f:
+                    return f.read(), mime_type
+            except Exception as err:
+                logger.warning("Failed to read local image file %s: %s", ref_url, err)
         return b"", "image/png"
 
     def generate_keyframe_image(
