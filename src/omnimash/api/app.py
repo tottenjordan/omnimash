@@ -586,6 +586,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     }
                     return updated;
                 });
+            };
+
             const handleGlobalStyleToneChange = (newTone, applyToAllShots = true) => {
                 setStageStyleTone(newTone);
                 if (applyToAllShots) {
