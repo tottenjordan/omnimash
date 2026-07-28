@@ -757,7 +757,7 @@ class OmniFlashClient:
         sanitized_input = character_roster_header + (sanitize_real_names(prompt) if prompt else "")
         ref_image_parts = self._load_reference_images_as_input(session_id, characters)
         if ref_image_parts:
-            input_payload: Any = ref_image_parts + [sanitized_input]
+            input_payload: Any = [{"type": "user_input", "content": ref_image_parts + [sanitized_input]}]
         else:
             input_payload = sanitized_input
 

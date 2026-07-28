@@ -637,8 +637,10 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
 
     input_arg = call_kwargs["input"]
     assert isinstance(input_arg, list)
-    assert len(input_arg) == 2
-    assert any("Spectacled Wizard Bruv" in str(x) for x in input_arg)
+    assert len(input_arg) == 1
+    assert input_arg[0]["type"] == "user_input"
+    assert len(input_arg[0]["content"]) == 2
+    assert any("Spectacled Wizard Bruv" in str(x) for x in input_arg[0]["content"])
 
 
 def test_load_reference_images_logs_diagnostics(
