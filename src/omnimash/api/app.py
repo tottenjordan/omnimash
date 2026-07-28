@@ -2624,7 +2624,11 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     key={idx}
                                                     className={`bg-gray-900 border rounded-2xl p-4 shadow-xl flex flex-col justify-between space-y-3 transition ${
                                                         isBatchGeneratingVideos && (shot.shot_index || idx + 1) === batchVideoProgress.activeShotIndex
-                                                                                      <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                                                            ? "border-pink-500 ring-2 ring-pink-500/50 shadow-pink-900/40 animate-pulse"
+                                                            : "border-gray-800 hover:border-purple-500/50"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between border-b border-gray-800 pb-2">
                                                         <div className="flex items-center gap-1.5 flex-wrap">
                                                             <span className="text-xs font-extrabold text-amber-400 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-700">
                                                                 Shot #{shot.shot_index || idx + 1} ({shot.duration_seconds || 10}s)
