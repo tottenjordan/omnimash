@@ -2327,7 +2327,11 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         "🎨 90s Cel-Shaded Anime",
                                                         "🍿 3D Stylized Animation (Arcane)",
                                                         "💥 Comic Book Graphic Novel",
-                                                        "🖌️ Lo-Fi Vector Toon Parody",
+                                                        "🖌️ 2D Vector Toon Parody",
+                                                        "👾 16-Bit Pixel Art Anime",
+                                                        "🏰 1930s Rubber Hose Toon",
+                                                        "🐉 Claymation Stop-Motion",
+                                                        "✨ Cyberpunk Neon Anime",
                                                         "🎬 Cinematic Trap Parody",
                                                         "📹 Gritty 90s Rap Video"
                                                     ].map((tone) => (
@@ -2614,7 +2618,11 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         <option value="🎨 90s Cel-Shaded Anime">🎨 90s Cel-Shaded Anime</option>
                                                         <option value="🍿 3D Stylized Animation (Arcane)">🍿 3D Stylized Animation</option>
                                                         <option value="💥 Comic Book Graphic Novel">💥 Comic Book Graphic Novel</option>
-                                                        <option value="🖌️ Lo-Fi Vector Toon Parody">🖌️ Lo-Fi Vector Toon</option>
+                                                        <option value="🖌️ 2D Vector Toon Parody">🖌️ 2D Vector Toon</option>
+                                                        <option value="👾 16-Bit Pixel Art Anime">👾 16-Bit Pixel Art</option>
+                                                        <option value="🏰 1930s Rubber Hose Toon">🏰 1930s Rubber Hose</option>
+                                                        <option value="🐉 Claymation Stop-Motion">🐉 Claymation Stop-Motion</option>
+                                                        <option value="✨ Cyberpunk Neon Anime">✨ Cyberpunk Neon Anime</option>
                                                         <option value="🎬 Cinematic Trap Parody">🎬 Cinematic Trap Parody</option>
                                                         <option value="📹 Gritty 90s Rap Video">📹 Gritty 90s Rap Video</option>
                                                     </select>
@@ -2765,7 +2773,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-[11px]"
                                                             />
                                                             <div className="flex flex-wrap gap-1 mt-1">
-                                                                {["🎨 90s Anime", "🍿 3D Stylized", "💥 Comic Book", "🖌️ Lo-Fi Toon", "🎬 Cinematic"].map((preset) => (
+                                                                {["🎨 90s Anime", "🍿 3D Stylized", "💥 Comic Book", "🖌️ 2D Vector", "👾 Pixel Art", "🏰 1930s Rubber Hose", "🐉 Claymation", "✨ Cyberpunk", "🎬 Cinematic"].map((preset) => (
                                                                     <button
                                                                         key={preset}
                                                                         type="button"
