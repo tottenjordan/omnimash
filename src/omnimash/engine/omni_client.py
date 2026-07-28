@@ -1162,11 +1162,15 @@ class OmniFlashClient:
             return _get_mock_keyframe()
 
         try:
-            vertex_client = genai.Client(
-                vertexai=True,
-                project=self.project,
-                location="global",
-            )
+            effective_key = self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            if effective_key:
+                image_client = genai.Client(api_key=effective_key, vertexai=False)
+            else:
+                image_client = genai.Client(
+                    vertexai=True,
+                    project=self.project,
+                    location="global",
+                )
             try:
                 contents: list[Any] = []
                 if reference_image_urls:
@@ -1187,7 +1191,7 @@ class OmniFlashClient:
                         safety_settings=_get_relaxed_safety_settings(),
                     )
 
-                response = vertex_client.models.generate_content(
+                response = image_client.models.generate_content(
                     model="gemini-3.1-flash-image",
                     contents=contents,
                     config=config,
