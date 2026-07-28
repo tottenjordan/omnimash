@@ -533,8 +533,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     });
                     const data = await res.json();
                     const errMsg = (data && (data.error || data.error_message || data.detail)) || null;
-                    if (!res.ok || (data && data.success === false) || errMsg) {
-                        const finalErr = typeof errMsg === "string" ? errMsg : (errMsg ? JSON.stringify(errMsg) : `Server returned status ${res.status}`);
+                    if (!res.ok || (data && data.success === false)) {
+                        const finalErr = typeof errMsg === "string" ? errMsg : (errMsg ? JSON.stringify(errMsg) : `Shot video generation failed (Status ${res.status})`);
                         setLastError(finalErr);
                     }
                     if (data && data.video_url) {

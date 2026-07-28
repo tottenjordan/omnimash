@@ -478,7 +478,10 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
     for pattern, archetype in replacements.items():
         abstracted = re.sub(pattern, archetype, abstracted, flags=re.IGNORECASE)
 
-    return sanitize_real_names(abstracted)
+    abstracted = sanitize_real_names(abstracted)
+    abstracted = re.sub(r"\(Reference Image:[^)]+\)", "", abstracted)
+    abstracted = re.sub(r"gs://[^\s)]+", "", abstracted)
+    return abstracted
 
 
 def _get_relaxed_safety_settings() -> list[Any] | None:
@@ -861,11 +864,7 @@ class OmniFlashClient:
                         exc_str,
                         fallback_prompt,
                     )
-                    if ref_image_parts:
-                        text_part = {"type": "text", "text": fallback_prompt}
-                        kwargs["input"] = [{"type": "user_input", "content": ref_image_parts + [text_part]}]
-                    else:
-                        kwargs["input"] = fallback_prompt
+                    kwargs["input"] = fallback_prompt
                 elif (
                     "safety_settings" in exc_str
                     or "Unmarshaller" in exc_str
@@ -1077,7 +1076,7 @@ class OmniFlashClient:
         )
 
     def _fetch_image_bytes(self, ref_url: str) -> tuple[bytes, str]:
-        if not ref_url or not isinstance(ref_url, str):
+        if not ref_url or not isinstance(ref_url, str) or ref_url.lower().endswith(".svg"):
             return b"", "image/png"
         if ref_url.startswith("gs://"):
             return self.storage.download_blob_bytes(ref_url)
@@ -1093,6 +1092,9 @@ class OmniFlashClient:
             try:
                 header, encoded = ref_url.split(",", 1)
                 mime = header.split(";")[0].split(":")[1] if ":" in header else "image/png"
+                if "svg" in mime.lower():
+                    logger.info("Ignoring SVG vector keyframe data URI for Gemini multimodal input (raster image required: PNG/JPEG/WEBP)")
+                    return b"", "image/png"
                 return base64.b64decode(encoded), mime
             except Exception as e:
                 logger.warning("Failed to decode data URI image: %s", e)
