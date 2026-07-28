@@ -572,22 +572,16 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
         )
 
     assert len(imgs) == 2
-    if isinstance(imgs[0], dict):
-        assert imgs[0] == {
-            "inline_data": {
-                "data": base64.b64encode(b"fake_png_data").decode("utf-8"),
-                "mime_type": "image/png",
-            }
-        }
-        assert imgs[1] == {
-            "inline_data": {
-                "data": base64.b64encode(b"fake_jpg_data").decode("utf-8"),
-                "mime_type": "image/jpeg",
-            }
-        }
-    else:
-        assert hasattr(imgs[0], "inline_data")
-        assert imgs[0].inline_data.mime_type == "image/png"
+    assert imgs[0] == {
+        "type": "image",
+        "data": base64.b64encode(b"fake_png_data").decode("utf-8"),
+        "mime_type": "image/png",
+    }
+    assert imgs[1] == {
+        "type": "image",
+        "data": base64.b64encode(b"fake_jpg_data").decode("utf-8"),
+        "mime_type": "image/jpeg",
+    }
 
 
 def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:

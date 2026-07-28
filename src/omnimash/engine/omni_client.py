@@ -668,20 +668,14 @@ class OmniFlashClient:
                 ):
                     mime_type = "image/jpeg"
 
-                if genai and hasattr(genai, "types") and hasattr(genai.types, "Part"):
-                    image_objects.append(
-                        genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
-                    )
-                else:
-                    b64_str = base64.b64encode(img_bytes).decode("utf-8")
-                    image_objects.append(
-                        {
-                            "inline_data": {
-                                "data": b64_str,
-                                "mime_type": mime_type,
-                            }
-                        }
-                    )
+                b64_str = base64.b64encode(img_bytes).decode("utf-8")
+                image_objects.append(
+                    {
+                        "type": "image",
+                        "data": b64_str,
+                        "mime_type": mime_type,
+                    }
+                )
                 loaded_chars.append(char)
             else:
                 failed_chars.append(char)
@@ -757,7 +751,8 @@ class OmniFlashClient:
         sanitized_input = character_roster_header + (sanitize_real_names(prompt) if prompt else "")
         ref_image_parts = self._load_reference_images_as_input(session_id, characters)
         if ref_image_parts:
-            input_payload: Any = [{"type": "user_input", "content": ref_image_parts + [sanitized_input]}]
+            text_part = {"type": "text", "text": sanitized_input}
+            input_payload: Any = [{"type": "user_input", "content": ref_image_parts + [text_part]}]
         else:
             input_payload = sanitized_input
 
