@@ -335,7 +335,7 @@ def test_dashboard_ui_html_features() -> None:
     assert "/api/extend-scene" in html
 
     # 5. Act 1 Voice style and vocal delivery controls present
-    assert "Voice Style & Accent" in html
+    assert "Voice Profile / Vocal Style" in html
     assert "Vocal Delivery / Voiceover Style" in html
     assert "[AUDIO & VOCAL DIRECTION]" in html
 

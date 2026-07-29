@@ -15,6 +15,8 @@ def test_save_character_endpoint():
             "reference_url": "gs://bucket/harry.jpg",
             "aesthetic_tags": ["Gucci", "Cartier"],
             "voice_style": "Atlanta trap flow",
+            "voice_profile": "High-energy wizard baritone",
+            "wardrobe": "Red Gucci tracksuit",
         },
         "is_library": True,
     }
@@ -41,6 +43,8 @@ def test_list_characters_endpoint():
     first_char = data["characters"][0]
     assert "role_id" in first_char
     assert "name" in first_char
+    assert "voice_profile" in first_char
+    assert "wardrobe" in first_char
 
     # Query with session_name
     res_session = client.get("/api/characters?session_name=test_session_1")
@@ -64,6 +68,8 @@ def test_load_character_endpoint_success_and_not_found():
                 "reference_url": "gs://bucket/draco.jpg",
                 "aesthetic_tags": ["Diamond Chain"],
                 "voice_style": "British drawl",
+                "voice_profile": "Arrogant British tone",
+                "wardrobe": "Silver tailored robes",
             },
             "is_library": False,
         },
@@ -78,6 +84,8 @@ def test_load_character_endpoint_success_and_not_found():
     char_data = res.json()
     assert char_data["name"] == "Draco Ice"
     assert char_data["role_id"] == "Role B"
+    assert char_data["voice_profile"] == "Arrogant British tone"
+    assert char_data["wardrobe"] == "Silver tailored robes"
 
     # Load non-existent character
     res_404 = client.post(
@@ -101,6 +109,8 @@ def test_save_and_load_session_roster_endpoints():
                 "reference_url": "gs://bucket/harry.jpg",
                 "aesthetic_tags": ["Gucci"],
                 "voice_style": "Trap flow",
+                "voice_profile": "Fast wizard vocal delivery",
+                "wardrobe": "Gucci tracksuit with Cartier glasses",
             },
             {
                 "role_id": "Role B",
@@ -109,6 +119,8 @@ def test_save_and_load_session_roster_endpoints():
                 "reference_url": "gs://bucket/draco.jpg",
                 "aesthetic_tags": ["Ice"],
                 "voice_style": "Aggressive cadence",
+                "voice_profile": "Pompous aristocratic vocal delivery",
+                "wardrobe": "Iced-out medallion and suit",
             },
         ],
     }
@@ -127,9 +139,14 @@ def test_save_and_load_session_roster_endpoints():
     assert "characters" in data_load
     assert len(data_load["characters"]) == 2
     assert data_load["characters"][0]["name"] == "Harry Drip"
+    assert data_load["characters"][0]["voice_profile"] == "Fast wizard vocal delivery"
+    assert data_load["characters"][0]["wardrobe"] == "Gucci tracksuit with Cartier glasses"
     assert data_load["characters"][1]["name"] == "Draco Ice"
+    assert data_load["characters"][1]["voice_profile"] == "Pompous aristocratic vocal delivery"
+    assert data_load["characters"][1]["wardrobe"] == "Iced-out medallion and suit"
 
     # Load empty roster for uninitialized session
     res_empty = client.get("/api/characters/roster?session_name=nonexistent_session")
     assert res_empty.status_code == 200
     assert res_empty.json()["characters"] == []
+

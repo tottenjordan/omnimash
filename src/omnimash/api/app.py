@@ -24,6 +24,7 @@ class CharacterRoleModel(BaseModel):
     aesthetic_tags: list[str] = []
     voice_style: str = ""
     voice_profile: str = ""
+    wardrobe: str = ""
 
 
 
@@ -315,7 +316,9 @@ UI_HTML = r"""<!DOCTYPE html>
                     description: "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
                     reference_url: "https://example.com/harry.jpg",
                     aesthetic_tags: ["Red Gucci Tracksuit", "Cartier Glasses"],
-                    voice_style: "Fast-paced confident Atlanta rap flow with autotune"
+                    voice_style: "Fast-paced confident Atlanta rap flow with autotune",
+                    voice_profile: "High-energy young male wizard voice with rapid cadence",
+                    wardrobe: "Red Gucci Tracksuit, Cartier wire-rim glasses"
                 },
                 {
                     role_id: "Role B",
@@ -323,7 +326,9 @@ UI_HTML = r"""<!DOCTYPE html>
                     description: "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
                     reference_url: "https://example.com/draco.jpg",
                     aesthetic_tags: ["Platinum Slicked Hair", "Diamond Iced-Out Chain"],
-                    voice_style: "Pompous, cynical British drawl with aggressive rap cadence"
+                    voice_style: "Pompous, cynical British drawl with aggressive rap cadence",
+                    voice_profile: "Deep arrogant aristocratic drawl with precise articulation",
+                    wardrobe: "Platinum slicked hair, diamond iced-out chain, silver-trimmed robes"
                 }
             ]);
             const [charTagInputs, setCharTagInputs] = useState({});
@@ -746,8 +751,9 @@ UI_HTML = r"""<!DOCTYPE html>
             const compileStoryboardPreview = () => {
                 const roleLines = characters.map(c => {
                     const style = (c.aesthetic_tags && c.aesthetic_tags.length > 0) ? ` [Style: ${c.aesthetic_tags.join(", ")}]` : "";
+                    const wardrobe = c.wardrobe ? ` [Wardrobe: ${c.wardrobe}]` : "";
                     const ref = c.reference_url ? ` (Ref: ${c.reference_url})` : "";
-                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${style}${ref}`;
+                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${style}${wardrobe}${ref}`;
                 }).join("\n");
 
                 const aestheticParts = [];
@@ -803,7 +809,9 @@ UI_HTML = r"""<!DOCTYPE html>
                         const formattedChars = data.characters.map(c => ({
                             ...c,
                             aesthetic_tags: c.aesthetic_tags || [],
-                            voice_style: c.voice_style || ""
+                            voice_style: c.voice_style || "",
+                            voice_profile: c.voice_profile || "",
+                            wardrobe: c.wardrobe || ""
                         }));
                         setCharacters(formattedChars);
                         const newScenes = formattedChars.map((char, idx) => ({
@@ -859,6 +867,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     description: c.description || "",
                     reference_url: c.reference_url || "",
                     voice_style: c.voice_style || "",
+                    voice_profile: c.voice_profile || "",
+                    wardrobe: c.wardrobe || "",
                     aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
                 };
                 setCharacters([...characters, newRole]);
@@ -895,6 +905,8 @@ UI_HTML = r"""<!DOCTYPE html>
                                 description: c.description || "",
                                 reference_url: c.reference_url || "",
                                 voice_style: c.voice_style || "",
+                                voice_profile: c.voice_profile || "",
+                                wardrobe: c.wardrobe || "",
                                 aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
                             });
                         }
@@ -915,7 +927,9 @@ UI_HTML = r"""<!DOCTYPE html>
                     description: "Distinct cinematic character with expressive facial features and stylized attire",
                     reference_url: "",
                     aesthetic_tags: [],
-                    voice_style: ""
+                    voice_style: "",
+                    voice_profile: "",
+                    wardrobe: ""
                 };
                 setCharacters([...characters, newRole]);
             };
@@ -1945,13 +1959,26 @@ UI_HTML = r"""<!DOCTYPE html>
 
                                                 <div>
                                                     <label className="block text-[11px] text-gray-400 mb-1">
-                                                        🎙️ Voice Style & Accent
+                                                        🎙️ Voice Profile / Vocal Style
                                                     </label>
                                                     <input
                                                         type="text"
-                                                        value={char.voice_style || ""}
-                                                        onChange={(e) => updateCharacter(idx, "voice_style", e.target.value)}
-                                                        placeholder="e.g. Fast-paced confident Atlanta rap flow with autotune..."
+                                                        value={char.voice_profile || ""}
+                                                        onChange={(e) => updateCharacter(idx, "voice_profile", e.target.value)}
+                                                        placeholder="e.g. Deep raspy baritone voice with fast rap cadence..."
+                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[11px] text-gray-400 mb-1">
+                                                        👔 Wardrobe / Outfit
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={char.wardrobe || ""}
+                                                        onChange={(e) => updateCharacter(idx, "wardrobe", e.target.value)}
+                                                        placeholder="e.g. Oversized Gucci tracksuit, diamond Cuban link chain..."
                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                     />
                                                 </div>
@@ -2719,6 +2746,32 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                         + Add Style
                                                                     </button>
                                                                 </div>
+                                                            </div>
+
+                                                            <div>
+                                                                <label className="block text-[11px] text-gray-400 mb-1">
+                                                                    🎙️ Voice Profile / Vocal Style
+                                                                </label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={char.voice_profile || ""}
+                                                                    onChange={(e) => updateCharacter(cIdx, "voice_profile", e.target.value)}
+                                                                    placeholder="e.g. Deep raspy baritone voice..."
+                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                />
+                                                            </div>
+
+                                                            <div>
+                                                                <label className="block text-[11px] text-gray-400 mb-1">
+                                                                    👔 Wardrobe / Outfit
+                                                                </label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={char.wardrobe || ""}
+                                                                    onChange={(e) => updateCharacter(cIdx, "wardrobe", e.target.value)}
+                                                                    placeholder="e.g. Designer tracksuit, iced-out medallion..."
+                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                />
                                                             </div>
 
                                                             <div>
@@ -3877,6 +3930,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     aesthetic_tags=c.aesthetic_tags,
                     voice_style=c.voice_style,
                     voice_profile=c.voice_profile,
+                    wardrobe=getattr(c, "wardrobe", ""),
                 )
                 for c in tags.characters
             ],
@@ -4020,6 +4074,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             aesthetic_tags=c.aesthetic_tags,
                             voice_style=c.voice_style,
                             voice_profile=c.voice_profile,
+                            wardrobe=c.wardrobe,
                         )
                     )
                 elif isinstance(c, dict):
@@ -4032,6 +4087,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             aesthetic_tags=c.get("aesthetic_tags", []),
                             voice_style=c.get("voice_style", ""),
                             voice_profile=c.get("voice_profile", ""),
+                            wardrobe=c.get("wardrobe", ""),
                         )
                     )
                 elif hasattr(c, "model_dump"):
@@ -4045,6 +4101,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             aesthetic_tags=cd.get("aesthetic_tags", []),
                             voice_style=cd.get("voice_style", ""),
                             voice_profile=cd.get("voice_profile", ""),
+                            wardrobe=cd.get("wardrobe", ""),
                         )
                     )
 
@@ -4245,6 +4302,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 aesthetic_tags=c.get("aesthetic_tags", []),
                 voice_style=c.get("voice_style", ""),
                 voice_profile=c.get("voice_profile", ""),
+                wardrobe=c.get("wardrobe", ""),
             )
             for c in (raw_chars or [])
         ]
@@ -4270,6 +4328,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             aesthetic_tags=char_data.get("aesthetic_tags", []),
             voice_style=char_data.get("voice_style", ""),
             voice_profile=char_data.get("voice_profile", ""),
+            wardrobe=char_data.get("wardrobe", ""),
         )
 
     @app.post("/api/characters/save-roster", response_model=SaveCharacterResponse)
@@ -4296,6 +4355,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 aesthetic_tags=c.get("aesthetic_tags", []),
                 voice_style=c.get("voice_style", ""),
                 voice_profile=c.get("voice_profile", ""),
+                wardrobe=c.get("wardrobe", ""),
             )
             for c in (raw_roster or [])
         ]
