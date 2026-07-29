@@ -673,6 +673,7 @@ class OmniFlashClient:
         characters: list[CharacterRole] | None = None,
         session_id: str | None = None,
         keyframe_image_url: str | None = None,
+        directors_notes: dict[str, Any] | str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -727,6 +728,18 @@ class OmniFlashClient:
                 char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
+        notes_header = ""
+        if directors_notes:
+            if isinstance(directors_notes, dict):
+                lines_n = ["# Director's Notes & Relational Dynamics:"]
+                for k, v in directors_notes.items():
+                    if k != "raw_notes" and v:
+                        lines_n.append(f"- {k.replace('_', ' ').title()}: {v}")
+                if len(lines_n) > 1:
+                    notes_header = "\n".join(lines_n) + "\n\n"
+            elif isinstance(directors_notes, str) and directors_notes.strip():
+                notes_header = f"# Director's Notes & Relational Dynamics:\n{directors_notes.strip()}\n\n"
+
         tone_header = ""
         if keyframe_image_parts:
             tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
@@ -735,7 +748,7 @@ class OmniFlashClient:
         if char_img_map:
             likeness_directives = "# Character Likeness Directives:\nYou MUST lock character facial features, facial structure, skin tone, hair, beard, clothing, accessories, and distinct character traits directly from the corresponding Attached Image #N reference images.\n\n"
 
-        sanitized_input = tone_header + likeness_directives + character_roster_header + (sanitize_real_names(prompt) if prompt else "")
+        sanitized_input = tone_header + notes_header + likeness_directives + character_roster_header + (sanitize_real_names(prompt) if prompt else "")
 
         if all_image_parts:
             text_part = {"type": "text", "text": sanitized_input}
@@ -1099,6 +1112,7 @@ class OmniFlashClient:
         style_tone: str = "",
         reference_image_urls: list[str] | None = None,
         characters: list[Any] | None = None,
+        directors_notes: dict[str, Any] | str | None = None,
     ) -> str:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 

@@ -14,10 +14,41 @@ from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
 logger = logging.getLogger(__name__)
 
 
-def parse_timecoded_script(script_text: str) -> list[tuple[float, str]]:
-    """Parses timecode intervals like [0-3s], [3-6s], [6-10s], [0-5.5s] or [0-3] from screenplay text.
+def parse_directors_notes(script_text: str) -> dict[str, str]:
+    """Parses [DIRECTOR'S NOTES] block from screenplay text.
 
-    Returns a list of tuples containing (duration_in_seconds, action_text).
+    Extracts keys like 'tone', 'relational_dynamic', and character profiles into a dictionary.
+    """
+    if not script_text or "[DIRECTOR'S NOTES]" not in script_text.upper():
+        return {}
+
+    notes: dict[str, str] = {}
+    notes_match = re.search(
+        r"\[\s*DIRECTOR['’]?S\s+NOTES\s*\]([\s\S]*?)(?=\[\s*\d|\Z)",
+        script_text,
+        re.IGNORECASE,
+    )
+    if not notes_match:
+        return notes
+
+    block = notes_match.group(1).strip()
+    for line in block.splitlines():
+        line = line.strip().lstrip("-*• ").strip()
+        if not line:
+            continue
+        if ":" in line:
+            key, val = line.split(":", 1)
+            key_clean = key.strip().lower().replace(" ", "_")
+            notes[key_clean] = val.strip()
+
+    notes["raw_notes"] = block
+    return notes
+
+
+def parse_timecoded_script(script_text: str) -> list[dict[str, Any]]:
+    """Parses timecode intervals like [0-3s], [3-6s] with optional ACTION: and DIALOGUE: blocks.
+
+    Returns a list of dicts containing duration_seconds, action, dialogue, summary, and raw_text.
     """
     if not script_text or not script_text.strip():
         return []
@@ -27,15 +58,49 @@ def parse_timecoded_script(script_text: str) -> list[tuple[float, str]]:
     if not matches:
         return []
 
-    results: list[tuple[float, str]] = []
+    results: list[dict[str, Any]] = []
     for i, m in enumerate(matches):
         start_t = float(m.group(1))
         end_t = float(m.group(2))
         duration = max(0.0, round(end_t - start_t, 2))
         text_start = m.end()
         text_end = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
-        action_text = script_text[text_start:text_end].strip()
-        results.append((duration, action_text))
+        block = script_text[text_start:text_end].strip()
+
+        action_lines: list[str] = []
+        dialogue_lines: list[str] = []
+
+        lines = block.splitlines()
+        for line in lines:
+            line_str = line.strip()
+            if not line_str:
+                continue
+            if line_str.upper().startswith("ACTION:"):
+                action_lines.append(line_str[7:].strip())
+            elif line_str.upper().startswith("DIALOGUE:"):
+                dialogue_lines.append(line_str[9:].strip())
+            elif line_str.startswith('"') and line_str.endswith('"'):
+                dialogue_lines.append(line_str.strip('"'))
+            else:
+                action_lines.append(line_str)
+
+        action_text = "\n".join(action_lines).strip() if action_lines else block
+        dialogue_text = "\n".join(dialogue_lines).strip()
+        summary_text = (
+            action_lines[0]
+            if action_lines
+            else (block.splitlines()[0] if block else f"Shot {i + 1}")
+        )
+
+        results.append(
+            {
+                "duration_seconds": duration,
+                "action": action_text,
+                "dialogue": dialogue_text,
+                "summary": summary_text,
+                "raw_text": block,
+            }
+        )
 
     return results
 
@@ -269,10 +334,15 @@ class StoryboardAgent:
                     ),
                 ]
                 shots: list[StoryboardShot] = []
-                for i, (duration, action_text) in enumerate(parsed_timecodes):
+                for i, item in enumerate(parsed_timecodes):
                     tmpl = mock_templates[i % len(mock_templates)]
+                    duration = float(item.get("duration_seconds", 5.0))
+                    action_text = str(item.get("action", ""))
+                    dialogue_text = str(item.get("dialogue", ""))
+                    summary_text = str(item.get("summary", f"Shot {i + 1}"))
+
                     formatted_action = _format_character_references(action_text, characters)
-                    summary_text = action_text.splitlines()[0] if action_text else f"Shot {i + 1}"
+                    formatted_dialogue = _format_character_references(dialogue_text, characters)
                     formatted_summary = _format_character_references(summary_text, characters)
                     formatted_location = _format_character_references(tmpl[1], characters)
 
@@ -282,6 +352,7 @@ class StoryboardAgent:
                             duration_seconds=duration,
                             summary=sanitize_real_names(formatted_summary),
                             action=sanitize_real_names(formatted_action),
+                            dialogue=sanitize_real_names(formatted_dialogue),
                             location=sanitize_real_names(formatted_location),
                             style_lighting=sanitize_real_names(tmpl[2]),
                             framing_motion=sanitize_real_names(tmpl[3]),

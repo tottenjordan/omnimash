@@ -123,6 +123,7 @@ class StoryboardShotModel(BaseModel):
     style_lighting: str
     framing_motion: str
     audio: str
+    dialogue: str = ""
     summary: str = ""
     keyframe_image_url: str = ""
     video_url: str = ""
@@ -138,6 +139,7 @@ class StoryboardExpandRequest(BaseModel):
     target_duration: float = 30.0
     characters: list[CharacterRoleModel | dict] | None = None
     screenplay_script: str = ""
+    directors_notes: str = ""
 
 
 class StoryboardExpandResponse(BaseModel):
@@ -2348,14 +2350,41 @@ UI_HTML = r"""<!DOCTYPE html>
                                             />
 
                                             <div>
-                                                <label className="text-xs font-bold text-amber-300 block mb-1">
-                                                    📜 Screenplay Script with Timecodes (Optional)
-                                                </label>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                                                        <span>📜</span>
+                                                        <span>Timecoded Screenplay &amp; Director's Notes Studio</span>
+                                                    </label>
+                                                    <span className="text-[10px] text-gray-400 font-mono">Include [DIRECTOR'S NOTES], ACTION: and DIALOGUE:</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5 mb-2">
+                                                    <span className="text-[11px] text-gray-400 self-center font-medium">Presets:</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const preset = `[DIRECTOR'S NOTES]\n- Tone: High-Energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Intense rivalry between Dumble Dior & Snape Dawg; mutual respect masked by humorous disses.\n- Dumble Dior Profile: Regal, charismatic, confident flow.\n- Snape Dawg Profile: Deep subterranean trap flow with autotune.\n\n[0-4s]\nACTION: Dumble Dior steps up to the mic under glowing neon lights.\nDIALOGUE: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n\n[4-8s]\nACTION: Snape Dawg drops a heavy 808 trap beat.\nDIALOGUE: Snape Dawg: "Potions class is in session, no cap!"\n\n[8-12s]\nACTION: Both perform synchronized rap battle climax.`;
+                                                            setScreenplayScript(preset);
+                                                        }}
+                                                        className="bg-amber-950/60 border border-amber-800/80 hover:border-amber-500 text-amber-200 text-[11px] px-2.5 py-1 rounded-lg transition"
+                                                    >
+                                                        📜 Rap Battle (Director's Notes + Dialogue)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const preset = `[DIRECTOR'S NOTES]\n- Tone: Cinematic Cyberpunk Action\n- Relational Dynamic: Partner operatives navigating high-stakes heist.\n\n[0-5s]\nACTION: Operative A hacks the security vault console.\nDIALOGUE: Operative A: "Systems breached, we have 30 seconds."\n\n[5-10s]\nACTION: Operative B covers the perimeter with plasma pulse rifle.\nDIALOGUE: Operative B: "Security drones inbound, move now!"`;
+                                                            setScreenplayScript(preset);
+                                                        }}
+                                                        className="bg-purple-950/60 border border-purple-800/80 hover:border-purple-500 text-purple-200 text-[11px] px-2.5 py-1 rounded-lg transition"
+                                                    >
+                                                        🎬 Cyberpunk Heist (Action &amp; Dialogue)
+                                                    </button>
+                                                </div>
                                                 <textarea
-                                                    rows={3}
+                                                    rows={6}
                                                     value={screenplayScript}
                                                     onChange={(e) => setScreenplayScript(e.target.value)}
-                                                    placeholder={`[0-3s] Snape Dawg enters potion lab\n[3-6s] Flocka Weasley turns up 808 trap beat\n[6-10s] Both perform rap duel climax`}
+                                                    placeholder={`[DIRECTOR'S NOTES]\n- Tone: High-energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Friendly rivalry between Dumble Dior and Snape Dawg\n\n[0-4s]\nACTION: Dumble Dior steps up to the mic under glowing neon lights.\nDIALOGUE: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n\n[4-8s]\nACTION: Snape Dawg drops a heavy 808 trap beat.\nDIALOGUE: Snape Dawg: "Potions class is in session, no cap!"`}
                                                     className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
                                                 />
                                             </div>
@@ -3678,6 +3707,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     style_lighting=s.style_lighting,
                     framing_motion=s.framing_motion,
                     audio=s.audio,
+                    dialogue=getattr(s, "dialogue", ""),
                     summary=s.summary,
                     keyframe_image_url=getattr(s, "keyframe_image_url", ""),
                     video_url=getattr(s, "video_url", ""),

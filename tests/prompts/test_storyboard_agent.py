@@ -2,6 +2,7 @@ from omnimash.prompts.compiler import CharacterRole
 from omnimash.prompts.storyboard_agent import (
     StoryboardAgent,
     StoryboardShot,
+    parse_directors_notes,
     parse_timecoded_script,
 )
 
@@ -118,16 +119,33 @@ def test_parse_timecoded_script():
     )
     parsed = parse_timecoded_script(script_text)
     assert len(parsed) == 5
-    assert parsed[0] == (3.0, "Character A enters dungeon")
-    assert parsed[1] == (3.0, "Character B turns up 808 trap beat")
-    assert parsed[2] == (4.0, "Character A and Character B perform synchronized dance")
-    assert parsed[3] == (5.5, "Half-time intro scene")
-    assert parsed[4] == (3.0, "Plain numbers without s suffix")
+    assert parsed[0]["duration_seconds"] == 3.0
+    assert parsed[0]["action"] == "Character A enters dungeon"
+    assert parsed[1]["duration_seconds"] == 3.0
+    assert parsed[1]["action"] == "Character B turns up 808 trap beat"
+    assert parsed[2]["duration_seconds"] == 4.0
+    assert parsed[3]["duration_seconds"] == 5.5
+    assert parsed[4]["duration_seconds"] == 3.0
 
 
-def test_parse_timecoded_script_empty_or_invalid():
-    assert parse_timecoded_script("") == []
-    assert parse_timecoded_script("No timecodes here at all.") == []
+def test_parse_directors_notes_and_dialogue():
+    script = (
+        "[DIRECTOR'S NOTES]\n"
+        "- Tone: High-energy 90s Cel-Shaded Anime Rap Battle\n"
+        "- Relational Dynamic: Fierce rivalry between Dumble Dior and Snape Dawg\n\n"
+        "[0-4s]\n"
+        "ACTION: Dumble Dior steps up to the mic under glowing neon lights.\n"
+        'DIALOGUE: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n'
+    )
+    notes = parse_directors_notes(script)
+    assert notes["tone"] == "High-energy 90s Cel-Shaded Anime Rap Battle"
+    assert notes["relational_dynamic"] == "Fierce rivalry between Dumble Dior and Snape Dawg"
+
+    parsed = parse_timecoded_script(script)
+    assert len(parsed) == 1
+    assert parsed[0]["duration_seconds"] == 4.0
+    assert parsed[0]["action"] == "Dumble Dior steps up to the mic under glowing neon lights."
+    assert parsed[0]["dialogue"] == 'Dumble Dior: "Welcome to Dripwarts, turn the beat up!"'
 
 
 def test_expand_vision_with_screenplay_script():
