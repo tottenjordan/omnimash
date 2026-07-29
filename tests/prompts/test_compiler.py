@@ -575,8 +575,8 @@ def test_compile_prompt_omni_flash_timecode_format():
     assert "in a single continuous shot. no scene cuts." in full_prompt.lower()
 
     # 2. Visual character roster reference index headers
-    assert "[Visual Reference: Attached Image #1]" in full_prompt
-    assert "[Visual Reference: Attached Image #2]" in full_prompt
+    assert "[Image 1: Role A" in full_prompt and "= [Character Reference]" in full_prompt
+    assert "[Image 2: Role B" in full_prompt and "= [Character Reference]" in full_prompt
 
     # 3. Chronological [0-3s], [3-6s], [6-10s] timing blocks
     assert "[0-3s]" in full_prompt
@@ -590,5 +590,79 @@ def test_compile_prompt_omni_flash_timecode_format():
 
     # 5. Elimination of redundant isolated audio headers
     assert "[AUDIO TRACK]:" not in full_prompt
+
+
+def test_compile_prompt_four_block_omni_flash_template():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Hero",
+            description="Young wizard with round glasses",
+            reference_url="gs://bucket/hero.jpg",
+            image_role="Character Reference",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Golden Snitch",
+            description="Enchanted golden flying ball",
+            reference_url="gs://bucket/snitch.jpg",
+            image_role="Product Reference",
+        ),
+        CharacterRole(
+            role_id="Role C",
+            name="Dungeon Entrance",
+            description="Starting frame of dungeon corridor",
+            reference_url="gs://bucket/dungeon.jpg",
+            image_role="Starting Frame",
+        ),
+        CharacterRole(
+            role_id="Role D",
+            name="Retro Aesthetic",
+            description="90s VHS mood reference",
+            reference_url="gs://bucket/style.jpg",
+            image_role="Style Reference",
+        ),
+        CharacterRole(
+            role_id="Role E",
+            name="Narrator",
+            description="Voice of the dungeon keeper",
+            is_offscreen_narrator=True,
+        ),
+    ]
+
+    parts = compiler.compile_prompt(
+        raw_prompt="Hero catching the snitch",
+        characters=chars,
+        voiceover='Narrator: "Welcome to the magical tournament."',
+        audio_stem="120 BPM boom-bap beat",
+        on_screen_text="MATCH DAY",
+    )
+
+    full_prompt = parts.to_full_prompt()
+
+    # 1. Verify four-block section headers
+    assert "### INPUT ROLES" in full_prompt
+    assert "### CHARACTER PROFILES" in full_prompt
+    assert "### SCENE INSTRUCTIONS" in full_prompt
+    assert "### TIMELINE" in full_prompt
+
+    # 2. Verify Image Role tagging
+    assert "[Image 1: Role A (Hero)] = [Character Reference]" in full_prompt
+    assert "[Image 2: Role B (Golden Snitch)] = [Product Reference]" in full_prompt
+    assert "[Image 3: Role C (Dungeon Entrance)] = [Starting Frame]" in full_prompt
+    assert "[Image 4: Role D (Retro Aesthetic)] = [Style Reference]" in full_prompt
+
+    # 3. Verify Off-Screen Narrator profile and speech formatting
+    assert "Visual: Off-screen (Voiceover only). Do not show." in full_prompt
+    assert 'Narrator (VO) says: "Welcome to the magical tournament."' in full_prompt
+
+    # 4. Verify diegetic and non-diegetic written text formatting
+    assert 'reading "MATCH DAY"' in full_prompt
+
+    # 5. Verify background audio with "instrumental" prefix to prevent AI vocal overlap
+    assert "instrumental 120 bpm boom-bap beat" in full_prompt.lower()
+
+
 
 

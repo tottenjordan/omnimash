@@ -118,6 +118,9 @@ class CompiledPromptParts:
     vibe_intensity: int = 50
     character_references: list[str] = field(default_factory=list)
     timecode_blocks: list[str] = field(default_factory=list)
+    input_roles: list[str] = field(default_factory=list)
+    character_profiles: list[str] = field(default_factory=list)
+    scene_instructions: list[str] = field(default_factory=list)
 
     def to_full_prompt(self) -> str:
         cam = self.camera_lighting.strip()
@@ -132,46 +135,94 @@ class CompiledPromptParts:
         else:
             camera_header = cam_clean
 
-        char_ref_str = "\n".join(self.character_references).strip() if self.character_references else ""
+        # 1. ### INPUT ROLES
+        input_roles_str = "\n".join(self.input_roles).strip() if self.input_roles else ""
+        if not input_roles_str and self.character_references:
+            input_roles_str = "\n".join(self.character_references).strip()
+        if not input_roles_str:
+            input_roles_str = "None."
+        block_input = f"### INPUT ROLES\n{input_roles_str}"
 
+        # 2. ### CHARACTER PROFILES
+        char_profiles_str = "\n".join(self.character_profiles).strip() if self.character_profiles else ""
+        if not char_profiles_str:
+            char_profiles_str = "None."
+        block_profiles = f"### CHARACTER PROFILES\n{char_profiles_str}"
+
+        # 3. ### SCENE INSTRUCTIONS
         lower_audio = self.audio_track.lower().strip()
         if self.is_silent or lower_audio in ("none", "mute", "silent"):
             sound_desc = "Sound design: Silent video. No background music, no audio."
-        elif self.voiceover and self.voiceover.strip():
-            sound_desc = (
-                f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
-                f"Background beat ({self.audio_track}) is subtly ducked in the background beneath dialogue."
-            )
         else:
-            sound_desc = f"Sound design: {self.audio_track}."
+            audio_track_clean = self.audio_track.strip()
+            if not audio_track_clean.lower().startswith("instrumental"):
+                instr_audio = f"instrumental {audio_track_clean}"
+            else:
+                instr_audio = audio_track_clean
 
-        vocal_directive = ""
+            if self.voiceover and self.voiceover.strip():
+                sound_desc = (
+                    f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                    f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
+                )
+            else:
+                sound_desc = f"Sound design: {instr_audio}."
+
+        scene_inst_parts = [
+            f"Camera & Lighting: {camera_header}",
+            f"Environment: {self.environment}",
+            f"Audio: {sound_desc}",
+        ]
+
         if self.voiceover and self.voiceover.strip():
             vo = self.voiceover.strip()
             if ":" in vo or "\n" in vo:
-                vocal_directive = f" Dialogue between subjects: {vo}."
+                scene_inst_parts.append(f"Dialogue between subjects: {vo}.")
             else:
                 vo_clean = vo.rstrip(".")
-                vocal_directive = f" Voiceover: {vo_clean}."
+                scene_inst_parts.append(f"Voiceover: {vo_clean}.")
 
+        if self.on_screen_text and self.on_screen_text.strip():
+            txt = self.on_screen_text.strip()
+            scene_inst_parts.append(f"On-screen text: '{txt}' reading \"{txt}\"")
+
+        if self.scene_instructions:
+            scene_inst_parts.extend(self.scene_instructions)
+
+        block_scene = "### SCENE INSTRUCTIONS\n" + "\n".join(scene_inst_parts)
+
+        # 4. ### TIMELINE
         if self.timecode_blocks:
             blocks_str = "\n".join(self.timecode_blocks).strip()
         else:
             action_main = f"{self.subject_anchor}. {self.aesthetic_injection}. {self.environment}. {self.motion}."
+
+            vocal_directive = ""
+            if self.voiceover and self.voiceover.strip():
+                vo = self.voiceover.strip()
+                if "narrator" in vo.lower():
+                    clean_vo = re.sub(
+                        r"^(?:Narrator\s*(?:\(VO\))?:?\s*)[\"']?|[\"']?$",
+                        "",
+                        vo,
+                        flags=re.IGNORECASE,
+                    ).strip()
+                    vocal_directive = f' Dialogue: Narrator (VO) says: "{clean_vo}".'
+                elif ":" in vo or "\n" in vo:
+                    vocal_directive = f" Dialogue between subjects: {vo}."
+                else:
+                    vo_clean = vo.rstrip(".")
+                    vocal_directive = f" Voiceover: {vo_clean}."
 
             b1 = f"[0-3s] Action: {action_main} Audio: {sound_desc}.{vocal_directive}"
             b2 = f"[3-6s] Action: Continuation of {self.motion}. Audio: {sound_desc}."
             b3 = f"[6-10s] Action: Final dynamic resolution. Audio: {sound_desc}."
             blocks_str = f"{b1}\n{b2}\n{b3}"
 
-        text_directive = (
-            f"On-screen text: '{self.on_screen_text}'"
-            if self.on_screen_text and self.on_screen_text.strip()
-            else ""
-        )
+        block_timeline = f"### TIMELINE\n{blocks_str}"
 
-        parts = [p for p in [camera_header, char_ref_str, blocks_str, text_directive] if p and p.strip()]
-        return "\n\n".join(parts)
+        return f"{block_input}\n\n{block_profiles}\n\n{block_scene}\n\n{block_timeline}"
+
 
 
 @dataclass
@@ -927,26 +978,67 @@ class PromptCompiler:
             vibe_intensity=vibe_intensity,
         )
 
+        input_roles: list[str] = []
+        char_profiles: list[str] = []
         char_refs: list[str] = []
         if characters:
-            for idx, char in enumerate(characters):
-                name_clean = sanitize_real_names(char.name) if char.name else char.role_id
-                char_refs.append(
-                    f"[Visual Reference: Attached Image #{idx + 1}] {char.role_id} ({name_clean}): {char.description}"
+            img_idx = 1
+            for char in characters:
+                name_clean = (
+                    sanitize_real_names(char.name) if char.name else char.role_id
                 )
+                name_part = f" ({name_clean})" if name_clean else ""
+
+                img_role = (
+                    getattr(char, "image_role", "Character Reference")
+                    or "Character Reference"
+                )
+
+                if char.reference_url and char.reference_url.strip():
+                    input_roles.append(
+                        f"[Image {img_idx}: {char.role_id}{name_part}] = [{img_role}]"
+                    )
+                    char_refs.append(
+                        f"[Visual Reference: Attached Image #{img_idx}] {char.role_id}{name_part}: {char.description}"
+                    )
+                    img_idx += 1
+
+                if getattr(char, "is_offscreen_narrator", False):
+                    char_profiles.append(
+                        f"- {char.role_id}{name_part}: Visual: Off-screen (Voiceover only). Do not show."
+                    )
+                else:
+                    style_str = (
+                        f" [Style: {', '.join(char.aesthetic_tags)}]"
+                        if char.aesthetic_tags
+                        else ""
+                    )
+                    char_profiles.append(
+                        f"- {char.role_id}{name_part}: {char.description}{style_str}"
+                    )
+
+        parts.input_roles = input_roles
+        parts.character_profiles = char_profiles
         parts.character_references = char_refs
 
         tc_blocks: list[str] = []
         lower_audio = (effective_audio_stem or parts.audio_track).lower().strip()
         if is_silent or lower_audio in ("none", "mute", "silent"):
             sound_desc = "Silent video. No background music, no audio."
-        elif parts.voiceover and parts.voiceover.strip():
-            sound_desc = (
-                f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
-                f"Background beat ({parts.audio_track}) is subtly ducked in the background beneath dialogue."
-            )
         else:
-            sound_desc = f"Sound design: {parts.audio_track}."
+            audio_track_clean = parts.audio_track.strip()
+            if not audio_track_clean.lower().startswith("instrumental"):
+                instr_audio = f"instrumental {audio_track_clean}"
+            else:
+                instr_audio = audio_track_clean
+
+            if parts.voiceover and parts.voiceover.strip():
+                sound_desc = (
+                    f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                    f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
+                )
+            else:
+                sound_desc = f"Sound design: {instr_audio}."
 
         if script and script.strip():
             parsed_blocks = parse_timecoded_script(script, characters=characters)
@@ -957,11 +1049,37 @@ class PromptCompiler:
                 diag = pb["dialogue"]
 
                 audio_str = f" Audio: {aud_cue}." if aud_cue else f" Audio: {sound_desc}."
-                diag_str = f" Dialogue: {diag}." if diag else ""
+                diag_str = ""
+                if diag:
+                    if "narrator" in diag.lower():
+                        clean_d = re.sub(
+                            r"^(?:(?:Role\s*\w+\s*\()?Narrator(?:\s*VO\))?\)?:\s*)[\"']?|[\"']?$",
+                            "",
+                            diag,
+                            flags=re.IGNORECASE,
+                        ).strip()
+                        diag_str = f' Dialogue: Narrator (VO) says: "{clean_d}".'
+                    else:
+                        diag_str = f" Dialogue: {diag}."
                 tc_blocks.append(f"{tc} Action: {act}.{audio_str}{diag_str}")
 
         if not tc_blocks:
-            vo_info = f" Voiceover: {parts.voiceover}." if parts.voiceover else ""
+            vo_info = ""
+            if parts.voiceover and parts.voiceover.strip():
+                if "narrator" in parts.voiceover.lower():
+                    clean_vo = re.sub(
+                        r"^(?:Narrator\s*(?:\(VO\))?:?\s*)[\"']?|[\"']?$",
+                        "",
+                        parts.voiceover,
+                        flags=re.IGNORECASE,
+                    ).strip()
+                    vo_info = f' Dialogue: Narrator (VO) says: "{clean_vo}".'
+                elif ":" in parts.voiceover or "\n" in parts.voiceover:
+                    vo_info = f" Dialogue between subjects: {parts.voiceover}."
+                else:
+                    vo_clean = parts.voiceover.rstrip(".")
+                    vo_info = f" Voiceover: {vo_clean}."
+
             tc_blocks = [
                 f"[0-3s] Action: {parts.subject_anchor}. {parts.aesthetic_injection}. {parts.environment}. {parts.motion}. Audio: {sound_desc}.{vo_info}",
                 f"[3-6s] Action: Continuation of {parts.motion}. Audio: {sound_desc}.",
