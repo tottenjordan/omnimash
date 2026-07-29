@@ -284,6 +284,7 @@ class OmniMashAgent:
                             reference_url=c.reference_url,
                             aesthetic_tags=[sanitize_real_names(t) for t in (c.aesthetic_tags or [])],
                             voice_style=sanitize_real_names(c.voice_style or ""),
+                            voice_profile=sanitize_real_names(c.voice_profile or ""),
                         )
                     )
                 elif isinstance(c, dict):
@@ -295,6 +296,7 @@ class OmniMashAgent:
                             reference_url=c.get("reference_url"),
                             aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
                             voice_style=sanitize_real_names(c.get("voice_style", "")),
+                            voice_profile=sanitize_real_names(c.get("voice_profile", "")),
                         )
                     )
                 elif hasattr(c, "model_dump"):
@@ -307,6 +309,7 @@ class OmniMashAgent:
                             reference_url=cd.get("reference_url"),
                             aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
                             voice_style=sanitize_real_names(cd.get("voice_style", "")),
+                            voice_profile=sanitize_real_names(cd.get("voice_profile", "")),
                         )
                     )
                 elif hasattr(c, "role_id"):
@@ -318,6 +321,7 @@ class OmniMashAgent:
                             reference_url=getattr(c, "reference_url", None),
                             aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
                             voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
+                            voice_profile=sanitize_real_names(getattr(c, "voice_profile", "")),
                         )
                     )
 

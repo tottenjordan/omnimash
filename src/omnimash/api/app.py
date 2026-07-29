@@ -22,6 +22,8 @@ class CharacterRoleModel(BaseModel):
     reference_url: str | None = None
     aesthetic_tags: list[str] = []
     voice_style: str = ""
+    voice_profile: str = ""
+
 
 
 class SaveCharacterRequest(BaseModel):
@@ -3873,6 +3875,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     reference_url=c.reference_url,
                     aesthetic_tags=c.aesthetic_tags,
                     voice_style=c.voice_style,
+                    voice_profile=c.voice_profile,
                 )
                 for c in tags.characters
             ],
@@ -4015,6 +4018,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             reference_url=c.reference_url,
                             aesthetic_tags=c.aesthetic_tags,
                             voice_style=c.voice_style,
+                            voice_profile=c.voice_profile,
                         )
                     )
                 elif isinstance(c, dict):
@@ -4026,6 +4030,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             reference_url=c.get("reference_url"),
                             aesthetic_tags=c.get("aesthetic_tags", []),
                             voice_style=c.get("voice_style", ""),
+                            voice_profile=c.get("voice_profile", ""),
                         )
                     )
                 elif hasattr(c, "model_dump"):
@@ -4038,6 +4043,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             reference_url=cd.get("reference_url"),
                             aesthetic_tags=cd.get("aesthetic_tags", []),
                             voice_style=cd.get("voice_style", ""),
+                            voice_profile=cd.get("voice_profile", ""),
                         )
                     )
 
@@ -4220,6 +4226,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 reference_url=c.get("reference_url"),
                 aesthetic_tags=c.get("aesthetic_tags", []),
                 voice_style=c.get("voice_style", ""),
+                voice_profile=c.get("voice_profile", ""),
             )
             for c in (raw_chars or [])
         ]
@@ -4244,6 +4251,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             reference_url=char_data.get("reference_url"),
             aesthetic_tags=char_data.get("aesthetic_tags", []),
             voice_style=char_data.get("voice_style", ""),
+            voice_profile=char_data.get("voice_profile", ""),
         )
 
     @app.post("/api/characters/save-roster", response_model=SaveCharacterResponse)
@@ -4269,6 +4277,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 reference_url=c.get("reference_url"),
                 aesthetic_tags=c.get("aesthetic_tags", []),
                 voice_style=c.get("voice_style", ""),
+                voice_profile=c.get("voice_profile", ""),
             )
             for c in (raw_roster or [])
         ]

@@ -104,3 +104,23 @@ def test_compile_storyboard_minimal_args():
     assert "[AESTHETIC INJECTION]" in compiled
     assert "[STORYBOARD SEQUENCE]" in compiled
     assert "Scene 1 [Role A]" in compiled
+
+
+def test_character_role_voice_profile():
+    char = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Young wizard",
+        voice_profile="Deep baritone with authoritative tone",
+    )
+    assert char.voice_profile == "Deep baritone with authoritative tone"
+
+
+def test_character_role_voice_profile_default():
+    char = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Young wizard",
+    )
+    assert char.voice_profile == ""
+

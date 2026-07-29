@@ -1135,6 +1135,7 @@ class OmniFlashClient:
                             reference_url=c.get("reference_url"),
                             aesthetic_tags=c.get("aesthetic_tags", []),
                             voice_style=c.get("voice_style", ""),
+                            voice_profile=c.get("voice_profile", ""),
                         )
                     )
 

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from omnimash.config import settings
+from omnimash.prompts.character_roles import CharacterRole
 
 if TYPE_CHECKING:
     from omnimash.prompts.taxonomy import StylePreset
@@ -167,15 +168,6 @@ class CompiledDeltaPrompt:
             f"[ISOLATED DIFF]: {self.isolated_diff}"
         )
 
-
-@dataclass
-class CharacterRole:
-    role_id: str
-    name: str
-    description: str
-    reference_url: str | None = None
-    aesthetic_tags: list[str] = field(default_factory=list)
-    voice_style: str = ""
 
 
 @dataclass
