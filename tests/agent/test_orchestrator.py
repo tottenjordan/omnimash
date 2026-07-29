@@ -247,7 +247,7 @@ def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
     )
     assert res.success is True
     assert res.raw_compiled_prompt is not None
-    assert "[STORYBOARD SEQUENCE]" in res.raw_compiled_prompt
+    assert "### TIMELINE" in res.raw_compiled_prompt
     assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in res.raw_compiled_prompt
     assert '  Spectacled Wizard Bruv: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
 
