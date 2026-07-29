@@ -244,61 +244,113 @@ def ensure_rendered_video(
         is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
     )
 
-    wav_silent_path = "static/rendered/temp_silent.wav"
-    _generate_dynamic_audio_wav(
-        wav_silent_path,
-        prompt=prompt,
-        voiceover=voiceover,
-        is_silent=effective_silent,
-    )
-    target_audio_wav = wav_silent_path
+    unique_id = uuid.uuid4().hex[:8]
+    wav_silent_path = f"static/rendered/temp_silent_{unique_id}.wav"
+    txt_prompt_path = f"static/rendered/temp_prompt_{unique_id}.txt"
+    txt_sub_path = f"static/rendered/temp_subtitles_{unique_id}.txt"
 
-    effective_voiceover = voiceover or extract_clean_dialogue_summary(prompt) or ""
-    clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
-    clean_subtitles = effective_voiceover.replace("'", "").replace('"', "")[:100]
+    try:
+        _generate_dynamic_audio_wav(
+            wav_silent_path,
+            prompt=prompt,
+            voiceover=voiceover,
+            is_silent=effective_silent,
+        )
+        target_audio_wav = wav_silent_path
 
-    # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
-    txt_prompt_path = "static/rendered/temp_prompt.txt"
-    txt_sub_path = "static/rendered/temp_subtitles.txt"
-    with open(txt_prompt_path, "w", encoding="utf-8") as f:
-        f.write(f"PROMPT: {clean_prompt}")
-    with open(txt_sub_path, "w", encoding="utf-8") as f:
-        f.write(f"🗣️ {clean_subtitles}")
+        effective_voiceover = voiceover or extract_clean_dialogue_summary(prompt) or ""
+        clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
+        clean_subtitles = effective_voiceover.replace("'", "").replace('"', "")[:100]
 
-    # Discover crisp vector TrueType font
-    font_arg = ""
-    font_candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ]
-    for fc in font_candidates:
-        if os.path.exists(fc):
-            font_arg = f":fontfile={fc}"
-            break
+        # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
+        with open(txt_prompt_path, "w", encoding="utf-8") as f:
+            f.write(f"PROMPT: {clean_prompt}")
+        with open(txt_sub_path, "w", encoding="utf-8") as f:
+            f.write(f"🗣️ {clean_subtitles}")
 
-    banner_img = "imgs/omnimash_banner.png"
+        # Discover crisp vector TrueType font
+        font_arg = ""
+        font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for fc in font_candidates:
+            if os.path.exists(fc):
+                font_arg = f":fontfile={fc}"
+                break
 
-    if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
+        banner_img = "imgs/omnimash_banner.png"
+
+        if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
+            try:
+                filter_str = (
+                    f"[0:v]scale=1280:720,zoompan=z='min(1.04+0.02*abs(sin(2*PI*0.5*in_time)),1.12)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,"
+                    f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
+                    f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
+                    f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
+                    f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
+                    f"drawtext=textfile={txt_prompt_path}{font_arg}:fontcolor=0x94A3B8:fontsize=18:x=90:y=h-135,"
+                    f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95[v]; [1:a]aresample=async=1:first_pts=0[a]"
+                )
+                cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-loop",
+                    "1",
+                    "-i",
+                    banner_img,
+                    "-i",
+                    target_audio_wav,
+                    "-filter_complex",
+                    filter_str,
+                    "-map",
+                    "[v]",
+                    "-map",
+                    "[a]",
+                    "-r",
+                    "24",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "fast",
+                    "-crf",
+                    "18",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                    "-shortest",
+                    "-movflags",
+                    "+faststart",
+                    rel_path,
+                ]
+                res = subprocess.run(cmd, capture_output=True, check=False)
+                if res.returncode == 0:
+                    return
+            except Exception:
+                pass
+
+        # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
         try:
+            audio_inputs = (
+                ["-i", target_audio_wav]
+                if os.path.exists(target_audio_wav)
+                else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
+            )
             filter_str = (
-                f"[0:v]scale=1280:720,zoompan=z='min(1.04+0.02*abs(sin(2*PI*0.5*in_time)),1.12)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,"
+                f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
                 f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
-                f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
                 f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
                 f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
-                f"drawtext=textfile={txt_prompt_path}{font_arg}:fontcolor=0x94A3B8:fontsize=18:x=90:y=h-135,"
-                f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95[v]; [1:a]aresample=async=1:first_pts=0[a]"
+                f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]"
             )
             cmd = [
                 "ffmpeg",
                 "-y",
-                "-loop",
-                "1",
-                "-i",
-                banner_img,
-                "-i",
-                target_audio_wav,
+                *audio_inputs,
                 "-filter_complex",
                 filter_str,
                 "-map",
@@ -317,63 +369,21 @@ def ensure_rendered_video(
                 "yuv420p",
                 "-c:a",
                 "aac",
-                "-b:a",
-                "192k",
                 "-shortest",
                 "-movflags",
                 "+faststart",
                 rel_path,
             ]
-            res = subprocess.run(cmd, capture_output=True, check=False)
-            if res.returncode == 0:
-                return
+            subprocess.run(cmd, capture_output=True, check=False)
         except Exception:
             pass
-
-    # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
-    try:
-        audio_inputs = (
-            ["-i", target_audio_wav]
-            if os.path.exists(target_audio_wav)
-            else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
-        )
-        filter_str = (
-            f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
-            f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
-            f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
-            f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
-            f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]"
-        )
-        cmd = [
-            "ffmpeg",
-            "-y",
-            *audio_inputs,
-            "-filter_complex",
-            filter_str,
-            "-map",
-            "[v]",
-            "-map",
-            "[a]",
-            "-r",
-            "24",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-shortest",
-            "-movflags",
-            "+faststart",
-            rel_path,
-        ]
-        subprocess.run(cmd, capture_output=True, check=False)
-    except Exception:
-        pass
+    finally:
+        for tmp_file in (wav_silent_path, txt_prompt_path, txt_sub_path):
+            if os.path.exists(tmp_file):
+                try:
+                    os.remove(tmp_file)
+                except Exception:
+                    pass
 
 
 def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
@@ -666,7 +676,6 @@ class OmniFlashClient:
                 curr_idx += 1
             else:
                 char_id = role_id or name
-                warn_msg = f"Reference image URL for {char_id} ('{ref_url}') could not be fetched or loaded."
                 logger.warning(
                     "Character %s has reference_url '%s' but image bytes could not be loaded!",
                     char_id,
@@ -674,6 +683,132 @@ class OmniFlashClient:
                 )
 
         return image_objects, char_img_map
+
+    def _build_multimodal_contents(
+        self,
+        prompt: str,
+        session_id: str | None = None,
+        characters: list[CharacterRole] | None = None,
+        keyframe_image_url: str | None = None,
+        directors_notes: dict[str, Any] | str | None = None,
+    ) -> list[dict[str, Any]] | str:
+        """Assembles keyframe seed image, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
+        keyframe_image_parts: list[dict[str, Any]] = []
+        if keyframe_image_url:
+            img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
+            if img_bytes:
+                b64_str = base64.b64encode(img_bytes).decode("utf-8")
+                keyframe_image_parts.append(
+                    {
+                        "type": "image",
+                        "data": b64_str,
+                        "mime_type": mime_type,
+                    }
+                )
+
+        start_ref_idx = 2 if keyframe_image_parts else 1
+        ref_image_parts, char_img_map = self._load_reference_images_as_input(
+            session_id, characters, starting_index=start_ref_idx
+        )
+        all_image_parts = keyframe_image_parts + ref_image_parts
+
+        input_roles_lines: list[str] = []
+        if keyframe_image_parts:
+            input_roles_lines.append(
+                "[Image 1: Keyframe Seed Anchor] = [Starting Frame]"
+            )
+
+        if characters:
+            for c in characters:
+                role_id = (
+                    getattr(c, "role_id", "")
+                    if not isinstance(c, dict)
+                    else c.get("role_id", "")
+                )
+                name = (
+                    getattr(c, "name", "")
+                    if not isinstance(c, dict)
+                    else c.get("name", "")
+                )
+                ref_url = (
+                    getattr(c, "reference_url", None)
+                    if not isinstance(c, dict)
+                    else c.get("reference_url")
+                )
+                if not ref_url or not isinstance(ref_url, str):
+                    continue
+
+                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
+                if img_idx:
+                    img_role = (
+                        getattr(c, "image_role", "Character Reference")
+                        if not isinstance(c, dict)
+                        else c.get("image_role", "Character Reference")
+                    ) or "Character Reference"
+                    name_str = str(name) if name else ""
+                    name_clean = (
+                        sanitize_real_names(name_str) if name_str else str(role_id)
+                    )
+                    name_part = f" ({name_clean})" if name_clean else ""
+                    input_roles_lines.append(
+                        f"[Image {img_idx}: {role_id}{name_part}] = [{img_role}]"
+                    )
+
+        input_roles_header = ""
+        if input_roles_lines:
+            input_roles_header = (
+                "### INPUT ROLES\n" + "\n".join(input_roles_lines) + "\n\n"
+            )
+
+        tone_header = ""
+        if keyframe_image_parts:
+            tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
+
+        notes_header = ""
+        if directors_notes:
+            if isinstance(directors_notes, dict):
+                lines_n = ["# Director's Notes & Relational Dynamics:"]
+                for k, v in directors_notes.items():
+                    if k != "raw_notes" and v:
+                        lines_n.append(f"- {k.replace('_', ' ').title()}: {v}")
+                if len(lines_n) > 1:
+                    notes_header = "\n".join(lines_n) + "\n\n"
+            elif isinstance(directors_notes, str) and directors_notes.strip():
+                notes_header = f"# Director's Notes & Relational Dynamics:\n{directors_notes.strip()}\n\n"
+
+        character_roster_header = ""
+        if characters:
+            char_lines: list[str] = ["# Character Roster & Visual Directives:"]
+            for c in characters:
+                name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
+                role_id = getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "")
+                desc = getattr(c, "description", "") if not isinstance(c, dict) else c.get("description", "")
+                raw_tags = getattr(c, "aesthetic_tags", None) if not isinstance(c, dict) else c.get("aesthetic_tags")
+                str_tags: list[str] = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
+                tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
+
+                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
+                ref_str = (
+                    f" [Visual Reference: Attached Image #{img_idx}]"
+                    if img_idx
+                    else ""
+                )
+                char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
+            character_roster_header = "\n".join(char_lines) + "\n\n"
+
+        sanitized_input = (
+            input_roles_header
+            + tone_header
+            + notes_header
+            + character_roster_header
+            + (sanitize_real_names(prompt) if prompt else "")
+        )
+
+        if all_image_parts:
+            text_part = {"type": "text", "text": sanitized_input}
+            return [{"type": "user_input", "content": all_image_parts + [text_part]}]
+        else:
+            return sanitized_input
 
     def _generate_live_omni_flash_video(
         self,
@@ -699,72 +834,13 @@ class OmniFlashClient:
         delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
         last_error: str | None = None
 
-        keyframe_image_parts: list[dict[str, Any]] = []
-        if keyframe_image_url:
-            img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
-            if img_bytes:
-                b64_str = base64.b64encode(img_bytes).decode("utf-8")
-                keyframe_image_parts.append(
-                    {
-                        "type": "image",
-                        "data": b64_str,
-                        "mime_type": mime_type,
-                    }
-                )
-
-        start_ref_idx = 2 if keyframe_image_parts else 1
-        ref_image_parts, char_img_map = self._load_reference_images_as_input(
-            session_id, characters, starting_index=start_ref_idx
+        input_payload = self._build_multimodal_contents(
+            prompt=prompt,
+            session_id=session_id,
+            characters=characters,
+            keyframe_image_url=keyframe_image_url,
+            directors_notes=directors_notes,
         )
-        all_image_parts = keyframe_image_parts + ref_image_parts
-
-        character_roster_header = ""
-        if characters:
-            char_lines: list[str] = ["# Character Roster & Visual Directives:"]
-            for c in characters:
-                name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
-                role_id = getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "")
-                desc = getattr(c, "description", "") if not isinstance(c, dict) else c.get("description", "")
-                raw_tags = getattr(c, "aesthetic_tags", None) if not isinstance(c, dict) else c.get("aesthetic_tags")
-                str_tags: list[str] = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
-                tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
-
-                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
-                ref_str = (
-                    f" [Visual Character Reference: Attached Image #{img_idx}]"
-                    if img_idx
-                    else ""
-                )
-                char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
-            character_roster_header = "\n".join(char_lines) + "\n\n"
-
-        notes_header = ""
-        if directors_notes:
-            if isinstance(directors_notes, dict):
-                lines_n = ["# Director's Notes & Relational Dynamics:"]
-                for k, v in directors_notes.items():
-                    if k != "raw_notes" and v:
-                        lines_n.append(f"- {k.replace('_', ' ').title()}: {v}")
-                if len(lines_n) > 1:
-                    notes_header = "\n".join(lines_n) + "\n\n"
-            elif isinstance(directors_notes, str) and directors_notes.strip():
-                notes_header = f"# Director's Notes & Relational Dynamics:\n{directors_notes.strip()}\n\n"
-
-        tone_header = ""
-        if keyframe_image_parts:
-            tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
-
-        likeness_directives = ""
-        if char_img_map:
-            likeness_directives = "# Character Likeness Directives:\nYou MUST lock character facial features, facial structure, skin tone, hair, beard, clothing, accessories, and distinct character traits directly from the corresponding Attached Image #N reference images.\n\n"
-
-        sanitized_input = tone_header + notes_header + likeness_directives + character_roster_header + (sanitize_real_names(prompt) if prompt else "")
-
-        if all_image_parts:
-            text_part = {"type": "text", "text": sanitized_input}
-            input_payload: Any = [{"type": "user_input", "content": all_image_parts + [text_part]}]
-        else:
-            input_payload = sanitized_input
 
         kwargs: dict[str, Any] = {
             "model": "gemini-omni-flash-preview",
@@ -855,7 +931,14 @@ class OmniFlashClient:
                         "400",
                     )
                 ):
-                    fallback_prompt = _abstract_prompt_for_responsible_ai(sanitized_input)
+                    raw_text = (
+                        input_payload[0]["content"][-1]["text"]
+                        if isinstance(input_payload, list)
+                        and input_payload
+                        and "content" in input_payload[0]
+                        else str(input_payload)
+                    )
+                    fallback_prompt = _abstract_prompt_for_responsible_ai(raw_text)
                     logger.warning(
                         "Gemini Omni Flash safety/likeness guardrail triggered (%s). Abstracting prompt with cartoon parody archetypes for retry: %s",
                         exc_str,

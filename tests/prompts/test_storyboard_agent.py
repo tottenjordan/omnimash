@@ -312,4 +312,118 @@ def test_expand_vision_passes_through_optimize_shot_prompt():
         assert "anamorphic lens flare" in shot.action.lower()
 
 
+def test_parse_timecoded_script_omni_flash_blocks():
+    script_text = (
+        "[0-3s]\n"
+        "ACTION: Snape stirring a glowing purple potion in a stone dungeon.\n"
+        'DIALOGUE: Snape: "Observe the subtle art."\n'
+        "AUDIO: Slow heavy 808 trap beat with bubbling liquid sound.\n\n"
+        "[3-6s]\n"
+        "ACTION: Dumbledore steps forward under glowing sconces.\n"
+        'DIALOGUE: Dumbledore: "Turn the beat up!"\n'
+        "AUDIO: Trap beat drop with crisp snare trills.\n\n"
+        "[6-10s]\n"
+        "ACTION: Both wizards perform a synchronized pose.\n"
+        "AUDIO: Booming sub-bass with reverb tail.\n"
+    )
+    parsed = parse_timecoded_script(script_text)
+    assert len(parsed) == 3
+    assert parsed[0]["duration_seconds"] == 3.0
+    assert parsed[0]["timecode"] == "[0-3s]"
+    assert parsed[0]["action"] == "Snape stirring a glowing purple potion in a stone dungeon."
+    assert parsed[0]["dialogue"] == 'Snape: "Observe the subtle art."'
+    assert parsed[0]["audio"] == "Slow heavy 808 trap beat with bubbling liquid sound."
+
+    assert parsed[1]["duration_seconds"] == 3.0
+    assert parsed[1]["timecode"] == "[3-6s]"
+    assert parsed[1]["action"] == "Dumbledore steps forward under glowing sconces."
+    assert parsed[1]["dialogue"] == 'Dumbledore: "Turn the beat up!"'
+    assert parsed[1]["audio"] == "Trap beat drop with crisp snare trills."
+
+    assert parsed[2]["duration_seconds"] == 4.0
+    assert parsed[2]["timecode"] == "[6-10s]"
+    assert parsed[2]["action"] == "Both wizards perform a synchronized pose."
+    assert parsed[2]["dialogue"] == ""
+    assert parsed[2]["audio"] == "Booming sub-bass with reverb tail."
+
+    agent = StoryboardAgent(mock_mode=True)
+    shots = agent.expand_vision(
+        concept="Wizard rap duel",
+        style_tone="Cinematic Trap Parody",
+        target_duration=10.0,
+        screenplay_script=script_text,
+    )
+    assert len(shots) == 3
+    assert shots[0].duration_seconds == 3.0
+    assert shots[1].duration_seconds == 3.0
+    assert shots[2].duration_seconds == 4.0
+    assert "in a single continuous shot. no scene cuts." in shots[0].framing_motion.lower()
+    assert shots[0].audio != ""
+    assert "808" in shots[0].audio or "trap" in shots[0].audio.lower()
+
+
+def test_expand_vision_splits_long_script_into_10s_shots():
+    agent = StoryboardAgent(mock_mode=True)
+
+    # Test 30s script without per-shot breaks
+    script_30s = (
+        "[DIRECTOR'S NOTES]\n"
+        "- Tone: High-energy 90s Rap Battle\n\n"
+        "ACTION: Snape enters dungeon and brews glowing potion while trap beat drops.\n"
+        'DIALOGUE: Snape: "Observe the subtle art of the 808 beat."\n'
+        "ACTION: Dumbledore steps forward and drops heavy bassline.\n"
+        "ACTION: Snape transforms into Snape Dogg and performs synchronized pose."
+    )
+
+    shots_30s = agent.expand_vision(
+        concept="30s wizard rap battle",
+        style_tone="Cinematic Trap Parody",
+        target_duration=30.0,
+        screenplay_script=script_30s,
+    )
+
+    assert len(shots_30s) == 3
+    assert all(s.duration_seconds <= 10.0 for s in shots_30s)
+    assert shots_30s[0].start_seconds == 0.0
+    assert shots_30s[0].end_seconds == 10.0
+    assert shots_30s[1].start_seconds == 10.0
+    assert shots_30s[1].end_seconds == 20.0
+    assert shots_30s[2].start_seconds == 20.0
+    assert shots_30s[2].end_seconds == 30.0
+
+    for i, shot in enumerate(shots_30s):
+        assert shot.shot_index == i + 1
+        assert "continuous shot" in shot.framing_motion.lower()
+        assert "match cut" in shot.camera_transition.lower()
+        assert "maintain" in shot.character_continuity.lower() or "character" in shot.character_continuity.lower()
+
+    prompt_shot2 = shots_30s[1].to_omni_flash_prompt()
+    assert "[SHOT DIRECTIVE: Shot 2 (10-20s)]" in prompt_shot2
+    assert "Continuous match cut" in prompt_shot2
+
+    # Test 45s script with explicit single timecode block [0-45s]
+    script_45s = (
+        "[0-45s]\n"
+        "ACTION: Epic 45-second spell duel between wizards with intense lighting and explosions."
+    )
+
+    shots_45s = agent.expand_vision(
+        concept="45s spell duel",
+        style_tone="Cinematic Fantasy",
+        target_duration=45.0,
+        screenplay_script=script_45s,
+    )
+
+    assert len(shots_45s) == 5
+    assert all(s.duration_seconds <= 10.0 for s in shots_45s)
+    assert shots_45s[0].start_seconds == 0.0
+    assert shots_45s[0].end_seconds == 10.0
+    assert shots_45s[3].start_seconds == 30.0
+    assert shots_45s[3].end_seconds == 40.0
+    assert shots_45s[4].start_seconds == 40.0
+    assert shots_45s[4].end_seconds == 45.0
+
+
+
+
 

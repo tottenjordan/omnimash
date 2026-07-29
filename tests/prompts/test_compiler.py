@@ -5,6 +5,7 @@ from omnimash.prompts.compiler import (
     PromptCompiler,
     SceneDirective,
     parse_screenplay_script,
+    parse_timecoded_script,
 )
 from omnimash.prompts.taxonomy import StylePreset
 
@@ -28,11 +29,10 @@ def test_prompt_compiler_anchor_and_inject():
     assert "120 BPM" in parts.audio_track or "boom-bap" in parts.audio_track
 
     full_prompt = parts.to_full_prompt()
-    assert "[SUBJECT ANCHOR]:" in full_prompt
-    assert "[AESTHETIC INJECTION]:" in full_prompt
-    assert "[AUDIO TRACK]:" in full_prompt
-    assert "Sound design:" in full_prompt
-    assert "No text, no subtitles, no captions on screen" in full_prompt
+    assert "in a single continuous shot. no scene cuts." in full_prompt.lower()
+    assert "[0-3s]" in full_prompt
+    assert "120 BPM" in full_prompt or "boom-bap" in full_prompt
+    assert "[AUDIO TRACK]:" not in full_prompt
 
 
 def test_prompt_compiler_with_custom_on_screen_text():
@@ -512,4 +512,157 @@ def test_compile_prompt_extracts_dialogue_directive_from_raw_prompt():
         "Voiceover: I been cooking potions since first year. Burrr!."
         in full_prompt
     )
+
+
+def test_parse_timecoded_script():
+    chars = [
+        CharacterRole(role_id="Role A", name="Severus Snape", description="Gaunt wizard"),
+        CharacterRole(role_id="Role B", name="Harry Potter", description="Young wizard"),
+    ]
+    script = (
+        '[0-3s] Snape: (Standing in dark dungeon. Heavy thunder rumbles.) "Silence, Potter!"\n'
+        '[3-6s] Harry: (Bopping head to 120 BPM beat.) "It was the beat!"\n'
+        "[6-10s] Snape: (Glaring menacingly.)"
+    )
+    blocks = parse_timecoded_script(script, characters=chars)
+    assert len(blocks) == 3
+    assert blocks[0]["timecode"] == "[0-3s]"
+    assert blocks[0]["active_roles"] == ["Role A"]
+    assert "Standing in dark dungeon" in blocks[0]["action"]
+    assert "thunder" in blocks[0]["audio_cues"].lower()
+    assert 'Role A (Severus Snape): "Silence, Potter!"' in blocks[0]["dialogue"]
+
+    assert blocks[1]["timecode"] == "[3-6s]"
+    assert blocks[1]["active_roles"] == ["Role B"]
+    assert "Bopping head" in blocks[1]["action"]
+
+    assert blocks[2]["timecode"] == "[6-10s]"
+    assert blocks[2]["active_roles"] == ["Role A"]
+    assert "Glaring menacingly" in blocks[2]["action"]
+
+
+def test_compile_prompt_omni_flash_timecode_format():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Severus Snape",
+            description="Gaunt wizard with straight greasy black hair",
+            reference_url="gs://bucket/snape.jpg",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Harry Potter",
+            description="Young wizard with round glasses and lightning scar",
+            reference_url="gs://bucket/harry.jpg",
+        ),
+    ]
+    script = (
+        '[0-3s] Snape: (Standing in dark dungeon. 140 BPM Heavy 808 Trap beat.) "Silence, Potter!"\n'
+        '[3-6s] Harry: (Bopping head to 140 BPM trap beat.) "It was the beat, professor!"\n'
+        "[6-10s] Snape: (Glaring menacingly while gesturing with wand.)"
+    )
+
+    parts = compiler.compile_prompt(
+        screenplay_text=script,
+        characters=chars,
+        audio_stem="140 BPM Heavy 808 Trap",
+        style_preset=StylePreset.TRAP_DISSTRACK,
+    )
+    full_prompt = parts.to_full_prompt()
+
+    # 1. Continuous shot camera header
+    assert "in a single continuous shot. no scene cuts." in full_prompt.lower()
+
+    # 2. Visual character roster reference index headers
+    assert "[Image 1: Role A" in full_prompt and "= [Character Reference]" in full_prompt
+    assert "[Image 2: Role B" in full_prompt and "= [Character Reference]" in full_prompt
+
+    # 3. Chronological [0-3s], [3-6s], [6-10s] timing blocks
+    assert "[0-3s]" in full_prompt
+    assert "[3-6s]" in full_prompt
+    assert "[6-10s]" in full_prompt
+
+    # 4. Seamless integration of spoken dialogue and background audio directly within timecode blocks
+    assert "140 BPM" in full_prompt
+    assert "Silence, Potter!" in full_prompt
+    assert "It was the beat, professor!" in full_prompt
+
+    # 5. Elimination of redundant isolated audio headers
+    assert "[AUDIO TRACK]:" not in full_prompt
+
+
+def test_compile_prompt_four_block_omni_flash_template():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Hero",
+            description="Young wizard with round glasses",
+            reference_url="gs://bucket/hero.jpg",
+            image_role="Character Reference",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Golden Snitch",
+            description="Enchanted golden flying ball",
+            reference_url="gs://bucket/snitch.jpg",
+            image_role="Product Reference",
+        ),
+        CharacterRole(
+            role_id="Role C",
+            name="Dungeon Entrance",
+            description="Starting frame of dungeon corridor",
+            reference_url="gs://bucket/dungeon.jpg",
+            image_role="Starting Frame",
+        ),
+        CharacterRole(
+            role_id="Role D",
+            name="Retro Aesthetic",
+            description="90s VHS mood reference",
+            reference_url="gs://bucket/style.jpg",
+            image_role="Style Reference",
+        ),
+        CharacterRole(
+            role_id="Role E",
+            name="Narrator",
+            description="Voice of the dungeon keeper",
+            is_offscreen_narrator=True,
+        ),
+    ]
+
+    parts = compiler.compile_prompt(
+        raw_prompt="Hero catching the snitch",
+        characters=chars,
+        voiceover='Narrator: "Welcome to the magical tournament."',
+        audio_stem="120 BPM boom-bap beat",
+        on_screen_text="MATCH DAY",
+    )
+
+    full_prompt = parts.to_full_prompt()
+
+    # 1. Verify four-block section headers
+    assert "### INPUT ROLES" in full_prompt
+    assert "### CHARACTER PROFILES" in full_prompt
+    assert "### SCENE INSTRUCTIONS" in full_prompt
+    assert "### TIMELINE" in full_prompt
+
+    # 2. Verify Image Role tagging
+    assert "[Image 1: Role A (Hero)] = [Character Reference]" in full_prompt
+    assert "[Image 2: Role B (Golden Snitch)] = [Product Reference]" in full_prompt
+    assert "[Image 3: Role C (Dungeon Entrance)] = [Starting Frame]" in full_prompt
+    assert "[Image 4: Role D (Retro Aesthetic)] = [Style Reference]" in full_prompt
+
+    # 3. Verify Off-Screen Narrator profile and speech formatting
+    assert "Visual: Off-screen (Voiceover only). Do not show." in full_prompt
+    assert 'Narrator (VO) says: "Welcome to the magical tournament."' in full_prompt
+
+    # 4. Verify diegetic and non-diegetic written text formatting
+    assert 'reading "MATCH DAY"' in full_prompt
+
+    # 5. Verify background audio with "instrumental" prefix to prevent AI vocal overlap
+    assert "instrumental 120 bpm boom-bap beat" in full_prompt.lower()
+
+
+
 

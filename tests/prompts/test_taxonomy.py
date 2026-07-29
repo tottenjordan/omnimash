@@ -24,7 +24,7 @@ def test_taxonomy_engine_uses_prompt_compiler():
         style_preset=StylePreset.NINETIES_RAP_VIDEO,
         custom_instructions="rapping in dungeon",
     )
-    assert "[SUBJECT ANCHOR]:" in composed
+    assert "[0-3s]" in composed
     assert "gaunt man with a hooked nose" in composed
 
 

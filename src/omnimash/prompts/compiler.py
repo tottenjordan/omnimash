@@ -116,45 +116,113 @@ class CompiledPromptParts:
     on_screen_text: str = ""
     drip_props: list[str] = field(default_factory=list)
     vibe_intensity: int = 50
+    character_references: list[str] = field(default_factory=list)
+    timecode_blocks: list[str] = field(default_factory=list)
+    input_roles: list[str] = field(default_factory=list)
+    character_profiles: list[str] = field(default_factory=list)
+    scene_instructions: list[str] = field(default_factory=list)
 
     def to_full_prompt(self) -> str:
-        text_directive = (
-            f"On-screen text: '{self.on_screen_text}'"
-            if self.on_screen_text and self.on_screen_text.strip()
-            else "No text, no subtitles, no captions on screen"
+        cam = self.camera_lighting.strip()
+        cam_clean = re.sub(
+            r"in a single continuous shot,\s*no scene cuts\.?",
+            "In a single continuous shot. No scene cuts.",
+            cam,
+            flags=re.IGNORECASE,
         )
+        if "in a single continuous shot. no scene cuts." not in cam_clean.lower():
+            camera_header = f"In a single continuous shot. No scene cuts. {cam_clean}"
+        else:
+            camera_header = cam_clean
 
+        # 1. ### INPUT ROLES
+        input_roles_str = "\n".join(self.input_roles).strip() if self.input_roles else ""
+        if not input_roles_str and self.character_references:
+            input_roles_str = "\n".join(self.character_references).strip()
+        if not input_roles_str:
+            input_roles_str = "None."
+        block_input = f"### INPUT ROLES\n{input_roles_str}"
+
+        # 2. ### CHARACTER PROFILES
+        char_profiles_str = "\n".join(self.character_profiles).strip() if self.character_profiles else ""
+        if not char_profiles_str:
+            char_profiles_str = "None."
+        block_profiles = f"### CHARACTER PROFILES\n{char_profiles_str}"
+
+        # 3. ### SCENE INSTRUCTIONS
         lower_audio = self.audio_track.lower().strip()
         if self.is_silent or lower_audio in ("none", "mute", "silent"):
-            sound_directive = (
-                "Sound design: Silent video. No background music, no audio"
-            )
-        elif self.voiceover and self.voiceover.strip():
-            sound_directive = (
-                f"Sound design: Foreground spoken voiceover/dialogue is dominant, "
-                f"crystal-clear, and front-of-mix. Background beat ({self.audio_track}) "
-                f"is subtly ducked in the background beneath dialogue"
-            )
+            sound_desc = "Sound design: Silent video. No background music, no audio."
         else:
-            sound_directive = f"Sound design: {self.audio_track}"
+            audio_track_clean = self.audio_track.strip()
+            if not audio_track_clean.lower().startswith("instrumental"):
+                instr_audio = f"instrumental {audio_track_clean}"
+            else:
+                instr_audio = audio_track_clean
 
-        vocal_directive = ""
+            if self.voiceover and self.voiceover.strip():
+                sound_desc = (
+                    f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                    f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
+                )
+            else:
+                sound_desc = f"Sound design: {instr_audio}."
+
+        scene_inst_parts = [
+            f"Camera & Lighting: {camera_header}",
+            f"Environment: {self.environment}",
+            f"Audio: {sound_desc}",
+        ]
+
         if self.voiceover and self.voiceover.strip():
             vo = self.voiceover.strip()
             if ":" in vo or "\n" in vo:
-                vocal_directive = f" Dialogue between subjects: {vo}."
+                scene_inst_parts.append(f"Dialogue between subjects: {vo}.")
             else:
-                vocal_directive = f" Voiceover: {vo}."
+                vo_clean = vo.rstrip(".")
+                scene_inst_parts.append(f"Voiceover: {vo_clean}.")
 
-        return (
-            f"[SUBJECT ANCHOR]: {self.subject_anchor} | "
-            f"[AESTHETIC INJECTION]: {self.aesthetic_injection} | "
-            f"[ENVIRONMENT]: {self.environment} | "
-            f"[CAMERA/LIGHTING]: {self.camera_lighting} | "
-            f"[MOTION]: {self.motion} | "
-            f"[AUDIO TRACK]: {self.audio_track} | "
-            f"{sound_directive}.{vocal_directive} {text_directive}."
-        )
+        if self.on_screen_text and self.on_screen_text.strip():
+            txt = self.on_screen_text.strip()
+            scene_inst_parts.append(f"On-screen text: '{txt}' reading \"{txt}\"")
+
+        if self.scene_instructions:
+            scene_inst_parts.extend(self.scene_instructions)
+
+        block_scene = "### SCENE INSTRUCTIONS\n" + "\n".join(scene_inst_parts)
+
+        # 4. ### TIMELINE
+        if self.timecode_blocks:
+            blocks_str = "\n".join(self.timecode_blocks).strip()
+        else:
+            action_main = f"{self.subject_anchor}. {self.aesthetic_injection}. {self.environment}. {self.motion}."
+
+            vocal_directive = ""
+            if self.voiceover and self.voiceover.strip():
+                vo = self.voiceover.strip()
+                if "narrator" in vo.lower():
+                    clean_vo = re.sub(
+                        r"^(?:Narrator\s*(?:\(VO\))?:?\s*)[\"']?|[\"']?$",
+                        "",
+                        vo,
+                        flags=re.IGNORECASE,
+                    ).strip()
+                    vocal_directive = f' Dialogue: Narrator (VO) says: "{clean_vo}".'
+                elif ":" in vo or "\n" in vo:
+                    vocal_directive = f" Dialogue between subjects: {vo}."
+                else:
+                    vo_clean = vo.rstrip(".")
+                    vocal_directive = f" Voiceover: {vo_clean}."
+
+            b1 = f"[0-3s] Action: {action_main} Audio: {sound_desc}.{vocal_directive}"
+            b2 = f"[3-6s] Action: Continuation of {self.motion}. Audio: {sound_desc}."
+            b3 = f"[6-10s] Action: Final dynamic resolution. Audio: {sound_desc}."
+            blocks_str = f"{b1}\n{b2}\n{b3}"
+
+        block_timeline = f"### TIMELINE\n{blocks_str}"
+
+        return f"{block_input}\n\n{block_profiles}\n\n{block_scene}\n\n{block_timeline}"
+
 
 
 @dataclass
@@ -400,6 +468,108 @@ def parse_screenplay_script(
         "audio_cues": audio_cues_str,
         "dialogue": dialogue_str,
     }
+
+
+def parse_timecoded_script(
+    script_text: str, characters: list[CharacterRole] | None = None
+) -> list[dict[str, Any]]:
+    """Parses screenplay or timecoded script into structured chronological timing blocks.
+
+    Supports single-line screenplay format (`[0-3s] Character: (Action. Audio.) "Dialogue."`),
+    multi-line block format (`[0-3s]\nACTION: ...\nDIALOGUE: ...\nAUDIO: ...`), and un-timecoded text.
+    Returns a list of block dictionaries with keys:
+    timecode, start_seconds, end_seconds, duration_seconds, active_roles, action, audio, audio_cues, dialogue.
+    """
+    if not script_text or not script_text.strip():
+        return []
+
+    tc_pattern = re.compile(r"\[(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)s\]", re.IGNORECASE)
+    matches = list(tc_pattern.finditer(script_text))
+
+    blocks: list[dict[str, Any]] = []
+
+    if matches:
+        for i, match in enumerate(matches):
+            start_sec = float(match.group(1))
+            end_sec = float(match.group(2))
+            dur_sec = max(0.0, end_sec - start_sec)
+            tc_str = f"[{match.group(1)}-{match.group(2)}s]"
+
+            block_start_idx = match.end()
+            block_end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
+            block_content = script_text[block_start_idx:block_end_idx].strip()
+
+            if any(k in block_content.upper() for k in ("ACTION:", "DIALOGUE:", "AUDIO:")):
+                action_match = re.search(
+                    r"ACTION:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)", block_content, re.IGNORECASE | re.DOTALL
+                )
+                dialogue_match = re.search(
+                    r"DIALOGUE:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)", block_content, re.IGNORECASE | re.DOTALL
+                )
+                audio_match = re.search(
+                    r"AUDIO(?:_CUES)?:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)", block_content, re.IGNORECASE | re.DOTALL
+                )
+
+                act = action_match.group(1).strip().replace("\n", " ") if action_match else ""
+                diag = dialogue_match.group(1).strip().replace("\n", " ") if dialogue_match else ""
+                aud = audio_match.group(1).strip().replace("\n", " ") if audio_match else ""
+
+                roles: list[str] = []
+                if diag and ":" in diag:
+                    spk = diag.split(":", 1)[0].strip()
+                    if spk and spk not in roles:
+                        roles.append(spk)
+
+                blocks.append(
+                    {
+                        "timecode": tc_str,
+                        "start_seconds": start_sec,
+                        "end_seconds": end_sec,
+                        "duration_seconds": dur_sec,
+                        "active_roles": roles,
+                        "action": act,
+                        "audio": aud,
+                        "audio_cues": aud,
+                        "dialogue": diag,
+                    }
+                )
+            else:
+                parsed = parse_screenplay_script(block_content, characters=characters)
+                blocks.append(
+                    {
+                        "timecode": tc_str,
+                        "start_seconds": start_sec,
+                        "end_seconds": end_sec,
+                        "duration_seconds": dur_sec,
+                        "active_roles": parsed.get("active_roles", []),
+                        "action": parsed.get("action", ""),
+                        "audio": parsed.get("audio_cues", ""),
+                        "audio_cues": parsed.get("audio_cues", ""),
+                        "dialogue": parsed.get("dialogue", ""),
+                    }
+                )
+    else:
+        lines = [line.strip() for line in script_text.splitlines() if line.strip()]
+        default_tcs = [("[0-3s]", 0.0, 3.0, 3.0), ("[3-6s]", 3.0, 6.0, 3.0), ("[6-10s]", 6.0, 10.0, 4.0)]
+
+        for idx, line in enumerate(lines):
+            tc_info = default_tcs[min(idx, len(default_tcs) - 1)]
+            parsed = parse_screenplay_script(line, characters=characters)
+            blocks.append(
+                {
+                    "timecode": tc_info[0],
+                    "start_seconds": tc_info[1],
+                    "end_seconds": tc_info[2],
+                    "duration_seconds": tc_info[3],
+                    "active_roles": parsed.get("active_roles", []),
+                    "action": parsed.get("action", ""),
+                    "audio": parsed.get("audio_cues", ""),
+                    "audio_cues": parsed.get("audio_cues", ""),
+                    "dialogue": parsed.get("dialogue", ""),
+                }
+            )
+
+    return blocks
 
 
 class PromptOptimizer:
@@ -796,7 +966,7 @@ class PromptCompiler:
             " / ".join(dialogue_components) if dialogue_components else None
         )
 
-        return self.compile(
+        parts = self.compile(
             raw_prompt=effective_raw_prompt,
             style_preset=style_preset,
             custom_instructions=custom_instructions,
@@ -807,6 +977,117 @@ class PromptCompiler:
             drip_props=drip_props,
             vibe_intensity=vibe_intensity,
         )
+
+        input_roles: list[str] = []
+        char_profiles: list[str] = []
+        char_refs: list[str] = []
+        if characters:
+            img_idx = 1
+            for char in characters:
+                name_clean = (
+                    sanitize_real_names(char.name) if char.name else char.role_id
+                )
+                name_part = f" ({name_clean})" if name_clean else ""
+
+                img_role = (
+                    getattr(char, "image_role", "Character Reference")
+                    or "Character Reference"
+                )
+
+                if char.reference_url and char.reference_url.strip():
+                    input_roles.append(
+                        f"[Image {img_idx}: {char.role_id}{name_part}] = [{img_role}]"
+                    )
+                    char_refs.append(
+                        f"[Visual Reference: Attached Image #{img_idx}] {char.role_id}{name_part}: {char.description}"
+                    )
+                    img_idx += 1
+
+                if getattr(char, "is_offscreen_narrator", False):
+                    char_profiles.append(
+                        f"- {char.role_id}{name_part}: Visual: Off-screen (Voiceover only). Do not show."
+                    )
+                else:
+                    style_str = (
+                        f" [Style: {', '.join(char.aesthetic_tags)}]"
+                        if char.aesthetic_tags
+                        else ""
+                    )
+                    char_profiles.append(
+                        f"- {char.role_id}{name_part}: {char.description}{style_str}"
+                    )
+
+        parts.input_roles = input_roles
+        parts.character_profiles = char_profiles
+        parts.character_references = char_refs
+
+        tc_blocks: list[str] = []
+        lower_audio = (effective_audio_stem or parts.audio_track).lower().strip()
+        if is_silent or lower_audio in ("none", "mute", "silent"):
+            sound_desc = "Silent video. No background music, no audio."
+        else:
+            audio_track_clean = parts.audio_track.strip()
+            if not audio_track_clean.lower().startswith("instrumental"):
+                instr_audio = f"instrumental {audio_track_clean}"
+            else:
+                instr_audio = audio_track_clean
+
+            if parts.voiceover and parts.voiceover.strip():
+                sound_desc = (
+                    f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                    f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
+                )
+            else:
+                sound_desc = f"Sound design: {instr_audio}."
+
+        if script and script.strip():
+            parsed_blocks = parse_timecoded_script(script, characters=characters)
+            for pb in parsed_blocks:
+                tc = pb["timecode"]
+                act = pb["action"] or parts.motion
+                aud_cue = pb["audio_cues"] or effective_audio_stem or sound_desc
+                diag = pb["dialogue"]
+
+                audio_str = f" Audio: {aud_cue}." if aud_cue else f" Audio: {sound_desc}."
+                diag_str = ""
+                if diag:
+                    if "narrator" in diag.lower():
+                        clean_d = re.sub(
+                            r"^(?:(?:Role\s*\w+\s*\()?Narrator(?:\s*VO\))?\)?:\s*)[\"']?|[\"']?$",
+                            "",
+                            diag,
+                            flags=re.IGNORECASE,
+                        ).strip()
+                        diag_str = f' Dialogue: Narrator (VO) says: "{clean_d}".'
+                    else:
+                        diag_str = f" Dialogue: {diag}."
+                tc_blocks.append(f"{tc} Action: {act}.{audio_str}{diag_str}")
+
+        if not tc_blocks:
+            vo_info = ""
+            if parts.voiceover and parts.voiceover.strip():
+                if "narrator" in parts.voiceover.lower():
+                    clean_vo = re.sub(
+                        r"^(?:Narrator\s*(?:\(VO\))?:?\s*)[\"']?|[\"']?$",
+                        "",
+                        parts.voiceover,
+                        flags=re.IGNORECASE,
+                    ).strip()
+                    vo_info = f' Dialogue: Narrator (VO) says: "{clean_vo}".'
+                elif ":" in parts.voiceover or "\n" in parts.voiceover:
+                    vo_info = f" Dialogue between subjects: {parts.voiceover}."
+                else:
+                    vo_clean = parts.voiceover.rstrip(".")
+                    vo_info = f" Voiceover: {vo_clean}."
+
+            tc_blocks = [
+                f"[0-3s] Action: {parts.subject_anchor}. {parts.aesthetic_injection}. {parts.environment}. {parts.motion}. Audio: {sound_desc}.{vo_info}",
+                f"[3-6s] Action: Continuation of {parts.motion}. Audio: {sound_desc}.",
+                f"[6-10s] Action: Final dynamic resolution. Audio: {sound_desc}.",
+            ]
+
+        parts.timecode_blocks = tc_blocks
+        return parts
 
     def compile_delta(
         self, delta_instruction: str, custom_lock: str | None = None

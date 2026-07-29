@@ -60,40 +60,63 @@ class MetaPromptTags:
 
 ---
 
-## 🎬 Storyboard Sequence Prompt Structure
+## 🎬 Four-Block Omni Flash Prompt Structure & Image Role Tagging
 
-The `PromptCompiler.compile_storyboard()` method structures prompt payloads into three foundational blocks designed specifically for Gemini Omni Flash native video generation:
+The `PromptCompiler.compile_prompt()` and `OmniFlashClient._build_multimodal_contents()` methods structure prompt payloads into four foundational blocks designed specifically for Gemini Omni Flash native multimodal video generation:
 
 ```text
-[ROLE DEFINITIONS]
-- Role A (Harry): Harry Potter, a young wizard with round wire-rim glasses and lightning scar (Ref: https://example.com/harry.jpg)
-- Role B (Draco): Draco Malfoy, a blonde rival wizard in silver-trimmed robes (Ref: https://example.com/draco.jpg)
+### INPUT ROLES
+[Image 1: A photo of a woman with red curly hair] = [Character Reference]
+[Image 2: A sketch of an ornate silver key] = [Product Reference]
+[Image 3: Starting frame concept art] = [Starting Frame]
 
-[AESTHETIC INJECTION]
-Concept: Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style
-Aesthetic Tags: 2000s Atlanta Trap Disstrack, Diamond Lightning Bolt Chain, Vintage Streetwear
-Environment: Gothic Hogwarts courtyard lit by neon stage lights and smoky haze
-Audio Beat: 140 BPM Heavy 808 Trap
+### CHARACTER PROFILES
+[Character A: "Maya"]
+Visual: A woman in her 30s with curly red hair, wearing a yellow raincoat.
+Voice: High-pitched, fast-paced, and anxious.
 
-[STORYBOARD SEQUENCE]
-- Scene 1 [Role A]: Arriving at foggy Hogwarts courtyard rapping into microphone wand | Dialogue: "I been cooking potions since first year. Burrr!"
-- Scene 2 [Role B]: Stepping from shadows in high-gloss neon lighting with ice chain | Dialogue: "This is Trap or Die, Potter! Let's get it!"
+[Character B: "Tom"]
+Visual: A man in his 50s with a grey beard, wearing a thick wool sweater.
+Voice: Deep, gravelly, calm, and slow.
+
+[Character: "Narrator"]
+Visual: Off-screen (Voiceover only). Do not show.
+Voice: Deep, warm, authoritative documentary voice. Spoken into studio microphone.
+
+### SCENE INSTRUCTIONS
+A wide, continuous shot of a rain-swept wooden dock. Maya and Tom are facing each other. No scene cuts.
+Camera & Lighting: Anamorphic lens, rainy reflections, high contrast cinematic lighting.
+Environment: Rainy wooden dock at dusk.
+Audio: Sound design: Foreground voiceover is dominant. Background beat (instrumental slow mournful jazz saxophone) is subtly ducked beneath dialogue.
+
+### TIMELINE
+[0-3s] Maya waves her arms frantically. Maya says with an anxious, fast delivery: "The boat is gone! I told you we should have tied it tighter!"
+[3-5s] Tom calmly puts his hands in his pockets. Tom says in his deep, slow voice: "It's not gone, Maya."
+[5-8s] Tom points out toward the foggy horizon. Tom continues: "The tide just took it out a bit."
+[8-10s] Maya turns her head to look where he is pointing. Maya: [loud sigh] "Oh. Right."
 ```
 
-### Prompt Block Explanations
+### Prompt Block Explanations & Best Practices
 
-1. **`[ROLE DEFINITIONS]`**:
-   - Explicitly establishes role identifiers (`Role A`, `Role B`) and binds them to physical descriptions and reference image URLs.
-   - Informs Gemini Omni Flash which visual features and reference image embeddings correspond to each character identity, preventing facial drift and character merging.
+1. **`### INPUT ROLES`**:
+   - Explicitly tags each attached reference image with its functional job:
+     - `[Character Reference]` / `[Subject Reference]`: Preserves character face, likeness, and visual attributes.
+     - `[Product Reference]`: Preserves exact product logo, branding, and color materials.
+     - `[Starting Frame]`: Animates outward from the exact keyframe starting image.
+     - `[Style Reference]`: Preserves artistic medium, color palette, and mood.
 
-2. **`[AESTHETIC INJECTION]`**:
-   - Injects the overall cultural mashup aesthetic, environment background, camera/lighting style, and audio beat tempo.
-   - Ensures the background atmosphere and music rhythm remain unified across all scenes.
+2. **`### CHARACTER PROFILES`**:
+   - Pairs physical likeness descriptions with vocal profile descriptions.
+   - For off-screen narration, explicitly sets `Visual: Off-screen (Voiceover only). Do not show.` so the model does not attempt lip-syncing.
 
-3. **`[STORYBOARD SEQUENCE]`**:
-   - Orders the narrative progression turn-by-turn across storyboard scenes.
-   - Specifies which `active_roles` appear in each scene, their physical kinematics/actions, and their spoken dialogue.
-   - Directs the joint audio-video latent space to synchronize character lip motion to dialogue lines and drop audio beats on visual keyframes.
+3. **`### SCENE INSTRUCTIONS`**:
+   - Enforces continuous camera shot directives (`In a single continuous shot. No scene cuts.`).
+   - Declares instrumental background audio (`instrumental`) to prevent AI vocals from overlapping spoken dialogue.
+
+4. **`### TIMELINE`**:
+   - Orders narrative progression turn-by-turn in chronological `[X-Ys]` timing blocks.
+   - Uses explicit quotation marks (`"..."`) around spoken dialogue to distinguish speech from written on-screen text graphics (`reading "..."`).
+   - Long scripts > 10s are automatically split into sequential 10s shot cards (`[0-10s]`, `[10-20s]`, `[20-30s]`) with character continuity locks.
 
 ---
 
