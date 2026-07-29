@@ -3720,11 +3720,16 @@ UI_HTML = r"""<!DOCTYPE html>
                                 <button
                                     onClick={() => {
                                         this.setState({ hasError: false, error: null });
-                                        window.location.reload();
+                                        if ("caches" in window) {
+                                            caches.keys().then((names) => {
+                                                names.forEach((name) => caches.delete(name));
+                                            });
+                                        }
+                                        window.location.href = window.location.origin + window.location.pathname + "?v=" + Date.now();
                                     }}
                                     className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-extrabold text-sm rounded-xl shadow-lg transition"
                                 >
-                                    🔄 Reset &amp; Reload Workstation
+                                    🔄 Clear Cache &amp; Hard Reload Workstation
                                 </button>
                             </div>
                         </div>
@@ -3767,7 +3772,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def get_dashboard() -> HTMLResponse:
-        return HTMLResponse(content=UI_HTML)
+        headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+        return HTMLResponse(content=UI_HTML, headers=headers)
 
     @app.post("/api/deconstruct-concept", response_model=DeconstructResponse)
     def deconstruct_concept(req: ConceptDeconstructRequest) -> DeconstructResponse:
