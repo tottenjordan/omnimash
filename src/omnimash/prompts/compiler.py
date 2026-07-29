@@ -1119,58 +1119,103 @@ class PromptCompiler:
         audio_beat: str | None = None,
         vocal_delivery: str | None = None,
     ) -> str:
-        image_role_lines: list[str] = []
-        role_lines: list[str] = []
+        input_roles: list[str] = []
+        char_profiles: list[str] = []
         img_idx = 1
 
         for char in characters:
+            name_clean = sanitize_real_names(char.name) if char.name else char.role_id
+            name_part = f" ({name_clean})" if name_clean else ""
+            img_role = getattr(char, "image_role", "Character Reference") or "Character Reference"
+
             if char.reference_url and char.reference_url.strip():
-                name_suffix = f" ({char.name})" if char.name else ""
-                image_role_lines.append(
-                    f"- [IMAGE {img_idx}]: Reference image for {char.role_id}{name_suffix}."
+                input_roles.append(
+                    f"[Image {img_idx}: {char.role_id}{name_part}] = [{img_role}]"
                 )
                 img_idx += 1
 
-            style_str = (
-                f" [Style: {', '.join(char.aesthetic_tags)}]"
-                if char.aesthetic_tags
-                else ""
-            )
-            role_lines.append(
-                f"- {char.role_id} ({char.name}): {char.description}{style_str}"
-            )
+            if getattr(char, "is_offscreen_narrator", False):
+                char_profiles.append(
+                    f"- {char.role_id}{name_part}: Visual: Off-screen (Voiceover only). Do not show."
+                )
+            else:
+                style_str = (
+                    f" [Style: {', '.join(char.aesthetic_tags)}]"
+                    if char.aesthetic_tags
+                    else ""
+                )
+                desc_clean = sanitize_real_names(char.description) if char.description else ""
+                char_profiles.append(
+                    f"- {char.role_id}{name_part}: {desc_clean}{style_str}"
+                )
 
-        image_roles_block = ""
-        if image_role_lines:
-            image_roles_block = "[IMAGE ROLES]\n" + "\n".join(image_role_lines) + "\n\n"
+        input_roles_str = "\n".join(input_roles).strip() if input_roles else "None."
+        char_profiles_str = "\n".join(char_profiles).strip() if char_profiles else "None."
 
-        roles_block = "\n".join(role_lines) if role_lines else "- None"
-
-        aesthetic_parts: list[str] = []
+        scene_inst_parts: list[str] = []
         if concept and concept.strip():
-            aesthetic_parts.append(f"Concept: {concept.strip()}")
+            scene_inst_parts.append(f"Concept: {concept.strip()}")
         if aesthetic_tags:
-            aesthetic_parts.append(f"Aesthetic Tags: {', '.join(aesthetic_tags)}")
+            scene_inst_parts.append(f"Aesthetic Tags: {', '.join(aesthetic_tags)}")
         if environment_tag and environment_tag.strip():
-            aesthetic_parts.append(f"Environment: {environment_tag.strip()}")
-        aesthetic_block = (
-            "\n".join(aesthetic_parts) if aesthetic_parts else "Default Aesthetic"
-        )
+            scene_inst_parts.append(f"Environment: {environment_tag.strip()}")
 
-        audio_parts: list[str] = []
-        if audio_beat and audio_beat.strip():
-            audio_parts.append(
-                f"Background Beat: {audio_beat.strip()} (subtly ducked in the background beneath dialogue)"
+        scene_inst_parts.append("Camera & Lighting: In a single continuous shot. No scene cuts.")
+
+        has_dialogue = False
+        for scene in scenes:
+            diag = (
+                scene.get("dialogue")
+                if isinstance(scene, dict)
+                else getattr(scene, "dialogue", None)
             )
+            sp_text = (
+                (scene.get("screenplay_text") or scene.get("screenplay_script"))
+                if isinstance(scene, dict)
+                else (
+                    getattr(scene, "screenplay_text", None)
+                    or getattr(scene, "screenplay_script", None)
+                )
+            )
+            if (diag and str(diag).strip()) or (sp_text and str(sp_text).strip()):
+                has_dialogue = True
+                break
+
+        if not has_dialogue:
+            if any(getattr(c, "voice_style", None) for c in characters) or (vocal_delivery and vocal_delivery.strip()):
+                has_dialogue = True
+
+        if audio_beat and audio_beat.strip():
+            audio_beat_clean = audio_beat.strip()
+            if not audio_beat_clean.lower().startswith("instrumental"):
+                instr_audio = f"instrumental {audio_beat_clean}"
+            else:
+                instr_audio = audio_beat_clean
+
+            if has_dialogue:
+                sound_desc = (
+                    f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                    f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
+                )
+            else:
+                sound_desc = f"Sound design: {instr_audio}."
+            scene_inst_parts.append(f"Audio: {sound_desc}")
+        elif has_dialogue:
+            scene_inst_parts.append(
+                "Audio: Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix."
+            )
+
         for char in characters:
             if char.voice_style and char.voice_style.strip():
-                audio_parts.append(
+                scene_inst_parts.append(
                     f"Voice Style ({char.role_id}): {char.voice_style.strip()}"
                 )
         if vocal_delivery and vocal_delivery.strip():
-            audio_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
+            scene_inst_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
 
-        scene_lines: list[str] = []
+        scene_instructions_str = "\n".join(scene_inst_parts) if scene_inst_parts else "Default Scene Instructions."
+
+        timeline_lines: list[str] = []
         for scene in scenes:
             scene_num = (
                 scene.get("scene_number")
@@ -1201,13 +1246,13 @@ class PromptCompiler:
             if sp_text and isinstance(sp_text, str) and sp_text.strip():
                 parsed = parse_screenplay_script(sp_text, characters=characters)
                 if parsed.get("audio_cues"):
-                    audio_parts.append(
+                    timeline_lines.append(
                         f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}"
                     )
                 indented_script = "\n".join(
                     f"  {line}" for line in sp_text.strip().splitlines()
                 )
-                scene_lines.append(
+                timeline_lines.append(
                     f"- Scene {scene_num} [{roles_str}] (Screenplay Script):\n{indented_script}"
                 )
             else:
@@ -1221,26 +1266,31 @@ class PromptCompiler:
                     if isinstance(scene, dict)
                     else getattr(scene, "dialogue", "")
                 )
-                diag_str = (
-                    f' | Dialogue: "{dialogue}"'
-                    if dialogue and str(dialogue).strip()
-                    else ""
-                )
-                scene_lines.append(
+                diag_str = ""
+                if dialogue and str(dialogue).strip():
+                    diag_raw = str(dialogue).strip()
+                    if "narrator" in diag_raw.lower():
+                        clean_d = re.sub(
+                            r"^(?:(?:Role\s*\w+\s*\()?Narrator(?:\s*VO\))?\)?:\s*)[\"']?|[\"']?$",
+                            "",
+                            diag_raw,
+                            flags=re.IGNORECASE,
+                        ).strip()
+                        diag_str = f' | Dialogue: Narrator (VO) says: "{clean_d}"'
+                    else:
+                        diag_str = f' | Dialogue: "{diag_raw}"'
+
+                timeline_lines.append(
                     f"- Scene {scene_num} [{roles_str}]: {action}{diag_str}"
                 )
 
-        audio_block = (
-            "\n".join(audio_parts) if audio_parts else "Default Audio & Voice Direction"
-        )
-        scenes_block = "\n".join(scene_lines) if scene_lines else "- No scenes"
+        timeline_str = "\n".join(timeline_lines) if timeline_lines else "- No scenes"
 
         compiled_result = (
-            f"{image_roles_block}"
-            f"[ROLE DEFINITIONS]\n{roles_block}\n\n"
-            f"[AESTHETIC INJECTION]\n{aesthetic_block}\n\n"
-            f"[AUDIO & VOCAL DIRECTION]\n{audio_block}\n\n"
-            f"[STORYBOARD SEQUENCE]\n{scenes_block}"
+            f"### INPUT ROLES\n{input_roles_str}\n\n"
+            f"### CHARACTER PROFILES\n{char_profiles_str}\n\n"
+            f"### SCENE INSTRUCTIONS\n{scene_instructions_str}\n\n"
+            f"### TIMELINE\n{timeline_str}"
         )
         return sanitize_real_names(compiled_result)
 

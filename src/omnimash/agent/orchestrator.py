@@ -285,6 +285,8 @@ class OmniMashAgent:
                             aesthetic_tags=[sanitize_real_names(t) for t in (c.aesthetic_tags or [])],
                             voice_style=sanitize_real_names(c.voice_style or ""),
                             voice_profile=sanitize_real_names(c.voice_profile or ""),
+                            image_role=getattr(c, "image_role", "Character Reference"),
+                            is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                         )
                     )
                 elif isinstance(c, dict):
@@ -297,6 +299,8 @@ class OmniMashAgent:
                             aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
                             voice_style=sanitize_real_names(c.get("voice_style", "")),
                             voice_profile=sanitize_real_names(c.get("voice_profile", "")),
+                            image_role=c.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                         )
                     )
                 elif hasattr(c, "model_dump"):
@@ -310,6 +314,8 @@ class OmniMashAgent:
                             aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
                             voice_style=sanitize_real_names(cd.get("voice_style", "")),
                             voice_profile=sanitize_real_names(cd.get("voice_profile", "")),
+                            image_role=cd.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                         )
                     )
                 elif hasattr(c, "role_id"):
@@ -322,6 +328,8 @@ class OmniMashAgent:
                             aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
                             voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
                             voice_profile=sanitize_real_names(getattr(c, "voice_profile", "")),
+                            image_role=getattr(c, "image_role", "Character Reference"),
+                            is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                         )
                     )
 

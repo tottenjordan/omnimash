@@ -144,7 +144,7 @@ def test_character_role_specific_aesthetic_tags():
     )
     assert "Role A (Spectacled Wizard Bruv)" in prompt
     assert "Red Designer Drip Tracksuit" in prompt
-    assert "- [IMAGE 1]: Reference image for Role A (Spectacled Wizard Bruv)." in prompt
+    assert "[Image 1: Role A (Spectacled Wizard Bruv)] = [Character Reference]" in prompt
 
 
 def test_compile_storyboard_with_audio_and_vocal_direction():
@@ -185,9 +185,9 @@ def test_compile_storyboard_with_audio_and_vocal_direction():
         vocal_delivery="High-energy back-and-forth rap battle delivery with synchronized lip-sync",
     )
 
-    assert "[AUDIO & VOCAL DIRECTION]" in compiled
+    assert "### SCENE INSTRUCTIONS" in compiled
     assert (
-        "Background Beat: 140 BPM Heavy 808 Trap (subtly ducked in the background beneath dialogue)"
+        "Background beat (instrumental 140 BPM Heavy 808 Trap) is subtly ducked in the background beneath dialogue"
         in compiled
     )
     assert (
@@ -419,11 +419,11 @@ def test_compile_multi_role_prompt_with_clean_image_role_tags():
         scenes=scenes,
     )
 
-    assert compiled.startswith("[IMAGE ROLES]\n")
-    assert "- [IMAGE 1]: Reference image for Role A (Spectacled Wizard Bruv)." in compiled
-    assert "- [IMAGE 2]: Reference image for Role B (Ollivander)." in compiled
-    assert "[ROLE DEFINITIONS]" in compiled
-    assert compiled.index("[IMAGE ROLES]") < compiled.index("[ROLE DEFINITIONS]")
+    assert compiled.startswith("### INPUT ROLES\n")
+    assert "[Image 1: Role A (Spectacled Wizard Bruv)] = [Character Reference]" in compiled
+    assert "[Image 2: Role B (Ollivander)] = [Character Reference]" in compiled
+    assert "### CHARACTER PROFILES" in compiled
+    assert compiled.index("### INPUT ROLES") < compiled.index("### CHARACTER PROFILES")
 
     assert "gs://bucket/harry.jpg" not in compiled
     assert "http://example.com/ollivander.jpg" not in compiled
@@ -662,6 +662,65 @@ def test_compile_prompt_four_block_omni_flash_template():
 
     # 5. Verify background audio with "instrumental" prefix to prevent AI vocal overlap
     assert "instrumental 120 bpm boom-bap beat" in full_prompt.lower()
+
+
+def test_compile_multi_role_prompt_four_block_structure():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Hero",
+            description="Young wizard with round glasses",
+            reference_url="gs://bucket/hero.jpg",
+            image_role="Character Reference",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Golden Snitch",
+            description="Enchanted golden flying ball",
+            reference_url="gs://bucket/snitch.jpg",
+            image_role="Product Reference",
+        ),
+        CharacterRole(
+            role_id="Role C",
+            name="Narrator",
+            description="Voice of the dungeon keeper",
+            is_offscreen_narrator=True,
+        ),
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A", "Role B", "Role C"],
+            action="Hero chasing the snitch",
+            dialogue='Narrator: "Welcome to the magical tournament."',
+        )
+    ]
+
+    prompt = compiler.compile_multi_role_prompt(
+        concept="Magical Tournament",
+        characters=chars,
+        scenes=scenes,
+        audio_beat="120 BPM boom-bap beat",
+    )
+
+    # 1. Four-block section headers
+    assert "### INPUT ROLES" in prompt
+    assert "### CHARACTER PROFILES" in prompt
+    assert "### SCENE INSTRUCTIONS" in prompt
+    assert "### TIMELINE" in prompt
+
+    # 2. Explicit Image Role tags
+    assert "[Image 1: Role A (Hero)] = [Character Reference]" in prompt
+    assert "[Image 2: Role B (Golden Snitch)] = [Product Reference]" in prompt
+
+    # 3. Off-Screen Narrator profile and timeline speech formatting
+    assert "Visual: Off-screen (Voiceover only). Do not show." in prompt
+    assert 'Narrator (VO) says: "Welcome to the magical tournament."' in prompt
+
+    # 4. Background audio with "instrumental" prefix
+    assert "instrumental 120 bpm boom-bap beat" in prompt.lower()
+
 
 
 
