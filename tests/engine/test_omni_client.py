@@ -1131,5 +1131,97 @@ def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
     assert "# Style Preset (cyberpunk_drift):" in prompt_str
 
 
+def test_build_multimodal_contents_omni_flash_native_multimodal() -> None:
+    """Verify that _build_multimodal_contents assembles keyframe seed image, character reference images, character roster with Visual Reference bindings, and timecoded prompt without redundant section headers."""
+    import base64
+    from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
+
+    client = OmniFlashClient(mock_mode=True)
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Spectacled wizard student",
+        reference_url="gs://test-bucket/harry.png",
+        aesthetic_tags=["Cartier Glasses"],
+    )
+    char2 = CharacterRole(
+        role_id="Role B",
+        name="Snape",
+        description="Gothic potion master",
+        reference_url="gs://test-bucket/snape.jpg",
+        aesthetic_tags=["Dark Robes"],
+    )
+
+    keyframe_url = "gs://test-bucket/keyframe_seed.png"
+
+    def mock_download_blob(url: str) -> tuple[bytes, str]:
+        if "keyframe" in url:
+            return b"fake_keyframe_png_bytes", "image/png"
+        elif "harry" in url:
+            return b"fake_harry_png_bytes", "image/png"
+        elif "snape" in url:
+            return b"fake_snape_jpg_bytes", "image/jpeg"
+        return b"", "image/png"
+
+    timecoded_prompt = (
+        "In a single continuous shot. No scene cuts. Shot on low-angle 90s fisheye lens.\n\n"
+        "[0-3s] Action: Harry gestures emphatically in potion dungeon. Audio: 120 BPM boom-bap beat.\n"
+        "[3-6s] Action: Snape steps into frame with dark robes billowing. Audio: Dialogue: Snape: 'Turn to page 394.'\n"
+        "[6-10s] Action: Harry laughs and boos. Audio: Rhythmic beat fades."
+    )
+
+    with patch.object(client.storage, "download_blob_bytes", side_effect=mock_download_blob):
+        payload = client._build_multimodal_contents(
+            prompt=timecoded_prompt,
+            session_id="session_test_123",
+            characters=[char1, char2],
+            keyframe_image_url=keyframe_url,
+        )
+
+    assert isinstance(payload, list)
+    assert len(payload) == 1
+    assert payload[0]["type"] == "user_input"
+
+    content = payload[0]["content"]
+    assert len(content) == 4  # 1 keyframe + 2 char refs + 1 text directive
+
+    # Verify Attached Image #1 (keyframe)
+    assert content[0]["type"] == "image"
+    assert content[0]["mime_type"] == "image/png"
+    assert content[0]["data"] == base64.b64encode(b"fake_keyframe_png_bytes").decode("utf-8")
+
+    # Verify Attached Image #2 (char1)
+    assert content[1]["type"] == "image"
+    assert content[1]["mime_type"] == "image/png"
+    assert content[1]["data"] == base64.b64encode(b"fake_harry_png_bytes").decode("utf-8")
+
+    # Verify Attached Image #3 (char2)
+    assert content[2]["type"] == "image"
+    assert content[2]["mime_type"] == "image/jpeg"
+    assert content[2]["data"] == base64.b64encode(b"fake_snape_jpg_bytes").decode("utf-8")
+
+    # Verify Text Directive
+    text_part = content[3]
+    assert text_part["type"] == "text"
+    text_val = text_part["text"]
+
+    # Check keyframe tone header
+    assert "# Visual Tone & Starting Frame Anchor:" in text_val
+    assert "Attached Image #1" in text_val
+
+    # Check character roster bindings
+    assert "# Character Roster & Visual Directives:" in text_val
+    assert "- Role A (Harry): Spectacled wizard student [Style: Cartier Glasses] [Visual Reference: Attached Image #2]" in text_val
+    assert "- Role B (Snape): Gothic potion master [Style: Dark Robes] [Visual Reference: Attached Image #3]" in text_val
+
+    # Check timecoded prompt content (with sanitized names)
+    assert sanitize_real_names(timecoded_prompt) in text_val
+
+    # Ensure redundant section headers are NOT present
+    assert "# Character Likeness Directives:" not in text_val
+    assert "# Audio & Sound Design:" not in text_val
+
+
+
 
 

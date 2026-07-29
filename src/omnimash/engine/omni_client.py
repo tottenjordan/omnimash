@@ -674,6 +674,83 @@ class OmniFlashClient:
 
         return image_objects, char_img_map
 
+    def _build_multimodal_contents(
+        self,
+        prompt: str,
+        session_id: str | None = None,
+        characters: list[CharacterRole] | None = None,
+        keyframe_image_url: str | None = None,
+        directors_notes: dict[str, Any] | str | None = None,
+    ) -> list[dict[str, Any]] | str:
+        """Assembles keyframe seed image, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
+        keyframe_image_parts: list[dict[str, Any]] = []
+        if keyframe_image_url:
+            img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
+            if img_bytes:
+                b64_str = base64.b64encode(img_bytes).decode("utf-8")
+                keyframe_image_parts.append(
+                    {
+                        "type": "image",
+                        "data": b64_str,
+                        "mime_type": mime_type,
+                    }
+                )
+
+        start_ref_idx = 2 if keyframe_image_parts else 1
+        ref_image_parts, char_img_map = self._load_reference_images_as_input(
+            session_id, characters, starting_index=start_ref_idx
+        )
+        all_image_parts = keyframe_image_parts + ref_image_parts
+
+        tone_header = ""
+        if keyframe_image_parts:
+            tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
+
+        notes_header = ""
+        if directors_notes:
+            if isinstance(directors_notes, dict):
+                lines_n = ["# Director's Notes & Relational Dynamics:"]
+                for k, v in directors_notes.items():
+                    if k != "raw_notes" and v:
+                        lines_n.append(f"- {k.replace('_', ' ').title()}: {v}")
+                if len(lines_n) > 1:
+                    notes_header = "\n".join(lines_n) + "\n\n"
+            elif isinstance(directors_notes, str) and directors_notes.strip():
+                notes_header = f"# Director's Notes & Relational Dynamics:\n{directors_notes.strip()}\n\n"
+
+        character_roster_header = ""
+        if characters:
+            char_lines: list[str] = ["# Character Roster & Visual Directives:"]
+            for c in characters:
+                name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
+                role_id = getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "")
+                desc = getattr(c, "description", "") if not isinstance(c, dict) else c.get("description", "")
+                raw_tags = getattr(c, "aesthetic_tags", None) if not isinstance(c, dict) else c.get("aesthetic_tags")
+                str_tags: list[str] = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
+                tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
+
+                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
+                ref_str = (
+                    f" [Visual Reference: Attached Image #{img_idx}]"
+                    if img_idx
+                    else ""
+                )
+                char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
+            character_roster_header = "\n".join(char_lines) + "\n\n"
+
+        sanitized_input = (
+            tone_header
+            + notes_header
+            + character_roster_header
+            + (sanitize_real_names(prompt) if prompt else "")
+        )
+
+        if all_image_parts:
+            text_part = {"type": "text", "text": sanitized_input}
+            return [{"type": "user_input", "content": all_image_parts + [text_part]}]
+        else:
+            return sanitized_input
+
     def _generate_live_omni_flash_video(
         self,
         prompt: str,
@@ -698,72 +775,13 @@ class OmniFlashClient:
         delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
         last_error: str | None = None
 
-        keyframe_image_parts: list[dict[str, Any]] = []
-        if keyframe_image_url:
-            img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
-            if img_bytes:
-                b64_str = base64.b64encode(img_bytes).decode("utf-8")
-                keyframe_image_parts.append(
-                    {
-                        "type": "image",
-                        "data": b64_str,
-                        "mime_type": mime_type,
-                    }
-                )
-
-        start_ref_idx = 2 if keyframe_image_parts else 1
-        ref_image_parts, char_img_map = self._load_reference_images_as_input(
-            session_id, characters, starting_index=start_ref_idx
+        input_payload = self._build_multimodal_contents(
+            prompt=prompt,
+            session_id=session_id,
+            characters=characters,
+            keyframe_image_url=keyframe_image_url,
+            directors_notes=directors_notes,
         )
-        all_image_parts = keyframe_image_parts + ref_image_parts
-
-        character_roster_header = ""
-        if characters:
-            char_lines: list[str] = ["# Character Roster & Visual Directives:"]
-            for c in characters:
-                name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
-                role_id = getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "")
-                desc = getattr(c, "description", "") if not isinstance(c, dict) else c.get("description", "")
-                raw_tags = getattr(c, "aesthetic_tags", None) if not isinstance(c, dict) else c.get("aesthetic_tags")
-                str_tags: list[str] = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
-                tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
-
-                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
-                ref_str = (
-                    f" [Visual Character Reference: Attached Image #{img_idx}]"
-                    if img_idx
-                    else ""
-                )
-                char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
-            character_roster_header = "\n".join(char_lines) + "\n\n"
-
-        notes_header = ""
-        if directors_notes:
-            if isinstance(directors_notes, dict):
-                lines_n = ["# Director's Notes & Relational Dynamics:"]
-                for k, v in directors_notes.items():
-                    if k != "raw_notes" and v:
-                        lines_n.append(f"- {k.replace('_', ' ').title()}: {v}")
-                if len(lines_n) > 1:
-                    notes_header = "\n".join(lines_n) + "\n\n"
-            elif isinstance(directors_notes, str) and directors_notes.strip():
-                notes_header = f"# Director's Notes & Relational Dynamics:\n{directors_notes.strip()}\n\n"
-
-        tone_header = ""
-        if keyframe_image_parts:
-            tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
-
-        likeness_directives = ""
-        if char_img_map:
-            likeness_directives = "# Character Likeness Directives:\nYou MUST lock character facial features, facial structure, skin tone, hair, beard, clothing, accessories, and distinct character traits directly from the corresponding Attached Image #N reference images.\n\n"
-
-        sanitized_input = tone_header + notes_header + likeness_directives + character_roster_header + (sanitize_real_names(prompt) if prompt else "")
-
-        if all_image_parts:
-            text_part = {"type": "text", "text": sanitized_input}
-            input_payload: Any = [{"type": "user_input", "content": all_image_parts + [text_part]}]
-        else:
-            input_payload = sanitized_input
 
         kwargs: dict[str, Any] = {
             "model": "gemini-omni-flash-preview",
@@ -854,7 +872,14 @@ class OmniFlashClient:
                         "400",
                     )
                 ):
-                    fallback_prompt = _abstract_prompt_for_responsible_ai(sanitized_input)
+                    raw_text = (
+                        input_payload[0]["content"][-1]["text"]
+                        if isinstance(input_payload, list)
+                        and input_payload
+                        and "content" in input_payload[0]
+                        else str(input_payload)
+                    )
+                    fallback_prompt = _abstract_prompt_for_responsible_ai(raw_text)
                     logger.warning(
                         "Gemini Omni Flash safety/likeness guardrail triggered (%s). Abstracting prompt with cartoon parody archetypes for retry: %s",
                         exc_str,
