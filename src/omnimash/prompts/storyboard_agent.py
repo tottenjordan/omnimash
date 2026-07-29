@@ -45,32 +45,74 @@ def parse_directors_notes(script_text: str) -> dict[str, str]:
     return notes
 
 
-def parse_timecoded_script(script_text: str) -> list[dict[str, Any]]:
+def _slice_lines(lines: list[str], chunk_idx: int, num_chunks: int) -> list[str]:
+    """Helper to slice or distribute lines across sequential shot chunks."""
+    if not lines:
+        return []
+    if len(lines) <= num_chunks:
+        if chunk_idx < len(lines):
+            return [lines[chunk_idx]]
+        return [lines[-1]]
+    chunk_size = math.ceil(len(lines) / num_chunks)
+    start = chunk_idx * chunk_size
+    if start >= len(lines):
+        return [lines[-1]]
+    end = min(len(lines), start + chunk_size)
+    return lines[start:end]
+
+
+def parse_timecoded_script(
+    script_text: str, default_duration: float = 30.0
+) -> list[dict[str, Any]]:
     """Parses timecode intervals like [0-3s], [3-6s] with optional ACTION:, DIALOGUE:, and AUDIO: blocks.
 
-    Returns a list of dicts containing timecode, start_seconds, end_seconds, duration_seconds,
-    action, dialogue, audio, summary, and raw_text.
+    If any script block duration exceeds 10.0s, or if no explicit timecodes exist in screenplay_script,
+    automatically splits the screenplay into sequential <=10s shot directives ([0-10s], [10-20s], etc.).
     """
     if not script_text or not script_text.strip():
         return []
 
     pattern = r"\[\s*(\d+(?:\.\d+)?)\s*s?\s*-\s*(\d+(?:\.\d+)?)\s*s?\s*\]"
     matches = list(re.finditer(pattern, script_text))
-    if not matches:
+
+    raw_blocks: list[dict[str, Any]] = []
+
+    if matches:
+        for i, m in enumerate(matches):
+            start_t = float(m.group(1))
+            end_t = float(m.group(2))
+            text_start = m.end()
+            text_end = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
+            block = script_text[text_start:text_end].strip()
+            raw_blocks.append({
+                "start_t": start_t,
+                "end_t": end_t,
+                "block": block,
+            })
+    else:
+        clean_text = re.sub(
+            r"\[\s*DIRECTOR['’]?S\s+NOTES\s*\][\s\S]*?(?=\[\s*\d|\Z)",
+            "",
+            script_text,
+            flags=re.IGNORECASE,
+        ).strip()
+        if clean_text:
+            raw_blocks.append({
+                "start_t": 0.0,
+                "end_t": float(default_duration),
+                "block": clean_text,
+            })
+
+    if not raw_blocks:
         return []
 
     results: list[dict[str, Any]] = []
-    for i, m in enumerate(matches):
-        start_t = float(m.group(1))
-        end_t = float(m.group(2))
-        duration = max(0.0, round(end_t - start_t, 2))
-        start_str = f"{int(start_t) if start_t.is_integer() else start_t}"
-        end_str = f"{int(end_t) if end_t.is_integer() else end_t}"
-        tc_label = f"[{start_str}-{end_str}s]"
 
-        text_start = m.end()
-        text_end = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
-        block = script_text[text_start:text_end].strip()
+    for raw in raw_blocks:
+        start_t = raw["start_t"]
+        end_t = raw["end_t"]
+        block = raw["block"]
+        total_duration = max(0.0, round(end_t - start_t, 2))
 
         action_lines: list[str] = []
         dialogue_lines: list[str] = []
@@ -117,28 +159,69 @@ def parse_timecoded_script(script_text: str) -> list[dict[str, Any]]:
                 else:
                     action_lines.append(line_str)
 
-        action_text = "\n".join(action_lines).strip() if action_lines else block
-        dialogue_text = "\n".join(dialogue_lines).strip()
-        audio_text = "\n".join(audio_lines).strip()
-        summary_text = (
-            action_lines[0]
-            if action_lines
-            else (block.splitlines()[0] if block else f"Shot {i + 1}")
-        )
+        if total_duration > 10.0:
+            num_chunks = int(math.ceil(total_duration / 10.0))
+            for k in range(num_chunks):
+                chunk_start = round(start_t + k * 10.0, 2)
+                chunk_end = round(min(end_t, chunk_start + 10.0), 2)
+                chunk_dur = max(0.0, round(chunk_end - chunk_start, 2))
+                start_str = f"{int(chunk_start) if chunk_start.is_integer() else chunk_start}"
+                end_str = f"{int(chunk_end) if chunk_end.is_integer() else chunk_end}"
+                tc_label = f"[{start_str}-{end_str}s]"
 
-        results.append(
-            {
-                "timecode": tc_label,
-                "start_seconds": start_t,
-                "end_seconds": end_t,
-                "duration_seconds": duration,
-                "action": action_text,
-                "dialogue": dialogue_text,
-                "audio": audio_text,
-                "summary": summary_text,
-                "raw_text": block,
-            }
-        )
+                chunk_action_lines = _slice_lines(action_lines, k, num_chunks)
+                chunk_dialogue_lines = _slice_lines(dialogue_lines, k, num_chunks)
+                chunk_audio_lines = _slice_lines(audio_lines, k, num_chunks)
+
+                action_text = "\n".join(chunk_action_lines).strip() if chunk_action_lines else block
+                dialogue_text = "\n".join(chunk_dialogue_lines).strip()
+                audio_text = "\n".join(chunk_audio_lines).strip()
+                summary_text = (
+                    chunk_action_lines[0]
+                    if chunk_action_lines
+                    else (action_lines[0] if action_lines else f"Shot {len(results) + 1}")
+                )
+
+                results.append(
+                    {
+                        "timecode": tc_label,
+                        "start_seconds": chunk_start,
+                        "end_seconds": chunk_end,
+                        "duration_seconds": chunk_dur,
+                        "action": action_text,
+                        "dialogue": dialogue_text,
+                        "audio": audio_text,
+                        "summary": summary_text,
+                        "raw_text": block,
+                    }
+                )
+        else:
+            start_str = f"{int(start_t) if start_t.is_integer() else start_t}"
+            end_str = f"{int(end_t) if end_t.is_integer() else end_t}"
+            tc_label = f"[{start_str}-{end_str}s]"
+
+            action_text = "\n".join(action_lines).strip() if action_lines else block
+            dialogue_text = "\n".join(dialogue_lines).strip()
+            audio_text = "\n".join(audio_lines).strip()
+            summary_text = (
+                action_lines[0]
+                if action_lines
+                else (block.splitlines()[0] if block else f"Shot {len(results) + 1}")
+            )
+
+            results.append(
+                {
+                    "timecode": tc_label,
+                    "start_seconds": start_t,
+                    "end_seconds": end_t,
+                    "duration_seconds": total_duration,
+                    "action": action_text,
+                    "dialogue": dialogue_text,
+                    "audio": audio_text,
+                    "summary": summary_text,
+                    "raw_text": block,
+                }
+            )
 
     return results
 
@@ -430,7 +513,9 @@ class StoryboardAgent:
         """Expands a vision concept into 3-6 distinct <=10s shot directives formatted in Gemini Omni Flash timing blocks."""
         shots: list[StoryboardShot] = []
         if screenplay_script and screenplay_script.strip():
-            parsed_timecodes = parse_timecoded_script(screenplay_script)
+            parsed_timecodes = parse_timecoded_script(
+                screenplay_script, default_duration=target_duration
+            )
             if parsed_timecodes:
                 mock_templates = [
                     (
@@ -459,7 +544,7 @@ class StoryboardAgent:
                     tmpl = mock_templates[i % len(mock_templates)]
                     duration = float(item.get("duration_seconds", 5.0))
                     start_sec = float(item.get("start_seconds", 0.0))
-                    end_sec = float(item.get("end_seconds", duration))
+                    end_sec = float(item.get("end_seconds", start_sec + duration))
                     action_text = str(item.get("action", ""))
                     dialogue_text = str(item.get("dialogue", ""))
                     audio_text = str(item.get("audio", "")) or tmpl[4]
@@ -472,6 +557,11 @@ class StoryboardAgent:
                     formatted_audio = _format_character_references(audio_text, characters)
 
                     framing = _ensure_continuous_shot(tmpl[3])
+                    preceding_ctx = (
+                        shots[i - 1].summary or shots[i - 1].action
+                        if i > 0
+                        else ""
+                    )
 
                     shots.append(
                         StoryboardShot(
@@ -486,6 +576,9 @@ class StoryboardAgent:
                             style_lighting=sanitize_real_names(tmpl[2]),
                             framing_motion=sanitize_real_names(framing),
                             audio=sanitize_real_names(formatted_audio),
+                            preceding_context=sanitize_real_names(preceding_ctx),
+                            camera_transition="Continuous match cut",
+                            character_continuity="Maintain subject outfit, posture, and facial expression from preceding shot",
                         )
                     )
                 for shot in shots:

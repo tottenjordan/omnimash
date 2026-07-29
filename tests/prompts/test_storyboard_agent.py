@@ -362,5 +362,68 @@ def test_parse_timecoded_script_omni_flash_blocks():
     assert "808" in shots[0].audio or "trap" in shots[0].audio.lower()
 
 
+def test_expand_vision_splits_long_script_into_10s_shots():
+    agent = StoryboardAgent(mock_mode=True)
+
+    # Test 30s script without per-shot breaks
+    script_30s = (
+        "[DIRECTOR'S NOTES]\n"
+        "- Tone: High-energy 90s Rap Battle\n\n"
+        "ACTION: Snape enters dungeon and brews glowing potion while trap beat drops.\n"
+        'DIALOGUE: Snape: "Observe the subtle art of the 808 beat."\n'
+        "ACTION: Dumbledore steps forward and drops heavy bassline.\n"
+        "ACTION: Snape transforms into Snape Dogg and performs synchronized pose."
+    )
+
+    shots_30s = agent.expand_vision(
+        concept="30s wizard rap battle",
+        style_tone="Cinematic Trap Parody",
+        target_duration=30.0,
+        screenplay_script=script_30s,
+    )
+
+    assert len(shots_30s) == 3
+    assert all(s.duration_seconds <= 10.0 for s in shots_30s)
+    assert shots_30s[0].start_seconds == 0.0
+    assert shots_30s[0].end_seconds == 10.0
+    assert shots_30s[1].start_seconds == 10.0
+    assert shots_30s[1].end_seconds == 20.0
+    assert shots_30s[2].start_seconds == 20.0
+    assert shots_30s[2].end_seconds == 30.0
+
+    for i, shot in enumerate(shots_30s):
+        assert shot.shot_index == i + 1
+        assert "continuous shot" in shot.framing_motion.lower()
+        assert "match cut" in shot.camera_transition.lower()
+        assert "maintain" in shot.character_continuity.lower() or "character" in shot.character_continuity.lower()
+
+    prompt_shot2 = shots_30s[1].to_omni_flash_prompt()
+    assert "[SHOT DIRECTIVE: Shot 2 (10-20s)]" in prompt_shot2
+    assert "Continuous match cut" in prompt_shot2
+
+    # Test 45s script with explicit single timecode block [0-45s]
+    script_45s = (
+        "[0-45s]\n"
+        "ACTION: Epic 45-second spell duel between wizards with intense lighting and explosions."
+    )
+
+    shots_45s = agent.expand_vision(
+        concept="45s spell duel",
+        style_tone="Cinematic Fantasy",
+        target_duration=45.0,
+        screenplay_script=script_45s,
+    )
+
+    assert len(shots_45s) == 5
+    assert all(s.duration_seconds <= 10.0 for s in shots_45s)
+    assert shots_45s[0].start_seconds == 0.0
+    assert shots_45s[0].end_seconds == 10.0
+    assert shots_45s[3].start_seconds == 30.0
+    assert shots_45s[3].end_seconds == 40.0
+    assert shots_45s[4].start_seconds == 40.0
+    assert shots_45s[4].end_seconds == 45.0
+
+
+
 
 
