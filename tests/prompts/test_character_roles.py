@@ -124,3 +124,30 @@ def test_character_role_voice_profile_default():
     )
     assert char.voice_profile == ""
 
+
+def test_character_role_image_role_and_narrator():
+    char = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Young wizard",
+    )
+    assert char.image_role == "Character Reference"
+    assert char.is_offscreen_narrator is False
+
+    for valid_role in [
+        "Character Reference",
+        "Product Reference",
+        "Starting Frame",
+        "Style Reference",
+    ]:
+        char_valid = CharacterRole(
+            role_id="Role A",
+            name="Harry",
+            description="Young wizard",
+            image_role=valid_role,
+            is_offscreen_narrator=True,
+        )
+        assert char_valid.image_role == valid_role
+        assert char_valid.is_offscreen_narrator is True
+
+

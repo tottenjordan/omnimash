@@ -25,6 +25,9 @@ class CharacterRoleModel(BaseModel):
     voice_style: str = ""
     voice_profile: str = ""
     wardrobe: str = ""
+    image_role: str = "Character Reference"
+    is_offscreen_narrator: bool = False
+
 
 
 
