@@ -739,9 +739,34 @@ class PromptCompiler:
             parsed_audio = parsed.get("audio_cues", "")
             parsed_dialogue = parsed.get("dialogue", "")
 
+        raw_prompt_clean = raw_prompt
+        extracted_raw_dialogue: str | None = None
+        if raw_prompt and (
+            "dialogue" in raw_prompt.lower() or "voiceover" in raw_prompt.lower()
+        ):
+            match = re.search(
+                r"-\s*(?:Dialogue\s*/\s*Text\s*Overlay|Dialogue|Voiceover):\s*(.*)",
+                raw_prompt,
+                re.IGNORECASE,
+            )
+            if match:
+                raw_vo = match.group(1).strip()
+                if (raw_vo.startswith('"') and raw_vo.endswith('"')) or (
+                    raw_vo.startswith("'") and raw_vo.endswith("'")
+                ):
+                    raw_vo = raw_vo[1:-1].strip()
+                if raw_vo:
+                    extracted_raw_dialogue = raw_vo
+                raw_prompt_clean = re.sub(
+                    r"-\s*(?:Dialogue\s*/\s*Text\s*Overlay|Dialogue|Voiceover):\s*.*(?:\n|$)",
+                    "",
+                    raw_prompt,
+                    flags=re.IGNORECASE,
+                ).strip()
+
         action_components = [
             comp
-            for comp in [raw_prompt, scene_action, parsed_action]
+            for comp in [raw_prompt_clean, scene_action, parsed_action]
             if comp and comp.strip()
         ]
         effective_raw_prompt = (
@@ -753,11 +778,18 @@ class PromptCompiler:
             for comp in [audio_stem, scene_audio, parsed_audio]
             if comp and comp.strip()
         ]
-        effective_audio_stem = ". ".join(audio_components) if audio_components else None
+        effective_audio_stem = (
+            ". ".join(audio_components) if audio_components else None
+        )
 
         dialogue_components = [
             comp
-            for comp in [voiceover, scene_dialogue, parsed_dialogue]
+            for comp in [
+                voiceover,
+                extracted_raw_dialogue,
+                scene_dialogue,
+                parsed_dialogue,
+            ]
             if comp and comp.strip()
         ]
         effective_voiceover = (

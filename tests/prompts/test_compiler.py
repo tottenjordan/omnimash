@@ -491,3 +491,25 @@ def test_parse_screenplay_script_bracketed_roles_and_parentheticals_before_colon
     assert 'Role B (Harry Gucci): "You got that real gas?"' in result["dialogue"]
     assert 'Role C (Swagrid Tha Plug): "don t play"' in result["dialogue"]
     assert 'Role A (Mr. Ice-Vander): "type shit"' in result["dialogue"]
+
+
+def test_compile_prompt_extracts_dialogue_directive_from_raw_prompt():
+    compiler = PromptCompiler()
+    raw_prompt = (
+        "[SHOT DIRECTIVE: Shot 1]\n"
+        "- Action / Subject: Rapping into microphone wand\n"
+        '- Dialogue / Text Overlay: "I been cooking potions since first year. Burrr!"\n'
+        "- Audio Soundscape: 140 BPM Heavy 808 Trap"
+    )
+    parts = compiler.compile_prompt(raw_prompt=raw_prompt)
+    full_prompt = parts.to_full_prompt()
+    assert parts.voiceover == "I been cooking potions since first year. Burrr!"
+    assert (
+        "Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix."
+        in full_prompt
+    )
+    assert (
+        "Voiceover: I been cooking potions since first year. Burrr!."
+        in full_prompt
+    )
+

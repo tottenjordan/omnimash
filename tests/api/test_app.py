@@ -382,3 +382,52 @@ def test_api_generate_shot_endpoint():
     assert data["status"] in ("COMPLETED", "COMMIT_RECOMMENDED")
 
 
+def test_api_generate_shot_extracts_dialogue_and_voiceover(monkeypatch):
+    captured_kwargs = {}
+    from omnimash.agent.orchestrator import OmniMashAgent
+
+    original_process_user_turn = OmniMashAgent.process_user_turn
+
+    def mock_process_user_turn(self, *args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return original_process_user_turn(self, *args, **kwargs)
+
+    monkeypatch.setattr(OmniMashAgent, "process_user_turn", mock_process_user_turn)
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    directive_text = (
+        "[SHOT DIRECTIVE: Shot 1]\n"
+        "- Action / Subject: Arriving at foggy Hogwarts courtyard rapping into microphone wand\n"
+        '- Dialogue / Text Overlay: "I been cooking potions since first year. Burrr!"\n'
+        "- Audio Soundscape: 140 BPM Heavy 808 Trap"
+    )
+
+    res = client.post(
+        "/api/generate-shot",
+        json={
+            "session_name": "dialogue_extract_session",
+            "shot_index": 1,
+            "shot_directive": directive_text,
+            "style_lighting": "Gothic neon trap lighting",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Harry",
+                    "description": "Young wizard",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["turn_id"] is not None
+    assert (
+        captured_kwargs.get("voiceover")
+        == "I been cooking potions since first year. Burrr!"
+    )
+
+
+

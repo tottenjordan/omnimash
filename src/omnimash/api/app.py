@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import uuid
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -4109,6 +4110,22 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         sanitized_directive = sanitize_real_names(req.shot_directive)
         keyframe_url = req.keyframe_image_url
 
+        voiceover_text: str | None = None
+        if sanitized_directive:
+            match = re.search(
+                r"-\s*(?:Dialogue\s*/\s*Text\s*Overlay|Dialogue|Voiceover):\s*(.*)",
+                sanitized_directive,
+                re.IGNORECASE,
+            )
+            if match:
+                raw_vo = match.group(1).strip()
+                if (raw_vo.startswith('"') and raw_vo.endswith('"')) or (
+                    raw_vo.startswith("'") and raw_vo.endswith("'")
+                ):
+                    raw_vo = raw_vo[1:-1].strip()
+                if raw_vo:
+                    voiceover_text = raw_vo
+
         # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor
         if not keyframe_url and sanitized_directive:
             ref_urls: list[str] = []
@@ -4138,6 +4155,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             session_name=req.session_name,
             characters=req.characters,
             keyframe_image_url=keyframe_url,
+            voiceover=voiceover_text,
         )
         return GenerateShotResponse(
             success=agent_turn.success,
