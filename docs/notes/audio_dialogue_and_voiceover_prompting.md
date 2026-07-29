@@ -62,36 +62,27 @@ Located inside the **Environment & Audio Direction** card in **Act 1**:
 
 ---
 
-## 📋 2. Structured `[AUDIO & VOCAL DIRECTION]` Prompt Block
+## 📋 2. Gemini Omni Flash Timecode Syntax (`[0-3s]`)
 
-Following the official **Gemini Omni Prompt Guide**, [PromptCompiler.compile_storyboard()](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/prompts/compiler.py#L235-L303) organizes acoustic and vocal directives into a standardized `[AUDIO & VOCAL DIRECTION]` block positioned immediately between `[AESTHETIC INJECTION]` and `[STORYBOARD SEQUENCE]`.
+Following official **Gemini API Omni documentation**, `PromptCompiler.compile_prompt()` organizes acoustic, visual, and vocal directives directly into chronological `[X-Ys]` timing blocks.
 
-### Official Block Structure:
+### Official Gemini Omni Flash Timecode Template:
 ```text
-[ROLE DEFINITIONS]
-- Role A (Harry "Gucci"): Harry "Gucci", young wizard with round gold wire-rim Cartier glasses, red Gucci tracksuit [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: gs://reference-images-jt-trend-trawler/harry_drip.jpeg)
-- Role B (Young Draco "Jeezy"): Young Draco "Jeezy", pale blonde rival wizard with slicked-back platinum hair, green velvet blazer [Style: Platinum Slicked Hair, Diamond Iced-Out Chain] (Ref: gs://reference-images-jt-trend-trawler/draco.jpeg)
+In a single continuous shot. No scene cuts.
 
-[AESTHETIC INJECTION]
-Concept: Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style
-Aesthetic Tags: 2000s Atlanta Trap Disstrack, Heavy 808 Bass Lighting, Vintage Streetwear
-Environment: Abandoned urban house with working potion stoves
+# Character Roster & Visual Directives:
+- Role A (Harry "Gucci"): Harry "Gucci", young wizard with round gold wire-rim Cartier glasses, red Gucci tracksuit [Style: Red Gucci Tracksuit, Cartier Glasses] [Visual Reference: Attached Image #2]
+- Role B (Young Draco "Jeezy"): Young Draco "Jeezy", pale blonde rival wizard with slicked-back platinum hair, green velvet blazer [Style: Platinum Slicked Hair, Diamond Iced-Out Chain] [Visual Reference: Attached Image #3]
 
-[AUDIO & VOCAL DIRECTION]
-Background Beat: 140 BPM Heavy 808 Trap (subtly ducked in the background beneath dialogue)
-Voice Style (Role A): Fast-paced confident Atlanta rap flow with autotune
-Voice Style (Role B): Pompous, cynical British drawl with aggressive rap cadence
-Vocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync
-
-[STORYBOARD SEQUENCE]
-- Scene 1 [Role A]: Standing over potion stove cooking potions with baking soda. | Dialogue: "I been cooking potions since first year, bruv!"
-- Scene 2 [Role B]: Stepping into room with iced out diamond chain. | Dialogue: "Oh, please.... This is Trap or Die, Potter!"
+[0-3s] Harry "Gucci" steps up to the microphone under glowing neon stage lights. Background audio: 140 BPM Heavy 808 Trap with ambient crowd cheers. He says cheerfully, "Welcome to Dripwarts, turn the beat up!"
+[3-6s] Young Draco "Jeezy" drops a heavy 808 trap beat and flashes his diamond chain. Background audio: crisp snare trills and sub-bass drop. He says arrogantly, "Potions class is in session, no cap!"
+[6-10s] Both wizards perform a synchronized rap battle climax amidst stage smoke. Background audio: climax 808 beat drop. Both say: "Trap or Die!"
 ```
 
-### Why This Structured Block Matters for Gemini Omni Flash:
-1. **Decoupled Acoustic Conditioning:** Separating beat, voice style, and delivery into explicit key-value pairs prevents acoustic instructions from bleeding into visual scene descriptions.
-2. **Multi-Speaker Vocal Timbre Disambiguation:** By explicitly labeling `Voice Style (Role A)` and `Voice Style (Role B)`, Gemini Omni Flash assigns distinct vocal formants and pitches to each character turn in the storyboard sequence.
-3. **Automated Background Ducking:** Stating `(subtly ducked in the background beneath dialogue)` provides a natural qualitative cue instructing the neural audio generator to attenuate instrumental frequencies whenever dialogue lines are active.
+### Why Timecode Syntax Matters for Gemini Omni Flash:
+1. **Integrated Multimodal Execution:** Chronological `[0-3s]` timing blocks instruct Gemini Omni Flash to process visual movement, background audio effects, and spoken dialogue in a single pass.
+2. **Synchronized Dialogue Placement:** Timing blocks prevent the audio engine from firing dialogue lines prematurely before character actions occur.
+3. **Continuous Shot Camera Control:** Prepending `"In a single continuous shot. No scene cuts."` prevents Gemini Omni Flash from inserting unwanted scene cuts.
 
 ---
 

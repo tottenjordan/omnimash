@@ -46,7 +46,7 @@ sequenceDiagram
         
         alt Multi-Scene Storyboard Generation
             Agent->>Compiler: compile_storyboard(concept, characters, scenes, aesthetic_tags, ...)
-            Compiler-->>Agent: Storyboard Prompt ([ROLE DEFINITIONS] + [AESTHETIC INJECTION] + [STORYBOARD SEQUENCE])
+            Compiler-->>Agent: Timecoded Omni Flash Prompt ([CONTINUOUS SHOT HEADER] + [CHARACTER ROSTER] + [TIMECODED SEQUENCE [0-3s]])
             Agent->>Omni: generate_clip(compiled_storyboard_prompt, character_role_image_urls)
         else Conversational Delta Diff (parent_turn_id provided)
             Agent->>Compiler: compile_delta(delta_instruction, custom_lock)
