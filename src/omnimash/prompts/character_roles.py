@@ -12,3 +12,4 @@ class CharacterRole:
     aesthetic_tags: list[str] = field(default_factory=list)
     voice_style: str = ""
     voice_profile: str = ""
+    wardrobe: str = ""

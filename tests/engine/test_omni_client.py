@@ -1016,5 +1016,120 @@ def test_reference_image_multi_key_indexing() -> None:
     assert char_map.get("role a (snape dawg)") == 1
 
 
+def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_preset() -> None:
+    """Verify generate_keyframe_image includes character wardrobe, aesthetic tags, and style preset in prompt formatting."""
+    import base64
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+    mock_candidate = MagicMock(
+        content=MagicMock(
+            parts=[
+                MagicMock(
+                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
+                )
+            ]
+        )
+    )
+    mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
+    mock_genai_client.models = mock_models
+    client.storage = MagicMock()
+    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/keyframe_wardrobe_test.png"
+
+    char = CharacterRole(
+        role_id="Role A",
+        name="Snape",
+        description="Gothic Potion Master",
+        reference_url="gs://test-bucket/snape_ref.png",
+        aesthetic_tags=["Iced Chain", "Dark Robes"],
+        wardrobe="Black Velvet Trench Coat with Silver Embroidery",
+    )
+
+    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
+        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    ):
+        res_url = client.generate_keyframe_image(
+            prompt="Snape brewing a potion in a rap video",
+            style_tone="90s_rap_video",
+            characters=[char],
+            style_preset="90s_rap_video",
+            wardrobe="Custom Gold Chain and Sunglasses",
+        )
+
+    assert "keyframe" in res_url
+    assert mock_models.generate_content.called
+    call_kwargs = mock_models.generate_content.call_args.kwargs
+    contents = call_kwargs["contents"]
+    prompt_str = contents[1]
+
+    # Verify character roster contains wardrobe & aesthetic tags
+    assert "# Character Roster & Visual Directives:" in prompt_str
+    assert "Role A (Snape): Gothic Potion Master" in prompt_str
+    assert "[Wardrobe: Black Velvet Trench Coat with Silver Embroidery]" in prompt_str
+    assert "[Style: Iced Chain, Dark Robes]" in prompt_str
+
+    # Verify style preset context header
+    assert "# Style Preset (90s_rap_video):" in prompt_str
+    assert "Preset Wardrobe Baseline: wearing an oversized shiny black puffer jacket" in prompt_str
+
+    # Verify global wardrobe directives header
+    assert "# Wardrobe Directives:\nCustom Gold Chain and Sunglasses" in prompt_str
+
+    # Verify visual consistency instruction includes wardrobe and style presets
+    assert "VISUAL CONSISTENCY INSTRUCTION: Render all character roles matching their exact outfits, wardrobe, hair, facial features, accessories, and aesthetic style tags specified in the character roster and style presets." in prompt_str
+
+
+def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
+    """Verify generate_keyframe_image parses dictionary characters containing wardrobe and aesthetic tags."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+    mock_candidate = MagicMock(
+        content=MagicMock(
+            parts=[
+                MagicMock(
+                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
+                )
+            ]
+        )
+    )
+    mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
+    mock_genai_client.models = mock_models
+    client.storage = MagicMock()
+    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/keyframe_dict_test.png"
+
+    char_dict = {
+        "role_id": "Role B",
+        "name": "Draco",
+        "description": "Platinum rival wizard",
+        "reference_url": "gs://test-bucket/draco_ref.png",
+        "aesthetic_tags": ["Platinum Hair", "Emerald Ring"],
+        "wardrobe": "Slytherin Tracksuit and Gucci Slides",
+    }
+
+    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
+        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    ):
+        res_url = client.generate_keyframe_image(
+            prompt="Draco in potion laboratory",
+            style_tone="cyberpunk_drift",
+            characters=[char_dict],
+        )
+
+    assert "keyframe" in res_url
+    assert mock_models.generate_content.called
+    call_kwargs = mock_models.generate_content.call_args.kwargs
+    prompt_str = call_kwargs["contents"][1]
+
+    assert "Role B (Draco): Platinum rival wizard" in prompt_str
+    assert "[Wardrobe: Slytherin Tracksuit and Gucci Slides]" in prompt_str
+    assert "[Style: Platinum Hair, Emerald Ring]" in prompt_str
+    assert "# Style Preset (cyberpunk_drift):" in prompt_str
+
+
 
 

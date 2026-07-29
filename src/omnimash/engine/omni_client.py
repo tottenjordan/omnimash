@@ -1122,10 +1122,12 @@ class OmniFlashClient:
         reference_image_urls: list[str] | None = None,
         characters: list[Any] | None = None,
         directors_notes: dict[str, Any] | str | None = None,
+        style_preset: str | None = None,
+        wardrobe: str | None = None,
     ) -> str:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 
-        Supports multimodal character reference image inputs and full character roster metadata.
+        Supports multimodal character reference image inputs, character roster metadata (wardrobe, aesthetic tags), and style presets.
         """
         sanitized_prompt = sanitize_real_names(prompt)
         full_prompt = f"{sanitized_prompt}, style: {style_tone}" if style_tone else sanitized_prompt
@@ -1145,6 +1147,22 @@ class OmniFlashClient:
                             aesthetic_tags=c.get("aesthetic_tags", []),
                             voice_style=c.get("voice_style", ""),
                             voice_profile=c.get("voice_profile", ""),
+                            wardrobe=c.get("wardrobe", ""),
+                        )
+                    )
+                elif hasattr(c, "role_id") or hasattr(c, "name"):
+                    raw_tags = getattr(c, "aesthetic_tags", [])
+                    str_tags = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=getattr(c, "role_id", ""),
+                            name=getattr(c, "name", ""),
+                            description=getattr(c, "description", ""),
+                            reference_url=getattr(c, "reference_url", None),
+                            aesthetic_tags=str_tags,
+                            voice_style=getattr(c, "voice_style", ""),
+                            voice_profile=getattr(c, "voice_profile", ""),
+                            wardrobe=getattr(c, "wardrobe", ""),
                         )
                     )
 
@@ -1157,19 +1175,43 @@ class OmniFlashClient:
         if char_objs:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in char_objs:
+                wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
                 tag_str = f" [Style: {', '.join(c.aesthetic_tags)}]" if c.aesthetic_tags else ""
                 ref_str = f" (Reference Image: {c.reference_url})" if c.reference_url else ""
-                char_lines.append(f"- {c.role_id} ({c.name}): {c.description}{tag_str}{ref_str}")
+                char_lines.append(f"- {c.role_id} ({c.name}): {c.description}{wardrobe_str}{tag_str}{ref_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
+
+        effective_preset = style_preset or style_tone
+        style_preset_header = ""
+        if effective_preset:
+            from omnimash.prompts.compiler import AESTHETIC_SIGNIFIERS
+
+            preset_key = effective_preset.lower().strip()
+            if preset_key in AESTHETIC_SIGNIFIERS:
+                signifiers = AESTHETIC_SIGNIFIERS[preset_key]
+                preset_wardrobe = signifiers.get("wardrobe", "")
+                preset_camera = signifiers.get("camera", "")
+                style_preset_header = (
+                    f"# Style Preset ({effective_preset}):\n"
+                    f"- Preset Wardrobe Baseline: {preset_wardrobe}\n"
+                    f"- Camera & Visual Style: {preset_camera}\n\n"
+                )
+            else:
+                style_preset_header = f"# Style Preset Context:\nStyle: {effective_preset}\n\n"
+
+        global_wardrobe_header = f"# Wardrobe Directives:\n{wardrobe}\n\n" if wardrobe else ""
 
         def _get_mock_keyframe() -> str:
             clean_prompt = (
                 prompt.replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
             )
             clean_style = (
-                style_tone.replace('"', "&quot;")
+                (style_preset or style_tone)
+                .replace('"', "&quot;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
+                if (style_preset or style_tone)
+                else ""
             )
             style_label = f"STYLE: {clean_style.upper()}" if clean_style else "STYLE: CINEMATIC PARODY"
             
@@ -1246,8 +1288,10 @@ class OmniFlashClient:
                 prompt_text = (
                     f"High quality cinematic 16:9 visual keyframe concept art.\n\n"
                     f"{character_roster_header}"
+                    f"{style_preset_header}"
+                    f"{global_wardrobe_header}"
                     f"# Scene Action & Lighting:\n{full_prompt}\n\n"
-                    f"VISUAL CONSISTENCY INSTRUCTION: Render all character roles matching their exact outfits, hair, facial features, accessories, and aesthetic style tags specified in the character roster."
+                    f"VISUAL CONSISTENCY INSTRUCTION: Render all character roles matching their exact outfits, wardrobe, hair, facial features, accessories, and aesthetic style tags specified in the character roster and style presets."
                 )
                 contents.append(prompt_text)
 
