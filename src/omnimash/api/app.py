@@ -2675,45 +2675,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                     </div>
                                 )}
 
-                                {/* STAGE 2: 5-PART INTERACTIVE STORYBOARD GRID */}
+                                {/* STAGE 2: INTERACTIVE SEQUENTIAL SHOT PRODUCTION WORKSTATION */}
                                 {activeStage === 2 && (
                                     <div className="space-y-6">
-                                        <div className="bg-gradient-to-r from-purple-950/40 via-pink-950/40 to-amber-950/40 border border-purple-800/50 rounded-2xl p-5 shadow-xl flex items-center justify-between">
+                                        {/* Top Header & Master Controls */}
+                                        <div className="bg-gradient-to-r from-purple-950/50 via-pink-950/50 to-amber-950/50 border border-purple-800/50 rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
                                             <div>
                                                 <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
                                                     <span>📋</span>
-                                                    <span>Stage 2: 5-Part Interactive Storyboard Grid ({stageShots.length} Shots)</span>
+                                                    <span>Interactive Shot Production Workstation ({stageShots.length} Shots)</span>
                                                 </h2>
                                                 <p className="text-xs text-gray-400 mt-1">
-                                                    Each shot card defines 5 structured directives: Action/Subject, Location, Style &amp; Lighting, Framing &amp; Motion, Audio.
+                                                    Tune shot directives, pre-render keyframe art, render clips one shot at a time, and apply conversational diffs.
                                                 </p>
-                                                <div className="flex items-center gap-2 bg-gray-950/80 border border-gray-800 rounded-xl px-3 py-1.5 mt-2">
-                                                    <span className="text-xs font-bold text-amber-400">🎨 Master Art Style:</span>
-                                                    <select
-                                                        value={stageStyleTone}
-                                                        onChange={(e) => handleGlobalStyleToneChange(e.target.value, true)}
-                                                        className="bg-gray-900 border border-gray-700 rounded-lg text-xs font-semibold text-white px-2 py-1 focus:outline-none focus:border-amber-500"
-                                                    >
-                                                        <option value="🎨 90s Cel-Shaded Anime">🎨 90s Cel-Shaded Anime</option>
-                                                        <option value="🍿 3D Stylized Animation (Arcane)">🍿 3D Stylized Animation</option>
-                                                        <option value="💥 Comic Book Graphic Novel">💥 Comic Book Graphic Novel</option>
-                                                        <option value="🖌️ 2D Vector Toon Parody">🖌️ 2D Vector Toon</option>
-                                                        <option value="👾 16-Bit Pixel Art Anime">👾 16-Bit Pixel Art</option>
-                                                        <option value="🏰 1930s Rubber Hose Toon">🏰 1930s Rubber Hose</option>
-                                                        <option value="🐉 Claymation Stop-Motion">🐉 Claymation Stop-Motion</option>
-                                                        <option value="✨ Cyberpunk Neon Anime">✨ Cyberpunk Neon Anime</option>
-                                                        <option value="🎬 Cinematic Trap Parody">🎬 Cinematic Trap Parody</option>
-                                                        <option value="📹 Gritty 90s Rap Video">📹 Gritty 90s Rap Video</option>
-                                                    </select>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleGlobalStyleToneChange(stageStyleTone, true)}
-                                                        className="text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2 py-1 rounded transition"
-                                                        title="Cascade master art style to all shot cards"
-                                                    >
-                                                        Cascade to All Shots
-                                                    </button>
-                                                </div>
                                             </div>
                                             <div className="flex items-center space-x-2">
                                                 <button
@@ -2730,10 +2704,9 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     disabled={isBatchGeneratingVideos}
                                                     onClick={() => handleGenerateAllShotVideosSequentially(false)}
                                                     className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
-                                                    title="Generate videos for all shot cards sequentially in order, chaining visual context from shot 1 to shot N"
                                                 >
                                                     <span>🎬</span>
-                                                    <span>Generate All Shots (1 ➔ N)</span>
+                                                    <span>Batch Render All Shots (1 ➔ N)</span>
                                                 </button>
                                                 <button
                                                     type="button"
@@ -2745,228 +2718,359 @@ UI_HTML = r"""<!DOCTYPE html>
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                            {stageShots.map((shot, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    className={`bg-gray-900 border rounded-2xl p-4 shadow-xl flex flex-col justify-between space-y-3 transition ${
-                                                        isBatchGeneratingVideos && (shot.shot_index || idx + 1) === batchVideoProgress.activeShotIndex
-                                                            ? "border-pink-500 ring-2 ring-pink-500/50 shadow-pink-900/40 animate-pulse"
-                                                            : "border-gray-800 hover:border-purple-500/50"
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center justify-between border-b border-gray-800 pb-2">
-                                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                                            <span className="text-xs font-extrabold text-amber-400 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-700">
-                                                                Shot #{shot.shot_index || idx + 1} ({shot.duration_seconds || 10}s)
-                                                            </span>
-                                                            <span className="text-[10px] font-bold text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
-                                                                🎭 {shot.narrative_stage || "Rising Action"}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center space-x-2">
-                                                            {shot.video_url && (
-                                                                <span className="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded font-bold">
-                                                                    ✓ Video
-                                                                </span>
-                                                            )}
-                                                            {stageShots.length > 1 && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => removeStageShot(idx)}
-                                                                    className="text-xs text-red-400 hover:text-red-300 font-bold px-2 py-0.5"
-                                                                >
-                                                                    ✕ Remove
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* 16:9 Large Keyframe Reference Image Container */}
-                                                    <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group">
-                                                        {shot.keyframe_image_url ? (
-                                                            <img
-                                                                src={getDisplayableRefUrl(shot.keyframe_image_url)}
-                                                                alt={`Keyframe Shot #${shot.shot_index || idx + 1}`}
-                                                                className="w-full h-full object-contain bg-gray-950"
-                                                            />
+                                        {/* Shot Stepper Tabs Header */}
+                                        <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                            {stageShots.map((s, i) => {
+                                                const sNum = s.shot_index || (i + 1);
+                                                const isActive = activeShotIdx === i;
+                                                const hasVideo = !!s.video_url;
+                                                const hasKeyframe = !!s.keyframe_image_url;
+                                                return (
+                                                    <button
+                                                        key={i}
+                                                        type="button"
+                                                        onClick={() => setActiveShotIdx(i)}
+                                                        className={`px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-2 border whitespace-nowrap ${
+                                                            isActive
+                                                                ? "bg-purple-600 text-white border-purple-400 shadow-lg shadow-purple-900/40 ring-2 ring-purple-400/50"
+                                                                : hasVideo
+                                                                ? "bg-green-950/60 text-green-300 border-green-800 hover:bg-green-900/50"
+                                                                : hasKeyframe
+                                                                ? "bg-amber-950/60 text-amber-300 border-amber-800 hover:bg-amber-900/50"
+                                                                : "bg-gray-900 text-gray-400 border-gray-800 hover:bg-gray-800"
+                                                        }`}
+                                                    >
+                                                        <span>Shot #{sNum}</span>
+                                                        {hasVideo ? (
+                                                            <span className="text-[10px] bg-green-500 text-black px-1.5 py-0.5 rounded font-extrabold">✓ Video</span>
+                                                        ) : hasKeyframe ? (
+                                                            <span className="text-[10px] bg-amber-500 text-black px-1.5 py-0.5 rounded font-extrabold">🖼️ Keyframe</span>
                                                         ) : (
-                                                            <div className="p-4 text-center space-y-1 text-gray-500">
-                                                                <span className="text-2xl block">🖼️</span>
-                                                                <span className="text-xs italic block">No Keyframe Preview Image</span>
-                                                            </div>
+                                                            <span className="text-[10px] bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">Pending</span>
                                                         )}
-                                                    </div>
-
-                                                    {/* Keyframe Image Button */}
-                                                    <button
-                                                        type="button"
-                                                        disabled={keyframeLoadingMap[shot.shot_index || idx + 1]}
-                                                        onClick={() => handleGenerateKeyframeImage(idx, shot)}
-                                                        className="w-full bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 font-bold text-xs py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition disabled:opacity-50"
-                                                    >
-                                                        <span>🖼️</span>
-                                                        <span>
-                                                            {keyframeLoadingMap[shot.shot_index || idx + 1]
-                                                                ? "Rendering Keyframe..."
-                                                                : "🖼️ Keyframe Image (Gemini 3.1 Flash)"}
-                                                        </span>
                                                     </button>
-
-                                                    <div className="space-y-2.5 text-xs">
-                                                        <div className="bg-amber-950/40 border border-amber-500/30 rounded-lg p-2">
-                                                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 block mb-1">⚡ Action Summary</label>
-                                                            <input
-                                                                type="text"
-                                                                value={shot.summary || ""}
-                                                                onChange={(e) => updateStageShot(idx, "summary", e.target.value)}
-                                                                placeholder="e.g. Entrance & Concept Setup..."
-                                                                className="w-full bg-gray-950 border border-amber-500/50 rounded-lg p-2 text-amber-200 font-bold text-xs focus:outline-none focus:border-amber-400"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5">1. Action / Subject</label>
-                                                            <textarea
-                                                                rows={5}
-                                                                value={shot.action || ""}
-                                                                onChange={(e) => updateStageShot(idx, "action", e.target.value)}
-                                                                placeholder="Describe what is happening at the center of the shot in detail..."
-                                                                className="w-full min-h-[110px] bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-pink-500 text-[11px] font-mono leading-relaxed"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-0.5">2. Location</label>
-                                                            <input
-                                                                type="text"
-                                                                value={shot.location || ""}
-                                                                onChange={(e) => updateStageShot(idx, "location", e.target.value)}
-                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-purple-500 text-[11px]"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-0.5">3. Style &amp; Lighting</label>
-                                                            <input
-                                                                type="text"
-                                                                value={shot.style_lighting || ""}
-                                                                onChange={(e) => updateStageShot(idx, "style_lighting", e.target.value)}
-                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-[11px]"
-                                                            />
-                                                            <div className="flex flex-wrap gap-1 mt-1">
-                                                                {["🎨 90s Anime", "🍿 3D Stylized", "💥 Comic Book", "🖌️ 2D Vector", "👾 Pixel Art", "🏰 1930s Rubber Hose", "🐉 Claymation", "✨ Cyberpunk", "🎬 Cinematic"].map((preset) => (
-                                                                    <button
-                                                                        key={preset}
-                                                                        type="button"
-                                                                        onClick={() => updateStageShot(idx, "style_lighting", `${preset}, high-contrast lighting`)}
-                                                                        className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-900 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40 transition"
-                                                                    >
-                                                                        {preset}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block mb-0.5">4. Framing &amp; Motion</label>
-                                                            <input
-                                                                type="text"
-                                                                value={shot.framing_motion || ""}
-                                                                onChange={(e) => updateStageShot(idx, "framing_motion", e.target.value)}
-                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-cyan-500 text-[11px]"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">5. Audio Soundscape</label>
-                                                            <input
-                                                                type="text"
-                                                                value={shot.audio || ""}
-                                                                onChange={(e) => updateStageShot(idx, "audio", e.target.value)}
-                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-[11px]"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block mb-0.5">6. Dialogue &amp; On-Screen Text</label>
-                                                            <input
-                                                                type="text"
-                                                                value={shot.dialogue || ""}
-                                                                onChange={(e) => updateStageShot(idx, "dialogue", e.target.value)}
-                                                                placeholder='e.g. Spoken dialogue or text overlay: "Check the potion beat"'
-                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-rose-500 text-[11px]"
-                                                            />
-                                                        </div>
-
-                                                        {/* Narrative & Visual Continuity Chaining Controls */}
-                                                        <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-lg p-2.5 space-y-2 mt-2">
-                                                            <div className="flex items-center justify-between border-b border-indigo-900/50 pb-1">
-                                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
-                                                                    <span>🔗</span>
-                                                                    <span>Shot Continuity &amp; Visual Flow</span>
-                                                                </span>
-                                                                <span className="text-[9px] bg-indigo-900/80 text-indigo-200 px-1.5 py-0.5 rounded font-mono">
-                                                                    {idx === 0 ? "Initial Shot" : `Chained from Shot #${idx}`}
-                                                                </span>
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-[9px] font-bold uppercase text-indigo-400 block mb-0.5">Transition Instruction</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={shot.camera_transition || "Continuous match cut"}
-                                                                    onChange={(e) => updateStageShot(idx, "camera_transition", e.target.value)}
-                                                                    placeholder="e.g. Continuous match cut from previous shot..."
-                                                                    className="w-full bg-gray-950 border border-indigo-800/60 rounded p-1.5 text-indigo-200 text-[10px]"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-[9px] font-bold uppercase text-indigo-400 block mb-0.5">Character &amp; Costume Continuity</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={shot.character_continuity || "Maintain subject outfit, posture, and facial expression from preceding shot"}
-                                                                    onChange={(e) => updateStageShot(idx, "character_continuity", e.target.value)}
-                                                                    placeholder="e.g. Retainer Grainger maintains red tracksuit and gold glasses..."
-                                                                    className="w-full bg-gray-950 border border-indigo-800/60 rounded p-1.5 text-indigo-200 text-[10px]"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Per-Shot Video Generation Control */}
-                                                    <button
-                                                        type="button"
-                                                        disabled={shotGeneratingMap[shot.shot_index || idx + 1]}
-                                                        onClick={() => handleGenerateShotVideo(idx, shot)}
-                                                        className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2 px-3 rounded-xl shadow transition flex items-center justify-center gap-1.5 disabled:opacity-50"
-                                                    >
-                                                        <span>🎬</span>
-                                                        <span>
-                                                            {shotGeneratingMap[shot.shot_index || idx + 1]
-                                                                ? "Rendering Shot Video..."
-                                                                : `🎬 Generate Video for Shot #${shot.shot_index || idx + 1}`}
-                                                        </span>
-                                                    </button>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
 
-                                        <div className="pt-3 flex justify-end gap-3">
-                                            <button
-                                                type="button"
-                                                disabled={isBatchGeneratingVideos}
-                                                onClick={() => handleGenerateAllShotVideosSequentially(true)}
-                                                className="bg-gradient-to-r from-pink-600 via-purple-600 to-teal-600 hover:from-pink-500 hover:to-teal-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
-                                            >
-                                                <span>🎬</span>
-                                                <span>
-                                                    {isBatchGeneratingVideos
-                                                        ? `Rendering Shot ${batchVideoProgress.current}/${batchVideoProgress.total}...`
-                                                        : "Generate All Video Shots & Proceed to Stage 3 ➔"}
-                                                </span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setActiveStage(3)}
-                                                className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 font-bold text-xs py-3 px-4 rounded-xl transition flex items-center gap-2"
-                                            >
-                                                <span>📽️</span>
-                                                <span>View Stage 3 Dailies ➔</span>
-                                            </button>
+                                        {/* Main 2-Column Workstation Layout */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                            {/* LEFT / MAIN COLUMN: Active Shot Editor Workstation (7/12) */}
+                                            <div className="lg:col-span-7 space-y-5">
+                                                {stageShots[activeShotIdx] && (() => {
+                                                    const idx = activeShotIdx;
+                                                    const shot = stageShots[idx];
+                                                    const sNum = shot.shot_index || (idx + 1);
+
+                                                    return (
+                                                        <div className="bg-gray-900 border border-purple-900/60 rounded-2xl p-5 shadow-2xl space-y-4">
+                                                            {/* Shot Workstation Header */}
+                                                            <div className="flex flex-wrap items-center justify-between border-b border-gray-800 pb-3 gap-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-extrabold text-amber-300 bg-amber-950 px-3 py-1 rounded-xl border border-amber-700">
+                                                                        Shot #{sNum} of {stageShots.length} ({shot.duration_seconds || 10}s)
+                                                                    </span>
+                                                                    <span className="text-xs font-bold text-cyan-300 bg-cyan-950 px-2.5 py-1 rounded-lg border border-cyan-800">
+                                                                        🎭 {shot.narrative_stage || "Rising Action"}
+                                                                    </span>
+                                                                </div>
+
+                                                                {/* Scene Continuation Toggle */}
+                                                                <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            updateStageShot(idx, "camera_transition", "Continuous match cut from preceding shot");
+                                                                            updateStageShot(idx, "preceding_context", idx > 0 ? `Chained from Shot #${idx}` : "Initial shot");
+                                                                        }}
+                                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                                                                            shot.camera_transition?.includes("Continuous") || shot.camera_transition?.includes("match")
+                                                                                ? "bg-indigo-600 text-white shadow"
+                                                                                : "text-gray-400 hover:text-white"
+                                                                        }`}
+                                                                    >
+                                                                        🔗 Continue Previous Scene
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            updateStageShot(idx, "camera_transition", "Fresh camera angle and new scene setting");
+                                                                            updateStageShot(idx, "preceding_context", "New scene baseline");
+                                                                        }}
+                                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                                                                            shot.camera_transition?.includes("Fresh") || shot.camera_transition?.includes("New")
+                                                                                ? "bg-purple-600 text-white shadow"
+                                                                                : "text-gray-400 hover:text-white"
+                                                                        }`}
+                                                                    >
+                                                                        ✨ Start New Scene
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* 16:9 Large Keyframe Preview Container */}
+                                                            <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group shadow-inner">
+                                                                {shot.keyframe_image_url ? (
+                                                                    <img
+                                                                        src={getDisplayableRefUrl(shot.keyframe_image_url)}
+                                                                        alt={`Keyframe Shot #${sNum}`}
+                                                                        className="w-full h-full object-contain bg-gray-950"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="p-6 text-center space-y-2 text-gray-500">
+                                                                        <span className="text-3xl block">🖼️</span>
+                                                                        <span className="text-xs font-semibold block text-gray-400">No Keyframe Art Generated Yet</span>
+                                                                        <span className="text-[10px] text-gray-600 block">Pre-render visual keyframe art to anchor starting visual tone</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Keyframe Generation Button */}
+                                                            <button
+                                                                type="button"
+                                                                disabled={keyframeLoadingMap[sNum]}
+                                                                onClick={() => handleGenerateKeyframeImage(idx, shot)}
+                                                                className="w-full bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 font-bold text-xs py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition disabled:opacity-50"
+                                                            >
+                                                                <span>🖼️</span>
+                                                                <span>
+                                                                    {keyframeLoadingMap[sNum]
+                                                                        ? "Rendering Keyframe Art (Gemini 3.1 Flash)..."
+                                                                        : "🖼️ Generate / Re-generate Keyframe Image (Gemini 3.1 Flash)"}
+                                                                </span>
+                                                            </button>
+
+                                                            {/* 5-Part Directives Editor */}
+                                                            <div className="space-y-3 pt-2 text-xs">
+                                                                <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-2.5">
+                                                                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 block mb-1">⚡ Action Summary</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={shot.summary || ""}
+                                                                        onChange={(e) => updateStageShot(idx, "summary", e.target.value)}
+                                                                        className="w-full bg-gray-950 border border-amber-500/50 rounded-lg p-2 text-amber-200 font-bold text-xs focus:outline-none focus:border-amber-400"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5">1. Action / Subject</label>
+                                                                    <textarea
+                                                                        rows={4}
+                                                                        value={shot.action || ""}
+                                                                        onChange={(e) => updateStageShot(idx, "action", e.target.value)}
+                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-gray-200 focus:outline-none focus:border-pink-500 text-xs font-mono leading-relaxed"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-0.5">2. Location</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={shot.location || ""}
+                                                                        onChange={(e) => updateStageShot(idx, "location", e.target.value)}
+                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-purple-500 text-xs"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-0.5">3. Style &amp; Lighting</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={shot.style_lighting || ""}
+                                                                        onChange={(e) => updateStageShot(idx, "style_lighting", e.target.value)}
+                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-xs"
+                                                                    />
+                                                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                                                        {["🎨 90s Anime", "🍿 3D Stylized", "💥 Comic Book", "🖌️ 2D Vector", "👾 Pixel Art", "🏰 1930s Hose", "🐉 Claymation", "✨ Cyberpunk", "🎬 Cinematic"].map((preset) => (
+                                                                            <button
+                                                                                key={preset}
+                                                                                type="button"
+                                                                                onClick={() => updateStageShot(idx, "style_lighting", `${preset}, high-contrast lighting`)}
+                                                                                className="px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-950 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40 transition"
+                                                                            >
+                                                                                {preset}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                    <div>
+                                                                        <label className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block mb-0.5">4. Framing &amp; Motion</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={shot.framing_motion || ""}
+                                                                            onChange={(e) => updateStageShot(idx, "framing_motion", e.target.value)}
+                                                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-cyan-500 text-xs"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">5. Audio Soundscape</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={shot.audio || ""}
+                                                                            onChange={(e) => updateStageShot(idx, "audio", e.target.value)}
+                                                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block mb-0.5">6. Dialogue &amp; On-Screen Text</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={shot.dialogue || ""}
+                                                                        onChange={(e) => updateStageShot(idx, "dialogue", e.target.value)}
+                                                                        placeholder='e.g. Spoken dialogue or text overlay: "Check the potion beat"'
+                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-rose-500 text-xs"
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Render Video & Single-Change Conversational Diff Workstation */}
+                                                            <div className="pt-3 border-t border-gray-800 space-y-3">
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={shotGeneratingMap[sNum]}
+                                                                    onClick={() => handleGenerateShotVideo(idx, shot)}
+                                                                    className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white font-extrabold text-xs py-3 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 transition"
+                                                                >
+                                                                    <span>🎬</span>
+                                                                    <span>
+                                                                        {shotGeneratingMap[sNum]
+                                                                            ? `Rendering Shot #${sNum} Video...`
+                                                                            : `🎬 Render Video for Shot #${sNum}`}
+                                                                    </span>
+                                                                </button>
+
+                                                                {/* Single-Change Conversational Diff Editor Bar */}
+                                                                <div className="bg-purple-950/40 border border-purple-500/40 rounded-xl p-3 space-y-2">
+                                                                    <div className="flex items-center justify-between text-[11px] font-bold text-purple-300">
+                                                                        <span className="flex items-center gap-1.5">
+                                                                            <span>✨</span>
+                                                                            <span>Conversational Edit (Single-Change Diff)</span>
+                                                                        </span>
+                                                                        <span className="text-[10px] bg-purple-900/80 text-purple-200 px-2 py-0.5 rounded font-mono">
+                                                                            Preserve 95% baseline clip
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex gap-2">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={shotDiffPrompts[sNum] || ""}
+                                                                            onChange={(e) => setShotDiffPrompts((prev) => ({ ...prev, [sNum]: e.target.value }))}
+                                                                            placeholder="e.g. Make camera zoom 50% faster and add glowing neon outlines..."
+                                                                            className="flex-1 bg-gray-950 border border-purple-800 rounded-lg p-2 text-xs text-purple-100 placeholder-purple-400/50 focus:outline-none focus:border-purple-400"
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={shotDiffLoading[sNum] || !shot.video_url || !(shotDiffPrompts[sNum] || "").trim()}
+                                                                            onClick={() => handleApplyShotDiff(idx, shot)}
+                                                                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-2 rounded-lg transition disabled:opacity-50 shadow"
+                                                                        >
+                                                                            {shotDiffLoading[sNum] ? "Diffing..." : "Apply Diff"}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Stepper Footer Buttons */}
+                                                            <div className="flex items-center justify-between pt-3 border-t border-gray-800">
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={activeShotIdx === 0}
+                                                                    onClick={() => setActiveShotIdx(prev => Math.max(0, prev - 1))}
+                                                                    className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold py-2 px-4 rounded-xl disabled:opacity-40 transition"
+                                                                >
+                                                                    ⬅️ Previous Shot
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={activeShotIdx >= stageShots.length - 1}
+                                                                    onClick={() => setActiveShotIdx(prev => Math.min(stageShots.length - 1, prev + 1))}
+                                                                    className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-extrabold text-xs py-2 px-5 rounded-xl disabled:opacity-40 shadow transition"
+                                                                >
+                                                                    🚀 Approve &amp; Next Shot ➔
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+
+                                            {/* RIGHT / SIDE COLUMN: Live Dailies Reel & Shot Strip (5/12) */}
+                                            <div className="lg:col-span-5 space-y-4">
+                                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl flex items-center justify-between">
+                                                    <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                                                        <span>🎞️</span>
+                                                        <span>Live Dailies Reel &amp; Shot Strip</span>
+                                                    </h3>
+                                                    <span className="text-[10px] bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800 font-mono">
+                                                        {stageShots.filter(s => s.video_url).length} / {stageShots.length} Ready
+                                                    </span>
+                                                </div>
+
+                                                <div className="space-y-4 max-h-[850px] overflow-y-auto pr-1 custom-scrollbar">
+                                                    {stageShots.map((s, i) => {
+                                                        const sNum = s.shot_index || (i + 1);
+                                                        const isActive = activeShotIdx === i;
+
+                                                        return (
+                                                            <div
+                                                                key={i}
+                                                                onClick={() => setActiveShotIdx(i)}
+                                                                className={`bg-gray-950 border rounded-2xl p-3.5 cursor-pointer transition flex flex-col space-y-2.5 ${
+                                                                    isActive
+                                                                        ? "border-amber-500 ring-2 ring-amber-500/40 bg-amber-950/20 shadow-xl"
+                                                                        : "border-gray-800 hover:border-gray-700"
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center justify-between text-xs">
+                                                                    <span className="font-extrabold text-amber-300 flex items-center gap-1.5">
+                                                                        <span>Shot #{sNum}</span>
+                                                                        {isActive && <span className="text-[9px] bg-amber-500 text-black px-1.5 py-0.2 rounded font-extrabold uppercase">Editing</span>}
+                                                                    </span>
+                                                                    <span className="text-[10px] font-mono text-gray-400">
+                                                                        {s.duration_seconds || 10}s
+                                                                    </span>
+                                                                </div>
+
+                                                                {/* Video or Keyframe Preview */}
+                                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center relative">
+                                                                    {s.video_url ? (
+                                                                        <video
+                                                                            src={s.video_url}
+                                                                            controls
+                                                                            className="w-full h-full object-contain"
+                                                                        />
+                                                                    ) : s.keyframe_image_url ? (
+                                                                        <img
+                                                                            src={getDisplayableRefUrl(s.keyframe_image_url)}
+                                                                            alt={`Keyframe Shot #${sNum}`}
+                                                                            className="w-full h-full object-contain"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-center p-3 text-gray-600 text-xs italic">
+                                                                            Pending Generation
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                <p className="text-[11px] text-gray-300 line-clamp-2 font-mono">
+                                                                    {s.summary || s.action || "No action specified"}
+                                                                </p>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* Bottom Action Bar */}
+                                                <div className="pt-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActiveStage(4)}
+                                                        className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-teal-600 hover:from-pink-500 hover:to-teal-500 text-white font-extrabold text-xs py-3 px-5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition"
+                                                    >
+                                                        <span>🍿</span>
+                                                        <span>Proceed to Stage 4 Final Master Stitch ➔</span>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
