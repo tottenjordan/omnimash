@@ -298,6 +298,60 @@ class StoryboardAgent:
             )
         return shots
 
+    def optimize_shot_prompt(
+        self, raw_directive: str, style_tone: str = "Cinematic Trap Parody"
+    ) -> str:
+        """Optimizes a brief shot directive into a single concise, vivid cinematic visual prompt (max 40 words).
+
+        In mock mode: returns an enriched prompt string combining style tone and directive with anamorphic lens flare
+        and cinematic lighting signifiers.
+        In live mode: calls Gemini SDK to expand the directive into a visual scene prompt.
+        """
+        if not raw_directive or not raw_directive.strip():
+            return raw_directive
+
+        if self.mock_mode or not self._genai_client:
+            enriched = (
+                f"{style_tone}: {raw_directive.strip()}. "
+                "Cinematic high-contrast lighting with volumetric atmosphere and anamorphic lens flares."
+            )
+            return sanitize_real_names(enriched)
+
+        try:
+            prompt = (
+                "You are an expert Hollywood cinematographer. Expand the following brief shot directive into a single concise, vivid cinematic prompt (maximum 40 words) for AI video generation.\n"
+                f'Style & Tone: "{style_tone}"\n'
+                f'Shot Directive: "{raw_directive.strip()}"\n'
+                "Include explicit camera angles, cinematic lighting, and visual atmosphere (such as anamorphic lens flares and volumetric light). Output ONLY the final concise prompt (max 40 words) without commentary or quotes."
+            )
+            from google.genai import types
+            from omnimash.engine.omni_client import get_relaxed_safety_settings
+
+            config = types.GenerateContentConfig(
+                temperature=0.7,
+                safety_settings=get_relaxed_safety_settings(),
+            )
+            response = self._genai_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=config,
+            )
+            text = (getattr(response, "text", "") or "").strip()
+            if (text.startswith('"') and text.endswith('"')) or (
+                text.startswith("'") and text.endswith("'")
+            ):
+                text = text[1:-1].strip()
+            if text:
+                return sanitize_real_names(text)
+        except Exception as exc:
+            logger.warning("optimize_shot_prompt live call failed: %s", exc)
+
+        enriched = (
+            f"{style_tone}: {raw_directive.strip()}. "
+            "Cinematic high-contrast lighting with volumetric atmosphere and anamorphic lens flares."
+        )
+        return sanitize_real_names(enriched)
+
     def expand_vision(
         self,
         concept: str,
@@ -307,6 +361,7 @@ class StoryboardAgent:
         screenplay_script: str = "",
     ) -> list[StoryboardShot]:
         """Expands a vision concept into 3-6 distinct <=10s shot directives."""
+        shots: list[StoryboardShot] = []
         if screenplay_script and screenplay_script.strip():
             parsed_timecodes = parse_timecoded_script(screenplay_script)
             if parsed_timecodes:
@@ -333,7 +388,6 @@ class StoryboardAgent:
                         "Aggressive 90s hip hop beat with heavy kick drum and vocal sample",
                     ),
                 ]
-                shots: list[StoryboardShot] = []
                 for i, item in enumerate(parsed_timecodes):
                     tmpl = mock_templates[i % len(mock_templates)]
                     duration = float(item.get("duration_seconds", 5.0))
@@ -359,12 +413,17 @@ class StoryboardAgent:
                             audio=sanitize_real_names(tmpl[4]),
                         )
                     )
+                for shot in shots:
+                    shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
                 return shots
 
         if self.mock_mode or not self._genai_client:
-            return self._generate_mock_shots(
+            shots = self._generate_mock_shots(
                 concept, style_tone, target_duration, characters=characters
             )
+            for shot in shots:
+                shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
+            return shots
 
         try:
             num_shots = max(3, min(6, int(math.ceil(target_duration / 10.0))))
@@ -435,7 +494,7 @@ class StoryboardAgent:
 
             data = json.loads(raw_text)
             if isinstance(data, list) and len(data) > 0:
-                shots: list[StoryboardShot] = []
+                shots = []
                 for item in data:
                     raw_summary = str(item.get("summary", ""))
                     raw_action = str(item.get("action", ""))
@@ -461,11 +520,16 @@ class StoryboardAgent:
                             character_continuity=sanitize_real_names(str(item.get("character_continuity", "Maintain subject outfit, posture, and facial expression from preceding shot"))),
                         )
                     )
+                for shot in shots:
+                    shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
                 return shots
         except Exception as exc:
             logger.warning("Live expand_vision failed, falling back to mock: %s", exc)
 
-        return self._generate_mock_shots(
+        shots = self._generate_mock_shots(
             concept, style_tone, target_duration, characters=characters
         )
+        for shot in shots:
+            shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
+        return shots
 

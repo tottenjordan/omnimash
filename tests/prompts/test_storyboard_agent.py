@@ -238,3 +238,78 @@ def test_storyboard_shot_narrative_continuity():
     assert "- Character Continuity: Maintain red tracksuit and gold glasses" in prompt
 
 
+def test_optimize_shot_prompt_mock_mode():
+    agent = StoryboardAgent(mock_mode=True)
+    raw_directive = "Snape brews a glowing potion carefully"
+    optimized = agent.optimize_shot_prompt(raw_directive, style_tone="Cinematic Trap Parody")
+
+    assert "Cinematic Trap Parody" in optimized
+    assert "brews a glowing potion carefully" in optimized
+    assert "anamorphic lens flare" in optimized.lower()
+    assert "cinematic" in optimized.lower()
+
+
+def test_optimize_shot_prompt_custom_style_tone():
+    agent = StoryboardAgent(mock_mode=True)
+    raw_directive = "Hero character steps into neon lighting"
+    optimized = agent.optimize_shot_prompt(raw_directive, style_tone="Cyberpunk Synthwave")
+
+    assert "Cyberpunk Synthwave" in optimized
+    assert "Hero character steps into neon lighting" in optimized
+
+
+def test_optimize_shot_prompt_empty_directive():
+    agent = StoryboardAgent(mock_mode=True)
+    assert agent.optimize_shot_prompt("") == ""
+    assert agent.optimize_shot_prompt("   ") == "   "
+
+
+def test_optimize_shot_prompt_celebrity_sanitization():
+    agent = StoryboardAgent(mock_mode=True)
+    raw_directive = "Gordon Ramsay yells in the kitchen while Drake counts cash"
+    optimized = agent.optimize_shot_prompt(raw_directive)
+
+    assert "Gordon Ramsay" not in optimized
+    assert "Drake" not in optimized
+    assert "Fiery Chef Blood" in optimized
+    assert "Drizzy Bruv" in optimized
+
+
+def test_optimize_shot_prompt_live_mocked_genai(monkeypatch):
+    agent = StoryboardAgent(mock_mode=False)
+
+    class MockResponse:
+        text = '"Low-angle cinematic tracking shot of Snape in atmospheric green lighting with anamorphic lens flares."'
+
+    class MockModels:
+        def generate_content(self, model, contents, config=None):
+            assert model == "gemini-2.5-flash"
+            assert "Hollywood cinematographer" in contents
+            assert "Dark Fantasy" in contents
+            assert "Snape enters the potion room" in contents
+            return MockResponse()
+
+    class MockGenaiClient:
+        models = MockModels()
+
+    agent._genai_client = MockGenaiClient()
+
+    optimized = agent.optimize_shot_prompt(
+        "Snape enters the potion room", style_tone="Dark Fantasy"
+    )
+    assert (
+        optimized
+        == "Low-angle cinematic tracking shot of Potion Master Fam in atmospheric green lighting with anamorphic lens flares."
+    )
+
+
+def test_expand_vision_passes_through_optimize_shot_prompt():
+    agent = StoryboardAgent(mock_mode=True)
+    shots = agent.expand_vision("Wizard rap battle", style_tone="Gritty Noir")
+    assert len(shots) > 0
+    for shot in shots:
+        assert "Gritty Noir" in shot.action
+        assert "anamorphic lens flare" in shot.action.lower()
+
+
+
