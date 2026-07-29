@@ -651,9 +651,18 @@ class OmniFlashClient:
                         "mime_type": mime_type,
                     }
                 )
-                key_str = str(role_id or name or "").strip()
-                if key_str:
-                    char_img_map[key_str] = curr_idx
+                r_id = str(role_id or "").strip()
+                n_str = str(name or "").strip()
+                if r_id:
+                    char_img_map[r_id] = curr_idx
+                    char_img_map[r_id.lower()] = curr_idx
+                if n_str:
+                    char_img_map[n_str] = curr_idx
+                    char_img_map[n_str.lower()] = curr_idx
+                if r_id and n_str:
+                    combo = f"{r_id} ({n_str})"
+                    char_img_map[combo] = curr_idx
+                    char_img_map[combo.lower()] = curr_idx
                 curr_idx += 1
             else:
                 char_id = role_id or name

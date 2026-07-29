@@ -815,7 +815,8 @@ def test_load_reference_images_logs_diagnostics(
             )
 
     assert len(imgs) == 1
-    assert char_map == {"Role A": 1}
+    assert char_map.get("Role A") == 1
+    assert char_map.get("Harry") == 1
 
     mock_interactions = MagicMock()
     fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
@@ -983,6 +984,37 @@ def test_generate_keyframe_image_with_reference_urls(
         contents = gen_kwargs.get("contents", [])
         assert len(contents) >= 2
         assert uri is not None
+
+
+def test_reference_image_multi_key_indexing() -> None:
+    """Verify _load_reference_images_as_input indexes char_img_map with role_id, name, combo, and lowercases."""
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=True)
+    char = CharacterRole(
+        role_id="Role A",
+        name="Snape Dawg",
+        description="Gaunt potion master",
+        reference_url="gs://test-bucket/snape.png",
+    )
+
+    with patch.object(
+        client.storage,
+        "download_blob_bytes",
+        return_value=(b"fake_image_bytes", "image/png"),
+    ):
+        imgs, char_map = client._load_reference_images_as_input(
+            session_id="session_123", characters=[char]
+        )
+
+    assert len(imgs) == 1
+    assert char_map.get("Role A") == 1
+    assert char_map.get("role a") == 1
+    assert char_map.get("Snape Dawg") == 1
+    assert char_map.get("snape dawg") == 1
+    assert char_map.get("Role A (Snape Dawg)") == 1
+    assert char_map.get("role a (snape dawg)") == 1
+
 
 
 
