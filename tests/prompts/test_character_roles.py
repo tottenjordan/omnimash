@@ -44,12 +44,12 @@ def test_compile_with_character_roles_and_scenes():
         environment_tag="Gothic Hogwarts courtyard with neon stage lights",
         audio_beat="140 BPM Heavy 808 Trap",
     )
-    assert "[ROLE DEFINITIONS]" in compiled
+    assert "### CHARACTER PROFILES" in compiled
     assert "Role A (Spectacled Wizard Bruv)" in compiled
     assert "Role B (Rival Wizard Blood)" in compiled
-    assert "[AESTHETIC INJECTION]" in compiled
+    assert "### SCENE INSTRUCTIONS" in compiled
     assert "2000s Atlanta Trap" in compiled
-    assert "[STORYBOARD SEQUENCE]" in compiled
+    assert "### TIMELINE" in compiled
     assert "Scene 1 [Role A]" in compiled
     assert "Scene 2 [Role B]" in compiled
     assert "cooking potions" in compiled
@@ -99,10 +99,10 @@ def test_compile_storyboard_minimal_args():
         characters=chars,
         scenes=scenes,
     )
-    assert "[ROLE DEFINITIONS]" in compiled
+    assert "### CHARACTER PROFILES" in compiled
     assert "Role A (Spectacled Wizard Bruv)" in compiled
-    assert "[AESTHETIC INJECTION]" in compiled
-    assert "[STORYBOARD SEQUENCE]" in compiled
+    assert "### SCENE INSTRUCTIONS" in compiled
+    assert "### TIMELINE" in compiled
     assert "Scene 1 [Role A]" in compiled
 
 
