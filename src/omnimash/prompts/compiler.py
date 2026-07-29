@@ -116,27 +116,34 @@ class CompiledPromptParts:
     on_screen_text: str = ""
     drip_props: list[str] = field(default_factory=list)
     vibe_intensity: int = 50
+    character_references: list[str] = field(default_factory=list)
+    timecode_blocks: list[str] = field(default_factory=list)
 
     def to_full_prompt(self) -> str:
-        text_directive = (
-            f"On-screen text: '{self.on_screen_text}'"
-            if self.on_screen_text and self.on_screen_text.strip()
-            else "No text, no subtitles, no captions on screen"
+        cam = self.camera_lighting.strip()
+        cam_clean = re.sub(
+            r"in a single continuous shot,\s*no scene cuts\.?",
+            "In a single continuous shot. No scene cuts.",
+            cam,
+            flags=re.IGNORECASE,
         )
+        if "in a single continuous shot. no scene cuts." not in cam_clean.lower():
+            camera_header = f"In a single continuous shot. No scene cuts. {cam_clean}"
+        else:
+            camera_header = cam_clean
+
+        char_ref_str = "\n".join(self.character_references).strip() if self.character_references else ""
 
         lower_audio = self.audio_track.lower().strip()
         if self.is_silent or lower_audio in ("none", "mute", "silent"):
-            sound_directive = (
-                "Sound design: Silent video. No background music, no audio"
-            )
+            sound_desc = "Sound design: Silent video. No background music, no audio."
         elif self.voiceover and self.voiceover.strip():
-            sound_directive = (
-                f"Sound design: Foreground spoken voiceover/dialogue is dominant, "
-                f"crystal-clear, and front-of-mix. Background beat ({self.audio_track}) "
-                f"is subtly ducked in the background beneath dialogue"
+            sound_desc = (
+                f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                f"Background beat ({self.audio_track}) is subtly ducked in the background beneath dialogue."
             )
         else:
-            sound_directive = f"Sound design: {self.audio_track}"
+            sound_desc = f"Sound design: {self.audio_track}."
 
         vocal_directive = ""
         if self.voiceover and self.voiceover.strip():
@@ -144,17 +151,27 @@ class CompiledPromptParts:
             if ":" in vo or "\n" in vo:
                 vocal_directive = f" Dialogue between subjects: {vo}."
             else:
-                vocal_directive = f" Voiceover: {vo}."
+                vo_clean = vo.rstrip(".")
+                vocal_directive = f" Voiceover: {vo_clean}."
 
-        return (
-            f"[SUBJECT ANCHOR]: {self.subject_anchor} | "
-            f"[AESTHETIC INJECTION]: {self.aesthetic_injection} | "
-            f"[ENVIRONMENT]: {self.environment} | "
-            f"[CAMERA/LIGHTING]: {self.camera_lighting} | "
-            f"[MOTION]: {self.motion} | "
-            f"[AUDIO TRACK]: {self.audio_track} | "
-            f"{sound_directive}.{vocal_directive} {text_directive}."
+        if self.timecode_blocks:
+            blocks_str = "\n".join(self.timecode_blocks).strip()
+        else:
+            action_main = f"{self.subject_anchor}. {self.aesthetic_injection}. {self.environment}. {self.motion}."
+
+            b1 = f"[0-3s] Action: {action_main} Audio: {sound_desc}.{vocal_directive}"
+            b2 = f"[3-6s] Action: Continuation of {self.motion}. Audio: {sound_desc}."
+            b3 = f"[6-10s] Action: Final dynamic resolution. Audio: {sound_desc}."
+            blocks_str = f"{b1}\n{b2}\n{b3}"
+
+        text_directive = (
+            f"On-screen text: '{self.on_screen_text}'"
+            if self.on_screen_text and self.on_screen_text.strip()
+            else ""
         )
+
+        parts = [p for p in [camera_header, char_ref_str, blocks_str, text_directive] if p and p.strip()]
+        return "\n\n".join(parts)
 
 
 @dataclass
@@ -400,6 +417,108 @@ def parse_screenplay_script(
         "audio_cues": audio_cues_str,
         "dialogue": dialogue_str,
     }
+
+
+def parse_timecoded_script(
+    script_text: str, characters: list[CharacterRole] | None = None
+) -> list[dict[str, Any]]:
+    """Parses screenplay or timecoded script into structured chronological timing blocks.
+
+    Supports single-line screenplay format (`[0-3s] Character: (Action. Audio.) "Dialogue."`),
+    multi-line block format (`[0-3s]\nACTION: ...\nDIALOGUE: ...\nAUDIO: ...`), and un-timecoded text.
+    Returns a list of block dictionaries with keys:
+    timecode, start_seconds, end_seconds, duration_seconds, active_roles, action, audio, audio_cues, dialogue.
+    """
+    if not script_text or not script_text.strip():
+        return []
+
+    tc_pattern = re.compile(r"\[(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)s\]", re.IGNORECASE)
+    matches = list(tc_pattern.finditer(script_text))
+
+    blocks: list[dict[str, Any]] = []
+
+    if matches:
+        for i, match in enumerate(matches):
+            start_sec = float(match.group(1))
+            end_sec = float(match.group(2))
+            dur_sec = max(0.0, end_sec - start_sec)
+            tc_str = f"[{match.group(1)}-{match.group(2)}s]"
+
+            block_start_idx = match.end()
+            block_end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
+            block_content = script_text[block_start_idx:block_end_idx].strip()
+
+            if any(k in block_content.upper() for k in ("ACTION:", "DIALOGUE:", "AUDIO:")):
+                action_match = re.search(
+                    r"ACTION:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)", block_content, re.IGNORECASE | re.DOTALL
+                )
+                dialogue_match = re.search(
+                    r"DIALOGUE:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)", block_content, re.IGNORECASE | re.DOTALL
+                )
+                audio_match = re.search(
+                    r"AUDIO(?:_CUES)?:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)", block_content, re.IGNORECASE | re.DOTALL
+                )
+
+                act = action_match.group(1).strip().replace("\n", " ") if action_match else ""
+                diag = dialogue_match.group(1).strip().replace("\n", " ") if dialogue_match else ""
+                aud = audio_match.group(1).strip().replace("\n", " ") if audio_match else ""
+
+                roles: list[str] = []
+                if diag and ":" in diag:
+                    spk = diag.split(":", 1)[0].strip()
+                    if spk and spk not in roles:
+                        roles.append(spk)
+
+                blocks.append(
+                    {
+                        "timecode": tc_str,
+                        "start_seconds": start_sec,
+                        "end_seconds": end_sec,
+                        "duration_seconds": dur_sec,
+                        "active_roles": roles,
+                        "action": act,
+                        "audio": aud,
+                        "audio_cues": aud,
+                        "dialogue": diag,
+                    }
+                )
+            else:
+                parsed = parse_screenplay_script(block_content, characters=characters)
+                blocks.append(
+                    {
+                        "timecode": tc_str,
+                        "start_seconds": start_sec,
+                        "end_seconds": end_sec,
+                        "duration_seconds": dur_sec,
+                        "active_roles": parsed.get("active_roles", []),
+                        "action": parsed.get("action", ""),
+                        "audio": parsed.get("audio_cues", ""),
+                        "audio_cues": parsed.get("audio_cues", ""),
+                        "dialogue": parsed.get("dialogue", ""),
+                    }
+                )
+    else:
+        lines = [line.strip() for line in script_text.splitlines() if line.strip()]
+        default_tcs = [("[0-3s]", 0.0, 3.0, 3.0), ("[3-6s]", 3.0, 6.0, 3.0), ("[6-10s]", 6.0, 10.0, 4.0)]
+
+        for idx, line in enumerate(lines):
+            tc_info = default_tcs[min(idx, len(default_tcs) - 1)]
+            parsed = parse_screenplay_script(line, characters=characters)
+            blocks.append(
+                {
+                    "timecode": tc_info[0],
+                    "start_seconds": tc_info[1],
+                    "end_seconds": tc_info[2],
+                    "duration_seconds": tc_info[3],
+                    "active_roles": parsed.get("active_roles", []),
+                    "action": parsed.get("action", ""),
+                    "audio": parsed.get("audio_cues", ""),
+                    "audio_cues": parsed.get("audio_cues", ""),
+                    "dialogue": parsed.get("dialogue", ""),
+                }
+            )
+
+    return blocks
 
 
 class PromptOptimizer:
@@ -796,7 +915,7 @@ class PromptCompiler:
             " / ".join(dialogue_components) if dialogue_components else None
         )
 
-        return self.compile(
+        parts = self.compile(
             raw_prompt=effective_raw_prompt,
             style_preset=style_preset,
             custom_instructions=custom_instructions,
@@ -807,6 +926,50 @@ class PromptCompiler:
             drip_props=drip_props,
             vibe_intensity=vibe_intensity,
         )
+
+        char_refs: list[str] = []
+        if characters:
+            for idx, char in enumerate(characters):
+                name_clean = sanitize_real_names(char.name) if char.name else char.role_id
+                char_refs.append(
+                    f"[Visual Reference: Attached Image #{idx + 1}] {char.role_id} ({name_clean}): {char.description}"
+                )
+        parts.character_references = char_refs
+
+        tc_blocks: list[str] = []
+        lower_audio = (effective_audio_stem or parts.audio_track).lower().strip()
+        if is_silent or lower_audio in ("none", "mute", "silent"):
+            sound_desc = "Silent video. No background music, no audio."
+        elif parts.voiceover and parts.voiceover.strip():
+            sound_desc = (
+                f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                f"Background beat ({parts.audio_track}) is subtly ducked in the background beneath dialogue."
+            )
+        else:
+            sound_desc = f"Sound design: {parts.audio_track}."
+
+        if script and script.strip():
+            parsed_blocks = parse_timecoded_script(script, characters=characters)
+            for pb in parsed_blocks:
+                tc = pb["timecode"]
+                act = pb["action"] or parts.motion
+                aud_cue = pb["audio_cues"] or effective_audio_stem or sound_desc
+                diag = pb["dialogue"]
+
+                audio_str = f" Audio: {aud_cue}." if aud_cue else f" Audio: {sound_desc}."
+                diag_str = f" Dialogue: {diag}." if diag else ""
+                tc_blocks.append(f"{tc} Action: {act}.{audio_str}{diag_str}")
+
+        if not tc_blocks:
+            vo_info = f" Voiceover: {parts.voiceover}." if parts.voiceover else ""
+            tc_blocks = [
+                f"[0-3s] Action: {parts.subject_anchor}. {parts.aesthetic_injection}. {parts.environment}. {parts.motion}. Audio: {sound_desc}.{vo_info}",
+                f"[3-6s] Action: Continuation of {parts.motion}. Audio: {sound_desc}.",
+                f"[6-10s] Action: Final dynamic resolution. Audio: {sound_desc}.",
+            ]
+
+        parts.timecode_blocks = tc_blocks
+        return parts
 
     def compile_delta(
         self, delta_instruction: str, custom_lock: str | None = None

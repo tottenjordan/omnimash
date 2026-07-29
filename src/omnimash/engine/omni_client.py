@@ -666,7 +666,6 @@ class OmniFlashClient:
                 curr_idx += 1
             else:
                 char_id = role_id or name
-                warn_msg = f"Reference image URL for {char_id} ('{ref_url}') could not be fetched or loaded."
                 logger.warning(
                     "Character %s has reference_url '%s' but image bytes could not be loaded!",
                     char_id,
