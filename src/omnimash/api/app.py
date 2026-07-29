@@ -185,6 +185,7 @@ class GenerateShotResponse(BaseModel):
     status: str = "COMPLETED"
     generation_mode: str = "LIVE_OMNI_FLASH"
     error: str | None = None
+    raw_compiled_prompt: str | None = None
 
 
 class StitchClipsRequest(BaseModel):
@@ -409,6 +410,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [shotGeneratingMap, setShotGeneratingMap] = useState({});
             const [shotDiffPrompts, setShotDiffPrompts] = useState({});
             const [shotDiffLoading, setShotDiffLoading] = useState({});
+            const [showInspectorMap, setShowInspectorMap] = useState({});
             const [selectedShotIndex, setSelectedShotIndex] = useState(1);
             const [stageShots, setStageShots] = useState([
                 {
@@ -575,6 +577,10 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data && data.video_url) {
                         updateStageShot(idx, "video_url", data.video_url);
                         updateStageShot(idx, "turn_id", data.turn_id);
+                        if (data.raw_compiled_prompt) {
+                            updateStageShot(idx, "raw_compiled_prompt", data.raw_compiled_prompt);
+                            setRawCompiledPrompt(data.raw_compiled_prompt);
+                        }
                         setCurrentVideo(data.video_url);
                         if (data.turn_id) setParentTurnId(data.turn_id);
                         return data.turn_id;
@@ -2979,6 +2985,60 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 </span>
                                                             </button>
 
+                                                            {/* Prompt & Payload Inspector Drawer Toggle */}
+                                                            <div className="pt-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setShowInspectorMap((prev) => ({ ...prev, [sNum]: !prev[sNum] }))}
+                                                                    className="w-full bg-black/60 hover:bg-black/90 border border-cyan-800/60 text-cyan-300 font-bold text-xs py-2 px-3 rounded-xl flex items-center justify-between transition"
+                                                                >
+                                                                    <span className="flex items-center gap-2">
+                                                                        <span>🔍</span>
+                                                                        <span>Inspect Prompt &amp; Multimodal Image Payload</span>
+                                                                    </span>
+                                                                    <span className="text-[10px] font-mono text-cyan-400">
+                                                                        {showInspectorMap[sNum] ? "▲ Hide Inspector" : "▼ Show Prompt Details"}
+                                                                    </span>
+                                                                </button>
+
+                                                                {showInspectorMap[sNum] && (
+                                                                    <div className="mt-2 bg-gray-950 border border-cyan-950 rounded-xl p-3.5 space-y-3 text-xs font-mono">
+                                                                        <div>
+                                                                            <span className="font-bold text-cyan-400 block mb-1 text-[11px]">🖼️ Multimodal Reference Images Status:</span>
+                                                                            <div className="space-y-1.5 text-[10px]">
+                                                                                <div className="flex items-center justify-between bg-black/60 p-2 rounded border border-gray-800">
+                                                                                    <span className="text-gray-300">Image #1: Keyframe Seed Image</span>
+                                                                                    <span className={shot.keyframe_image_url ? "text-green-400 font-bold" : "text-amber-400"}>
+                                                                                        {shot.keyframe_image_url ? "ATTACHED ✓" : "OPTIONAL (Missing)"}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {characters && characters.map((c, cI) => (
+                                                                                    <div key={cI} className="flex items-center justify-between bg-black/60 p-2 rounded border border-gray-800">
+                                                                                        <span className="text-purple-300">{c.role_id || `Role #${cI + 1}`} ({c.name || "Unnamed"}):</span>
+                                                                                        <span className={c.reference_url ? "text-green-400 font-bold" : "text-gray-500"}>
+                                                                                            {c.reference_url ? "ATTACHED ✓" : "No Reference URL"}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {shot.raw_compiled_prompt ? (
+                                                                            <div>
+                                                                                <span className="font-bold text-cyan-400 block mb-1 text-[11px]">📜 Exact Compiled Prompt Sent to Gemini:</span>
+                                                                                <pre className="bg-black/90 p-3 rounded-lg border border-cyan-900/60 text-[10px] text-cyan-200 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed custom-scrollbar">
+                                                                                    {shot.raw_compiled_prompt}
+                                                                                </pre>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="text-[10px] text-gray-500 italic bg-black/40 p-2 rounded border border-gray-800">
+                                                                                Render shot video to inspect exact compiled prompt &amp; multimodal payload.
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
                                                             {/* 5-Part Directives Editor */}
                                                             <div className="space-y-3 pt-2 text-xs">
                                                                 <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-2.5">
@@ -4199,6 +4259,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             status=agent_turn.status_event,
             generation_mode=getattr(agent_turn, "generation_mode", "LIVE_OMNI_FLASH"),
             error=agent_turn.error_message,
+            raw_compiled_prompt=agent_turn.raw_compiled_prompt,
         )
 
     @app.post("/api/stitch-clips", response_model=SaveFinalResponse)
