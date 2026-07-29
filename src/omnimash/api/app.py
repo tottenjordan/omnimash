@@ -1,7 +1,8 @@
 import logging
 import os
-from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import HTMLResponse
+import uuid
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from omnimash.agent.orchestrator import OmniMashAgent
@@ -386,6 +387,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
             // 4-Stage Journey State (1: Vision, 2: Storyboard, 3: The Dailies, 4: The Final Cut)
             const [activeStage, setActiveStage] = useState(1);
+            const [activeShotIdx, setActiveShotIdx] = useState(0);
             const [stageStyleTone, setStageStyleTone] = useState("🎨 90s Cel-Shaded Anime");
             const [stageTargetDuration, setStageTargetDuration] = useState(30.0);
             const [stageRefImage, setStageRefImage] = useState("");
@@ -2435,12 +2437,42 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         placeholder="e.g. 140 BPM Heavy 808 Trap"
                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500 mb-2"
                                                     />
-                                                    <label className="text-[11px] font-bold text-gray-400 block mb-1">Master Audio Stem / Track (URL or GCS Path)</label>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-[11px] font-bold text-gray-400">Master Audio Stem / Track (MP3 File, URL, or GCS Path)</label>
+                                                        <label className="text-[10px] font-bold bg-purple-950 hover:bg-purple-900 border border-purple-700 text-purple-300 px-2 py-0.5 rounded cursor-pointer transition">
+                                                            📁 Upload Local MP3
+                                                            <input
+                                                                type="file"
+                                                                accept="audio/*,.mp3,.wav,.m4a"
+                                                                className="hidden"
+                                                                onChange={async (e) => {
+                                                                    const file = e.target.files && e.target.files[0];
+                                                                    if (file) {
+                                                                        const formData = new FormData();
+                                                                        formData.append("file", file);
+                                                                        try {
+                                                                            const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                                                            const data = await res.json();
+                                                                            if (data && data.url) {
+                                                                                setStageRefAudio(data.url);
+                                                                                setMasterAudioUrl(data.url);
+                                                                            }
+                                                                        } catch (err) {
+                                                                            console.error("Audio upload error:", err);
+                                                                        }
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </label>
+                                                    </div>
                                                     <input
                                                         type="text"
                                                         value={stageRefAudio}
-                                                        onChange={(e) => setStageRefAudio(e.target.value)}
-                                                        placeholder="https://example.com/beat.mp3 or gs://..."
+                                                        onChange={(e) => {
+                                                            setStageRefAudio(e.target.value);
+                                                            setMasterAudioUrl(e.target.value);
+                                                        }}
+                                                        placeholder="https://example.com/beat.mp3 or gs://... or upload local file above"
                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-purple-500"
                                                     />
                                                 </div>
@@ -3754,6 +3786,38 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             video_url=pub_url,
             message=f"Final master successfully saved to {gcs_uri}",
         )
+
+    @app.post("/api/upload")
+    async def upload_media_file(file: UploadFile = File(...)):
+        """Uploads a local media file (audio MP3, WAV, image, etc.) to storage and returns accessible URL."""
+        try:
+            content = await file.read()
+            ext = os.path.splitext(file.filename or "file")[1] or ".bin"
+            filename = f"upload_{uuid.uuid4().hex[:8]}{ext}"
+
+            if agent.storage._bucket and not agent.storage.mock_mode:
+                gcs_uri = agent.storage.upload_bytes(
+                    content,
+                    f"uploads/{filename}",
+                    content_type=file.content_type or "application/octet-stream",
+                )
+                return {"success": True, "url": gcs_uri, "filename": file.filename}
+            else:
+                local_dir = os.path.join(os.getcwd(), "static", "uploads")
+                os.makedirs(local_dir, exist_ok=True)
+                local_path = os.path.join(local_dir, filename)
+                with open(local_path, "wb") as f:
+                    f.write(content)
+                return {
+                    "success": True,
+                    "url": f"/static/uploads/{filename}",
+                    "filename": file.filename,
+                }
+        except Exception as exc:
+            logger.error("File upload failed: %s", exc)
+            return JSONResponse(
+                status_code=500, content={"success": False, "error": str(exc)}
+            )
 
     @app.post("/api/storyboard/expand", response_model=StoryboardExpandResponse)
     def expand_storyboard(req: StoryboardExpandRequest) -> StoryboardExpandResponse:

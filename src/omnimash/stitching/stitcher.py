@@ -1,8 +1,11 @@
+import logging
 import os
 import shutil
 import subprocess
 import uuid
 from omnimash.storage.gcs import GcsStorageManager
+
+logger = logging.getLogger(__name__)
 
 
 class VideoStitcher:
@@ -86,6 +89,17 @@ class VideoStitcher:
                         blob.download_to_filename(tmp_audio_path)
                         resolved_audio = tmp_audio_path
                     except Exception:
+                        resolved_audio = norm_audio
+                elif norm_audio.startswith(("http://", "https://")):
+                    try:
+                        import urllib.request
+                        tmp_audio_path = os.path.join(
+                            output_dir, f"audio_{uuid.uuid4().hex[:6]}.mp3"
+                        )
+                        urllib.request.urlretrieve(norm_audio, tmp_audio_path)
+                        resolved_audio = tmp_audio_path
+                    except Exception as exc:
+                        logger.warning("Failed to download HTTP master audio URL: %s", exc)
                         resolved_audio = norm_audio
                 else:
                     resolved_audio = norm_audio
