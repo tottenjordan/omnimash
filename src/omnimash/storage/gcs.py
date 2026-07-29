@@ -532,23 +532,33 @@ class GcsStorageManager:
         return self._mock_rosters.get(session_id)
 
     def list_session_ids(self) -> list[str]:
-        """Returns list of session IDs found in storage or default mock session IDs."""
+        """Returns list of session IDs found in storage, sorted with the most recently created/updated sessions first."""
         default_sessions = ["parody_session_1", "session_8492", "dripwarts_battle"]
         if self.mock_mode or not self._bucket or not self._client:
             return default_sessions
 
         try:
-            blobs = self._client.list_blobs(
-                self.bucket_name, prefix="sessions/", delimiter="/"
-            )
-            for _ in blobs:
-                pass
-            session_ids: list[str] = []
-            prefixes = getattr(blobs, "prefixes", set())
-            for prefix in prefixes:
-                clean = prefix.removeprefix("sessions/").strip("/")
-                if clean:
-                    session_ids.append(clean)
-            return session_ids if session_ids else default_sessions
+            blobs = list(self._client.list_blobs(self.bucket_name, prefix="sessions/"))
+            session_latest: dict[str, Any] = {}
+            for b in blobs:
+                parts = b.name.removeprefix("sessions/").split("/")
+                if parts and parts[0]:
+                    sid = parts[0]
+                    updated = getattr(b, "updated", None)
+                    if sid not in session_latest or (
+                        updated and session_latest[sid] and updated > session_latest[sid]
+                    ):
+                        session_latest[sid] = updated
+                    elif sid not in session_latest:
+                        session_latest[sid] = updated
+
+            if session_latest:
+                sorted_sessions = sorted(
+                    session_latest.keys(),
+                    key=lambda k: session_latest[k] if session_latest[k] is not None else "",
+                    reverse=True,
+                )
+                return sorted_sessions
+            return default_sessions
         except Exception:
             return default_sessions

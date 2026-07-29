@@ -277,8 +277,11 @@ UI_HTML = r"""<!DOCTYPE html>
                 fetch("/api/sessions")
                     .then((res) => res.json())
                     .then((data) => {
-                        if (data && data.sessions) {
+                        if (data && data.sessions && data.sessions.length > 0) {
                             setAvailableSessions(data.sessions);
+                            if (data.sessions[0]) {
+                                setSessionName(data.sessions[0]);
+                            }
                         }
                     })
                     .catch((err) => console.error("Failed to load sessions:", err));
@@ -3069,7 +3072,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center relative">
                                                                     {s.video_url ? (
                                                                         <video
-                                                                            src={s.video_url}
+                                                                            src={getDisplayableRefUrl(s.video_url)}
                                                                             controls
                                                                             className="w-full h-full object-contain"
                                                                         />
@@ -3650,7 +3653,52 @@ UI_HTML = r"""<!DOCTYPE html>
             );
         }
 
-        ReactDOM.createRoot(document.getElementById("__next")).render(<OmniMashApp />);
+        class GlobalErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            componentDidCatch(error, errorInfo) {
+                console.error("UI Rendering Error Caught:", error, errorInfo);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen bg-gray-950 text-white p-8 flex flex-col items-center justify-center">
+                            <div className="max-w-2xl w-full bg-gray-900 border border-red-800 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
+                                <span className="text-5xl block">⚠️</span>
+                                <h1 className="text-2xl font-black text-red-400">UI Rendering Error Caught</h1>
+                                <p className="text-sm text-gray-300">
+                                    A rendering exception occurred in the workstation. The Error Boundary caught it safely without crashing your browser session.
+                                </p>
+                                <div className="bg-black/80 border border-red-900/60 rounded-xl p-4 text-left overflow-x-auto text-xs font-mono text-red-300 max-h-48">
+                                    {this.state.error && this.state.error.toString()}
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        this.setState({ hasError: false, error: null });
+                                        window.location.reload();
+                                    }}
+                                    className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-extrabold text-sm rounded-xl shadow-lg transition"
+                                >
+                                    🔄 Reset &amp; Reload Workstation
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        ReactDOM.createRoot(document.getElementById("__next")).render(
+            <GlobalErrorBoundary>
+                <OmniMashApp />
+            </GlobalErrorBoundary>
+        );
     </script>
 </body>
 </html>
