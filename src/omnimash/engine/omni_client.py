@@ -483,9 +483,8 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
     for pattern, archetype in replacements.items():
         abstracted = re.sub(pattern, archetype, abstracted, flags=re.IGNORECASE)
 
-    abstracted = sanitize_real_names(abstracted)
     abstracted = re.sub(r"\(Reference Image:[^)]+\)", "", abstracted)
-    abstracted = re.sub(r"gs://[^\s)]+", "", abstracted)
+    abstracted = re.sub(r"gs://[^\s)\]]+", "", abstracted)
     return abstracted
 
 
@@ -605,16 +604,27 @@ class OmniFlashClient:
         self,
         session_id: str | None,
         characters: list[CharacterRole] | None = None,
-    ) -> list[Any]:
-        """Loads reference images for characters, base64-encoding them into Gemini multimodal input dicts."""
+        starting_index: int = 1,
+    ) -> tuple[list[Any], dict[str, int]]:
+        """Loads reference images for characters, base64-encoding them into Gemini multimodal input dicts with ordinal payload index mapping."""
         if not characters:
-            return []
+            return [], {}
 
         image_objects: list[Any] = []
-        loaded_chars: list[Any] = []
-        failed_chars: list[Any] = []
+        char_img_map: dict[str, int] = {}
+        curr_idx = starting_index
 
         for char in characters:
+            role_id = (
+                getattr(char, "role_id", "")
+                if not isinstance(char, dict)
+                else char.get("role_id", "")
+            )
+            name = (
+                getattr(char, "name", "")
+                if not isinstance(char, dict)
+                else char.get("name", "")
+            )
             ref_url = (
                 getattr(char, "reference_url", None)
                 if not isinstance(char, dict)
@@ -641,41 +651,19 @@ class OmniFlashClient:
                         "mime_type": mime_type,
                     }
                 )
-                loaded_chars.append(char)
+                key_str = str(role_id or name or "").strip()
+                if key_str:
+                    char_img_map[key_str] = curr_idx
+                curr_idx += 1
             else:
-                failed_chars.append(char)
-                char_id = (
-                    char.get("role_id")
-                    if isinstance(char, dict)
-                    else getattr(
-                        char,
-                        "role_id",
-                        getattr(char, "char_id", getattr(char, "id", None)),
-                    )
-                )
-                char_name = (
-                    char.get("name")
-                    if isinstance(char, dict)
-                    else getattr(char, "name", getattr(char, "char_name", None))
-                )
+                char_id = role_id or name
                 logger.warning(
-                    "Character %s (%s) has reference_url '%s' but image bytes could not be loaded!",
+                    "Character %s has reference_url '%s' but image bytes could not be loaded!",
                     char_id,
-                    char_name,
                     ref_url,
                 )
 
-        loaded_roles = [
-            c.role_id if hasattr(c, "role_id") else c.get("role_id")
-            for c in loaded_chars
-        ]
-        logger.info(
-            "Loaded %d reference image(s) for characters: %s",
-            len(image_objects),
-            loaded_roles,
-        )
-
-        return image_objects
+        return image_objects, char_img_map
 
     def _generate_live_omni_flash_video(
         self,
@@ -713,27 +701,41 @@ class OmniFlashClient:
                     }
                 )
 
+        start_ref_idx = 2 if keyframe_image_parts else 1
+        ref_image_parts, char_img_map = self._load_reference_images_as_input(
+            session_id, characters, starting_index=start_ref_idx
+        )
+        all_image_parts = keyframe_image_parts + ref_image_parts
+
         character_roster_header = ""
         if characters:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in characters:
-                name = getattr(c, "name", "")
-                role_id = getattr(c, "role_id", "")
-                desc = getattr(c, "description", "")
-                ref = getattr(c, "reference_url", "")
-                tags = getattr(c, "aesthetic_tags", [])
-                tag_str = f" [Style: {', '.join(tags)}]" if tags else ""
-                ref_str = f" (Reference Image: {ref})" if ref else ""
+                name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
+                role_id = getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "")
+                desc = getattr(c, "description", "") if not isinstance(c, dict) else c.get("description", "")
+                raw_tags = getattr(c, "aesthetic_tags", None) if not isinstance(c, dict) else c.get("aesthetic_tags")
+                str_tags: list[str] = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
+                tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
+
+                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
+                ref_str = (
+                    f" [Visual Character Reference: Attached Image #{img_idx}]"
+                    if img_idx
+                    else ""
+                )
                 char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         tone_header = ""
         if keyframe_image_parts:
-            tone_header = "# Visual Tone & Starting Frame Anchor:\nThe first attached image is the keyframe starting frame for this shot. Begin the video clip from this frame and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
+            tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
 
-        sanitized_input = tone_header + character_roster_header + (sanitize_real_names(prompt) if prompt else "")
-        ref_image_parts = self._load_reference_images_as_input(session_id, characters)
-        all_image_parts = keyframe_image_parts + ref_image_parts
+        likeness_directives = ""
+        if char_img_map:
+            likeness_directives = "# Character Likeness Directives:\nYou MUST lock character facial features, facial structure, skin tone, hair, beard, clothing, accessories, and distinct character traits directly from the corresponding Attached Image #N reference images.\n\n"
+
+        sanitized_input = tone_header + likeness_directives + character_roster_header + (sanitize_real_names(prompt) if prompt else "")
 
         if all_image_parts:
             text_part = {"type": "text", "text": sanitized_input}

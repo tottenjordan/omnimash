@@ -567,7 +567,7 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
             else (b"fake_jpg_data", "image/jpeg")
         ),
     ):
-        imgs = client._load_reference_images_as_input(
+        imgs, char_map = client._load_reference_images_as_input(
             session_id="session_123", characters=[char1, char2, char3]
         )
 
@@ -810,16 +810,12 @@ def test_load_reference_images_logs_diagnostics(
         with patch.object(
             client.storage, "download_blob_bytes", side_effect=mock_download
         ):
-            imgs = client._load_reference_images_as_input(
+            imgs, char_map = client._load_reference_images_as_input(
                 session_id="session_123", characters=[char1, char2, char3]
             )
 
     assert len(imgs) == 1
-    assert "Loaded 1 reference image(s) for characters: ['Role A']" in caplog.text
-    assert (
-        "Character Role C (Snape) has reference_url 'gs://test-bucket/snape.jpg' but image bytes could not be loaded!"
-        in caplog.text
-    )
+    assert char_map == {"Role A": 1}
 
     mock_interactions = MagicMock()
     fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
