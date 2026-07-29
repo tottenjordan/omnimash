@@ -409,6 +409,8 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stageRefAudio, setStageRefAudio] = useState("");
             const [screenplayScript, setScreenplayScript] = useState("");
             const [showScreenplayModal, setShowScreenplayModal] = useState(false);
+            const [storyboardPath, setStoryboardPath] = useState("path1");
+            const [showBestPracticesModal, setShowBestPracticesModal] = useState(false);
             const [keyframeLoadingMap, setKeyframeLoadingMap] = useState({});
             const [shotGeneratingMap, setShotGeneratingMap] = useState({});
             const [shotDiffPrompts, setShotDiffPrompts] = useState({});
@@ -765,35 +767,27 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             ]);
 
-            // Helper: Client-side Live Storyboard Prompt Compiler Preview
+            // Helper: Client-side Live Storyboard Prompt Compiler Preview (Four-Block Multimodal Structure)
             const compileStoryboardPreview = () => {
-                const roleLines = characters.map(c => {
+                const inputRoleLines = characters.filter(c => c.reference_url).map(c => {
+                    const roleType = c.image_role || "Character Reference";
+                    return `- ${c.role_id} (${roleType}): ${c.reference_url}`;
+                });
+                const inputRolesStr = inputRoleLines.length > 0 ? inputRoleLines.join("\n") : "None.";
+
+                const charProfileLines = characters.map(c => {
                     const style = (c.aesthetic_tags && c.aesthetic_tags.length > 0) ? ` [Style: ${c.aesthetic_tags.join(", ")}]` : "";
                     const wardrobe = c.wardrobe ? ` [Wardrobe: ${c.wardrobe}]` : "";
+                    const narrator = c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator]" : "";
                     const ref = c.reference_url ? ` (Ref: ${c.reference_url})` : "";
-                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${style}${wardrobe}${ref}`;
-                }).join("\n");
-
-                const aestheticParts = [];
-                if (concept && concept.trim()) aestheticParts.push(`Concept: ${concept.trim()}`);
-                if (aestheticTags && aestheticTags.length > 0) aestheticParts.push(`Aesthetic Tags: ${aestheticTags.join(", ")}`);
-                if (environmentTag && environmentTag.trim()) aestheticParts.push(`Environment: ${environmentTag.trim()}`);
-                if (cameraLightingTag && cameraLightingTag.trim()) aestheticParts.push(`Camera/Lighting: ${cameraLightingTag.trim()}`);
-                const aestheticBlock = aestheticParts.length > 0 ? aestheticParts.join("\n") : "Default Aesthetic";
-
-                const audioParts = [];
-                if (audioBeat && audioBeat.trim()) {
-                    audioParts.push(`Background Beat: ${audioBeat.trim()} (subtly ducked in the background beneath dialogue)`);
-                }
-                characters.forEach(c => {
-                    if (c.voice_style && c.voice_style.trim()) {
-                        audioParts.push(`Voice Style (${c.role_id}): ${c.voice_style.trim()}`);
-                    }
+                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${style}${wardrobe}${narrator}${ref}`;
                 });
-                if (vocalDelivery && vocalDelivery.trim()) {
-                    audioParts.push(`Vocal Delivery: ${vocalDelivery.trim()}`);
-                }
-                const audioBlock = audioParts.length > 0 ? audioParts.join("\n") : "Default Audio & Voice Direction";
+                const charProfilesStr = charProfileLines.length > 0 ? charProfileLines.join("\n") : "None.";
+
+                const camHeader = cameraLightingTag || "In a single continuous shot. No scene cuts. High contrast cinematic lighting";
+                const envStr = environmentTag || "Cinematic Studio Setting";
+                const audioStr = audioBeat ? `Sound design: Foreground voiceover dominant. Background beat (${audioBeat}) subtly ducked.` : "Sound design: Standard audio.";
+                const sceneInstStr = `Camera & Lighting: ${camHeader}\nEnvironment: ${envStr}\nAudio: ${audioStr}`;
 
                 const sceneLines = scenes.map(s => {
                     const roles = (s.active_roles && s.active_roles.length > 0) ? s.active_roles.join(", ") : "All Roles";
@@ -805,8 +799,9 @@ UI_HTML = r"""<!DOCTYPE html>
                     const diag = (s.dialogue && s.dialogue.trim()) ? ` | Dialogue: "${s.dialogue.trim()}"` : "";
                     return `- Scene ${s.scene_number} [${roles}]: ${s.action || "Action description"}${diag}`;
                 }).join("\n");
+                const timelineStr = sceneLines || "- No scenes";
 
-                return `[ROLE DEFINITIONS]\n${roleLines || "- None"}\n\n[AESTHETIC INJECTION]\n${aestheticBlock}\n\n[AUDIO & VOCAL DIRECTION]\n${audioBlock}\n\n[STORYBOARD SEQUENCE]\n${sceneLines || "- No scenes"}`;
+                return `### INPUT ROLES\n${inputRolesStr}\n\n### CHARACTER PROFILES\n${charProfilesStr}\n\n### SCENE INSTRUCTIONS\n${sceneInstStr}\n\n### TIMELINE\n${timelineStr}`;
             };
 
             // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
@@ -1545,6 +1540,13 @@ UI_HTML = r"""<!DOCTYPE html>
                         {/* GCS Session Name & Reset Studio */}
                         <div className="flex items-center space-x-3">
                             <button
+                                type="button"
+                                onClick={() => setShowBestPracticesModal(true)}
+                                className="bg-gradient-to-r from-purple-900/80 to-pink-900/80 hover:from-purple-800 hover:to-pink-800 text-purple-200 border border-purple-600/60 rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                            >
+                                <span>💡 Prompt Best Practices &amp; Examples</span>
+                            </button>
+                            <button
                                 onClick={handleResetStudio}
                                 className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
                             >
@@ -1989,6 +1991,35 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </div>
 
 
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                                    <div>
+                                                        <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-1">
+                                                            🖼️ Gemini Image Role
+                                                        </label>
+                                                        <select
+                                                            value={char.image_role || "Character Reference"}
+                                                            onChange={(e) => updateCharacter(idx, "image_role", e.target.value)}
+                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                        >
+                                                            <option value="Character Reference">Character Reference</option>
+                                                            <option value="Product Reference">Product Reference</option>
+                                                            <option value="Starting Frame">Starting Frame</option>
+                                                            <option value="Style Reference">Style Reference</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex items-end pb-1">
+                                                        <label className="flex items-center space-x-2 cursor-pointer text-[11px] text-gray-300 bg-gray-900 border border-gray-800 hover:border-amber-500/50 p-2 rounded-lg w-full transition">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={!!char.is_offscreen_narrator}
+                                                                onChange={(e) => updateCharacter(idx, "is_offscreen_narrator", e.target.checked)}
+                                                                className="rounded border-gray-700 text-amber-500 focus:ring-amber-500 bg-gray-950 w-4 h-4"
+                                                            />
+                                                            <span className="font-bold text-amber-300">🎙️ Off-Screen Narrator</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
                                                 <div>
                                                     <label className="block text-[11px] text-gray-400 mb-1">
                                                         🖼️ Reference Image URL <span className="text-purple-400 text-[10px]">(Gemini Omni Image Role)</span>
@@ -2008,7 +2039,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 className="w-10 h-10 object-cover rounded-lg border border-purple-500/50"
                                                             />
                                                             <div className="overflow-hidden">
-                                                                <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">Linked Image Role</span>
+                                                                <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">Linked Image Role: {char.image_role || "Character Reference"}</span>
                                                                 <span className="text-[10px] text-gray-400 font-mono truncate block">{char.reference_url}</span>
                                                             </div>
                                                         </div>
@@ -2413,14 +2444,59 @@ UI_HTML = r"""<!DOCTYPE html>
                                 {activeStage === 1 && (
                                     <div className="space-y-6">
                                         <div className="bg-gradient-to-r from-amber-950/40 via-orange-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 shadow-xl">
-                                            <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
-                                                <span>💡</span>
-                                                <span>Stage 1: 60s Vision &amp; Style Directing</span>
-                                            </h2>
-                                            <p className="text-xs text-gray-400 mt-1">
-                                                Define your overall 30–60s video concept, select style &amp; tone presets, and upload reference image and audio assets.
-                                            </p>
+                                            <div className="flex flex-wrap items-center justify-between gap-4">
+                                                <div>
+                                                    <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
+                                                        <span>💡</span>
+                                                        <span>Stage 1: 60s Vision &amp; Style Directing</span>
+                                                    </h2>
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        Define your overall 30–60s video concept, select style &amp; tone presets, and upload reference image and audio assets.
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setStoryboardPath("path1")}
+                                                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
+                                                            storyboardPath === "path1"
+                                                                ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black font-extrabold shadow"
+                                                                : "text-gray-400 hover:text-white"
+                                                        }`}
+                                                    >
+                                                        <span>📜</span>
+                                                        <span>Path 1: Single 30–60s Master Script</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setStoryboardPath("path2");
+                                                            setActiveStage(2);
+                                                        }}
+                                                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
+                                                            storyboardPath === "path2"
+                                                                ? "bg-purple-600 text-white font-extrabold shadow"
+                                                                : "text-gray-400 hover:text-white"
+                                                        }`}
+                                                    >
+                                                        <span>📋</span>
+                                                        <span>Path 2: Per-Shot Workstation</span>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
+
+                                        {storyboardPath === "path1" && (
+                                            <div className="bg-amber-950/60 border border-amber-500/50 rounded-xl p-3.5 flex items-start gap-3 text-amber-300 text-xs">
+                                                <span className="text-xl">✂️</span>
+                                                <div>
+                                                    <span className="font-bold block text-amber-200">Path 1: Master Script &amp; Auto-Splitter Guidance</span>
+                                                    <span className="text-amber-300/90 text-[11px]">
+                                                        Write or paste a single continuous script with timecodes ([0-10s], [10-20s], [20-30s]). OmniMash auto-splits long scripts &gt; 10s into sequential 10-second shot cards while preserving subject, outfit, and character continuity.
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
                                             <div className="flex items-center justify-between">
@@ -2755,39 +2831,68 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             </div>
 
                                                             <div>
-                                                                <label className="block text-[11px] text-gray-400 mb-1">
-                                                                    🎙️ Voice Profile / Vocal Style
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={char.voice_profile || ""}
-                                                                    onChange={(e) => updateCharacter(cIdx, "voice_profile", e.target.value)}
-                                                                    placeholder="e.g. Deep raspy baritone voice..."
-                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
-                                                                />
-                                                            </div>
+                                                                <div>
+                                                                    <label className="block text-[11px] text-gray-400 mb-1">
+                                                                        🎙️ Voice Profile / Vocal Style
+                                                                    </label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={char.voice_profile || ""}
+                                                                        onChange={(e) => updateCharacter(cIdx, "voice_profile", e.target.value)}
+                                                                        placeholder="e.g. Deep raspy baritone voice..."
+                                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                    />
+                                                                </div>
 
-
-
-                                                            <div>
-                                                                <label className="block text-[11px] text-gray-400 mb-1">🖼️ Reference Image URL (Gemini Omni Image Role)</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={char.reference_url || ""}
-                                                                    onChange={(e) => updateCharacter(cIdx, "reference_url", e.target.value)}
-                                                                    placeholder="https://example.com/character.jpg"
-                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white font-mono"
-                                                                />
-                                                                {char.reference_url && (
-                                                                    <div className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2 mt-2">
-                                                                        <img
-                                                                            src={getDisplayableRefUrl(char.reference_url)}
-                                                                            alt={char.name || char.role_id}
-                                                                            className="w-8 h-8 object-cover rounded border border-purple-500/50"
-                                                                        />
-                                                                        <span className="text-[10px] text-purple-300 font-mono truncate">{char.reference_url}</span>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                                                    <div>
+                                                                        <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-1">
+                                                                            🖼️ Gemini Image Role
+                                                                        </label>
+                                                                        <select
+                                                                            value={char.image_role || "Character Reference"}
+                                                                            onChange={(e) => updateCharacter(cIdx, "image_role", e.target.value)}
+                                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                        >
+                                                                            <option value="Character Reference">Character Reference</option>
+                                                                            <option value="Product Reference">Product Reference</option>
+                                                                            <option value="Starting Frame">Starting Frame</option>
+                                                                            <option value="Style Reference">Style Reference</option>
+                                                                        </select>
                                                                     </div>
-                                                                )}
+                                                                    <div className="flex items-end pb-1">
+                                                                        <label className="flex items-center space-x-2 cursor-pointer text-[11px] text-gray-300 bg-gray-900 border border-gray-800 hover:border-amber-500/50 p-2 rounded-lg w-full transition">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={!!char.is_offscreen_narrator}
+                                                                                onChange={(e) => updateCharacter(cIdx, "is_offscreen_narrator", e.target.checked)}
+                                                                                className="rounded border-gray-700 text-amber-500 focus:ring-amber-500 bg-gray-950 w-4 h-4"
+                                                                            />
+                                                                            <span className="font-bold text-amber-300">🎙️ Off-Screen Narrator</span>
+                                                                        </label>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div>
+                                                                    <label className="block text-[11px] text-gray-400 mb-1">🖼️ Reference Image URL (Gemini Omni Image Role)</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={char.reference_url || ""}
+                                                                        onChange={(e) => updateCharacter(cIdx, "reference_url", e.target.value)}
+                                                                        placeholder="https://example.com/character.jpg"
+                                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white font-mono"
+                                                                    />
+                                                                    {char.reference_url && (
+                                                                        <div className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2 mt-2">
+                                                                            <img
+                                                                                src={getDisplayableRefUrl(char.reference_url)}
+                                                                                alt={char.name || char.role_id}
+                                                                                className="w-8 h-8 object-cover rounded border border-purple-500/50"
+                                                                            />
+                                                                            <span className="text-[10px] text-purple-300 font-mono truncate">{char.reference_url}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -2819,20 +2924,49 @@ UI_HTML = r"""<!DOCTYPE html>
                                     </div>
                                 )}
 
-                                {/* STAGE 2: INTERACTIVE SEQUENTIAL SHOT PRODUCTION WORKSTATION */}
-                                {activeStage === 2 && (
-                                    <div className="space-y-6">
-                                        {/* Top Header & Master Controls */}
-                                        <div className="bg-gradient-to-r from-purple-950/50 via-pink-950/50 to-amber-950/50 border border-purple-800/50 rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
-                                            <div>
-                                                <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
-                                                    <span>📋</span>
-                                                    <span>Interactive Shot Production Workstation ({stageShots.length} Shots)</span>
-                                                </h2>
-                                                <p className="text-xs text-gray-400 mt-1">
-                                                    Tune shot directives, pre-render keyframe art, render clips one shot at a time, and apply conversational diffs.
-                                                </p>
-                                            </div>
+                        {/* STAGE 2: INTERACTIVE SEQUENTIAL SHOT PRODUCTION WORKSTATION */}
+                        {activeStage === 2 && (
+                            <div className="space-y-6">
+                                {/* Top Header & Master Controls */}
+                                <div className="bg-gradient-to-r from-purple-950/50 via-pink-950/50 to-amber-950/50 border border-purple-800/50 rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
+                                            <span>📋</span>
+                                            <span>Interactive Shot Production Workstation ({stageShots.length} Shots)</span>
+                                        </h2>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Tune shot directives, pre-render keyframe art, render clips one shot at a time, and apply conversational diffs.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setStoryboardPath("path1");
+                                                setActiveStage(1);
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
+                                                storyboardPath === "path1"
+                                                    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black font-extrabold shadow"
+                                                    : "text-gray-400 hover:text-white"
+                                            }`}
+                                        >
+                                            <span>📜</span>
+                                            <span>Path 1: Single Master Script</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setStoryboardPath("path2")}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
+                                                storyboardPath === "path2"
+                                                    ? "bg-purple-600 text-white font-extrabold shadow"
+                                                    : "text-gray-400 hover:text-white"
+                                            }`}
+                                        >
+                                            <span>📋</span>
+                                            <span>Path 2: Per-Shot Workstation</span>
+                                        </button>
+                                    </div>
                                             <div className="flex items-center space-x-2">
                                                 <button
                                                     type="button"
@@ -3074,20 +3208,24 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                             </div>
                                                                         ) : (
                                                                             <div>
-                                                                                <span className="font-bold text-cyan-400 block mb-1 text-[11px]">📜 Formatted Timecoded Prompt Structure (Omni Flash Preview):</span>
+                                                                                <span className="font-bold text-cyan-400 block mb-1 text-[11px]">📜 Formatted Four-Block Prompt Structure (Omni Flash Preview):</span>
                                                                                 <pre className="bg-black/90 p-3 rounded-lg border border-cyan-900/60 text-[10px] text-cyan-200 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed custom-scrollbar">
-{`[CONTINUOUS SHOT & CAMERA CONTROL]
-Camera Transition: ${shot.camera_transition || "Continuous match cut from preceding shot"}
-Character Continuity: ${shot.character_continuity || "Maintain subject outfit, posture, and facial expression"}
+{`### INPUT ROLES
+${(characters || []).filter(c => c.reference_url).map(c => `- ${c.role_id} (${c.image_role || "Character Reference"}): ${c.reference_url}`).join("\n") || "None."}
 
-[CHARACTER ROSTER & REFERENCE INDEX]
-${(characters || []).map(c => `- ${c.role_id || "Role A"} (${c.name || "Unnamed"}): ${c.description || "Visual profile"}`).join("\n") || "- Role A: Primary Subject"}
+### CHARACTER PROFILES
+${(characters || []).map(c => `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "Visual profile"}${c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator]" : ""}`).join("\n") || "- Role A: Primary Subject"}
 
-[TIMECODED ACTION & AUDIO DIRECTIVES]
-${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s] Action: Subject movement."}`}
+### SCENE INSTRUCTIONS
+Camera & Lighting: In a single continuous shot. No scene cuts. ${shot.style_lighting || stageStyleTone}
+Environment: ${shot.location || "Cinematic set"}
+Audio: ${shot.audio || "Atmospheric soundscape"}
+
+### TIMELINE
+${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s] Action: Subject movement.\n[6-10s] Action: Climax resolution."}`}
                                                                                 </pre>
                                                                                 <div className="text-[10px] text-gray-500 italic bg-black/40 p-2 mt-1 rounded border border-gray-800 flex items-center justify-between">
-                                                                                    <span>💡 Formatted according to Gemini Omni Flash Timecode Syntax.</span>
+                                                                                    <span>💡 Formatted according to Gemini Omni Flash Four-Block Prompt Specification.</span>
                                                                                     <span>Render shot video to inspect exact compiled payload.</span>
                                                                                 </div>
                                                                             </div>
@@ -3925,6 +4063,165 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                 </div>
                             </div>
                         )}
+
+                        {/* Gemini Omni Flash Prompt Best Practices & Official Examples Modal */}
+                        {showBestPracticesModal && (
+                            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                                <div className="bg-gray-900 border-2 border-purple-500/80 rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[85vh] flex flex-col">
+                                    <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-4">
+                                        <div className="flex items-center space-x-3">
+                                            <span className="text-2xl">✨</span>
+                                            <div>
+                                                <h3 className="font-bold text-base text-purple-200">Gemini Omni Flash Prompt Best Practices</h3>
+                                                <p className="text-xs text-gray-400">Official Multimodal 4-Block Structure Guidelines &amp; Reference Examples</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowBestPracticesModal(false)}
+                                            className="text-gray-400 hover:text-white text-lg font-bold px-2 py-1"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+
+                                    <div className="overflow-y-auto custom-scrollbar space-y-6 pr-2 flex-1 text-xs text-gray-300">
+                                        {/* Core Guidelines */}
+                                        <div className="bg-purple-950/40 border border-purple-800/60 rounded-xl p-4 space-y-2">
+                                            <h4 className="font-bold text-purple-300 uppercase tracking-wider text-[11px]">Core Multimodal Standards</h4>
+                                            <ul className="list-disc list-inside space-y-1.5 text-gray-300 text-[11px]">
+                                                <li><strong>Four-Block Structure:</strong> Always format prompt payloads into four clear blocks: <code>### INPUT ROLES</code>, <code>### CHARACTER PROFILES</code>, <code>### SCENE INSTRUCTIONS</code>, and <code>### TIMELINE</code>.</li>
+                                                <li><strong>Image Roles:</strong> Explicitly assign reference image role tags (<code>Character Reference</code>, <code>Product Reference</code>, <code>Starting Frame</code>, <code>Style Reference</code>) to preserve visual assets.</li>
+                                                <li><strong>Qualitative Mixing:</strong> Use qualitative audio descriptors (e.g., <em>"foreground voiceover dominant, background beat ducked"</em>) instead of raw numeric decibels/percentages.</li>
+                                                <li><strong>Off-Screen Narrator:</strong> Use the <code>🎙️ Off-Screen Narrator</code> toggle or <code>Narrator (VO): "..."</code> formatting for voiceovers without animating character mouth movement.</li>
+                                            </ul>
+                                        </div>
+
+                                        {/* Example 1: Cyberpunk Commercial */}
+                                        <div className="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-pink-400 text-xs">Example 1: Cyberpunk Commercial (Product Reference + Starting Frame)</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const examplePrompt = `### INPUT ROLES\n- Image #1 (Starting Frame): gs://my-bucket/cyber_alley.jpg\n- Role A (Product Reference): gs://my-bucket/energy_drink_can.jpg\n\n### CHARACTER PROFILES\n- Role A (Cyber Neon Can): Sleek glowing cybernetic energy drink can with holographic cyan labeling [Product Reference]\n\n### SCENE INSTRUCTIONS\nCamera & Lighting: In a single continuous shot. No scene cuts. Anamorphic lens, rainy neon reflections, purple and teal synthwave color grading.\nEnvironment: Rainy futuristic cyberpunk Tokyo alleyway with floating digital billboards.\nAudio: Sound design: Pulsing synthwave synth lead with ambient rain and distant sirens.\n\n### TIMELINE\n[0-3s] Action: Camera pans down to glowing Cyber Neon Can resting on wet asphalt. Audio: Heavy analog synth riser.\n[3-6s] Action: Holographic energy pulses radiate from the can label. Audio: Resonant bass drop.\n[6-10s] Action: Neon sign behind can flares in bright cyan burst. Audio: Synthwave crescendo.`;
+                                                        setConcept("Cyberpunk energy drink commercial in rainy neon Tokyo alleyway");
+                                                        setScreenplayScript(examplePrompt);
+                                                        setShowBestPracticesModal(false);
+                                                    }}
+                                                    className="text-[10px] bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 px-2 py-1 rounded font-bold"
+                                                >
+                                                    Load Example
+                                                </button>
+                                            </div>
+                                            <pre className="bg-black/90 p-3 rounded-lg border border-gray-800 text-[10px] font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
+{`### INPUT ROLES
+- Image #1 (Starting Frame): gs://my-bucket/cyber_alley.jpg
+- Role A (Product Reference): gs://my-bucket/energy_drink_can.jpg
+
+### CHARACTER PROFILES
+- Role A (Cyber Neon Can): Sleek glowing cybernetic energy drink can with holographic cyan labeling
+
+### SCENE INSTRUCTIONS
+Camera & Lighting: In a single continuous shot. No scene cuts. Anamorphic lens, rainy neon reflections.
+Environment: Rainy futuristic cyberpunk Tokyo alleyway with floating digital billboards.
+Audio: Sound design: Pulsing synthwave synth lead with ambient rain and distant sirens.
+
+### TIMELINE
+[0-3s] Action: Camera pans down to glowing Cyber Neon Can resting on wet asphalt.
+[3-6s] Action: Holographic energy pulses radiate from the can label.
+[6-10s] Action: Neon sign behind can flares in bright cyan burst.`}
+                                            </pre>
+                                        </div>
+
+                                        {/* Example 2: Noir Detective */}
+                                        <div className="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-amber-400 text-xs">Example 2: Noir Detective (Off-Screen Narrator VO)</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const examplePrompt = `### INPUT ROLES\n- Role A (Character Reference): gs://my-bucket/detective_noir.jpg\n\n### CHARACTER PROFILES\n- Role A (Gritty Detective): World-weary detective in trench coat and fedora [🎙️ Off-Screen Narrator]\n\n### SCENE INSTRUCTIONS\nCamera & Lighting: In a single continuous shot. No scene cuts. High-contrast black and white noir film lighting with harsh Venetian blind shadows.\nEnvironment: Dimly lit 1940s office with rain beating against windowpanes.\nAudio: Sound design: Foreground spoken voiceover is dominant, crystal-clear, and front-of-mix. Background beat (instrumental melancholic saxophone and jazz piano) is subtly ducked in the background beneath dialogue.\nVoiceover: Narrator (VO) says: "Rain hit the pavement like a slow drumbeat. Another night in this city."\n\n### TIMELINE\n[0-3s] Action: Detective stands by window watching rain trickle down glass. Audio: Foreground voiceover dominant. Dialogue: Narrator (VO) says: "Rain hit the pavement like a slow drumbeat."\n[3-6s] Action: Detective takes a long drag from cigarette, smoke curling in light beam. Audio: Soft saxophone solo.\n[6-10s] Action: Silhouette of detective turning back to shadow-covered desk. Audio: Soft jazz piano decay.`;
+                                                        setConcept("1940s Film Noir Detective Voiceover Monologue");
+                                                        setScreenplayScript(examplePrompt);
+                                                        setShowBestPracticesModal(false);
+                                                    }}
+                                                    className="text-[10px] bg-amber-950 hover:bg-amber-900 border border-amber-700 text-amber-300 px-2 py-1 rounded font-bold"
+                                                >
+                                                    Load Example
+                                                </button>
+                                            </div>
+                                            <pre className="bg-black/90 p-3 rounded-lg border border-gray-800 text-[10px] font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
+{`### INPUT ROLES
+- Role A (Character Reference): gs://my-bucket/detective_noir.jpg
+
+### CHARACTER PROFILES
+- Role A (Gritty Detective): World-weary detective in trench coat [🎙️ Off-Screen Narrator]
+
+### SCENE INSTRUCTIONS
+Camera & Lighting: High-contrast black and white noir film lighting with harsh shadow lines.
+Environment: Dimly lit 1940s office with rain beating against windowpanes.
+Audio: Sound design: Foreground spoken voiceover is dominant. Background beat (instrumental saxophone) is subtly ducked in the background beneath dialogue.
+Voiceover: Narrator (VO) says: "Rain hit the pavement like a slow drumbeat. Another night in this city."
+
+### TIMELINE
+[0-3s] Action: Detective stands by window watching rain. Audio: Foreground voiceover dominant. Dialogue: Narrator (VO): "Rain hit the pavement like a slow drumbeat."
+[3-6s] Action: Detective takes drag from cigarette, smoke curling in light beam.
+[6-10s] Action: Silhouette of detective turning back to desk.`}
+                                            </pre>
+                                        </div>
+
+                                        {/* Example 3: Anime Rap Battle */}
+                                        <div className="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-purple-400 text-xs">Example 3: Anime Rap Battle (Multi-Character Clash)</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const examplePrompt = `### INPUT ROLES\n- Role A (Character Reference): gs://my-bucket/harry.jpg\n- Role B (Character Reference): gs://my-bucket/draco.jpg\n\n### CHARACTER PROFILES\n- Role A (Spectacled Wizard Bruv): Young wizard with round wire-rim glasses and red Gucci tracksuit [Style: Red Gucci Tracksuit, Cartier Glasses]\n- Role B (Platinum Rival Blood): Pale blonde rival with slicked-back platinum hair and diamond iced-out chain [Style: Diamond Chain, Silver Robes]\n\n### SCENE INSTRUCTIONS\nCamera & Lighting: In a single continuous shot. No scene cuts. Low-angle 90s fisheye tracking shot with green and purple neon rim lights.\nEnvironment: Gothic Hogwarts courtyard lit by neon stage lights and smoky haze.\nAudio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap dialogue.\nDialogue between subjects: Spectacled Wizard Bruv: "I been cooking potions since first year!" / Platinum Rival Blood: "This is Trap or Die, Potter!"\n\n### TIMELINE\n[0-3s] Action: Spectacled Wizard Bruv steps forward rapping into microphone wand. Audio: Heavy 808 trap intro. Dialogue: Spectacled Wizard Bruv: "I been cooking potions since first year!"\n[3-6s] Action: Platinum Rival Blood steps from shadows with diamond chain flashing. Audio: Sub-bass resonance. Dialogue: Platinum Rival Blood: "This is Trap or Die, Potter!"\n[6-10s] Action: Both rivals lock eyes as stage lights flare and crowd cheers. Audio: Full trap beat drop.`;
+                                                        setConcept("Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style");
+                                                        setScreenplayScript(examplePrompt);
+                                                        setShowBestPracticesModal(false);
+                                                    }}
+                                                    className="text-[10px] bg-purple-950 hover:bg-purple-900 border border-purple-700 text-purple-300 px-2 py-1 rounded font-bold"
+                                                >
+                                                    Load Example
+                                                </button>
+                                            </div>
+                                            <pre className="bg-black/90 p-3 rounded-lg border border-gray-800 text-[10px] font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
+{`### INPUT ROLES
+- Role A (Character Reference): gs://my-bucket/harry.jpg
+- Role B (Character Reference): gs://my-bucket/draco.jpg
+
+### CHARACTER PROFILES
+- Role A (Spectacled Wizard Bruv): Young wizard with round glasses and red tracksuit
+- Role B (Platinum Rival Blood): Pale blonde rival with slicked platinum hair and diamond chain
+
+### SCENE INSTRUCTIONS
+Camera & Lighting: Low-angle 90s fisheye tracking shot with green and purple neon rim lights.
+Environment: Gothic Hogwarts courtyard lit by neon stage lights and smoky haze.
+Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap dialogue.
+
+### TIMELINE
+[0-3s] Action: Spectacled Wizard Bruv steps forward rapping. Audio: Heavy 808 trap intro. Dialogue: Spectacled Wizard Bruv: "I been cooking potions!"
+[3-6s] Action: Platinum Rival Blood steps from shadows with diamond chain. Dialogue: Platinum Rival Blood: "Trap or Die!"
+[6-10s] Action: Both rivals lock eyes as stage lights flare and crowd cheers.`}
+                                            </pre>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-gray-800 flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowBestPracticesModal(false)}
+                                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-2 px-5 rounded-xl shadow"
+                                        >
+                                            Close Best Practices
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </main>
                 </div>
             );
@@ -4030,6 +4327,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     voice_style=c.voice_style,
                     voice_profile=c.voice_profile,
                     wardrobe=getattr(c, "wardrobe", ""),
+                    image_role=getattr(c, "image_role", "Character Reference"),
+                    is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                 )
                 for c in tags.characters
             ],
@@ -4174,6 +4473,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             voice_style=c.voice_style,
                             voice_profile=c.voice_profile,
                             wardrobe=c.wardrobe,
+                            image_role=c.image_role,
+                            is_offscreen_narrator=c.is_offscreen_narrator,
                         )
                     )
                 elif isinstance(c, dict):
@@ -4187,6 +4488,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             voice_style=c.get("voice_style", ""),
                             voice_profile=c.get("voice_profile", ""),
                             wardrobe=c.get("wardrobe", ""),
+                            image_role=c.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                         )
                     )
                 elif hasattr(c, "model_dump"):
@@ -4201,6 +4504,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             voice_style=cd.get("voice_style", ""),
                             voice_profile=cd.get("voice_profile", ""),
                             wardrobe=cd.get("wardrobe", ""),
+                            image_role=cd.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                         )
                     )
 
@@ -4403,6 +4708,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 voice_style=c.get("voice_style", ""),
                 voice_profile=c.get("voice_profile", ""),
                 wardrobe=c.get("wardrobe", ""),
+                image_role=c.get("image_role", "Character Reference"),
+                is_offscreen_narrator=c.get("is_offscreen_narrator", False),
             )
             for c in (raw_chars or [])
         ]
@@ -4429,6 +4736,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             voice_style=char_data.get("voice_style", ""),
             voice_profile=char_data.get("voice_profile", ""),
             wardrobe=char_data.get("wardrobe", ""),
+            image_role=char_data.get("image_role", "Character Reference"),
+            is_offscreen_narrator=char_data.get("is_offscreen_narrator", False),
         )
 
     @app.post("/api/characters/save-roster", response_model=SaveCharacterResponse)
@@ -4456,6 +4765,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 voice_style=c.get("voice_style", ""),
                 voice_profile=c.get("voice_profile", ""),
                 wardrobe=c.get("wardrobe", ""),
+                image_role=c.get("image_role", "Character Reference"),
+                is_offscreen_narrator=c.get("is_offscreen_narrator", False),
             )
             for c in (raw_roster or [])
         ]
