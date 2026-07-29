@@ -398,6 +398,8 @@ UI_HTML = r"""<!DOCTYPE html>
             const [screenplayScript, setScreenplayScript] = useState("");
             const [keyframeLoadingMap, setKeyframeLoadingMap] = useState({});
             const [shotGeneratingMap, setShotGeneratingMap] = useState({});
+            const [shotDiffPrompts, setShotDiffPrompts] = useState({});
+            const [shotDiffLoading, setShotDiffLoading] = useState({});
             const [selectedShotIndex, setSelectedShotIndex] = useState(1);
             const [stageShots, setStageShots] = useState([
                 {
@@ -560,6 +562,44 @@ UI_HTML = r"""<!DOCTYPE html>
                     setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: false }));
                 }
                 return null;
+            };
+
+            const handleApplyShotDiff = async (idx, shot) => {
+                const sNum = shot.shot_index || (idx + 1);
+                const diffText = (shotDiffPrompts[sNum] || "").trim();
+                if (!diffText) return;
+
+                setShotDiffLoading((prev) => ({ ...prev, [sNum]: true }));
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/diff", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: "user_stage",
+                            project_id: "proj_stage",
+                            prompt: diffText,
+                            parent_turn_id: shot.turn_id || null,
+                            clip_index: idx,
+                            session_name: sessionName
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.video_url) {
+                        updateStageShot(idx, "video_url", data.video_url);
+                        if (data.turn_id) {
+                            updateStageShot(idx, "turn_id", data.turn_id);
+                        }
+                        setShotDiffPrompts((prev) => ({ ...prev, [sNum]: "" }));
+                    } else if (data && data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    console.error("Shot diff error:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setShotDiffLoading((prev) => ({ ...prev, [sNum]: false }));
+                }
             };
 
             const handleGenerateAllShotVideosSequentially = async (autoNavigateToStage3 = false) => {
