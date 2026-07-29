@@ -712,6 +712,54 @@ class OmniFlashClient:
         )
         all_image_parts = keyframe_image_parts + ref_image_parts
 
+        input_roles_lines: list[str] = []
+        if keyframe_image_parts:
+            input_roles_lines.append(
+                "[Image 1: Keyframe Seed Anchor] = [Starting Frame]"
+            )
+
+        if characters:
+            for c in characters:
+                role_id = (
+                    getattr(c, "role_id", "")
+                    if not isinstance(c, dict)
+                    else c.get("role_id", "")
+                )
+                name = (
+                    getattr(c, "name", "")
+                    if not isinstance(c, dict)
+                    else c.get("name", "")
+                )
+                ref_url = (
+                    getattr(c, "reference_url", None)
+                    if not isinstance(c, dict)
+                    else c.get("reference_url")
+                )
+                if not ref_url or not isinstance(ref_url, str):
+                    continue
+
+                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
+                if img_idx:
+                    img_role = (
+                        getattr(c, "image_role", "Character Reference")
+                        if not isinstance(c, dict)
+                        else c.get("image_role", "Character Reference")
+                    ) or "Character Reference"
+                    name_str = str(name) if name else ""
+                    name_clean = (
+                        sanitize_real_names(name_str) if name_str else str(role_id)
+                    )
+                    name_part = f" ({name_clean})" if name_clean else ""
+                    input_roles_lines.append(
+                        f"[Image {img_idx}: {role_id}{name_part}] = [{img_role}]"
+                    )
+
+        input_roles_header = ""
+        if input_roles_lines:
+            input_roles_header = (
+                "### INPUT ROLES\n" + "\n".join(input_roles_lines) + "\n\n"
+            )
+
         tone_header = ""
         if keyframe_image_parts:
             tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
@@ -749,7 +797,8 @@ class OmniFlashClient:
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         sanitized_input = (
-            tone_header
+            input_roles_header
+            + tone_header
             + notes_header
             + character_roster_header
             + (sanitize_real_names(prompt) if prompt else "")

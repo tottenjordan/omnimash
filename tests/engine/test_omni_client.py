@@ -1222,6 +1222,66 @@ def test_build_multimodal_contents_omni_flash_native_multimodal() -> None:
     assert "# Audio & Sound Design:" not in text_val
 
 
+def test_build_multimodal_contents_four_block_omni_flash() -> None:
+    """Verify _build_multimodal_contents maps attached reference images under ### INPUT ROLES using explicit tags matching CharacterRole.image_role."""
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=True)
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Hero",
+        description="Young wizard with round glasses",
+        reference_url="gs://bucket/hero.jpg",
+        image_role="Subject Reference",
+    )
+    char2 = CharacterRole(
+        role_id="Role B",
+        name="Golden Snitch",
+        description="Enchanted golden flying ball",
+        reference_url="gs://bucket/snitch.jpg",
+        image_role="Product Reference",
+    )
+    char3 = CharacterRole(
+        role_id="Role C",
+        name="Dungeon Entrance",
+        description="Starting frame of dungeon corridor",
+        reference_url="gs://bucket/dungeon.jpg",
+        image_role="Starting Frame",
+    )
+    char4 = CharacterRole(
+        role_id="Role D",
+        name="Retro Aesthetic",
+        description="90s VHS mood reference",
+        reference_url="gs://bucket/style.jpg",
+        image_role="Style Reference",
+    )
+
+    def mock_download_blob(url: str) -> tuple[bytes, str]:
+        return b"fake_img_bytes", "image/jpeg"
+
+    with patch.object(client.storage, "download_blob_bytes", side_effect=mock_download_blob):
+        payload = client._build_multimodal_contents(
+            prompt="Hero catching the snitch",
+            characters=[char1, char2, char3, char4],
+        )
+
+    assert isinstance(payload, list)
+    assert len(payload) == 1
+    content = payload[0]["content"]
+    text_part = content[-1]
+    text_val = text_part["text"]
+
+    # 1. Verify ### INPUT ROLES section header
+    assert "### INPUT ROLES" in text_val
+
+    # 2. Verify explicit image role tags matching CharacterRole.image_role
+    assert "[Image 1: Role A (Hero)] = [Subject Reference]" in text_val
+    assert "[Image 2: Role B (Golden Snitch)] = [Product Reference]" in text_val
+    assert "[Image 3: Role C (Dungeon Entrance)] = [Starting Frame]" in text_val
+    assert "[Image 4: Role D (Retro Aesthetic)] = [Style Reference]" in text_val
+
+
+
 
 
 
