@@ -250,3 +250,77 @@ def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
     assert "[STORYBOARD SEQUENCE]" in res.raw_compiled_prompt
     assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in res.raw_compiled_prompt
     assert '  Spectacled Wizard Bruv: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
+
+
+def test_process_user_turn_preserves_image_role_and_narrator(monkeypatch):
+    agent = OmniMashAgent(mock_mode=True)
+    captured_kwargs = {}
+
+    def mock_generate_clip(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        from omnimash.engine.omni_client import GenerationResult
+
+        return GenerationResult(
+            interaction_thread_id="test_thread",
+            video_url="/static/rendered/test.mp4",
+        )
+
+    monkeypatch.setattr(agent.omni_client, "generate_clip", mock_generate_clip)
+
+    class ModelChar:
+        def __init__(self, **data):
+            self._data = data
+            for k, v in data.items():
+                setattr(self, k, v)
+
+        def model_dump(self):
+            return self._data
+
+    class AttrChar:
+        def __init__(self, **data):
+            for k, v in data.items():
+                setattr(self, k, v)
+
+    c1 = CharacterRole(
+        role_id="r1",
+        name="Product X",
+        description="A cool product",
+        image_role="Product Reference",
+        is_offscreen_narrator=True,
+    )
+    c2 = {
+        "role_id": "r2",
+        "name": "Product Y",
+        "description": "Another product",
+        "image_role": "Product Reference",
+        "is_offscreen_narrator": True,
+    }
+    c3 = ModelChar(
+        role_id="r3",
+        name="Product Z",
+        description="Third product",
+        image_role="Product Reference",
+        is_offscreen_narrator=True,
+    )
+    c4 = AttrChar(
+        role_id="r4",
+        name="Product W",
+        description="Fourth product",
+        image_role="Product Reference",
+        is_offscreen_narrator=True,
+    )
+
+    res = agent.process_user_turn(
+        user_id="u1",
+        project_id="p1",
+        prompt="Test preserving image_role and narrator",
+        characters=[c1, c2, c3, c4],
+    )
+
+    assert res.success is True
+    converted_chars = captured_kwargs["characters"]
+    assert len(converted_chars) == 4
+    for char in converted_chars:
+        assert char.image_role == "Product Reference"
+        assert char.is_offscreen_narrator is True
+
