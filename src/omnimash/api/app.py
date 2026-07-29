@@ -1910,7 +1910,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 {/* Character Style Signifiers (Aesthetic Tags) Chip Manager */}
                                                 <div>
                                                     <label className="block text-[11px] font-bold text-pink-400 uppercase tracking-wider mb-1">
-                                                        🎨 Character Style Signifiers (Aesthetic Tags)
+                                                        👔 Wardrobe &amp; Aesthetic Style Signifiers
                                                     </label>
                                                     <div className="flex flex-wrap gap-1.5 mb-2">
                                                         {(char.aesthetic_tags || []).map((tag, tIdx) => (
@@ -1970,18 +1970,6 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     />
                                                 </div>
 
-                                                <div>
-                                                    <label className="block text-[11px] text-gray-400 mb-1">
-                                                        👔 Wardrobe / Outfit
-                                                    </label>
-                                                    <input
-                                                        type="text"
-                                                        value={char.wardrobe || ""}
-                                                        onChange={(e) => updateCharacter(idx, "wardrobe", e.target.value)}
-                                                        placeholder="e.g. Oversized Gucci tracksuit, diamond Cuban link chain..."
-                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
-                                                    />
-                                                </div>
 
                                                 <div>
                                                     <label className="block text-[11px] text-gray-400 mb-1">
@@ -2701,7 +2689,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             {/* Character Style Signifiers (Aesthetic Tags) */}
                                                             <div>
                                                                 <label className="block text-[11px] font-bold text-pink-400 uppercase tracking-wider mb-1">
-                                                                    🎨 Character Style Signifiers (Aesthetic Tags)
+                                                                    👔 Wardrobe &amp; Aesthetic Style Signifiers
                                                                 </label>
                                                                 <div className="flex flex-wrap gap-1.5 mb-2">
                                                                     {(char.aesthetic_tags || []).map((tag, tIdx) => (
@@ -2761,18 +2749,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 />
                                                             </div>
 
-                                                            <div>
-                                                                <label className="block text-[11px] text-gray-400 mb-1">
-                                                                    👔 Wardrobe / Outfit
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={char.wardrobe || ""}
-                                                                    onChange={(e) => updateCharacter(cIdx, "wardrobe", e.target.value)}
-                                                                    placeholder="e.g. Designer tracksuit, iced-out medallion..."
-                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
-                                                                />
-                                                            </div>
+
 
                                                             <div>
                                                                 <label className="block text-[11px] text-gray-400 mb-1">🖼️ Reference Image URL (Gemini Omni Image Role)</label>
