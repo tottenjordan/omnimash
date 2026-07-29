@@ -312,4 +312,55 @@ def test_expand_vision_passes_through_optimize_shot_prompt():
         assert "anamorphic lens flare" in shot.action.lower()
 
 
+def test_parse_timecoded_script_omni_flash_blocks():
+    script_text = (
+        "[0-3s]\n"
+        "ACTION: Snape stirring a glowing purple potion in a stone dungeon.\n"
+        'DIALOGUE: Snape: "Observe the subtle art."\n'
+        "AUDIO: Slow heavy 808 trap beat with bubbling liquid sound.\n\n"
+        "[3-6s]\n"
+        "ACTION: Dumbledore steps forward under glowing sconces.\n"
+        'DIALOGUE: Dumbledore: "Turn the beat up!"\n'
+        "AUDIO: Trap beat drop with crisp snare trills.\n\n"
+        "[6-10s]\n"
+        "ACTION: Both wizards perform a synchronized pose.\n"
+        "AUDIO: Booming sub-bass with reverb tail.\n"
+    )
+    parsed = parse_timecoded_script(script_text)
+    assert len(parsed) == 3
+    assert parsed[0]["duration_seconds"] == 3.0
+    assert parsed[0]["timecode"] == "[0-3s]"
+    assert parsed[0]["action"] == "Snape stirring a glowing purple potion in a stone dungeon."
+    assert parsed[0]["dialogue"] == 'Snape: "Observe the subtle art."'
+    assert parsed[0]["audio"] == "Slow heavy 808 trap beat with bubbling liquid sound."
+
+    assert parsed[1]["duration_seconds"] == 3.0
+    assert parsed[1]["timecode"] == "[3-6s]"
+    assert parsed[1]["action"] == "Dumbledore steps forward under glowing sconces."
+    assert parsed[1]["dialogue"] == 'Dumbledore: "Turn the beat up!"'
+    assert parsed[1]["audio"] == "Trap beat drop with crisp snare trills."
+
+    assert parsed[2]["duration_seconds"] == 4.0
+    assert parsed[2]["timecode"] == "[6-10s]"
+    assert parsed[2]["action"] == "Both wizards perform a synchronized pose."
+    assert parsed[2]["dialogue"] == ""
+    assert parsed[2]["audio"] == "Booming sub-bass with reverb tail."
+
+    agent = StoryboardAgent(mock_mode=True)
+    shots = agent.expand_vision(
+        concept="Wizard rap duel",
+        style_tone="Cinematic Trap Parody",
+        target_duration=10.0,
+        screenplay_script=script_text,
+    )
+    assert len(shots) == 3
+    assert shots[0].duration_seconds == 3.0
+    assert shots[1].duration_seconds == 3.0
+    assert shots[2].duration_seconds == 4.0
+    assert "in a single continuous shot. no scene cuts." in shots[0].framing_motion.lower()
+    assert shots[0].audio != ""
+    assert "808" in shots[0].audio or "trap" in shots[0].audio.lower()
+
+
+
 
