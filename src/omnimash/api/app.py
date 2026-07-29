@@ -417,31 +417,40 @@ UI_HTML = r"""<!DOCTYPE html>
                     shot_index: 1,
                     duration_seconds: 10.0,
                     summary: "Entrance & Concept Setup",
-                    action: "Establishing shot for concept: key characters enter the scene.",
+                    action: "[0-3s] Action: Establishing shot of foggy Hogwarts courtyard as Spectacled Wizard Bruv enters. Audio: Ambient wind and heavy 808 trap intro. Dialogue: Spectacled Wizard Bruv: \"I been cooking potions since first year.\"\n[3-6s] Action: Spectacled Wizard Bruv raises microphone wand as stage lights flare. Audio: Rhythmic snare trill.\n[6-10s] Action: Crowd cheering in background while fog drifts across courtyard. Audio: Full trap beat drop.",
                     location: "Dimly lit stone dungeon classroom with bubbling cauldrons",
                     style_lighting: "🎨 90s Cel-Shaded Anime, vibrant flat colors with sharp ink linework",
                     framing_motion: "Static medium shot with subtle handheld drift",
-                    audio: "Slow heavy 808 trap beat with bubbling liquid sound"
+                    audio: "[0-3s] 140 BPM Trap Beat Intro | [3-10s] Heavy 808 Sub-Bass",
+                    dialogue: "Spectacled Wizard Bruv: \"I been cooking potions since first year.\"",
+                    camera_transition: "Continuous match cut from preceding shot",
+                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot"
                 },
                 {
                     shot_index: 2,
                     duration_seconds: 10.0,
                     summary: "Dramatic Action & Potion Drink",
-                    action: "Key character performs dramatic action, reacting in surprise.",
+                    action: "[0-3s] Action: Platinum Rival Blood steps from shadows in high-gloss neon lighting. Audio: Heavy 808 trap beat drop. Dialogue: Platinum Rival Blood: \"This is Trap or Die, Potter! Let's get it!\"\n[3-6s] Action: Dynamic dolly zoom in on character face with diamond chain flashing. Audio: Sub-bass resonance.\n[6-10s] Action: Character holds up glowing potion bottle amidst green rim light. Audio: Rhythmic snare trills.",
                     location: "Gothic potion classroom with floating candles",
                     style_lighting: "🎨 90s Cel-Shaded Anime, expressive cel shading with dramatic rim light",
                     framing_motion: "Dynamic dolly zoom in on character face",
-                    audio: "Trap beat drop with sub-bass and crisp snare trills"
+                    audio: "[0-3s] Heavy 808 Trap Beat Drop | [3-10s] Sub-Bass and Crisp Snares",
+                    dialogue: "Platinum Rival Blood: \"This is Trap or Die, Potter! Let's get it!\"",
+                    camera_transition: "Continuous match cut from preceding shot",
+                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot"
                 },
                 {
                     shot_index: 3,
                     duration_seconds: 10.0,
                     summary: "Transformation Reveal & Drip Climax",
-                    action: "Subject is transformed, stepping forward in upgraded aesthetic wardrobe.",
+                    action: "[0-3s] Action: Both rap battle rivals step forward in upgraded aesthetic wardrobe under stage smoke. Audio: Aggressive trap beat climax. Dialogue: Both: \"Trap or Die!\"\n[3-6s] Action: Low angle pedestal shot moving upward slowly as neon stage flares flash. Audio: Heavy kick drum and synth riser.\n[6-10s] Action: Full stage view of crowd cheering in synchronized pulse. Audio: Final sub-bass decay.",
                     location: "High contrast courtyard with stage smoke and ambient flares",
                     style_lighting: "🎨 90s Cel-Shaded Anime, vivid pop art lighting with bold ink outlines",
                     framing_motion: "Low angle pedestal shot moving upward slowly",
-                    audio: "Aggressive 90s hip hop beat with heavy kick drum"
+                    audio: "[0-3s] Aggressive Trap Climax | [3-10s] Heavy Kick Drum & Synth Riser",
+                    dialogue: "Both: \"Trap or Die!\"",
+                    camera_transition: "Continuous match cut from preceding shot",
+                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot"
                 }
             ]);
             const [expandLoading, setExpandLoading] = useState(false);
@@ -2442,24 +2451,24 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         <span>📜</span>
                                                         <span>Timecoded Screenplay &amp; Director's Notes Studio</span>
                                                     </label>
-                                                    <span className="text-[10px] text-gray-400 font-mono">Include [DIRECTOR'S NOTES], ACTION: and DIALOGUE:</span>
+                                                    <span className="text-[10px] text-gray-400 font-mono">Include [DIRECTOR'S NOTES], [0-3s] Action:, Audio:, Dialogue:</span>
                                                 </div>
                                                 <div className="flex flex-wrap gap-1.5 mb-2">
                                                     <span className="text-[11px] text-gray-400 self-center font-medium">Presets:</span>
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            const preset = `[DIRECTOR'S NOTES]\n- Tone: High-Energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Intense rivalry between Dumble Dior & Snape Dawg; mutual respect masked by humorous disses.\n- Dumble Dior Profile: Regal, charismatic, confident flow.\n- Snape Dawg Profile: Deep subterranean trap flow with autotune.\n\n[0-4s]\nACTION: Dumble Dior steps up to the mic under glowing neon lights.\nDIALOGUE: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n\n[4-8s]\nACTION: Snape Dawg drops a heavy 808 trap beat.\nDIALOGUE: Snape Dawg: "Potions class is in session, no cap!"\n\n[8-12s]\nACTION: Both perform synchronized rap battle climax.`;
+                                                            const preset = `[DIRECTOR'S NOTES]\n- Tone: High-Energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Intense rivalry between Dumble Dior & Snape Dawg; mutual respect masked by humorous disses.\n- Dumble Dior Profile: Regal, charismatic, confident flow.\n- Snape Dawg Profile: Deep subterranean trap flow with autotune.\n\n[0-3s] Action: Dumble Dior steps up to the mic under glowing neon lights. Audio: Heavy 808 trap beat with ambient crowd cheers. Dialogue: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n\n[3-6s] Action: Snape Dawg drops a heavy 808 trap beat. Audio: Crisp snare trills and sub-bass drop. Dialogue: Snape Dawg: "Potions class is in session, no cap!"\n\n[6-10s] Action: Both perform synchronized rap battle climax amidst stage smoke and purple rim lights. Audio: Climax 808 beat drop. Dialogue: Both: "Trap or Die!"`;
                                                             setScreenplayScript(preset);
                                                         }}
                                                         className="bg-amber-950/60 border border-amber-800/80 hover:border-amber-500 text-amber-200 text-[11px] px-2.5 py-1 rounded-lg transition"
                                                     >
-                                                        📜 Rap Battle (Director's Notes + Dialogue)
+                                                        📜 Rap Battle (Director's Notes + Timecodes)
                                                     </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            const preset = `[DIRECTOR'S NOTES]\n- Tone: Cinematic Cyberpunk Action\n- Relational Dynamic: Partner operatives navigating high-stakes heist.\n\n[0-5s]\nACTION: Operative A hacks the security vault console.\nDIALOGUE: Operative A: "Systems breached, we have 30 seconds."\n\n[5-10s]\nACTION: Operative B covers the perimeter with plasma pulse rifle.\nDIALOGUE: Operative B: "Security drones inbound, move now!"`;
+                                                            const preset = `[DIRECTOR'S NOTES]\n- Tone: Cinematic Cyberpunk Action\n- Relational Dynamic: Partner operatives navigating high-stakes heist.\n\n[0-5s] Action: Operative A hacks the security vault console under neon holographic interface. Audio: High-frequency data pulse and rhythmic synth bass. Dialogue: Operative A: "Systems breached, we have 30 seconds."\n\n[5-10s] Action: Operative B covers the perimeter with plasma pulse rifle. Audio: Rhythmic alarm klaxons and pulsing bass drop. Dialogue: Operative B: "Security drones inbound, move now!"`;
                                                             setScreenplayScript(preset);
                                                         }}
                                                         className="bg-purple-950/60 border border-purple-800/80 hover:border-purple-500 text-purple-200 text-[11px] px-2.5 py-1 rounded-lg transition"
@@ -2471,7 +2480,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     rows={6}
                                                     value={screenplayScript}
                                                     onChange={(e) => setScreenplayScript(e.target.value)}
-                                                    placeholder={`[DIRECTOR'S NOTES]\n- Tone: High-energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Friendly rivalry between Dumble Dior and Snape Dawg\n\n[0-4s]\nACTION: Dumble Dior steps up to the mic under glowing neon lights.\nDIALOGUE: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n\n[4-8s]\nACTION: Snape Dawg drops a heavy 808 trap beat.\nDIALOGUE: Snape Dawg: "Potions class is in session, no cap!"`}
+                                                    placeholder={`[DIRECTOR'S NOTES]\n- Tone: High-energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Friendly rivalry between Dumble Dior and Snape Dawg\n\n[0-3s] Action: Dumble Dior steps up to the mic under glowing neon lights. Audio: Heavy 808 trap beat with ambient crowd cheers. Dialogue: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n\n[3-6s] Action: Snape Dawg drops a heavy 808 trap beat. Audio: Crisp snare trills and sub-bass drop. Dialogue: Snape Dawg: "Potions class is in session, no cap!"\n\n[6-10s] Action: Both perform synchronized rap battle climax amidst stage smoke and purple rim lights. Audio: Climax 808 beat drop. Dialogue: Both: "Trap or Die!"`}
                                                     className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
                                                 />
                                             </div>
@@ -2920,37 +2929,67 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                     </span>
                                                                 </div>
 
-                                                                {/* Scene Continuation Toggle */}
-                                                                <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            updateStageShot(idx, "camera_transition", "Continuous match cut from preceding shot");
-                                                                            updateStageShot(idx, "preceding_context", idx > 0 ? `Chained from Shot #${idx}` : "Initial shot");
-                                                                        }}
-                                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                                            shot.camera_transition?.includes("Continuous") || shot.camera_transition?.includes("match")
-                                                                                ? "bg-indigo-600 text-white shadow"
-                                                                                : "text-gray-400 hover:text-white"
-                                                                        }`}
-                                                                    >
-                                                                        🔗 Continue Previous Scene
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            updateStageShot(idx, "camera_transition", "Fresh camera angle and new scene setting");
-                                                                            updateStageShot(idx, "preceding_context", "New scene baseline");
-                                                                        }}
-                                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                                            shot.camera_transition?.includes("Fresh") || shot.camera_transition?.includes("New")
-                                                                                ? "bg-purple-600 text-white shadow"
-                                                                                : "text-gray-400 hover:text-white"
-                                                                        }`}
-                                                                    >
-                                                                        ✨ Start New Scene
-                                                                    </button>
-                                                                </div>
+                                                                 {/* Scene Continuation & Continuous Shot Control */}
+                                                                 <div className="flex flex-col space-y-2 bg-gray-950 border border-gray-800 rounded-xl p-2.5">
+                                                                     <div className="flex items-center justify-between">
+                                                                         <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                                                                             <span>🎥</span>
+                                                                             <span>Continuous Shot &amp; Scene Transition Control</span>
+                                                                         </span>
+                                                                         <div className="flex items-center bg-black border border-gray-800 rounded-lg p-0.5">
+                                                                             <button
+                                                                                 type="button"
+                                                                                 onClick={() => {
+                                                                                     updateStageShot(idx, "camera_transition", "Continuous match cut from preceding shot");
+                                                                                     updateStageShot(idx, "preceding_context", idx > 0 ? `Chained from Shot #${idx}` : "Initial shot");
+                                                                                 }}
+                                                                                 className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                                                                                     shot.camera_transition?.includes("Continuous") || shot.camera_transition?.includes("match")
+                                                                                         ? "bg-indigo-600 text-white shadow"
+                                                                                         : "text-gray-400 hover:text-white"
+                                                                                 }`}
+                                                                             >
+                                                                                 🔗 Continue Scene
+                                                                             </button>
+                                                                             <button
+                                                                                 type="button"
+                                                                                 onClick={() => {
+                                                                                     updateStageShot(idx, "camera_transition", "Fresh camera angle and new scene setting");
+                                                                                     updateStageShot(idx, "preceding_context", "New scene baseline");
+                                                                                 }}
+                                                                                 className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                                                                                     shot.camera_transition?.includes("Fresh") || shot.camera_transition?.includes("New")
+                                                                                         ? "bg-purple-600 text-white shadow"
+                                                                                         : "text-gray-400 hover:text-white"
+                                                                                 }`}
+                                                                             >
+                                                                                 ✨ New Scene
+                                                                             </button>
+                                                                         </div>
+                                                                     </div>
+                                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                                                         <div>
+                                                                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">Camera Transition Control:</label>
+                                                                             <input
+                                                                                 type="text"
+                                                                                 value={shot.camera_transition || "Continuous match cut from preceding shot"}
+                                                                                 onChange={(e) => updateStageShot(idx, "camera_transition", e.target.value)}
+                                                                                 placeholder="e.g. Continuous match cut from preceding shot"
+                                                                                 className="w-full bg-black/60 border border-gray-800 rounded-lg p-1.5 text-gray-200 focus:outline-none focus:border-indigo-500 font-mono text-[10px]"
+                                                                             />
+                                                                         </div>
+                                                                         <div>
+                                                                             <label className="text-[9px] font-bold text-gray-400 block mb-0.5">Subject Character Continuity:</label>
+                                                                             <input
+                                                                                 type="text"
+                                                                                 value={shot.character_continuity || "Maintain subject outfit, posture, and facial expression"}
+                                                                                 onChange={(e) => updateStageShot(idx, "character_continuity", e.target.value)}
+                                                                                 placeholder="e.g. Maintain subject outfit, posture, and facial expression"
+                                                                                 className="w-full bg-black/60 border border-gray-800 rounded-lg p-1.5 text-gray-200 focus:outline-none focus:border-indigo-500 font-mono text-[10px]"
+                                                                             />
+                                                                         </div>
+                                                                     </div>
+                                                                 </div>
                                                             </div>
 
                                                             {/* 16:9 Large Keyframe Preview Container */}
@@ -3025,14 +3064,29 @@ UI_HTML = r"""<!DOCTYPE html>
 
                                                                         {shot.raw_compiled_prompt ? (
                                                                             <div>
-                                                                                <span className="font-bold text-cyan-400 block mb-1 text-[11px]">📜 Exact Compiled Prompt Sent to Gemini:</span>
+                                                                                <span className="font-bold text-cyan-400 block mb-1 text-[11px]">📜 Exact Timecoded Prompt Sent to Gemini:</span>
                                                                                 <pre className="bg-black/90 p-3 rounded-lg border border-cyan-900/60 text-[10px] text-cyan-200 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed custom-scrollbar">
                                                                                     {shot.raw_compiled_prompt}
                                                                                 </pre>
                                                                             </div>
                                                                         ) : (
-                                                                            <div className="text-[10px] text-gray-500 italic bg-black/40 p-2 rounded border border-gray-800">
-                                                                                Render shot video to inspect exact compiled prompt &amp; multimodal payload.
+                                                                            <div>
+                                                                                <span className="font-bold text-cyan-400 block mb-1 text-[11px]">📜 Formatted Timecoded Prompt Structure (Omni Flash Preview):</span>
+                                                                                <pre className="bg-black/90 p-3 rounded-lg border border-cyan-900/60 text-[10px] text-cyan-200 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed custom-scrollbar">
+{`[CONTINUOUS SHOT & CAMERA CONTROL]
+Camera Transition: ${shot.camera_transition || "Continuous match cut from preceding shot"}
+Character Continuity: ${shot.character_continuity || "Maintain subject outfit, posture, and facial expression"}
+
+[CHARACTER ROSTER & REFERENCE INDEX]
+${(characters || []).map(c => `- ${c.role_id || "Role A"} (${c.name || "Unnamed"}): ${c.description || "Visual profile"}`).join("\n") || "- Role A: Primary Subject"}
+
+[TIMECODED ACTION & AUDIO DIRECTIVES]
+${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s] Action: Subject movement."}`}
+                                                                                </pre>
+                                                                                <div className="text-[10px] text-gray-500 italic bg-black/40 p-2 mt-1 rounded border border-gray-800 flex items-center justify-between">
+                                                                                    <span>💡 Formatted according to Gemini Omni Flash Timecode Syntax.</span>
+                                                                                    <span>Render shot video to inspect exact compiled payload.</span>
+                                                                                </div>
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -3051,11 +3105,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                     />
                                                                 </div>
                                                                 <div>
-                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5">1. Action / Subject</label>
+                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5 flex items-center justify-between">
+                                                                        <span>1. Action / Subject (Timecoded Omni Flash Syntax)</span>
+                                                                        <span className="text-[9px] text-gray-500 font-mono">[0-3s] Action: ... Audio: ... Dialogue: ...</span>
+                                                                    </label>
                                                                     <textarea
                                                                         rows={4}
                                                                         value={shot.action || ""}
                                                                         onChange={(e) => updateStageShot(idx, "action", e.target.value)}
+                                                                        placeholder={`e.g. [0-3s] Action: Spectacled Wizard Bruv enters courtyard. Audio: Heavy 808 trap intro. Dialogue: "I been cooking potions."\n[3-6s] Action: Dynamic zoom on glowing wand. Audio: Snare trills.`}
                                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-gray-200 focus:outline-none focus:border-pink-500 text-xs font-mono leading-relaxed"
                                                                     />
                                                                 </div>
@@ -3100,12 +3158,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                         />
                                                                     </div>
                                                                     <div>
-                                                                        <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">5. Audio Soundscape</label>
+                                                                        <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">5. Audio Soundscape (Timecoded Audio Blocks)</label>
                                                                         <input
                                                                             type="text"
                                                                             value={shot.audio || ""}
                                                                             onChange={(e) => updateStageShot(idx, "audio", e.target.value)}
-                                                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-xs"
+                                                                            placeholder="e.g. [0-3s] 140 BPM Trap Beat Intro | [3-10s] Heavy 808 Sub-Bass & Crisp Snares"
+                                                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-xs font-mono"
                                                                         />
                                                                     </div>
                                                                 </div>
