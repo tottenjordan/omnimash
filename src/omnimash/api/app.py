@@ -396,6 +396,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stageRefImage, setStageRefImage] = useState("");
             const [stageRefAudio, setStageRefAudio] = useState("");
             const [screenplayScript, setScreenplayScript] = useState("");
+            const [showScreenplayModal, setShowScreenplayModal] = useState(false);
             const [keyframeLoadingMap, setKeyframeLoadingMap] = useState({});
             const [shotGeneratingMap, setShotGeneratingMap] = useState({});
             const [shotDiffPrompts, setShotDiffPrompts] = useState({});
@@ -439,6 +440,21 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stageSaveLoading, setStageSaveLoading] = useState(false);
             const [isBatchGeneratingVideos, setIsBatchGeneratingVideos] = useState(false);
             const [batchVideoProgress, setBatchVideoProgress] = useState({ current: 0, total: 0, activeShotIndex: 0 });
+
+            const getShotTimecodeRange = (shots, idx) => {
+                if (!shots || idx < 0 || idx >= shots.length) return "0:00 - 0:10";
+                let start = 0;
+                for (let i = 0; i < idx; i++) {
+                    start += shots[i].duration_seconds || 10;
+                }
+                const end = start + (shots[idx].duration_seconds || 10);
+                const format = (sec) => {
+                    const m = Math.floor(sec / 60);
+                    const s = Math.floor(sec % 60);
+                    return `${m}:${s < 10 ? "0" : ""}${s}`;
+                };
+                return `${format(start)} - ${format(end)}`;
+            };
 
             // Handlers for 4-Stage Journey
             const handleExpandStoryboard = async () => {
@@ -2769,6 +2785,14 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <div className="flex items-center space-x-2">
                                                 <button
                                                     type="button"
+                                                    onClick={() => setShowScreenplayModal(true)}
+                                                    className="bg-amber-950/80 hover:bg-amber-900 border border-amber-700 text-amber-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
+                                                >
+                                                    <span>📜</span>
+                                                    <span>View Master Screenplay &amp; Notes</span>
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     onClick={() => handleGenerateAllKeyframes()}
                                                     className="bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5"
                                                     title="Generate keyframe images for all shot cards concurrently"
@@ -2844,9 +2868,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         <div className="bg-gray-900 border border-purple-900/60 rounded-2xl p-5 shadow-2xl space-y-4">
                                                             {/* Shot Workstation Header */}
                                                             <div className="flex flex-wrap items-center justify-between border-b border-gray-800 pb-3 gap-2">
-                                                                <div className="flex items-center gap-2">
+                                                                <div className="flex flex-wrap items-center gap-2">
                                                                     <span className="text-sm font-extrabold text-amber-300 bg-amber-950 px-3 py-1 rounded-xl border border-amber-700">
                                                                         Shot #{sNum} of {stageShots.length} ({shot.duration_seconds || 10}s)
+                                                                    </span>
+                                                                    <span className="text-xs font-mono font-extrabold text-amber-200 bg-black/60 px-2.5 py-1 rounded-xl border border-amber-800/80 flex items-center gap-1">
+                                                                        <span>⏱️</span>
+                                                                        <span>{getShotTimecodeRange(stageShots, idx)}</span>
                                                                     </span>
                                                                     <span className="text-xs font-bold text-cyan-300 bg-cyan-950 px-2.5 py-1 rounded-lg border border-cyan-800">
                                                                         🎭 {shot.narrative_stage || "Rising Action"}
@@ -3684,6 +3712,60 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </div>
                                             ))}
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Screenplay & Director's Notes Master Modal */}
+                        {showScreenplayModal && (
+                            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                                <div className="bg-gray-900 border border-amber-500/60 rounded-3xl p-6 max-w-3xl w-full shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+                                    <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xl">📜</span>
+                                            <h3 className="text-base font-extrabold text-amber-300">Master Timecoded Screenplay &amp; Director's Notes</h3>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowScreenplayModal(false)}
+                                            className="text-gray-400 hover:text-white text-lg font-black px-2 py-1"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+                                        <div className="bg-black/60 border border-amber-900/60 rounded-xl p-3 text-xs text-amber-200 font-mono">
+                                            <span className="font-bold text-amber-400">💡 Tip:</span> You can edit your master screenplay below at any time, then click <span className="font-bold text-orange-400">"Re-expand Screenplay to Shots"</span> to re-sync all shot cards.
+                                        </div>
+                                        <textarea
+                                            rows={12}
+                                            value={screenplayScript}
+                                            onChange={(e) => setScreenplayScript(e.target.value)}
+                                            placeholder="[DIRECTOR'S NOTES]..."
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-xl p-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between border-t border-gray-800 pt-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowScreenplayModal(false)}
+                                            className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold px-4 py-2 rounded-xl transition"
+                                        >
+                                            Close
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={expandLoading}
+                                            onClick={() => {
+                                                setShowScreenplayModal(false);
+                                                handleExpandStoryboard();
+                                            }}
+                                            className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-lg transition flex items-center gap-1.5"
+                                        >
+                                            <span>🚀</span>
+                                            <span>{expandLoading ? "Re-expanding..." : "Re-expand Screenplay to Shots"}</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
