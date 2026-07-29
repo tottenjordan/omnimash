@@ -454,6 +454,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         setLastError(data.error);
                     } else if (data && data.shots && data.shots.length > 0) {
                         setStageShots(data.shots);
+                        setActiveShotIdx(0);
                         setActiveStage(2);
                         setTimeout(() => {
                             handleGenerateAllKeyframes(data.shots);
@@ -468,6 +469,7 @@ UI_HTML = r"""<!DOCTYPE html>
             };
 
             const handleGenerateKeyframeImage = async (idx, shot) => {
+                if (!shot) return null;
                 const shotIdx = shot.shot_index || (idx + 1);
                 setKeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
@@ -2757,9 +2759,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                                             {/* LEFT / MAIN COLUMN: Active Shot Editor Workstation (7/12) */}
                                             <div className="lg:col-span-7 space-y-5">
-                                                {stageShots[activeShotIdx] && (() => {
-                                                    const idx = activeShotIdx;
+                                                {(() => {
+                                                    const idx = Math.min(activeShotIdx, Math.max(0, stageShots.length - 1));
                                                     const shot = stageShots[idx];
+                                                    if (!shot) return null;
                                                     const sNum = shot.shot_index || (idx + 1);
 
                                                     return (
