@@ -1,5 +1,5 @@
 from omnimash.agent.orchestrator import OmniMashAgent, build_adk_agent
-from omnimash.prompts.compiler import CharacterRole
+from omnimash.prompts.compiler import CharacterRole, get_character_identifier
 
 
 def test_agent_initial_creation_flow():
@@ -248,7 +248,7 @@ def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
     assert res.success is True
     assert res.raw_compiled_prompt is not None
     assert "### TIMELINE" in res.raw_compiled_prompt
-    assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in res.raw_compiled_prompt
+    assert f"- Scene 1 [{get_character_identifier(chars[0])}, {get_character_identifier(chars[1])}] (Screenplay Script):" in res.raw_compiled_prompt
     assert '  Spectacled Wizard Bruv: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
 
 

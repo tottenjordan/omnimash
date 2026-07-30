@@ -146,7 +146,7 @@ def test_character_role_specific_aesthetic_tags():
     )
     assert get_character_identifier(chars[0]) in prompt
     assert "Red Gucci Tracksuit" in prompt
-    assert "[Image 1: Role A - Spectacled Wizard Bruv] = [Character Reference]" in prompt
+    assert f"[Image 1: {get_character_identifier(chars[0])}] = [Character Reference]" in prompt
 
 
 def test_compile_storyboard_with_audio_and_vocal_direction():
@@ -466,10 +466,10 @@ def test_compile_multi_role_prompt_with_screenplay_text():
 
     assert f"- Scene 1 [{get_character_identifier(chars[0])}, {get_character_identifier(chars[1])}] (Screenplay Script):" in prompt
     assert (
-        f'  {get_character_identifier(chars[0])}: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard Bruv!"'
+        '  Gothic Potion Master Fam: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard Bruv!"'
         in prompt
     )
-    assert f'  {get_character_identifier(chars[1])}: (Bopping head to 120 BPM beat.) "No!"' in prompt
+    assert '  Spectacled Wizard Bruv: (Bopping head to 120 BPM beat.) "No!"' in prompt
     assert "Scene 1 Audio Cues:" in prompt
 
 
