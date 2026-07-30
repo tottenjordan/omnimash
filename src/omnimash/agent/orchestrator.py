@@ -184,7 +184,7 @@ class OmniMashAgent:
         session_name: str | None = None,
         concept: str | None = None,
         characters: list[Any] | None = None,
-        scenes: list[dict] | None = None,
+        scenes: list[Any] | None = None,
         aesthetic_tags: list[str] | None = None,
         environment_tag: str | None = None,
         vocal_delivery: str | None = None,

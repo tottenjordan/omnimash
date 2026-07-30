@@ -509,6 +509,37 @@ def test_generate_shot_uses_custom_audio_soundscape(monkeypatch):
     assert "90s 808 Trap Beat" not in data.get("raw_compiled_prompt", "")
 
 
+def test_generate_shot_compiles_four_block_prompt():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/generate-shot",
+        json={
+            "session_name": "four_block_test_session",
+            "shot_index": 1,
+            "action": "Harry preparing potions in foggy courtyard",
+            "style_lighting": "Gothic neon trap lighting",
+            "duration_seconds": 10.0,
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Harry",
+                    "description": "Young wizard",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    compiled = data.get("raw_compiled_prompt", "")
+    assert "### SCENE INSTRUCTIONS" in compiled
+    assert "### TIMELINE" in compiled
+    assert "[0-10s]" in compiled
+    assert "[SHOT DIRECTIVE]" not in compiled
+
+
+
 
 
 
