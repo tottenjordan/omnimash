@@ -802,13 +802,20 @@ def test_four_block_official_image_ref_tags():
     assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in full_prompt
 
     # Verify character profile binding format
-    assert "- Role A - Snape Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in full_prompt
+    assert "- Role A - Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in full_prompt
     assert "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round wire-rim glasses" in full_prompt
     assert "- Role C - Dungeon Corridor <FIRST_FRAME>: Starting frame of stone dungeon corridor" in full_prompt
 
     # Verify timeline actions include <IMAGE_REF_N> tags
     assert "<IMAGE_REF_0>" in full_prompt
     assert "<IMAGE_REF_1>" in full_prompt
+
+
+def test_sanitize_real_names_pop_culture_keywords():
+    text = "Snape Dawg, Draco, Voldemort, and Hogwarts."
+    sanitized = sanitize_real_names(text)
+    assert sanitized == "Potion Master Dawg, Rival Wizard, Dark Sorcerer, and Academy Hall."
+
 
 
 

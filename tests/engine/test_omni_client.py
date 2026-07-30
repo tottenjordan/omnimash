@@ -1338,7 +1338,7 @@ def test_four_block_official_image_ref_tags() -> None:
     assert "### INPUT ROLES" in text_val
     assert "[# Sources <FIRST_FRAME>@Image1]" in text_val
     assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in text_val
-    assert "- Role A - Snape Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in text_val
+    assert "- Role A - Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in text_val
     assert "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round glasses" in text_val
 
 
