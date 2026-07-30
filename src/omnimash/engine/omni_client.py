@@ -2,6 +2,7 @@ import base64
 import logging
 import math
 import os
+import re
 import struct
 import subprocess
 from typing import Any
@@ -11,7 +12,12 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import parse_qs, quote, urlparse
 from omnimash.config import settings
-from omnimash.prompts.compiler import CharacterRole, get_character_identifier, sanitize_real_names
+from omnimash.prompts.compiler import (
+    CharacterRole,
+    build_character_image_ref_tags,
+    get_character_identifier,
+    sanitize_real_names,
+)
 from omnimash.storage.gcs import GcsStorageManager
 
 logger = logging.getLogger("omnimash.engine")
@@ -709,49 +715,24 @@ class OmniFlashClient:
                     }
                 )
 
-        start_ref_idx = 2 if keyframe_image_parts else 1
+        has_kf_seed = bool(keyframe_image_parts)
+        start_ref_idx = 2 if has_kf_seed else 1
         ref_image_parts, char_img_map = self._load_reference_images_as_input(
             session_id, characters, starting_index=start_ref_idx
         )
         all_image_parts = keyframe_image_parts + ref_image_parts
 
+        sources_items, references_items, char_tag_map = build_character_image_ref_tags(
+            characters=characters,
+            starting_index=start_ref_idx,
+            has_keyframe_seed=has_kf_seed,
+        )
+
         input_roles_lines: list[str] = []
-        if keyframe_image_parts:
-            input_roles_lines.append(
-                "[Image 1: Keyframe Seed Anchor] = [Starting Frame]"
-            )
-
-        if characters:
-            for c in characters:
-                role_id = (
-                    getattr(c, "role_id", "")
-                    if not isinstance(c, dict)
-                    else c.get("role_id", "")
-                )
-                name = (
-                    getattr(c, "name", "")
-                    if not isinstance(c, dict)
-                    else c.get("name", "")
-                )
-                ref_url = (
-                    getattr(c, "reference_url", None)
-                    if not isinstance(c, dict)
-                    else c.get("reference_url")
-                )
-                if not ref_url or not isinstance(ref_url, str):
-                    continue
-
-                char_id = get_character_identifier(c)
-                img_idx = char_img_map.get(char_id) or char_img_map.get(role_id) or char_img_map.get(name)
-                if img_idx:
-                    img_role = (
-                        getattr(c, "image_role", "Character Reference")
-                        if not isinstance(c, dict)
-                        else c.get("image_role", "Character Reference")
-                    ) or "Character Reference"
-                    input_roles_lines.append(
-                        f"[Image {img_idx}: {char_id}] = [{img_role}]"
-                    )
+        if sources_items:
+            input_roles_lines.append(f"[# Sources {' '.join(sources_items)}]")
+        if references_items:
+            input_roles_lines.append(f"[# References {' '.join(references_items)}]")
 
         input_roles_header = ""
         if input_roles_lines:
@@ -780,28 +761,37 @@ class OmniFlashClient:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in characters:
                 char_id = get_character_identifier(c)
-                role_id = getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "")
-                name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
                 desc = getattr(c, "description", "") if not isinstance(c, dict) else c.get("description", "")
                 raw_tags = getattr(c, "aesthetic_tags", None) if not isinstance(c, dict) else c.get("aesthetic_tags")
                 str_tags: list[str] = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
                 tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
 
-                img_idx = char_img_map.get(char_id) or char_img_map.get(role_id) or char_img_map.get(name)
-                ref_str = (
-                    f" [Visual Reference: Attached Image #{img_idx}]"
-                    if img_idx
-                    else ""
-                )
-                char_lines.append(f"- {char_id}: {desc}{tag_str}{ref_str}")
+                tag = char_tag_map.get(char_id)
+                tag_ref_str = f" {tag}" if tag else ""
+
+                char_lines.append(f"- {char_id}{tag_ref_str}: {desc}{tag_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
+
+        clean_prompt = sanitize_real_names(prompt) if prompt else ""
+
+        if "### INPUT ROLES" in clean_prompt and input_roles_header:
+            clean_prompt = re.sub(
+                r"### INPUT ROLES\n.*?\n\n",
+                input_roles_header,
+                clean_prompt,
+                flags=re.DOTALL,
+            )
+            input_roles_header = ""
+
+        if "# Character Roster & Visual Directives:" in clean_prompt or "### CHARACTER PROFILES" in clean_prompt:
+            character_roster_header = ""
 
         sanitized_input = (
             input_roles_header
             + tone_header
             + notes_header
             + character_roster_header
-            + (sanitize_real_names(prompt) if prompt else "")
+            + clean_prompt
         )
 
         if all_image_parts:
