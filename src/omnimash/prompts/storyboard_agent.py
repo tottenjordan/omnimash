@@ -61,6 +61,55 @@ def _slice_lines(lines: list[str], chunk_idx: int, num_chunks: int) -> list[str]
     return lines[start:end]
 
 
+_RESERVED_KEYWORD_SET = {
+    "ACTION",
+    "DIALOGUE",
+    "AUDIO",
+    "SOUND",
+    "MUSIC",
+    "SOUND DESIGN",
+    "BACKGROUND AUDIO",
+    "AUDIO CUES",
+    "CAMERA",
+    "LOCATION",
+    "LIGHTING",
+    "STYLE",
+    "NOTE",
+    "NOTES",
+    "DIRECTOR'S NOTES",
+    "DIRECTORS NOTES",
+    "VISUAL",
+    "SHOT",
+}
+
+
+def _extract_character_dialogue(text: str) -> tuple[str, str | None]:
+    """Extracts character dialogue from a line or action text if present.
+
+    Returns (action_text, dialogue_text).
+    If dialogue is found, action_text is the remaining action text before dialogue (or empty),
+    and dialogue_text is 'Character Name: Dialogue...'.
+    """
+    if not text or not text.strip():
+        return text.strip(), None
+
+    pattern = re.compile(
+        r"(?:^|(?<=[\.\?\!])\s+)"
+        r"([A-Za-z0-9_\s\-\(\)\']+):\s*"
+        r"([\"'].*[\"']|[^\n]+)$"
+    )
+    match = pattern.search(text.strip())
+    if match:
+        char_name = match.group(1).strip()
+        if char_name.upper() not in _RESERVED_KEYWORD_SET and len(char_name) <= 60:
+            start_pos = match.start(1)
+            action_part = text.strip()[:start_pos].strip()
+            dialogue_part = text.strip()[start_pos:].strip()
+            return action_part, dialogue_part
+
+    return text.strip(), None
+
+
 def parse_timecoded_script(
     script_text: str, default_duration: float = 30.0
 ) -> list[dict[str, Any]]:
@@ -125,7 +174,12 @@ def parse_timecoded_script(
                 continue
             line_upper = line_str.upper()
             if line_upper.startswith("ACTION:"):
-                action_lines.append(line_str[7:].strip())
+                raw_act = line_str[7:].strip()
+                act_part, diag_part = _extract_character_dialogue(raw_act)
+                if act_part:
+                    action_lines.append(act_part)
+                if diag_part:
+                    dialogue_lines.append(diag_part)
             elif line_upper.startswith("DIALOGUE:"):
                 dialogue_lines.append(line_str[9:].strip())
             elif line_upper.startswith(
@@ -136,28 +190,38 @@ def parse_timecoded_script(
             elif line_str.startswith('"') and line_str.endswith('"'):
                 dialogue_lines.append(line_str.strip('"'))
             else:
-                inline_match = re.search(
-                    r"(ACTION|DIALOGUE|AUDIO|SOUND|MUSIC):\s*", line_str, re.IGNORECASE
-                )
-                if inline_match:
-                    sections = re.split(
-                        r"(ACTION|DIALOGUE|AUDIO|SOUND|MUSIC):\s*",
-                        line_str,
-                        flags=re.IGNORECASE,
-                    )
-                    j = 1
-                    while j < len(sections) - 1:
-                        key = sections[j].upper()
-                        val = sections[j + 1].strip()
-                        if key == "ACTION":
-                            action_lines.append(val)
-                        elif key == "DIALOGUE":
-                            dialogue_lines.append(val)
-                        elif key in ("AUDIO", "SOUND", "MUSIC"):
-                            audio_lines.append(val)
-                        j += 2
+                act_part, diag_part = _extract_character_dialogue(line_str)
+                if diag_part:
+                    if act_part:
+                        action_lines.append(act_part)
+                    dialogue_lines.append(diag_part)
                 else:
-                    action_lines.append(line_str)
+                    inline_match = re.search(
+                        r"(ACTION|DIALOGUE|AUDIO|SOUND|MUSIC):\s*", line_str, re.IGNORECASE
+                    )
+                    if inline_match:
+                        sections = re.split(
+                            r"(ACTION|DIALOGUE|AUDIO|SOUND|MUSIC):\s*",
+                            line_str,
+                            flags=re.IGNORECASE,
+                        )
+                        j = 1
+                        while j < len(sections) - 1:
+                            key = sections[j].upper()
+                            val = sections[j + 1].strip()
+                            if key == "ACTION":
+                                val_act, val_diag = _extract_character_dialogue(val)
+                                if val_act:
+                                    action_lines.append(val_act)
+                                if val_diag:
+                                    dialogue_lines.append(val_diag)
+                            elif key == "DIALOGUE":
+                                dialogue_lines.append(val)
+                            elif key in ("AUDIO", "SOUND", "MUSIC"):
+                                audio_lines.append(val)
+                            j += 2
+                    else:
+                        action_lines.append(line_str)
 
         if total_duration > 10.0:
             num_chunks = int(math.ceil(total_duration / 10.0))
@@ -173,13 +237,21 @@ def parse_timecoded_script(
                 chunk_dialogue_lines = _slice_lines(dialogue_lines, k, num_chunks)
                 chunk_audio_lines = _slice_lines(audio_lines, k, num_chunks)
 
-                action_text = "\n".join(chunk_action_lines).strip() if chunk_action_lines else block
+                action_text = (
+                    "\n".join(chunk_action_lines).strip()
+                    if chunk_action_lines
+                    else (block if not dialogue_lines and not audio_lines else "")
+                )
                 dialogue_text = "\n".join(chunk_dialogue_lines).strip()
                 audio_text = "\n".join(chunk_audio_lines).strip()
                 summary_text = (
                     chunk_action_lines[0]
                     if chunk_action_lines
-                    else (action_lines[0] if action_lines else f"Shot {len(results) + 1}")
+                    else (
+                        chunk_dialogue_lines[0]
+                        if chunk_dialogue_lines
+                        else (action_lines[0] if action_lines else f"Shot {len(results) + 1}")
+                    )
                 )
 
                 results.append(
@@ -200,13 +272,21 @@ def parse_timecoded_script(
             end_str = f"{int(end_t) if end_t.is_integer() else end_t}"
             tc_label = f"[{start_str}-{end_str}s]"
 
-            action_text = "\n".join(action_lines).strip() if action_lines else block
+            action_text = (
+                "\n".join(action_lines).strip()
+                if action_lines
+                else (block if not dialogue_lines and not audio_lines else "")
+            )
             dialogue_text = "\n".join(dialogue_lines).strip()
             audio_text = "\n".join(audio_lines).strip()
             summary_text = (
                 action_lines[0]
                 if action_lines
-                else (block.splitlines()[0] if block else f"Shot {len(results) + 1}")
+                else (
+                    dialogue_lines[0]
+                    if dialogue_lines
+                    else (block.splitlines()[0] if block else f"Shot {len(results) + 1}")
+                )
             )
 
             results.append(

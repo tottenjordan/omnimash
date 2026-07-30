@@ -424,6 +424,32 @@ def test_expand_vision_splits_long_script_into_10s_shots():
     assert shots_45s[4].end_seconds == 45.0
 
 
+def test_parse_timecoded_script_character_dialogue_extraction():
+    script_text = (
+        '[0-5s] Action: Establishing shot of Hogwarts courtyard. Yo Totti: "It\'s time to go wholesale from sorcerer stones to sorcerer BRICKS."\n'
+        '[5-10s] Action: Swagrid heaves black duffel bag. Swagrid: "Your cut from before. What\'s the first move?"'
+    )
+    parsed = parse_timecoded_script(script_text)
+    assert len(parsed) == 2
+    assert parsed[0]["duration_seconds"] == 5.0
+    assert (
+        parsed[0]["dialogue"]
+        == 'Yo Totti: "It\'s time to go wholesale from sorcerer stones to sorcerer BRICKS."'
+    )
+    assert parsed[0]["action"] == "Establishing shot of Hogwarts courtyard."
+    assert "Yo Totti:" not in parsed[0]["action"]
+    assert "sorcerer BRICKS" not in parsed[0]["action"]
+
+    assert parsed[1]["duration_seconds"] == 5.0
+    assert (
+        parsed[1]["dialogue"]
+        == 'Swagrid: "Your cut from before. What\'s the first move?"'
+    )
+    assert parsed[1]["action"] == "Swagrid heaves black duffel bag."
+    assert "What's the first move" not in parsed[1]["action"]
+
+
+
 
 
 
