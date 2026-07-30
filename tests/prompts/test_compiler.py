@@ -884,6 +884,39 @@ def test_compile_storyboard_preserves_shot_audio_soundscape():
     assert "90s 808 Trap Beat" not in compiled
 
 
+def test_compile_storyboard_single_shot_directive():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Harry",
+            description="Young wizard with round glasses",
+            aesthetic_tags=["Red Gucci Tracksuit"],
+        )
+    ]
+    scene = SceneDirective(
+        scene_number=1,
+        active_roles=["Role A"],
+        action="Cooking potions in Hogwarts dungeon",
+        dialogue="I been cooking potions all day.",
+    )
+    compiled = compiler.compile_storyboard(
+        concept="Harry brewing potions",
+        characters=chars,
+        scenes=[scene],
+        aesthetic_tags=["90s Trap Video"],
+        environment_tag="Hogwarts Dungeon",
+    )
+    assert "### INPUT ROLES" in compiled
+    assert "### CHARACTER PROFILES" in compiled
+    assert "### SCENE INSTRUCTIONS" in compiled
+    assert "### TIMELINE" in compiled
+    assert "[0-10s]" in compiled
+    assert "Cooking potions in" in compiled
+    assert 'Dialogue: "I been cooking potions all day."' in compiled
+
+
+
 
 
 

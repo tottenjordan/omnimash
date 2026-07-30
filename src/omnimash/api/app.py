@@ -11,7 +11,11 @@ from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
-from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
+from omnimash.prompts.compiler import (
+    CharacterRole,
+    SceneDirective,
+    sanitize_real_names,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +177,11 @@ class GenerateShotRequest(BaseModel):
     session_name: str | None = "parody_session_1"
     shot_index: int = 1
     shot_directive: str = ""
+    action: str = ""
+    location: str = ""
+    framing_motion: str = ""
+    audio: str = ""
+    dialogue: str = ""
     characters: list[CharacterRoleModel | dict] | None = None
     duration_seconds: float = 10.0
     parent_turn_id: str | None = None
@@ -562,14 +571,6 @@ UI_HTML = r"""<!DOCTYPE html>
                 setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
                 try {
-                    let directive = `[SHOT DIRECTIVE: Shot ${shotIdx}]\n- Action / Subject: ${shot.action || ""}\n- Location: ${shot.location || ""}\n- Style & Lighting: ${shot.style_lighting || ""}\n- Framing & Motion: ${shot.framing_motion || ""}\n- Audio Soundscape: ${shot.audio || ""}`;
-                    if (shot.dialogue && shot.dialogue.trim()) {
-                        directive += `\n- Dialogue / Text Overlay: "${shot.dialogue.trim()}"`;
-                    }
-                    const precContext = shot.preceding_context || (idx > 0 && stageShots[idx - 1] ? (stageShots[idx - 1].action || stageShots[idx - 1].summary) : "");
-                    if (shotIdx > 1 || precContext) {
-                        directive += `\n\n[SCENE CONTINUATION & VISUAL FLOW]\n- Story Arc Phase: ${shot.narrative_stage || "Rising Action"}\n- Preceding Shot Context (Shot #${shotIdx - 1}): ${precContext || "Direct visual continuation from previous scene"}\n- Camera & Scene Transition: ${shot.camera_transition || "Continuous match cut"}\n- Character Continuity: ${shot.character_continuity || "Maintain subject outfit, posture, and facial expression from preceding shot"}`;
-                    }
                     const parentTurnId = parentIdOverride || (idx > 0 && stageShots[idx - 1] ? stageShots[idx - 1].turn_id : null);
                     const res = await fetch("/api/generate-shot", {
                         method: "POST",
@@ -577,8 +578,12 @@ UI_HTML = r"""<!DOCTYPE html>
                         body: JSON.stringify({
                             session_name: sessionName,
                             shot_index: shotIdx,
-                            shot_directive: directive,
+                            action: shot.action || shot.summary || "",
+                            location: shot.location || "",
                             style_lighting: shot.style_lighting || stageStyleTone || "",
+                            framing_motion: shot.framing_motion || "",
+                            audio: shot.audio || "",
+                            dialogue: shot.dialogue || "",
                             keyframe_image_url: shot.keyframe_image_url || shot.image_url || null,
                             characters: characters,
                             duration_seconds: parseFloat(shot.duration_seconds) || 10.0,
@@ -4564,53 +4569,142 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
         return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
 
+    def parse_shot_directive_if_needed(req: GenerateShotRequest) -> tuple[str, str, str, str, str, str]:
+        action = req.action or ""
+        dialogue = req.dialogue or ""
+        audio = req.audio or req.audio_stem or ""
+        location = req.location or ""
+        style_lighting = req.style_lighting or ""
+        framing_motion = req.framing_motion or ""
+
+        if req.shot_directive and req.shot_directive.strip():
+            sd = req.shot_directive.strip()
+            if not action:
+                match_act = re.search(r"-\s*Action\s*/\s*Subject:\s*(.*)", sd, re.IGNORECASE)
+                if match_act and match_act.group(1).strip():
+                    action = match_act.group(1).strip()
+                elif not sd.startswith("[SHOT DIRECTIVE") and not sd.startswith("- "):
+                    action = sd
+            if not dialogue:
+                match_diag = re.search(r"-\s*(?:Dialogue\s*/\s*Text\s*Overlay|Dialogue|Voiceover):\s*(.*)", sd, re.IGNORECASE)
+                if match_diag and match_diag.group(1).strip():
+                    dialogue = match_diag.group(1).strip()
+                    if (dialogue.startswith('"') and dialogue.endswith('"')) or (dialogue.startswith("'") and dialogue.endswith("'")):
+                        dialogue = dialogue[1:-1].strip()
+            if not audio:
+                match_aud = re.search(r"-\s*Audio\s*Soundscape:\s*(.*)", sd, re.IGNORECASE)
+                if match_aud and match_aud.group(1).strip():
+                    audio = match_aud.group(1).strip()
+            if not location:
+                match_loc = re.search(r"-\s*Location:\s*(.*)", sd, re.IGNORECASE)
+                if match_loc and match_loc.group(1).strip():
+                    location = match_loc.group(1).strip()
+            if not style_lighting:
+                match_style = re.search(r"-\s*Style\s*&\s*Lighting:\s*(.*)", sd, re.IGNORECASE)
+                if match_style and match_style.group(1).strip():
+                    style_lighting = match_style.group(1).strip()
+            if not framing_motion:
+                match_frame = re.search(r"-\s*Framing\s*&\s*Motion:\s*(.*)", sd, re.IGNORECASE)
+                if match_frame and match_frame.group(1).strip():
+                    framing_motion = match_frame.group(1).strip()
+
+        if not action:
+            action = f"Shot {req.shot_index} action"
+
+        return action, dialogue, audio, location, style_lighting, framing_motion
+
     @app.post("/api/generate-shot", response_model=GenerateShotResponse)
     def generate_shot(req: GenerateShotRequest) -> GenerateShotResponse:
         sanitized_directive = sanitize_real_names(req.shot_directive)
         keyframe_url = req.keyframe_image_url
 
-        voiceover_text: str | None = None
-        if sanitized_directive:
-            match = re.search(
-                r"-\s*(?:Dialogue\s*/\s*Text\s*Overlay|Dialogue|Voiceover):\s*(.*)",
-                sanitized_directive,
-                re.IGNORECASE,
-            )
-            if match:
-                raw_vo = match.group(1).strip()
-                if (raw_vo.startswith('"') and raw_vo.endswith('"')) or (
-                    raw_vo.startswith("'") and raw_vo.endswith("'")
-                ):
-                    raw_vo = raw_vo[1:-1].strip()
-                if raw_vo:
-                    voiceover_text = raw_vo
+        action_val, dialogue_val, audio_val, location_val, style_lighting_val, framing_motion_val = parse_shot_directive_if_needed(req)
+        audio_stem_val = audio_val or req.audio_stem
 
-        audio_soundscape: str | None = None
-        if sanitized_directive:
-            match_audio = re.search(
-                r"-\s*Audio\s*Soundscape:\s*(.*)",
-                sanitized_directive,
-                re.IGNORECASE,
-            )
-            if match_audio:
-                raw_audio = match_audio.group(1).strip()
-                if raw_audio:
-                    audio_soundscape = raw_audio
+        char_objs: list[CharacterRole] = []
+        ref_urls: list[str] = []
+        if req.characters:
+            for c in req.characters:
+                ref = c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None)
+                if ref and ref not in ref_urls:
+                    ref_urls.append(ref)
+                if isinstance(c, CharacterRole):
+                    char_objs.append(c)
+                elif isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", ""),
+                            name=sanitize_real_names(c.get("name", "")),
+                            description=sanitize_real_names(c.get("description", "")),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
+                            voice_style=sanitize_real_names(c.get("voice_style", "")),
+                            voice_profile=sanitize_real_names(c.get("voice_profile", "")),
+                            image_role=c.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=c.get("is_offscreen_narrator", False),
+                        )
+                    )
+                elif hasattr(c, "model_dump"):
+                    cd = c.model_dump()
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=cd.get("role_id", ""),
+                            name=sanitize_real_names(cd.get("name", "")),
+                            description=sanitize_real_names(cd.get("description", "")),
+                            reference_url=cd.get("reference_url"),
+                            aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
+                            voice_style=sanitize_real_names(cd.get("voice_style", "")),
+                            voice_profile=sanitize_real_names(cd.get("voice_profile", "")),
+                            image_role=cd.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
+                        )
+                    )
+                elif hasattr(c, "role_id"):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=getattr(c, "role_id", ""),
+                            name=sanitize_real_names(getattr(c, "name", "")),
+                            description=sanitize_real_names(getattr(c, "description", "")),
+                            reference_url=getattr(c, "reference_url", None),
+                            aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
+                            voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
+                            voice_profile=sanitize_real_names(getattr(c, "voice_profile", "")),
+                            image_role=getattr(c, "image_role", "Character Reference"),
+                            is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
+                        )
+                    )
 
-        audio_stem_val = audio_soundscape or req.audio_stem
+        active_roles: list[str] = []
+        if char_objs:
+            active_roles = [c.role_id or c.name for c in char_objs if c.role_id or c.name]
+        if not active_roles:
+            active_roles = ["Role A"]
+
+        scene_directive = SceneDirective(
+            scene_number=req.shot_index,
+            active_roles=active_roles,
+            action=action_val,
+            dialogue=dialogue_val,
+            duration_seconds=req.duration_seconds,
+        )
+
+        aesthetic_tags = [t for t in [style_lighting_val or req.style_lighting, framing_motion_val] if t and t.strip()]
+
+        compiled_prompt = agent.taxonomy.compiler.compile_storyboard(
+            concept=action_val,
+            characters=char_objs,
+            scenes=[scene_directive],
+            aesthetic_tags=aesthetic_tags if aesthetic_tags else None,
+            environment_tag=location_val if location_val.strip() else None,
+            audio_beat=audio_stem_val,
+        )
 
         # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor
-        if not keyframe_url and sanitized_directive:
-            ref_urls: list[str] = []
-            if req.characters:
-                for c in req.characters:
-                    ref = c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None)
-                    if ref and ref not in ref_urls:
-                        ref_urls.append(ref)
+        if not keyframe_url and (action_val or sanitized_directive):
             try:
                 keyframe_url = agent.omni_client.generate_keyframe_image(
-                    sanitized_directive,
-                    style_tone=req.style_lighting,
+                    action_val or sanitized_directive,
+                    style_tone=req.style_lighting or style_lighting_val,
                     reference_image_urls=ref_urls,
                     characters=req.characters,
                 )
@@ -4620,15 +4714,17 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         agent_turn = agent.process_user_turn(
             user_id="usr_default",
             project_id="prj_default",
-            prompt=sanitized_directive,
+            prompt=action_val or sanitized_directive,
+            compiled_override=compiled_prompt,
             parent_turn_id=req.parent_turn_id,
             clip_index=req.shot_index,
             duration_seconds=req.duration_seconds,
             is_conversational_edit=False,
             session_name=req.session_name,
             characters=req.characters,
+            scenes=[scene_directive],
             keyframe_image_url=keyframe_url,
-            voiceover=voiceover_text,
+            voiceover=dialogue_val if dialogue_val else None,
             audio_stem=audio_stem_val,
         )
         return GenerateShotResponse(
@@ -4639,7 +4735,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             status=agent_turn.status_event,
             generation_mode=getattr(agent_turn, "generation_mode", "LIVE_OMNI_FLASH"),
             error=agent_turn.error_message,
-            raw_compiled_prompt=agent_turn.raw_compiled_prompt,
+            raw_compiled_prompt=agent_turn.raw_compiled_prompt or compiled_prompt,
         )
 
     @app.post("/api/stitch-clips", response_model=SaveFinalResponse)

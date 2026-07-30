@@ -326,6 +326,8 @@ class SceneDirective:
     dialogue: str = ""
     screenplay_text: str | None = None
     audio_cues: str = ""
+    timecode: str = ""
+    duration_seconds: float = 10.0
 
 
 @dataclass
@@ -1402,6 +1404,24 @@ class PromptCompiler:
                 )
             )
 
+            dur_val = (
+                scene.get("duration_seconds")
+                if isinstance(scene, dict)
+                else getattr(scene, "duration_seconds", 10.0)
+            )
+            tc_val = (
+                scene.get("timecode")
+                if isinstance(scene, dict)
+                else getattr(scene, "timecode", None)
+            )
+            timecode_prefix = ""
+            if tc_val and str(tc_val).strip():
+                tc_clean = str(tc_val).strip()
+                timecode_prefix = f"{tc_clean} " if tc_clean.startswith("[") else f"[{tc_clean}] "
+            elif len(scenes) == 1:
+                dur_int = int(dur_val) if dur_val and isinstance(dur_val, (int, float)) and dur_val > 0 else 10
+                timecode_prefix = f"[0-{dur_int}s] "
+
             if sp_text and isinstance(sp_text, str) and sp_text.strip():
                 parsed = parse_screenplay_script(sp_text, characters=characters, char_tag_map=char_tag_map)
                 if parsed.get("audio_cues"):
@@ -1439,9 +1459,15 @@ class PromptCompiler:
                     else:
                         diag_str = f' | Dialogue: "{diag_raw}"'
 
-                timeline_lines.append(
-                    f"- Scene {scene_num} [{roles_str}]: {action}{diag_str}"
-                )
+                action_str = str(action or "").strip()
+                if action_str.startswith("["):
+                    timeline_lines.append(
+                        f"- Scene {scene_num} [{roles_str}]: {action_str}{diag_str}"
+                    )
+                else:
+                    timeline_lines.append(
+                        f"- {timecode_prefix}Scene {scene_num} [{roles_str}]: {action_str}{diag_str}"
+                    )
 
         timeline_str = "\n".join(timeline_lines) if timeline_lines else "- No scenes"
 
