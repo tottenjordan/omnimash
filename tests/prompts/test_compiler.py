@@ -853,6 +853,38 @@ def test_build_character_image_ref_tags_extracts_base_names_and_tokens():
     assert "Swagrid <IMAGE_REF_1>" in full_prompt
 
 
+def test_compile_storyboard_preserves_shot_audio_soundscape():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Snape",
+            description="Gothic Potion Master",
+        )
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=2,
+            active_roles=["Role A"],
+            action="Snape brewing potions in dungeon",
+        )
+    ]
+    concept_directive = (
+        "[SHOT DIRECTIVE: Shot 2]\n"
+        "- Action / Subject: Snape brewing potions in dungeon\n"
+        "- Audio Soundscape: Aggressive 90s boom-bap beat"
+    )
+    compiled = compiler.compile_storyboard(
+        concept=concept_directive,
+        characters=chars,
+        scenes=scenes,
+        audio_beat="90s 808 Trap Beat",
+    )
+    assert "Sound design: Aggressive 90s boom-bap beat" in compiled
+    assert "90s 808 Trap Beat" not in compiled
+
+
+
 
 
 

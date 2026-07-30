@@ -1304,7 +1304,30 @@ class PromptCompiler:
             if any(getattr(c, "voice_style", None) for c in characters) or (vocal_delivery and vocal_delivery.strip()):
                 has_dialogue = True
 
-        if audio_beat and audio_beat.strip():
+        custom_audio_soundscape: str | None = None
+        if concept:
+            match = re.search(
+                r"-\s*Audio\s*Soundscape:\s*(.*)|-\s*Audio:\s*(.*)|(?:^|\n)\s*Audio\s*Soundscape:\s*(.*)|(?:^|\n)\s*Audio:\s*(.*)",
+                concept,
+                re.IGNORECASE,
+            )
+            if match:
+                raw_extracted = (
+                    match.group(1) or match.group(2) or match.group(3) or match.group(4) or ""
+                ).strip()
+                if raw_extracted:
+                    custom_audio_soundscape = raw_extracted
+
+        if custom_audio_soundscape:
+            if has_dialogue:
+                sound_desc = (
+                    f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                    f"Background beat ({custom_audio_soundscape}) is subtly ducked in the background beneath dialogue."
+                )
+            else:
+                sound_desc = f"Sound design: {custom_audio_soundscape}."
+            scene_inst_parts.append(f"Audio: {sound_desc}")
+        elif audio_beat and audio_beat.strip():
             audio_beat_clean = audio_beat.strip()
             if not audio_beat_clean.lower().startswith("instrumental"):
                 instr_audio = f"instrumental {audio_beat_clean}"
