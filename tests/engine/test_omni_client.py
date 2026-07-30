@@ -1342,6 +1342,35 @@ def test_four_block_official_image_ref_tags() -> None:
     assert "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round glasses" in text_val
 
 
+def test_abstract_prompt_preserves_character_tags_and_image_refs() -> None:
+    """Verify _abstract_prompt_for_responsible_ai preserves character tags, IMAGE_REF tags, and bracketed section headers intact while replacing character names in descriptions and general text."""
+    prompt = (
+        "### INPUT ROLES\n"
+        "[# References <IMAGE_REF_0>@Image1]\n\n"
+        "### CHARACTER PROFILES\n"
+        "- Role A - Snape Dawg <IMAGE_REF_0>: Severus Snape brewing potion in dark robes.\n\n"
+        "### TIMELINE\n"
+        "[0-5s] Role A - Snape Dawg <IMAGE_REF_0> says: Snape brews potion."
+    )
+    res = _abstract_prompt_for_responsible_ai(prompt)
+
+    # 1. Section header and image reference tag syntax preserved intact
+    assert "[# References <IMAGE_REF_0>@Image1]" in res
+    assert "<IMAGE_REF_0>" in res
+
+    # 2. Character identifier string / header intact without multi-word description insertion
+    assert "Role A - Snape Dawg <IMAGE_REF_0>" in res
+    assert "Role A - a stern potion master wizard in dark robes Dawg" not in res
+
+    # 3. Snape / Severus Snape in general description and dialogue text replaced by visual archetype
+    assert "Severus Snape" not in res
+    assert "Snape brews" not in res
+    assert "a stern" in res
+    assert "master wizard" in res
+
+
+
+
 
 
 

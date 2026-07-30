@@ -399,6 +399,24 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
 
     text = prompt.strip()
 
+    # Protect section headers ([# References ...], [# Sources ...]), image reference tags (<IMAGE_REF_N>, <FIRST_FRAME>), and character tag headers (Role A - Name) from being corrupted
+    protected_tokens: list[str] = []
+
+    def mask_token(match: re.Match[str]) -> str:
+        token = match.group(0)
+        idx = len(protected_tokens)
+        protected_tokens.append(token)
+        return f"__OMNI_PROTECT_TOKEN_{idx}__"
+
+    protected_pattern = re.compile(
+        r"\[#\s*(?:References|Sources)[^\]]*\]"
+        r"|\bRole\s+[A-Za-z0-9]+\s*-\s*[^\n:<#\(\)]+?(?=\s*(?:<(?:IMAGE_REF|FIRST_FRAME)|\bsays\b|:|\n|\(|$))"
+        r"|<(?:IMAGE_REF_\d+|FIRST_FRAME)>",
+        re.IGNORECASE,
+    )
+
+    abstracted = protected_pattern.sub(mask_token, text)
+
     replacements = {
         # Harry Potter Universe
         r"\bharry\s*potter\b": "a young wizard student with round spectacles and black hair",
@@ -493,14 +511,16 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         r"\bdark\s*mark\b": "golden skull emblem",
     }
 
-    import re
-
-    abstracted = text
     for pattern, archetype in replacements.items():
         abstracted = re.sub(pattern, archetype, abstracted, flags=re.IGNORECASE)
 
     abstracted = re.sub(r"\(Reference Image:[^)]+\)", "", abstracted)
     abstracted = re.sub(r"gs://[^\s)\]]+", "", abstracted)
+
+    # Restore protected tokens
+    for idx, orig_token in enumerate(protected_tokens):
+        abstracted = abstracted.replace(f"__OMNI_PROTECT_TOKEN_{idx}__", orig_token)
+
     return abstracted
 
 
