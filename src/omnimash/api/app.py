@@ -577,6 +577,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             session_name: sessionName,
                             shot_index: shotIdx,
                             shot_directive: directive,
+                            style_lighting: shot.style_lighting || stageStyleTone || "",
+                            keyframe_image_url: shot.keyframe_image_url || shot.image_url || null,
                             characters: characters,
                             duration_seconds: parseFloat(shot.duration_seconds) || 10.0,
                             parent_turn_id: parentTurnId

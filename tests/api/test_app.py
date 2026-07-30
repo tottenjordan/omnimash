@@ -430,4 +430,36 @@ def test_api_generate_shot_extracts_dialogue_and_voiceover(monkeypatch):
     )
 
 
+def test_generate_shot_preserves_keyframe_image_url(monkeypatch):
+    captured_kwargs = {}
+    from omnimash.agent.orchestrator import OmniMashAgent
+
+    original_process_user_turn = OmniMashAgent.process_user_turn
+
+    def mock_process_user_turn(self, *args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return original_process_user_turn(self, *args, **kwargs)
+
+    monkeypatch.setattr(OmniMashAgent, "process_user_turn", mock_process_user_turn)
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/generate-shot",
+        json={
+            "session_name": "keyframe_preserve_session",
+            "shot_index": 1,
+            "shot_directive": "Test directive",
+            "keyframe_image_url": "gs://bucket/keyframe.png",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert captured_kwargs.get("keyframe_image_url") == "gs://bucket/keyframe.png"
+    assert data["keyframe_image_url"] == "gs://bucket/keyframe.png"
+
+
+
 
