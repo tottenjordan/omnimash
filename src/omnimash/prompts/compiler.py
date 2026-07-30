@@ -16,34 +16,17 @@ if TYPE_CHECKING:
 
 REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bGordon Ramsay\b": "Fiery Chef Blood",
-    r"\bRamsay\b": "Chef Blood",
     r"\bJulia Child\b": "Classic Chef Fam",
-    r"\bJulia\b": "Chef Fam",
     r"\bYoung Jeezy\b": "Trap Legend Fam",
-    r"\bJeezy\b": "Trap Legend Fam",
     r"\bDrake\b": "Drizzy Bruv (6ix Melodic Star)",
     r"\bKanye West\b": "Ye Fam (Avant-Garde Producer)",
-    r"\bKanye\b": "Ye Fam",
     r"\bTravis Scott\b": "Rodeo Trap Bruv",
-    r"\bTravis\b": "Rodeo Trap Bruv",
-    r"\bScott\b": "Rodeo Star Fam",
     r"\bTaylor Swift\b": "Pop Star Fam",
-    r"\bTaylor\b": "Pop Star Fam",
-    r"\bSwift\b": "Pop Star Fam",
     r"\bSeverus Snape\b": "Gothic Potion Master Fam",
-    r"\bSnape\b": "Potion Master Fam",
     r"\bHarry Potter\b": "Spectacled Wizard Bruv",
-    r"\bHarry\b": "Spectacled Wizard Bruv",
-    r"\bPotter\b": "Spectacled Wizard Fam",
     r"\bDraco Malfoy\b": "Platinum Rival Blood",
-    r"\bDraco\b": "Rival Wizard Blood",
-    r"\bMalfoy\b": "Platinum Rival Fam",
     r"\bHermione Granger\b": "Retainer Academic Fam",
-    r"\bHermione\b": "Academic Fam",
-    r"\bGranger\b": "Academic Fam",
-    r"\bGrainger\b": "Academic Fam",
     r"\bRon Weasley\b": "Redhair Wizard Blood",
-    r"\bWeasley\b": "Redhair Wizard Blood",
     r"\bSlytherin\b": "Emerald Snake Guild",
     r"\bDark Mark\b": "Golden Skull Emblem",
     r"\bAzkaban\b": "High Security Fortress",
@@ -54,10 +37,7 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bVoldemort\b": "Dark Sorcerer Fam",
     r"\bWaka Flocka Flame\b": "Southern Trap Blood",
     r"\bWaka Flocka\b": "Southern Trap Blood",
-    r"\bWaka\b": "Southern Trap Fam",
-    r"\bFlocka\b": "Trap Blood",
     r"\bSnoop Dogg\b": "West Coast Drip (Rap Legend)",
-    r"\bSnoop\b": "West Coast Drip",
     r"\bEminem\b": "Shady Fam (Detroit Speed Rapper)",
     r"\bBeyonce\b": "Pop Queen Fam",
     r"\bBeyoncé\b": "Pop Queen Fam",
@@ -65,28 +45,17 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bJayZ\b": "Hov Fam",
     r"\bRihanna\b": "Riri Fam (Caribbean Pop Icon)",
     r"\bKendrick Lamar\b": "Lyrical West Coast Bruv",
-    r"\bKendrick\b": "Lyrical West Coast Bruv",
     r"\b50 Cent\b": "Fifty Cent Fam",
     r"\b50Cent\b": "Fifty Cent Fam",
     r"\bIce Cube\b": "Cube Blood",
     r"\bGucci Mane\b": "Designer Drip (Trap Pioneer)",
-    r"\bGucci\b": "Designer Drip",
     r"\bCardi B\b": "Bronx Queen Fam",
-    r"\bCardi\b": "Bronx Queen Fam",
     r"\bNicki Minaj\b": "Queens Rap Queen Fam",
-    r"\bNicki\b": "Minaj Fam",
-    r"\bMinaj\b": "Minaj Fam",
     r"\bLil Wayne\b": "New Orleans Rap Genius",
-    r"\bWayne\b": "New Orleans Rap Genius",
     r"\bElon Musk\b": "Tech Entrepreneur Executive",
-    r"\bElon\b": "Tech Entrepreneur",
-    r"\bMusk\b": "Tech Entrepreneur Executive",
     r"\bDonald Trump\b": "Charismatic Business Executive",
-    r"\bTrump\b": "Charismatic Business Executive",
     r"\bJoe Biden\b": "Senior Statesman Leader",
-    r"\bBiden\b": "Senior Statesman Leader",
     r"\bBarack Obama\b": "Eloquent Former Statesman",
-    r"\bObama\b": "Eloquent Former Statesman",
 }
 
 
@@ -98,6 +67,26 @@ def sanitize_real_names(text: str) -> str:
     for pattern, replacement in REAL_NAME_PARODY_MAP.items():
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
     return result
+
+
+def get_character_identifier(char: CharacterRole | dict[str, Any] | Any) -> str:
+    """Returns symmetric character identifier string in the format 'Role ID - Name' (or 'Name' if role_id is empty)."""
+    if isinstance(char, dict):
+        role_id = str(char.get("role_id", "") or "").strip()
+        name = str(char.get("name", "") or "").strip()
+    else:
+        role_id = str(getattr(char, "role_id", "") or "").strip()
+        name = str(getattr(char, "name", "") or "").strip()
+
+    name_clean = sanitize_real_names(name) if name else ""
+
+    if role_id and name_clean:
+        return f"{role_id} - {name_clean}"
+    if role_id:
+        return role_id
+    if name_clean:
+        return name_clean
+    return "Character"
 
 
 logger = logging.getLogger(__name__)
@@ -445,11 +434,18 @@ def parse_screenplay_script(
         if quotes:
             spoken_text = " ".join(q.strip() for q in quotes if q.strip())
             if spoken_text:
-                speaker_display = (
-                    f"{matched_role_id} ({matched_role_name})"
-                    if matched_role_id and matched_role_name
-                    else (speaker_raw if speaker_raw else "Speaker")
-                )
+                matched_char = None
+                if matched_role_id and characters:
+                    for c in characters:
+                        if getattr(c, "role_id", "") == matched_role_id:
+                            matched_char = c
+                            break
+                if matched_char:
+                    speaker_display = get_character_identifier(matched_char)
+                elif matched_role_id and matched_role_name:
+                    speaker_display = f"{matched_role_id} - {matched_role_name}"
+                else:
+                    speaker_display = speaker_raw if speaker_raw else "Speaker"
                 dialogue_parts.append(f'{speaker_display}: "{spoken_text}"')
 
     action_str = ". ".join(action_parts).strip()
@@ -984,10 +980,7 @@ class PromptCompiler:
         if characters:
             img_idx = 1
             for char in characters:
-                name_clean = (
-                    sanitize_real_names(char.name) if char.name else char.role_id
-                )
-                name_part = f" ({name_clean})" if name_clean else ""
+                char_id = get_character_identifier(char)
 
                 img_role = (
                     getattr(char, "image_role", "Character Reference")
@@ -996,16 +989,16 @@ class PromptCompiler:
 
                 if char.reference_url and char.reference_url.strip():
                     input_roles.append(
-                        f"[Image {img_idx}: {char.role_id}{name_part}] = [{img_role}]"
+                        f"[Image {img_idx}: {char_id}] = [{img_role}]"
                     )
                     char_refs.append(
-                        f"[Visual Reference: Attached Image #{img_idx}] {char.role_id}{name_part}: {char.description}"
+                        f"[Visual Reference: Attached Image #{img_idx}] {char_id}: {char.description}"
                     )
                     img_idx += 1
 
                 if getattr(char, "is_offscreen_narrator", False):
                     char_profiles.append(
-                        f"- {char.role_id}{name_part}: Visual: Off-screen (Voiceover only). Do not show."
+                        f"- {char_id}: Visual: Off-screen (Voiceover only). Do not show."
                     )
                 else:
                     style_str = (
@@ -1014,7 +1007,7 @@ class PromptCompiler:
                         else ""
                     )
                     char_profiles.append(
-                        f"- {char.role_id}{name_part}: {char.description}{style_str}"
+                        f"- {char_id}: {char.description}{style_str}"
                     )
 
         parts.input_roles = input_roles
@@ -1124,19 +1117,18 @@ class PromptCompiler:
         img_idx = 1
 
         for char in characters:
-            name_clean = sanitize_real_names(char.name) if char.name else char.role_id
-            name_part = f" ({name_clean})" if name_clean else ""
+            char_id = get_character_identifier(char)
             img_role = getattr(char, "image_role", "Character Reference") or "Character Reference"
 
             if char.reference_url and char.reference_url.strip():
                 input_roles.append(
-                    f"[Image {img_idx}: {char.role_id}{name_part}] = [{img_role}]"
+                    f"[Image {img_idx}: {char_id}] = [{img_role}]"
                 )
                 img_idx += 1
 
             if getattr(char, "is_offscreen_narrator", False):
                 char_profiles.append(
-                    f"- {char.role_id}{name_part}: Visual: Off-screen (Voiceover only). Do not show."
+                    f"- {char_id}: Visual: Off-screen (Voiceover only). Do not show."
                 )
             else:
                 style_str = (
@@ -1146,7 +1138,7 @@ class PromptCompiler:
                 )
                 desc_clean = sanitize_real_names(char.description) if char.description else ""
                 char_profiles.append(
-                    f"- {char.role_id}{name_part}: {desc_clean}{style_str}"
+                    f"- {char_id}: {desc_clean}{style_str}"
                 )
 
         input_roles_str = "\n".join(input_roles).strip() if input_roles else "None."
@@ -1207,8 +1199,9 @@ class PromptCompiler:
 
         for char in characters:
             if char.voice_style and char.voice_style.strip():
+                char_id = get_character_identifier(char)
                 scene_inst_parts.append(
-                    f"Voice Style ({char.role_id}): {char.voice_style.strip()}"
+                    f"Voice Style ({char_id}): {char.voice_style.strip()}"
                 )
         if vocal_delivery and vocal_delivery.strip():
             scene_inst_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
@@ -1227,11 +1220,22 @@ class PromptCompiler:
                 if isinstance(scene, dict)
                 else getattr(scene, "active_roles", [])
             )
-            roles_list: list[str] = (
-                [str(r) for r in raw_roles]
-                if isinstance(raw_roles, (list, tuple))
-                else []
-            )
+            roles_list: list[str] = []
+            for r in (raw_roles if isinstance(raw_roles, (list, tuple)) else []):
+                r_str = str(r)
+                matched_c = None
+                if characters:
+                    for c in characters:
+                        c_role = getattr(c, "role_id", "")
+                        c_name = getattr(c, "name", "")
+                        c_id = get_character_identifier(c)
+                        if r_str.lower() in (c_role.lower(), c_name.lower(), c_id.lower()):
+                            matched_c = c
+                            break
+                if matched_c:
+                    roles_list.append(get_character_identifier(matched_c))
+                else:
+                    roles_list.append(r_str)
             roles_str = ", ".join(roles_list)
 
             sp_text = (
