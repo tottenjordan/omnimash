@@ -4,6 +4,7 @@ from omnimash.prompts.compiler import (
     CompiledPromptParts,
     PromptCompiler,
     SceneDirective,
+    build_character_image_ref_tags,
     get_character_identifier,
     parse_screenplay_script,
     parse_timecoded_script,
@@ -815,6 +816,43 @@ def test_sanitize_real_names_pop_culture_keywords():
     text = "Snape Dawg, Draco, Voldemort, and Hogwarts."
     sanitized = sanitize_real_names(text)
     assert sanitized == "Potion Master Dawg, Rival Wizard, Dark Sorcerer, and Academy Hall."
+
+
+def test_build_character_image_ref_tags_extracts_base_names_and_tokens():
+    char1 = CharacterRole(
+        role_id="Role 1",
+        name="Yo Totti (Post High Security Fortress)",
+        description="Yo Totti after fortress release",
+        reference_url="https://example.com/yototti.png",
+    )
+    char2 = CharacterRole(
+        role_id="Role 2",
+        name="Swagrid Tha Plug",
+        description="Swagrid the legendary supplier",
+        reference_url="https://example.com/swagrid.png",
+    )
+
+    sources, refs, char_tag_map = build_character_image_ref_tags([char1, char2])
+
+    assert char_tag_map.get("Yo Totti (Post High Security Fortress)") == "<IMAGE_REF_0>"
+    assert char_tag_map.get("Yo Totti") == "<IMAGE_REF_0>"
+    assert char_tag_map.get("Totti") == "<IMAGE_REF_0>"
+    assert char_tag_map.get("yo totti") == "<IMAGE_REF_0>"
+
+    assert char_tag_map.get("Swagrid Tha Plug") == "<IMAGE_REF_1>"
+    assert char_tag_map.get("Swagrid") == "<IMAGE_REF_1>"
+    assert char_tag_map.get("Plug") == "<IMAGE_REF_1>"
+    assert char_tag_map.get("swagrid") == "<IMAGE_REF_1>"
+
+    compiler = PromptCompiler()
+    parts = compiler.compile_prompt(
+        raw_prompt="Swagrid glides out of the forest",
+        characters=[char1, char2],
+    )
+    full_prompt = parts.to_full_prompt()
+    assert "Swagrid <IMAGE_REF_1>" in full_prompt
+
+
 
 
 

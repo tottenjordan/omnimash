@@ -688,20 +688,36 @@ class OmniFlashClient:
                     }
                 )
                 char_id = get_character_identifier(char)
-                char_img_map[char_id] = curr_idx
-                char_img_map[char_id.lower()] = curr_idx
                 r_id = str(role_id or "").strip()
                 n_str = str(name or "").strip()
-                if r_id:
-                    char_img_map[r_id] = curr_idx
-                    char_img_map[r_id.lower()] = curr_idx
-                if n_str:
-                    char_img_map[n_str] = curr_idx
-                    char_img_map[n_str.lower()] = curr_idx
+                n_clean = sanitize_real_names(n_str) if n_str else ""
+                base_n = re.sub(r"\s*\(.*?\)", "", n_str).strip() if n_str else ""
+                base_n_clean = sanitize_real_names(base_n) if base_n else ""
+
+                candidate_keys: set[str] = set()
+                for k in (char_id, r_id, n_str, n_clean, base_n, base_n_clean):
+                    if k and k.strip():
+                        candidate_keys.add(k.strip())
+
                 if r_id and n_str:
                     combo = f"{r_id} ({n_str})"
-                    char_img_map[combo] = curr_idx
-                    char_img_map[combo.lower()] = curr_idx
+                    candidate_keys.add(combo)
+
+                for source_n in (base_n, n_str):
+                    if source_n:
+                        for token in source_n.split():
+                            tok = token.strip()
+                            if tok:
+                                candidate_keys.add(tok)
+                                tok_clean = sanitize_real_names(tok)
+                                if tok_clean and tok_clean.strip():
+                                    candidate_keys.add(tok_clean.strip())
+
+                for key in candidate_keys:
+                    if key and key.strip():
+                        k_str = key.strip()
+                        char_img_map[k_str] = curr_idx
+                        char_img_map[k_str.lower()] = curr_idx
                 curr_idx += 1
             else:
                 char_id = get_character_identifier(char)
@@ -793,6 +809,12 @@ class OmniFlashClient:
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         clean_prompt = sanitize_real_names(prompt) if prompt else ""
+        if char_tag_map and clean_prompt:
+            sorted_keys = sorted(char_tag_map.keys(), key=len, reverse=True)
+            for c_id in sorted_keys:
+                tag = char_tag_map[c_id]
+                if tag not in clean_prompt and c_id in clean_prompt:
+                    clean_prompt = clean_prompt.replace(c_id, f"{c_id} {tag}")
 
         if "### INPUT ROLES" in clean_prompt and input_roles_header:
             clean_prompt = re.sub(
