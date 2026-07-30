@@ -87,3 +87,51 @@ Audio Cues: Heavy bass drops, subwoofers rumble, and lightning flashes
 
 1. **Guided Mode**: Best when you want to quickly test a single visual prompt and one line of dialogue.
 2. **Screenplay Mode**: Best when directing a dynamic 10-second scene with parenthetical sound effects (`(Heavy sub-bass drops)`), visual stage directions (`(Looking at wrist)`), and multiple back-and-forth dialogue exchanges.
+
+---
+
+## 🎬 Multi-Scene Sequence Behavior vs. 4-Stage Storyboard Studio
+
+### 1. Act-Based Director Mode (`+ Add Scene` & `POST /api/generate`)
+In Director Mode (Act 2):
+- Clicking **`+ Add Scene`** appends `Scene #N` into a **cumulative `scenes` array**.
+- All scenes in the array are sent together in the JSON payload to `POST /api/generate`:
+  ```json
+  {
+      "concept": "Parody rap battle",
+      "characters": [...],
+      "scenes": [
+          { "scene_number": 1, "action": "Harry enters potion dungeon...", "dialogue": "..." },
+          { "scene_number": 2, "action": "Draco steps out of shadows...", "dialogue": "..." }
+      ],
+      "environment_tag": "Dimly lit dungeon",
+      "audio_stem": "90s 808 Trap Beat"
+  }
+  ```
+- `PromptCompiler.compile_storyboard()` formats **all scenes** into a single `### TIMELINE` block inside the Four-Block prompt:
+  ```text
+  ### TIMELINE
+  - Scene 1 [Role A]: Harry enters potion dungeon... | Dialogue: "..."
+  - Scene 2 [Role B]: Draco steps out of shadows... | Dialogue: "..."
+  ```
+- **Output**: Generates a single combined video cut for the entire timeline sequence.
+
+---
+
+### 2. 4-Stage Storyboard Studio Mode (`POST /api/generate-shot` & Stitching)
+In 4-Stage Storyboard Mode:
+- Stage 1 (Vision) expands a concept or screenplay into individual **Shot Cards** (Shot #1, Shot #2, Shot #3).
+- Each Shot Card is generated **individually** via `POST /api/generate-shot` using custom `shot_directive` parameters and `parent_turn_id` for character visual continuity.
+- In Stage 4 (Stitch & Export), all individual shot videos are concatenated via `POST /api/stitch-clips` into a final 60-second master video.
+
+---
+
+### 📊 Summary Comparison Matrix
+
+| Aspect | Act-Based Director Mode (`scenes`) | 4-Stage Storyboard Studio Mode (`stageShots`) |
+| :--- | :--- | :--- |
+| **API Endpoint** | `POST /api/generate` | `POST /api/generate-shot` |
+| **Scene/Shot Scope** | All `scenes` sent together as one sequence into `### TIMELINE` | Each Shot Card generated individually as an isolated 10s clip |
+| **Video Output** | Single combined parody cut for the sequence | Individual 10s video per shot card + final stitched master |
+| **Continuity Method** | Model renders continuous sequence | Shot #2 references Shot #1's `turn_id` for character likeness |
+
