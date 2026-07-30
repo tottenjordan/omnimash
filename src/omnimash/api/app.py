@@ -4697,6 +4697,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             aesthetic_tags=aesthetic_tags if aesthetic_tags else None,
             environment_tag=location_val if location_val.strip() else None,
             audio_beat=audio_stem_val,
+            has_keyframe_seed=bool(keyframe_url),
+            keyframe_image_url=keyframe_url,
         )
 
         # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor

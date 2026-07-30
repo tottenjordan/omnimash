@@ -1236,11 +1236,14 @@ class PromptCompiler:
         environment_tag: str | None = None,
         audio_beat: str | None = None,
         vocal_delivery: str | None = None,
+        has_keyframe_seed: bool = False,
+        keyframe_image_url: str | None = None,
     ) -> str:
+        start_idx = 2 if (has_keyframe_seed or keyframe_image_url) else 1
         sources_items, references_items, char_tag_map = build_character_image_ref_tags(
             characters=characters,
-            starting_index=1,
-            has_keyframe_seed=False,
+            starting_index=start_idx,
+            has_keyframe_seed=(has_keyframe_seed or bool(keyframe_image_url)),
         )
 
         input_roles: list[str] = []
@@ -1488,6 +1491,8 @@ class PromptCompiler:
         environment_tag: str | None = None,
         audio_beat: str | None = None,
         vocal_delivery: str | None = None,
+        has_keyframe_seed: bool = False,
+        keyframe_image_url: str | None = None,
     ) -> str:
         return self.compile_multi_role_prompt(
             concept=concept,
@@ -1497,6 +1502,8 @@ class PromptCompiler:
             environment_tag=environment_tag,
             audio_beat=audio_beat,
             vocal_delivery=vocal_delivery,
+            has_keyframe_seed=has_keyframe_seed,
+            keyframe_image_url=keyframe_image_url,
         )
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
