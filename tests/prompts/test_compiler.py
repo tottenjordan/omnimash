@@ -146,7 +146,7 @@ def test_character_role_specific_aesthetic_tags():
     )
     assert get_character_identifier(chars[0]) in prompt
     assert "Red Gucci Tracksuit" in prompt
-    assert f"[Image 1: {get_character_identifier(chars[0])}] = [Character Reference]" in prompt
+    assert "[# References <IMAGE_REF_0>@Image1]" in prompt
 
 
 def test_compile_storyboard_with_audio_and_vocal_direction():
@@ -193,11 +193,11 @@ def test_compile_storyboard_with_audio_and_vocal_direction():
         in compiled
     )
     assert (
-        f"Voice Style ({get_character_identifier(chars[0])}): Fast-paced confident Atlanta rap flow with autotune"
+        f"Voice Style ({get_character_identifier(chars[0])} <IMAGE_REF_0>): Fast-paced confident Atlanta rap flow with autotune"
         in compiled
     )
     assert (
-        f"Voice Style ({get_character_identifier(chars[1])}): Pompous, cynical British drawl with aggressive cadence"
+        f"Voice Style ({get_character_identifier(chars[1])} <IMAGE_REF_1>): Pompous, cynical British drawl with aggressive cadence"
         in compiled
     )
     assert (
@@ -422,8 +422,7 @@ def test_compile_multi_role_prompt_with_clean_image_role_tags():
     )
 
     assert compiled.startswith("### INPUT ROLES\n")
-    assert f"[Image 1: {get_character_identifier(chars[0])}] = [Character Reference]" in compiled
-    assert "[Image 2: Role B - Ollivander] = [Character Reference]" in compiled
+    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in compiled
     assert "### CHARACTER PROFILES" in compiled
     assert compiled.index("### INPUT ROLES") < compiled.index("### CHARACTER PROFILES")
 
@@ -577,8 +576,7 @@ def test_compile_prompt_omni_flash_timecode_format():
     assert "in a single continuous shot. no scene cuts." in full_prompt.lower()
 
     # 2. Visual character roster reference index headers
-    assert "[Image 1: Role A" in full_prompt and "= [Character Reference]" in full_prompt
-    assert "[Image 2: Role B" in full_prompt and "= [Character Reference]" in full_prompt
+    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in full_prompt
 
     # 3. Chronological [0-3s], [3-6s], [6-10s] timing blocks
     assert "[0-3s]" in full_prompt
@@ -650,10 +648,8 @@ def test_compile_prompt_four_block_omni_flash_template():
     assert "### TIMELINE" in full_prompt
 
     # 2. Verify Image Role tagging
-    assert "[Image 1: Role A - Hero] = [Character Reference]" in full_prompt
-    assert "[Image 2: Role B - Golden Snitch] = [Product Reference]" in full_prompt
-    assert "[Image 3: Role C - Dungeon Entrance] = [Starting Frame]" in full_prompt
-    assert "[Image 4: Role D - Retro Aesthetic] = [Style Reference]" in full_prompt
+    assert "[# Sources <FIRST_FRAME>@Image3]" in full_prompt
+    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image4]" in full_prompt
 
     # 3. Verify Off-Screen Narrator profile and speech formatting
     assert "Visual: Off-screen (Voiceover only). Do not show." in full_prompt
@@ -713,8 +709,7 @@ def test_compile_multi_role_prompt_four_block_structure():
     assert "### TIMELINE" in prompt
 
     # 2. Explicit Image Role tags
-    assert "[Image 1: Role A - Hero] = [Character Reference]" in prompt
-    assert "[Image 2: Role B - Golden Snitch] = [Product Reference]" in prompt
+    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in prompt
 
     # 3. Off-Screen Narrator profile and timeline speech formatting
     assert "Visual: Off-screen (Voiceover only). Do not show." in prompt
@@ -742,8 +737,8 @@ def test_four_block_character_identifier_symmetry():
     )
     full_prompt = parts.to_full_prompt()
 
-    assert f"[Image 1: {expected_id}] = [Character Reference]" in full_prompt
-    assert f"- {expected_id}: Young wizard with round glasses" in full_prompt
+    assert "[# References <IMAGE_REF_0>@Image1]" in full_prompt
+    assert f"- {expected_id} <IMAGE_REF_0>: Young wizard with round glasses" in full_prompt
     assert f'{expected_id}: "Expelliarmus!"' in full_prompt
 
 
@@ -762,6 +757,59 @@ def test_sanitize_real_names_prevents_over_sanitization():
     single_words_text = "Scott told Wayne that Julia, Grace, Sam, and Rob were ready."
     sanitized_single = sanitize_real_names(single_words_text)
     assert sanitized_single == single_words_text
+
+
+def test_four_block_official_image_ref_tags():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role C",
+            name="Dungeon Corridor",
+            description="Starting frame of stone dungeon corridor",
+            reference_url="gs://bucket/dungeon.jpg",
+            image_role="Starting Frame",
+        ),
+        CharacterRole(
+            role_id="Role A",
+            name="Snape Dawg",
+            description="Gaunt potion master wizard with sleek black hair",
+            reference_url="gs://bucket/snape.jpg",
+            image_role="Character Reference",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Harry Potter",
+            description="Young wizard with round wire-rim glasses",
+            reference_url="gs://bucket/harry.jpg",
+            image_role="Character Reference",
+        ),
+    ]
+
+    parts = compiler.compile_prompt(
+        raw_prompt="Snape Dawg brewing potion with Harry Potter",
+        characters=chars,
+        audio_stem="120 BPM boom-bap beat",
+    )
+    full_prompt = parts.to_full_prompt()
+
+    assert "### INPUT ROLES" in full_prompt
+    assert "### CHARACTER PROFILES" in full_prompt
+    assert "### SCENE INSTRUCTIONS" in full_prompt
+    assert "### TIMELINE" in full_prompt
+
+    # Verify official Gemini Omni Flash <IMAGE_REF_N> and <FIRST_FRAME> tags in INPUT ROLES
+    assert "[# Sources <FIRST_FRAME>@Image1]" in full_prompt
+    assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in full_prompt
+
+    # Verify character profile binding format
+    assert "- Role A - Snape Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in full_prompt
+    assert "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round wire-rim glasses" in full_prompt
+    assert "- Role C - Dungeon Corridor <FIRST_FRAME>: Starting frame of stone dungeon corridor" in full_prompt
+
+    # Verify timeline actions include <IMAGE_REF_N> tags
+    assert "<IMAGE_REF_0>" in full_prompt
+    assert "<IMAGE_REF_1>" in full_prompt
+
 
 
 

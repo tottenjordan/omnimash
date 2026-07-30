@@ -1212,8 +1212,8 @@ def test_build_multimodal_contents_omni_flash_native_multimodal() -> None:
 
     # Check character roster bindings
     assert "# Character Roster & Visual Directives:" in text_val
-    assert f"- {get_character_identifier(char1)}: Spectacled wizard student [Style: Cartier Glasses] [Visual Reference: Attached Image #2]" in text_val
-    assert f"- {get_character_identifier(char2)}: Gothic potion master [Style: Dark Robes] [Visual Reference: Attached Image #3]" in text_val
+    assert f"- {get_character_identifier(char1)} <IMAGE_REF_0>: Spectacled wizard student [Style: Cartier Glasses]" in text_val
+    assert f"- {get_character_identifier(char2)} <IMAGE_REF_1>: Gothic potion master [Style: Dark Robes]" in text_val
 
     # Check timecoded prompt content (with sanitized names)
     assert sanitize_real_names(timecoded_prompt) in text_val
@@ -1276,10 +1276,8 @@ def test_build_multimodal_contents_four_block_omni_flash() -> None:
     assert "### INPUT ROLES" in text_val
 
     # 2. Verify explicit image role tags matching CharacterRole.image_role
-    assert "[Image 1: Role A - Hero] = [Subject Reference]" in text_val
-    assert "[Image 2: Role B - Golden Snitch] = [Product Reference]" in text_val
-    assert "[Image 3: Role C - Dungeon Entrance] = [Starting Frame]" in text_val
-    assert "[Image 4: Role D - Retro Aesthetic] = [Style Reference]" in text_val
+    assert "[# Sources <FIRST_FRAME>@Image3]" in text_val
+    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image4]" in text_val
 
 
 def test_four_block_character_identifier_symmetry() -> None:
@@ -1304,8 +1302,45 @@ def test_four_block_character_identifier_symmetry() -> None:
     assert isinstance(payload, list)
     text_part = payload[0]["content"][-1]["text"]
 
-    assert f"[Image 1: {expected_id}] = [Character Reference]" in text_part
-    assert f"- {expected_id}: Young wizard with round glasses" in text_part
+    assert "[# References <IMAGE_REF_0>@Image1]" in text_part
+    assert f"- {expected_id} <IMAGE_REF_0>: Young wizard with round glasses" in text_part
+
+
+def test_four_block_official_image_ref_tags() -> None:
+    client = OmniFlashClient(mock_mode=True)
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Snape Dawg",
+        description="Gaunt potion master wizard",
+        reference_url="gs://bucket/snape.jpg",
+        image_role="Character Reference",
+    )
+    char2 = CharacterRole(
+        role_id="Role B",
+        name="Harry Potter",
+        description="Young wizard with round glasses",
+        reference_url="gs://bucket/harry.jpg",
+        image_role="Character Reference",
+    )
+
+    with patch.object(
+        client.storage, "download_blob_bytes", return_value=(b"fake_png", "image/png")
+    ):
+        payload = client._build_multimodal_contents(
+            prompt="Snape Dawg in potion class",
+            characters=[char1, char2],
+            keyframe_image_url="gs://bucket/keyframe.png",
+        )
+
+    assert isinstance(payload, list)
+    text_val = payload[0]["content"][-1]["text"]
+
+    assert "### INPUT ROLES" in text_val
+    assert "[# Sources <FIRST_FRAME>@Image1]" in text_val
+    assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in text_val
+    assert "- Role A - Snape Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in text_val
+    assert "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round glasses" in text_val
+
 
 
 

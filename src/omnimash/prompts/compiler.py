@@ -89,6 +89,75 @@ def get_character_identifier(char: CharacterRole | dict[str, Any] | Any) -> str:
     return "Character"
 
 
+def build_character_image_ref_tags(
+    characters: list[CharacterRole] | None,
+    starting_index: int = 1,
+    has_keyframe_seed: bool = False,
+) -> tuple[list[str], list[str], dict[str, str]]:
+    """Builds official Gemini Omni Flash <IMAGE_REF_N> and <FIRST_FRAME> tag structures.
+
+    Returns:
+      (sources_items, references_items, char_tag_map)
+    """
+    sources_items: list[str] = []
+    references_items: list[str] = []
+    char_tag_map: dict[str, str] = {}
+
+    if has_keyframe_seed:
+        sources_items.append("<FIRST_FRAME>@Image1")
+
+    if not characters:
+        return sources_items, references_items, char_tag_map
+
+    ref_counter = 0
+    img_idx = starting_index
+
+    for char in characters:
+        ref_url = (
+            getattr(char, "reference_url", None)
+            if not isinstance(char, dict)
+            else char.get("reference_url")
+        )
+        if not ref_url or not isinstance(ref_url, str) or not ref_url.strip():
+            continue
+
+        char_id = get_character_identifier(char)
+        role_id = str(
+            getattr(char, "role_id", "")
+            if not isinstance(char, dict)
+            else char.get("role_id", "") or ""
+        ).strip()
+        name = str(
+            getattr(char, "name", "")
+            if not isinstance(char, dict)
+            else char.get("name", "") or ""
+        ).strip()
+        img_role = (
+            getattr(char, "image_role", "Character Reference")
+            if not isinstance(char, dict)
+            else char.get("image_role", "Character Reference")
+        ) or "Character Reference"
+
+        if img_role in ("Starting Frame", "Keyframe Seed Anchor"):
+            tag = "<FIRST_FRAME>"
+            sources_items.append(f"<FIRST_FRAME>@Image{img_idx}")
+        else:
+            tag = f"<IMAGE_REF_{ref_counter}>"
+            references_items.append(f"{tag}@Image{img_idx}")
+            ref_counter += 1
+
+        name_clean = sanitize_real_names(name) if name else ""
+        for key in (char_id, role_id, name, name_clean):
+            if key and key.strip():
+                char_tag_map[key.strip()] = tag
+                char_tag_map[key.strip().lower()] = tag
+
+        img_idx += 1
+
+    return sources_items, references_items, char_tag_map
+
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -316,7 +385,9 @@ SCREENPLAY_AUDIO_KEYWORDS: set[str] = {
 
 
 def parse_screenplay_script(
-    script_text: str, characters: list[CharacterRole] | None = None
+    script_text: str,
+    characters: list[CharacterRole] | None = None,
+    char_tag_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Parses line-by-line screenplay text into structured components.
 
@@ -446,6 +517,12 @@ def parse_screenplay_script(
                     speaker_display = f"{matched_role_id} - {matched_role_name}"
                 else:
                     speaker_display = speaker_raw if speaker_raw else "Speaker"
+
+                if char_tag_map and char_tag_map.get(speaker_display):
+                    tag = char_tag_map[speaker_display]
+                    if tag not in speaker_display:
+                        speaker_display = f"{speaker_display} {tag}"
+
                 dialogue_parts.append(f'{speaker_display}: "{spoken_text}"')
 
     action_str = ". ".join(action_parts).strip()
@@ -467,7 +544,9 @@ def parse_screenplay_script(
 
 
 def parse_timecoded_script(
-    script_text: str, characters: list[CharacterRole] | None = None
+    script_text: str,
+    characters: list[CharacterRole] | None = None,
+    char_tag_map: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Parses screenplay or timecoded script into structured chronological timing blocks.
 
@@ -530,7 +609,9 @@ def parse_timecoded_script(
                     }
                 )
             else:
-                parsed = parse_screenplay_script(block_content, characters=characters)
+                parsed = parse_screenplay_script(
+                    block_content, characters=characters, char_tag_map=char_tag_map
+                )
                 blocks.append(
                     {
                         "timecode": tc_str,
@@ -550,7 +631,9 @@ def parse_timecoded_script(
 
         for idx, line in enumerate(lines):
             tc_info = default_tcs[min(idx, len(default_tcs) - 1)]
-            parsed = parse_screenplay_script(line, characters=characters)
+            parsed = parse_screenplay_script(
+                line, characters=characters, char_tag_map=char_tag_map
+            )
             blocks.append(
                 {
                     "timecode": tc_info[0],
@@ -566,6 +649,7 @@ def parse_timecoded_script(
             )
 
     return blocks
+
 
 
 class PromptOptimizer:
@@ -974,27 +1058,30 @@ class PromptCompiler:
             vibe_intensity=vibe_intensity,
         )
 
+        sources_items, references_items, char_tag_map = build_character_image_ref_tags(
+            characters=characters,
+            starting_index=1,
+            has_keyframe_seed=False,
+        )
+
         input_roles: list[str] = []
+        if sources_items:
+            input_roles.append(f"[# Sources {' '.join(sources_items)}]")
+        if references_items:
+            input_roles.append(f"[# References {' '.join(references_items)}]")
+
         char_profiles: list[str] = []
         char_refs: list[str] = []
         if characters:
-            img_idx = 1
             for char in characters:
                 char_id = get_character_identifier(char)
-
-                img_role = (
-                    getattr(char, "image_role", "Character Reference")
-                    or "Character Reference"
-                )
+                tag = char_tag_map.get(char_id)
+                tag_str = f" {tag}" if tag else ""
 
                 if char.reference_url and char.reference_url.strip():
-                    input_roles.append(
-                        f"[Image {img_idx}: {char_id}] = [{img_role}]"
-                    )
                     char_refs.append(
-                        f"[Visual Reference: Attached Image #{img_idx}] {char_id}: {char.description}"
+                        f"[Visual Reference: {tag or 'Attached Image'}] {char_id}: {char.description}"
                     )
-                    img_idx += 1
 
                 if getattr(char, "is_offscreen_narrator", False):
                     char_profiles.append(
@@ -1007,7 +1094,7 @@ class PromptCompiler:
                         else ""
                     )
                     char_profiles.append(
-                        f"- {char_id}: {char.description}{style_str}"
+                        f"- {char_id}{tag_str}: {char.description}{style_str}"
                     )
 
         parts.input_roles = input_roles
@@ -1034,7 +1121,9 @@ class PromptCompiler:
                 sound_desc = f"Sound design: {instr_audio}."
 
         if script and script.strip():
-            parsed_blocks = parse_timecoded_script(script, characters=characters)
+            parsed_blocks = parse_timecoded_script(
+                script, characters=characters, char_tag_map=char_tag_map
+            )
             for pb in parsed_blocks:
                 tc = pb["timecode"]
                 act = pb["action"] or parts.motion
@@ -1073,8 +1162,14 @@ class PromptCompiler:
                     vo_clean = parts.voiceover.rstrip(".")
                     vo_info = f" Voiceover: {vo_clean}."
 
+            action_anchor = parts.subject_anchor
+            if char_tag_map:
+                for c_id, tag in char_tag_map.items():
+                    if tag not in action_anchor and c_id in action_anchor:
+                        action_anchor = action_anchor.replace(c_id, f"{c_id} {tag}")
+
             tc_blocks = [
-                f"[0-3s] Action: {parts.subject_anchor}. {parts.aesthetic_injection}. {parts.environment}. {parts.motion}. Audio: {sound_desc}.{vo_info}",
+                f"[0-3s] Action: {action_anchor}. {parts.aesthetic_injection}. {parts.environment}. {parts.motion}. Audio: {sound_desc}.{vo_info}",
                 f"[3-6s] Action: Continuation of {parts.motion}. Audio: {sound_desc}.",
                 f"[6-10s] Action: Final dynamic resolution. Audio: {sound_desc}.",
             ]
@@ -1112,19 +1207,23 @@ class PromptCompiler:
         audio_beat: str | None = None,
         vocal_delivery: str | None = None,
     ) -> str:
-        input_roles: list[str] = []
-        char_profiles: list[str] = []
-        img_idx = 1
+        sources_items, references_items, char_tag_map = build_character_image_ref_tags(
+            characters=characters,
+            starting_index=1,
+            has_keyframe_seed=False,
+        )
 
+        input_roles: list[str] = []
+        if sources_items:
+            input_roles.append(f"[# Sources {' '.join(sources_items)}]")
+        if references_items:
+            input_roles.append(f"[# References {' '.join(references_items)}]")
+
+        char_profiles: list[str] = []
         for char in characters:
             char_id = get_character_identifier(char)
-            img_role = getattr(char, "image_role", "Character Reference") or "Character Reference"
-
-            if char.reference_url and char.reference_url.strip():
-                input_roles.append(
-                    f"[Image {img_idx}: {char_id}] = [{img_role}]"
-                )
-                img_idx += 1
+            tag = char_tag_map.get(char_id)
+            tag_str = f" {tag}" if tag else ""
 
             if getattr(char, "is_offscreen_narrator", False):
                 char_profiles.append(
@@ -1138,7 +1237,7 @@ class PromptCompiler:
                 )
                 desc_clean = sanitize_real_names(char.description) if char.description else ""
                 char_profiles.append(
-                    f"- {char_id}: {desc_clean}{style_str}"
+                    f"- {char_id}{tag_str}: {desc_clean}{style_str}"
                 )
 
         input_roles_str = "\n".join(input_roles).strip() if input_roles else "None."
@@ -1200,8 +1299,10 @@ class PromptCompiler:
         for char in characters:
             if char.voice_style and char.voice_style.strip():
                 char_id = get_character_identifier(char)
+                tag = char_tag_map.get(char_id)
+                tag_str = f" {tag}" if tag else ""
                 scene_inst_parts.append(
-                    f"Voice Style ({char_id}): {char.voice_style.strip()}"
+                    f"Voice Style ({char_id}{tag_str}): {char.voice_style.strip()}"
                 )
         if vocal_delivery and vocal_delivery.strip():
             scene_inst_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
@@ -1233,7 +1334,10 @@ class PromptCompiler:
                             matched_c = c
                             break
                 if matched_c:
-                    roles_list.append(get_character_identifier(matched_c))
+                    c_id = get_character_identifier(matched_c)
+                    tag = char_tag_map.get(c_id)
+                    tag_str = f" {tag}" if tag else ""
+                    roles_list.append(f"{c_id}{tag_str}")
                 else:
                     roles_list.append(r_str)
             roles_str = ", ".join(roles_list)
@@ -1248,7 +1352,7 @@ class PromptCompiler:
             )
 
             if sp_text and isinstance(sp_text, str) and sp_text.strip():
-                parsed = parse_screenplay_script(sp_text, characters=characters)
+                parsed = parse_screenplay_script(sp_text, characters=characters, char_tag_map=char_tag_map)
                 if parsed.get("audio_cues"):
                     timeline_lines.append(
                         f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}"
