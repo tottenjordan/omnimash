@@ -1,5 +1,5 @@
 from omnimash.agent.orchestrator import OmniMashAgent, build_adk_agent
-from omnimash.prompts.compiler import CharacterRole
+from omnimash.prompts.compiler import CharacterRole, get_character_identifier
 
 
 def test_agent_initial_creation_flow():
@@ -206,29 +206,29 @@ def test_orchestrator_passes_characters_to_omni_client(monkeypatch):
 
     char = CharacterRole(
         role_id="r1",
-        name="Snape",
+        name="Severus Snape",
         description="Potion master",
         reference_url="gs://bucket/snape.jpg",
     )
     res = agent.process_user_turn(
         user_id="u1",
         project_id="p1",
-        prompt="Snape rap battle",
+        prompt="Severus Snape rap battle",
         characters=[char],
     )
 
     assert res.success is True
-    assert captured_kwargs["characters"][0].name == "Potion Master Fam"
+    assert captured_kwargs["characters"][0].name == "Gothic Potion Master Fam"
     assert captured_kwargs["characters"][0].role_id == "r1"
 
 
 def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
     agent = OmniMashAgent(mock_mode=True)
     chars = [
-        {"role_id": "Role A", "name": "Harry", "description": "Young wizard"},
+        {"role_id": "Role A", "name": "Harry Potter", "description": "Young wizard"},
         {"role_id": "Role B", "name": "Ollivander", "description": "Wandmaker"},
     ]
-    sp_script = 'Harry: (Holds wand) "Is this it?"\nOllivander: (Nods) "Yes!"'
+    sp_script = 'Harry Potter: (Holds wand) "Is this it?"\nOllivander: (Nods) "Yes!"'
     scenes = [
         {
             "scene_number": 1,
@@ -241,14 +241,14 @@ def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
     res = agent.process_user_turn(
         user_id="u_sp",
         project_id="p_sp",
-        concept="Harry and Ollivander",
+        concept="Harry Potter and Ollivander",
         characters=chars,
         scenes=scenes,
     )
     assert res.success is True
     assert res.raw_compiled_prompt is not None
     assert "### TIMELINE" in res.raw_compiled_prompt
-    assert "- Scene 1 [Role A, Role B] (Screenplay Script):" in res.raw_compiled_prompt
+    assert f"- Scene 1 [{get_character_identifier(chars[0])}, {get_character_identifier(chars[1])}] (Screenplay Script):" in res.raw_compiled_prompt
     assert '  Spectacled Wizard Bruv: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
 
 

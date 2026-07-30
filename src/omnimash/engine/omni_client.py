@@ -11,7 +11,7 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import parse_qs, quote, urlparse
 from omnimash.config import settings
-from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
+from omnimash.prompts.compiler import CharacterRole, get_character_identifier, sanitize_real_names
 from omnimash.storage.gcs import GcsStorageManager
 
 logger = logging.getLogger("omnimash.engine")
@@ -661,6 +661,9 @@ class OmniFlashClient:
                         "mime_type": mime_type,
                     }
                 )
+                char_id = get_character_identifier(char)
+                char_img_map[char_id] = curr_idx
+                char_img_map[char_id.lower()] = curr_idx
                 r_id = str(role_id or "").strip()
                 n_str = str(name or "").strip()
                 if r_id:
@@ -675,7 +678,7 @@ class OmniFlashClient:
                     char_img_map[combo.lower()] = curr_idx
                 curr_idx += 1
             else:
-                char_id = role_id or name
+                char_id = get_character_identifier(char)
                 logger.warning(
                     "Character %s has reference_url '%s' but image bytes could not be loaded!",
                     char_id,
@@ -738,20 +741,16 @@ class OmniFlashClient:
                 if not ref_url or not isinstance(ref_url, str):
                     continue
 
-                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
+                char_id = get_character_identifier(c)
+                img_idx = char_img_map.get(char_id) or char_img_map.get(role_id) or char_img_map.get(name)
                 if img_idx:
                     img_role = (
                         getattr(c, "image_role", "Character Reference")
                         if not isinstance(c, dict)
                         else c.get("image_role", "Character Reference")
                     ) or "Character Reference"
-                    name_str = str(name) if name else ""
-                    name_clean = (
-                        sanitize_real_names(name_str) if name_str else str(role_id)
-                    )
-                    name_part = f" ({name_clean})" if name_clean else ""
                     input_roles_lines.append(
-                        f"[Image {img_idx}: {role_id}{name_part}] = [{img_role}]"
+                        f"[Image {img_idx}: {char_id}] = [{img_role}]"
                     )
 
         input_roles_header = ""
@@ -780,20 +779,21 @@ class OmniFlashClient:
         if characters:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in characters:
-                name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
+                char_id = get_character_identifier(c)
                 role_id = getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "")
+                name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
                 desc = getattr(c, "description", "") if not isinstance(c, dict) else c.get("description", "")
                 raw_tags = getattr(c, "aesthetic_tags", None) if not isinstance(c, dict) else c.get("aesthetic_tags")
                 str_tags: list[str] = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
                 tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
 
-                img_idx = char_img_map.get(role_id) or char_img_map.get(name)
+                img_idx = char_img_map.get(char_id) or char_img_map.get(role_id) or char_img_map.get(name)
                 ref_str = (
                     f" [Visual Reference: Attached Image #{img_idx}]"
                     if img_idx
                     else ""
                 )
-                char_lines.append(f"- {role_id} ({name}): {desc}{tag_str}{ref_str}")
+                char_lines.append(f"- {char_id}: {desc}{tag_str}{ref_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         sanitized_input = (
@@ -1269,10 +1269,11 @@ class OmniFlashClient:
         if char_objs:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in char_objs:
+                char_id = get_character_identifier(c)
                 wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
                 tag_str = f" [Style: {', '.join(c.aesthetic_tags)}]" if c.aesthetic_tags else ""
                 ref_str = f" (Reference Image: {c.reference_url})" if c.reference_url else ""
-                char_lines.append(f"- {c.role_id} ({c.name}): {c.description}{wardrobe_str}{tag_str}{ref_str}")
+                char_lines.append(f"- {char_id}: {c.description}{wardrobe_str}{tag_str}{ref_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         effective_preset = style_preset or style_tone
