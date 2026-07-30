@@ -1135,7 +1135,7 @@ def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
 def test_build_multimodal_contents_omni_flash_native_multimodal() -> None:
     """Verify that _build_multimodal_contents assembles keyframe seed image, character reference images, character roster with Visual Reference bindings, and timecoded prompt without redundant section headers."""
     import base64
-    from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
+    from omnimash.prompts.compiler import CharacterRole
 
     client = OmniFlashClient(mock_mode=True)
     char1 = CharacterRole(
@@ -1215,8 +1215,12 @@ def test_build_multimodal_contents_omni_flash_native_multimodal() -> None:
     assert f"- {get_character_identifier(char1)} <IMAGE_REF_0>: Spectacled wizard student [Style: Cartier Glasses]" in text_val
     assert f"- {get_character_identifier(char2)} <IMAGE_REF_1>: Gothic potion master [Style: Dark Robes]" in text_val
 
-    # Check timecoded prompt content (with sanitized names)
-    assert sanitize_real_names(timecoded_prompt) in text_val
+    # Check timecoded prompt content (with sanitized names and bound image ref tags)
+    assert "<IMAGE_REF_0>" in text_val
+    assert "<IMAGE_REF_1>" in text_val
+    assert "In a single continuous shot. No scene cuts." in text_val
+    assert "Harry <IMAGE_REF_0>" in text_val
+    assert "Potion Master <IMAGE_REF_1>" in text_val
 
     # Ensure redundant section headers are NOT present
     assert "# Character Likeness Directives:" not in text_val
@@ -1367,6 +1371,48 @@ def test_abstract_prompt_preserves_character_tags_and_image_refs() -> None:
     assert "Snape brews" not in res
     assert "a stern" in res
     assert "master wizard" in res
+
+
+def test_build_multimodal_contents_extracts_base_names_and_tokens() -> None:
+    client = OmniFlashClient(mock_mode=True)
+    char1 = CharacterRole(
+        role_id="Role 1",
+        name="Yo Totti (Post High Security Fortress)",
+        description="Yo Totti after fortress release",
+        reference_url="gs://bucket/yototti.png",
+    )
+    char2 = CharacterRole(
+        role_id="Role 2",
+        name="Swagrid Tha Plug",
+        description="Swagrid the legendary supplier",
+        reference_url="gs://bucket/swagrid.png",
+    )
+
+    with patch.object(
+        client.storage, "download_blob_bytes", return_value=(b"fake_png", "image/png")
+    ):
+        images, char_img_map = client._load_reference_images_as_input(
+            session_id=None,
+            characters=[char1, char2],
+            starting_index=1,
+        )
+        assert char_img_map.get("Yo Totti (Post High Security Fortress)") == 1
+        assert char_img_map.get("Yo Totti") == 1
+        assert char_img_map.get("Totti") == 1
+
+        assert char_img_map.get("Swagrid Tha Plug") == 2
+        assert char_img_map.get("Swagrid") == 2
+        assert char_img_map.get("Plug") == 2
+
+        payload = client._build_multimodal_contents(
+            prompt="Swagrid glides out of the forest",
+            characters=[char1, char2],
+        )
+
+    assert isinstance(payload, list)
+    text_val = payload[0]["content"][-1]["text"]
+    assert "Swagrid <IMAGE_REF_1>" in text_val
+
 
 
 

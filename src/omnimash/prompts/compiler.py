@@ -150,10 +150,29 @@ def build_character_image_ref_tags(
             ref_counter += 1
 
         name_clean = sanitize_real_names(name) if name else ""
-        for key in (char_id, role_id, name, name_clean):
+        base_name = re.sub(r"\s*\(.*?\)", "", name).strip() if name else ""
+        base_name_clean = sanitize_real_names(base_name) if base_name else ""
+
+        candidate_keys: set[str] = set()
+        for k in (char_id, role_id, name, name_clean, base_name, base_name_clean):
+            if k and k.strip():
+                candidate_keys.add(k.strip())
+
+        for source_name in (base_name, name):
+            if source_name:
+                for token in source_name.split():
+                    tok = token.strip()
+                    if tok:
+                        candidate_keys.add(tok)
+                        tok_clean = sanitize_real_names(tok)
+                        if tok_clean and tok_clean.strip():
+                            candidate_keys.add(tok_clean.strip())
+
+        for key in candidate_keys:
             if key and key.strip():
-                char_tag_map[key.strip()] = tag
-                char_tag_map[key.strip().lower()] = tag
+                k_str = key.strip()
+                char_tag_map[k_str] = tag
+                char_tag_map[k_str.lower()] = tag
 
         img_idx += 1
 
@@ -1166,11 +1185,17 @@ class PromptCompiler:
                     vo_info = f" Voiceover: {vo_clean}."
 
             action_anchor = parts.subject_anchor
+            motion_anchor = parts.motion
             if char_tag_map:
-                for c_id, tag in char_tag_map.items():
+                sorted_keys = sorted(char_tag_map.keys(), key=len, reverse=True)
+                for c_id in sorted_keys:
+                    tag = char_tag_map[c_id]
                     if tag not in action_anchor and c_id in action_anchor:
                         action_anchor = action_anchor.replace(c_id, f"{c_id} {tag}")
+                    if tag not in motion_anchor and c_id in motion_anchor:
+                        motion_anchor = motion_anchor.replace(c_id, f"{c_id} {tag}")
 
+            parts.motion = motion_anchor
             tc_blocks = [
                 f"[0-3s] Action: {action_anchor}. {parts.aesthetic_injection}. {parts.environment}. {parts.motion}. Audio: {sound_desc}.{vo_info}",
                 f"[3-6s] Action: Continuation of {parts.motion}. Audio: {sound_desc}.",
