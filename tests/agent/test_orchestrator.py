@@ -249,7 +249,7 @@ def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
     assert res.raw_compiled_prompt is not None
     assert "### TIMELINE" in res.raw_compiled_prompt
     assert f"- Scene 1 [{get_character_identifier(chars[0])}, {get_character_identifier(chars[1])}] (Screenplay Script):" in res.raw_compiled_prompt
-    assert '  Role A - Spectacled Wizard Bruv: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
+    assert '  Spectacled Wizard Bruv: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
 
 
 def test_process_user_turn_preserves_image_role_and_narrator(monkeypatch):

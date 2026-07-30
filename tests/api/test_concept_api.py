@@ -37,7 +37,7 @@ def test_generate_endpoint_accepts_vocal_delivery_and_character_voice_style():
             "characters": [
                 {
                     "role_id": "Role A",
-                    "name": "Harry",
+                    "name": "Harry Potter",
                     "description": "Young wizard with round glasses",
                     "reference_url": "https://example.com/harry.jpg",
                     "aesthetic_tags": ["Red Gucci Tracksuit"],
