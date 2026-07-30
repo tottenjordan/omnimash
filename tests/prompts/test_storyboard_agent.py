@@ -151,12 +151,12 @@ def test_parse_directors_notes_and_dialogue():
 def test_expand_vision_with_screenplay_script():
     agent = StoryboardAgent(mock_mode=True)
     script = (
-        "[0-3s] Snape enters the potion room with dramatic flair.\n"
+        "[0-3s] Severus Snape enters the potion room with dramatic flair.\n"
         "[3-7s] Dumbledore nods in approval while 808 sub-bass drops.\n"
         "[7-10s] Both wizards strike a final freeze-frame pose."
     )
     chars = [
-        CharacterRole(role_id="Role A", name="Snape", description="Severe wizard"),
+        CharacterRole(role_id="Role A", name="Severus Snape", description="Severe wizard"),
         CharacterRole(role_id="Role B", name="Dumbledore", description="Elderly headmaster"),
     ]
     shots = agent.expand_vision(
@@ -173,7 +173,7 @@ def test_expand_vision_with_screenplay_script():
     assert shots[0].shot_index == 1
     assert shots[1].shot_index == 2
     assert shots[2].shot_index == 3
-    assert "Role A (Potion Master Fam)" in shots[0].action
+    assert "Role A (Gothic Potion Master Fam)" in shots[0].action
     assert "Role B (Venerable High Wizard Bruv)" in shots[1].action
 
 
@@ -181,7 +181,7 @@ def test_expand_vision_celebrity_sanitization():
     agent = StoryboardAgent(mock_mode=True)
     script = (
         "[0-4s] Gordon Ramsay yells at line cook in high energy kitchen.\n"
-        "[4-10s] Drake drops a melodic verse while Jeezy counts cash."
+        "[4-10s] Drake drops a melodic verse while Young Jeezy counts cash."
     )
     shots = agent.expand_vision(
         concept="Celebrity kitchen rap battle",
@@ -194,7 +194,7 @@ def test_expand_vision_celebrity_sanitization():
     assert "Fiery Chef Blood" in shots[0].action
     assert "Drake" not in shots[1].action
     assert "Drizzy Bruv" in shots[1].action
-    assert "Jeezy" not in shots[1].action
+    assert "Young Jeezy" not in shots[1].action
     assert "Trap Legend Fam" in shots[1].action
 
 
@@ -279,14 +279,14 @@ def test_optimize_shot_prompt_live_mocked_genai(monkeypatch):
     agent = StoryboardAgent(mock_mode=False)
 
     class MockResponse:
-        text = '"Low-angle cinematic tracking shot of Snape in atmospheric green lighting with anamorphic lens flares."'
+        text = '"Low-angle cinematic tracking shot of Severus Snape in atmospheric green lighting with anamorphic lens flares."'
 
     class MockModels:
         def generate_content(self, model, contents, config=None):
             assert model == "gemini-2.5-flash"
             assert "Hollywood cinematographer" in contents
             assert "Dark Fantasy" in contents
-            assert "Snape enters the potion room" in contents
+            assert "Severus Snape enters the potion room" in contents
             return MockResponse()
 
     class MockGenaiClient:
@@ -295,11 +295,11 @@ def test_optimize_shot_prompt_live_mocked_genai(monkeypatch):
     agent._genai_client = MockGenaiClient()
 
     optimized = agent.optimize_shot_prompt(
-        "Snape enters the potion room", style_tone="Dark Fantasy"
+        "Severus Snape enters the potion room", style_tone="Dark Fantasy"
     )
     assert (
         optimized
-        == "Low-angle cinematic tracking shot of Potion Master Fam in atmospheric green lighting with anamorphic lens flares."
+        == "Low-angle cinematic tracking shot of Gothic Potion Master Fam in atmospheric green lighting with anamorphic lens flares."
     )
 
 

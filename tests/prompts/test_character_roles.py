@@ -11,13 +11,13 @@ def test_compile_with_character_roles_and_scenes():
     chars = [
         CharacterRole(
             role_id="Role A",
-            name="Harry",
+            name="Harry Potter",
             description="Young wizard with round glasses and lightning scar",
             reference_url="https://example.com/harry.jpg",
         ),
         CharacterRole(
             role_id="Role B",
-            name="Draco",
+            name="Draco Malfoy",
             description="Blonde rival wizard in silver-trimmed robes",
             reference_url="https://example.com/draco.jpg",
         ),
@@ -46,12 +46,12 @@ def test_compile_with_character_roles_and_scenes():
     )
     assert "### CHARACTER PROFILES" in compiled
     assert "Role A - Spectacled Wizard Bruv" in compiled
-    assert "Role B - Rival Wizard Blood" in compiled
+    assert "Role B - Platinum Rival Blood" in compiled
     assert "### SCENE INSTRUCTIONS" in compiled
     assert "2000s Atlanta Trap" in compiled
     assert "### TIMELINE" in compiled
     assert "Scene 1 [Role A - Spectacled Wizard Bruv]" in compiled
-    assert "Scene 2 [Role B - Rival Wizard Blood]" in compiled
+    assert "Scene 2 [Role B - Platinum Rival Blood]" in compiled
     assert "cooking potions" in compiled
 
 
@@ -83,7 +83,7 @@ def test_compile_storyboard_minimal_args():
     chars = [
         CharacterRole(
             role_id="Role A",
-            name="Harry",
+            name="Harry Potter",
             description="Young wizard",
         )
     ]
