@@ -461,5 +461,54 @@ def test_generate_shot_preserves_keyframe_image_url(monkeypatch):
     assert data["keyframe_image_url"] == "gs://bucket/keyframe.png"
 
 
+def test_generate_shot_uses_custom_audio_soundscape(monkeypatch):
+    captured_kwargs = {}
+    from omnimash.agent.orchestrator import OmniMashAgent
+
+    original_process_user_turn = OmniMashAgent.process_user_turn
+
+    def mock_process_user_turn(self, *args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return original_process_user_turn(self, *args, **kwargs)
+
+    monkeypatch.setattr(OmniMashAgent, "process_user_turn", mock_process_user_turn)
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    directive_text = (
+        "[SHOT DIRECTIVE: Shot 2]\n"
+        "- Action / Subject: Snape glaring menacingly in potion dungeon\n"
+        "- Audio Soundscape: Aggressive 90s boom-bap beat with heavy sub-bass drop and crisp snares"
+    )
+
+    res = client.post(
+        "/api/generate-shot",
+        json={
+            "session_name": "audio_soundscape_session",
+            "shot_index": 2,
+            "shot_directive": directive_text,
+            "style_lighting": "Dark dungeon lighting",
+            "characters": [
+                {
+                    "role_id": "Role B",
+                    "name": "Snape",
+                    "description": "Gothic Potion Master",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert (
+        captured_kwargs.get("audio_stem")
+        == "Aggressive 90s boom-bap beat with heavy sub-bass drop and crisp snares"
+    )
+    assert "Aggressive 90s boom-bap beat" in data.get("raw_compiled_prompt", "")
+    assert "90s 808 Trap Beat" not in data.get("raw_compiled_prompt", "")
+
+
+
 
 

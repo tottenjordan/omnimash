@@ -178,6 +178,7 @@ class GenerateShotRequest(BaseModel):
     parent_turn_id: str | None = None
     keyframe_image_url: str | None = None
     style_lighting: str = ""
+    audio_stem: str | None = None
 
 
 class GenerateShotResponse(BaseModel):
@@ -581,7 +582,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             keyframe_image_url: shot.keyframe_image_url || shot.image_url || null,
                             characters: characters,
                             duration_seconds: parseFloat(shot.duration_seconds) || 10.0,
-                            parent_turn_id: parentTurnId
+                            parent_turn_id: parentTurnId,
+                            audio_stem: shot.audio || null
                         })
                     });
                     const data = await res.json();
@@ -4583,6 +4585,20 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 if raw_vo:
                     voiceover_text = raw_vo
 
+        audio_soundscape: str | None = None
+        if sanitized_directive:
+            match_audio = re.search(
+                r"-\s*Audio\s*Soundscape:\s*(.*)",
+                sanitized_directive,
+                re.IGNORECASE,
+            )
+            if match_audio:
+                raw_audio = match_audio.group(1).strip()
+                if raw_audio:
+                    audio_soundscape = raw_audio
+
+        audio_stem_val = audio_soundscape or req.audio_stem
+
         # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor
         if not keyframe_url and sanitized_directive:
             ref_urls: list[str] = []
@@ -4613,6 +4629,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             characters=req.characters,
             keyframe_image_url=keyframe_url,
             voiceover=voiceover_text,
+            audio_stem=audio_stem_val,
         )
         return GenerateShotResponse(
             success=agent_turn.success,
