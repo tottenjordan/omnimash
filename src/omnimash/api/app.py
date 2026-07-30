@@ -372,7 +372,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [copied, setCopied] = useState(false);
 
             // Act 3: The Screening Room & Branching State
-            const [currentVideo, setCurrentVideo] = useState("/static/rendered/mock.mp4");
+            const [currentVideo, setCurrentVideo] = useState("");
             const [deltaPrompt, setDeltaPrompt] = useState("");
             const [parentTurnId, setParentTurnId] = useState("");
             const [loading, setLoading] = useState(false);
@@ -756,18 +756,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 }, 50);
             };
 
-            const [history, setHistory] = useState([
-                {
-                    turnId: "turn_init",
-                    prompt: "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style",
-                    status: "COMPLETED",
-                    videoUrl: "/static/rendered/mock.mp4",
-                    parent: null,
-                    lock: "Maintain character likeness, Role A/B identities, and background environment.",
-                    diff: "Initial parody cut generated from Act 1 & Act 2 storyboard sequence.",
-                    rawCompiledPrompt: initialRawPrompt
-                }
-            ]);
+            const [history, setHistory] = useState([]);
 
             // Helper: Client-side Live Storyboard Prompt Compiler Preview (Four-Block Multimodal Structure)
             const compileStoryboardPreview = () => {
@@ -3864,7 +3853,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                     <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
                                                     <span className="font-bold text-gray-300">Live Parody Cut</span>
                                                     <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono">
-                                                        Turn: {parentTurnId || "turn_init"}
+                                                        Turn: {parentTurnId || "None"}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center space-x-3">
@@ -4006,6 +3995,11 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                     </div>
                                                 </div>
                                             ))}
+                                            {history.length === 0 && (
+                                                <div className="text-xs text-gray-500 italic p-4 text-center border border-dashed border-gray-800 rounded-xl">
+                                                    No turn history yet. Generate your first video to start building the version tree.
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
