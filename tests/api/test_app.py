@@ -129,7 +129,7 @@ def test_api_generate_and_extend_scene_with_vocal_delivery_and_voice_style():
     gen_data = gen_res.json()
     assert gen_data["success"] is True
     assert (
-        "Voice Style (Role A - Harry): Melodic autotune trap flow"
+        "Voice Style (Role A - Spectacled Wizard Bruv): Melodic autotune trap flow"
         in gen_data["raw_compiled_prompt"]
     )
     assert (
