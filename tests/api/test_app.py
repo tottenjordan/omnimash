@@ -539,6 +539,35 @@ def test_generate_shot_compiles_four_block_prompt():
     assert "[SHOT DIRECTIVE]" not in compiled
 
 
+def test_generate_shot_keyframe_seed_offsets_prompt_indexes():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/generate-shot",
+        json={
+            "session_name": "kf_offset_test_session",
+            "shot_index": 1,
+            "action": "Harry preparing potions in foggy courtyard",
+            "keyframe_image_url": "https://example.com/kf.jpg",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Harry",
+                    "description": "Young wizard",
+                    "reference_url": "https://example.com/harry.jpg",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    compiled = data.get("raw_compiled_prompt", "")
+    assert "<FIRST_FRAME>@Image1" in compiled
+    assert "<IMAGE_REF_0>@Image2" in compiled
+
+
+
 
 
 

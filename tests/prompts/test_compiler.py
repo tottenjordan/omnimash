@@ -916,6 +916,42 @@ def test_compile_storyboard_single_shot_directive():
     assert 'Dialogue: "I been cooking potions all day."' in compiled
 
 
+def test_compile_storyboard_with_keyframe_seed_offsets_image_indexes():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Char1",
+            description="First character",
+            reference_url="https://example.com/char1.jpg",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Char2",
+            description="Second character",
+            reference_url="https://example.com/char2.jpg",
+        ),
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A", "Role B"],
+            action="Interaction scene",
+        )
+    ]
+    compiled = compiler.compile_storyboard(
+        concept="Test storyboard with keyframe seed",
+        characters=chars,
+        scenes=scenes,
+        has_keyframe_seed=True,
+    )
+    assert "[# Sources <FIRST_FRAME>@Image1]" in compiled
+    assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in compiled
+    assert "- Role A - Char1 <IMAGE_REF_0>:" in compiled
+    assert "- Role B - Char2 <IMAGE_REF_1>:" in compiled
+
+
+
 
 
 
