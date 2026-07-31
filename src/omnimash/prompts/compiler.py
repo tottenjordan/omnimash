@@ -1198,10 +1198,11 @@ class PromptCompiler:
                         motion_anchor = motion_anchor.replace(c_id, f"{c_id} {tag}")
 
             parts.motion = motion_anchor
+            motion_part = f". {parts.motion}" if parts.motion and parts.motion.lower() not in action_anchor.lower() else ""
             tc_blocks = [
-                f"[0-3s] Action: {action_anchor}. {parts.aesthetic_injection}. {parts.environment}. {parts.motion}. Audio: {sound_desc}.{vo_info}",
-                f"[3-6s] Action: Continuation of {parts.motion}. Audio: {sound_desc}.",
-                f"[6-10s] Action: Final dynamic resolution. Audio: {sound_desc}.",
+                f"[0-3s] Action: {action_anchor}{motion_part}. Audio: {sound_desc}.{vo_info}",
+                f"[3-6s] Action: Continuation of action and motion. Audio: {sound_desc}.",
+                f"[6-10s] Action: Dynamic resolution. Audio: {sound_desc}.",
             ]
 
         parts.timecode_blocks = tc_blocks
