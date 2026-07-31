@@ -449,6 +449,16 @@ def test_parse_timecoded_script_character_dialogue_extraction():
     assert "What's the first move" not in parsed[1]["action"]
 
 
+def test_parse_timecoded_script_extracts_dialogue_into_shot_field():
+    script_text = (
+        '[0-5s] Action: Dumble Dior steps up to the mic. Dumble Dior: "Welcome to Dripwarts!"'
+    )
+    parsed = parse_timecoded_script(script_text)
+    assert len(parsed) == 1
+    assert parsed[0]["dialogue"] == 'Dumble Dior: "Welcome to Dripwarts!"'
+    assert parsed[0]["action"] == "Dumble Dior steps up to the mic."
+
+
 
 
 

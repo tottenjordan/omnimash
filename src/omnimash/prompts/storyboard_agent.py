@@ -93,21 +93,39 @@ def _extract_character_dialogue(text: str) -> tuple[str, str | None]:
     if not text or not text.strip():
         return text.strip(), None
 
-    pattern = re.compile(
-        r"(?:^|(?<=[\.\?\!])\s+)"
-        r"([A-Za-z0-9_\s\-\(\)\']+):\s*"
-        r"([\"'].*[\"']|[^\n]+)$"
-    )
-    match = pattern.search(text.strip())
-    if match:
-        char_name = match.group(1).strip()
-        if char_name.upper() not in _RESERVED_KEYWORD_SET and len(char_name) <= 60:
-            start_pos = match.start(1)
-            action_part = text.strip()[:start_pos].strip()
-            dialogue_part = text.strip()[start_pos:].strip()
-            return action_part, dialogue_part
+    stripped = text.strip()
 
-    return text.strip(), None
+    patterns = [
+        re.compile(
+            r"(?:^|(?<=[\.\?\!,;–—\-\:])\s+|\b(?i:DIALOGUE|ACTION):\s*|\s+)"
+            r"([A-Z0-9][A-Za-z0-9_\-\']*(?:\s+[A-Z0-9\(][A-Za-z0-9_\-\)\']*){0,4})"
+            r"(?:\s+says:?|:)\s*"
+            r"([\"'].*[\"']|[^\n]+)$"
+        ),
+        re.compile(
+            r"(?:^|(?<=[\.\?\!,;–—\-\:])\s+|\b(?i:DIALOGUE|ACTION):\s*)"
+            r"([A-Za-z0-9_\s\-\(\)\']+?)"
+            r"(?:\s+says:?|:)\s*"
+            r"([\"'].*[\"']|[^\n]+)$"
+        ),
+    ]
+
+    for pattern in patterns:
+        for match in pattern.finditer(stripped):
+            char_name = match.group(1).strip()
+            if char_name.upper() not in _RESERVED_KEYWORD_SET and len(char_name) <= 60:
+                start_pos = match.start(1)
+                action_part = stripped[:start_pos].strip()
+                action_part = re.sub(
+                    r"^(?:ACTION|DIALOGUE):\s*", "", action_part, flags=re.IGNORECASE
+                ).strip()
+                action_part = re.sub(
+                    r"\s*(?:ACTION|DIALOGUE):\s*$", "", action_part, flags=re.IGNORECASE
+                ).strip()
+                dialogue_part = f"{char_name}: {match.group(2).strip()}"
+                return action_part, dialogue_part
+
+    return stripped, None
 
 
 def parse_timecoded_script(
@@ -181,7 +199,14 @@ def parse_timecoded_script(
                 if diag_part:
                     dialogue_lines.append(diag_part)
             elif line_upper.startswith("DIALOGUE:"):
-                dialogue_lines.append(line_str[9:].strip())
+                raw_diag = line_str[9:].strip()
+                act_part, diag_part = _extract_character_dialogue(raw_diag)
+                if diag_part:
+                    if act_part:
+                        action_lines.append(act_part)
+                    dialogue_lines.append(diag_part)
+                else:
+                    dialogue_lines.append(raw_diag)
             elif line_upper.startswith(
                 ("AUDIO:", "SOUND:", "SOUND DESIGN:", "BACKGROUND AUDIO:", "AUDIO CUES:", "MUSIC:")
             ):
