@@ -3251,14 +3251,14 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                                 </div>
                                                                 <div>
                                                                     <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5 flex items-center justify-between">
-                                                                        <span>1. Action / Subject (Timecoded Omni Flash Syntax)</span>
-                                                                        <span className="text-[9px] text-gray-500 font-mono">[0-3s] Action: ... Audio: ... Dialogue: ...</span>
+                                                                        <span>1. Visual Action &amp; Scene Description</span>
+                                                                        <span className="text-[9px] text-gray-500 font-mono">Describe camera, character movement, and setting</span>
                                                                     </label>
                                                                     <textarea
                                                                         rows={4}
                                                                         value={shot.action || ""}
                                                                         onChange={(e) => updateStageShot(idx, "action", e.target.value)}
-                                                                        placeholder={`e.g. [0-3s] Action: Spectacled Wizard Bruv enters courtyard. Audio: Heavy 808 trap intro. Dialogue: "I been cooking potions."\n[3-6s] Action: Dynamic zoom on glowing wand. Audio: Snare trills.`}
+                                                                        placeholder="e.g. Spectacled Wizard Bruv enters courtyard under dramatic lighting. Dynamic zoom on glowing wand."
                                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-gray-200 focus:outline-none focus:border-pink-500 text-xs font-mono leading-relaxed"
                                                                     />
                                                                 </div>
@@ -3314,12 +3314,15 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                                     </div>
                                                                 </div>
                                                                 <div>
-                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block mb-0.5">6. Dialogue &amp; On-Screen Text</label>
+                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block mb-0.5 flex items-center justify-between">
+                                                                        <span>6. Dialogue &amp; On-Screen Speech (Auto-populated from Screenplay)</span>
+                                                                        <span className="text-[9px] text-gray-500 font-mono">e.g. Dumble Dior: &quot;Welcome!&quot; | Snape Dawg: &quot;Potions class is in session!&quot;</span>
+                                                                    </label>
                                                                     <input
                                                                         type="text"
                                                                         value={shot.dialogue || ""}
                                                                         onChange={(e) => updateStageShot(idx, "dialogue", e.target.value)}
-                                                                        placeholder='e.g. Spoken dialogue or text overlay: "Check the potion beat"'
+                                                                        placeholder='e.g. Dumble Dior: "Welcome!" | Snape Dawg: "Potions class is in session!"'
                                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-rose-500 text-xs"
                                                                     />
                                                                 </div>

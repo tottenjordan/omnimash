@@ -36,9 +36,15 @@ def test_commit_recommended_and_branch_flow():
     assert r1.status_event == "COMPLETED"
 
     # Turn 2, 3, 4
-    r2 = agent.process_user_turn("u1", "p1", "Add gold chains", 0, r1.turn_id)
-    r3 = agent.process_user_turn("u1", "p1", "Add neon lights", 0, r2.turn_id)
-    r4 = agent.process_user_turn("u1", "p1", "Add fog", 0, r3.turn_id)
+    r2 = agent.process_user_turn(
+        "u1", "p1", "Add gold chains", 0, r1.turn_id, is_conversational_edit=True
+    )
+    r3 = agent.process_user_turn(
+        "u1", "p1", "Add neon lights", 0, r2.turn_id, is_conversational_edit=True
+    )
+    r4 = agent.process_user_turn(
+        "u1", "p1", "Add fog", 0, r3.turn_id, is_conversational_edit=True
+    )
     assert r4.status_event == "COMMIT_RECOMMENDED"
 
     # Commit and branch
@@ -363,5 +369,51 @@ def test_conversational_edit_passes_parent_video_as_keyframe_seed(monkeypatch):
     assert len(captured_execute_args) == 1
     call_args, call_kwargs = captured_execute_args[0]
     assert call_kwargs.get("keyframe_image_url") == parent_video_url
+
+
+def test_storyboard_shot_generation_calls_generate_clip(monkeypatch):
+    agent = OmniMashAgent(mock_mode=True)
+
+    r1 = agent.process_user_turn(
+        user_id="u_sb",
+        project_id="p_sb",
+        prompt="Shot 1",
+        clip_index=0,
+    )
+    assert r1.success is True
+    assert r1.turn_id is not None
+
+    generate_clip_calls = []
+    apply_diff_calls = []
+
+    orig_generate_clip = agent.omni_client.generate_clip
+    orig_apply_diff = agent.omni_client.apply_interaction_diff
+
+    def mock_generate_clip(*args, **kwargs):
+        generate_clip_calls.append((args, kwargs))
+        return orig_generate_clip(*args, **kwargs)
+
+    def mock_apply_interaction_diff(*args, **kwargs):
+        apply_diff_calls.append((args, kwargs))
+        return orig_apply_diff(*args, **kwargs)
+
+    monkeypatch.setattr(agent.omni_client, "generate_clip", mock_generate_clip)
+    monkeypatch.setattr(
+        agent.omni_client, "apply_interaction_diff", mock_apply_interaction_diff
+    )
+
+    r2 = agent.process_user_turn(
+        user_id="u_sb",
+        project_id="p_sb",
+        prompt="Shot 2 storyboard prompt",
+        clip_index=1,
+        parent_turn_id=r1.turn_id,
+        is_conversational_edit=False,
+    )
+
+    assert r2.success is True
+    assert len(generate_clip_calls) == 1
+    assert len(apply_diff_calls) == 0
+
 
 

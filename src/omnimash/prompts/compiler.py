@@ -567,6 +567,119 @@ def parse_screenplay_script(
     }
 
 
+def enrich_timeline_dialogue_speakers(
+    diag_raw: str,
+    characters: list[CharacterRole] | None,
+    char_tag_map: dict[str, str] | None = None,
+) -> tuple[str, bool]:
+    """Enriches multi-speaker dialogue strings by replacing character speaker labels
+
+    with their official identifier and image reference tag format:
+    'Role X - Name <IMAGE_REF_N> says:'.
+    Returns (enriched_dialogue, replaced_flag).
+    """
+    if not diag_raw or not isinstance(diag_raw, str) or not diag_raw.strip():
+        return diag_raw, False
+    if not characters:
+        return diag_raw, False
+
+    cand_list: list[tuple[str, str]] = []
+    for c in characters:
+        c_id = get_character_identifier(c)
+        c_name = str(
+            getattr(c, "name", "")
+            if not isinstance(c, dict)
+            else c.get("name", "") or ""
+        ).strip()
+        c_role = str(
+            getattr(c, "role_id", "")
+            if not isinstance(c, dict)
+            else c.get("role_id", "") or ""
+        ).strip()
+
+        tag_map = char_tag_map or {}
+        tag = tag_map.get(c_id)
+        if not tag:
+            tag = (
+                tag_map.get(c_id.lower())
+                or tag_map.get(c_name)
+                or tag_map.get(c_name.lower())
+            )
+
+        if c_role and c_name:
+            target_char_id = f"{c_role} - {c_name}"
+        elif c_role:
+            target_char_id = c_role
+        elif c_name:
+            target_char_id = c_name
+        else:
+            target_char_id = c_id
+
+        tag_str = f" {tag}" if tag else ""
+        target_replacement = f"{target_char_id}{tag_str} says:"
+
+        candidates: set[str] = set()
+        if c_id:
+            candidates.add(c_id)
+            if tag:
+                candidates.add(f"{c_id} {tag}")
+        if c_name:
+            candidates.add(c_name)
+            name_clean = sanitize_real_names(c_name) if c_name else ""
+            if name_clean and name_clean.strip():
+                candidates.add(name_clean.strip())
+            base_name = re.sub(r"\s*\(.*?\)", "", c_name).strip() if c_name else ""
+            if base_name and base_name.strip():
+                candidates.add(base_name.strip())
+                if tag:
+                    candidates.add(f"{base_name.strip()} {tag}")
+            if tag:
+                candidates.add(f"{c_name} {tag}")
+        if c_role:
+            candidates.add(c_role)
+            if tag:
+                candidates.add(f"{c_role} {tag}")
+
+        for cand in candidates:
+            if cand and cand.strip():
+                cand_list.append((cand.strip(), target_replacement))
+
+    if not cand_list:
+        return diag_raw, False
+
+    # Sort longest candidates first so more specific labels take precedence
+    cand_list.sort(key=lambda x: len(x[0]), reverse=True)
+
+    cand_map: dict[str, str] = {}
+    pattern_parts: list[str] = []
+    for cand, target in cand_list:
+        cand_lower = cand.lower()
+        if cand_lower not in cand_map:
+            cand_map[cand_lower] = target
+            pattern_parts.append(re.escape(cand))
+
+    if not pattern_parts:
+        return diag_raw, False
+
+    pattern = re.compile(
+        r"(?:^|(?<=[\s|\[(\"'“‘-]))(" + "|".join(pattern_parts) + r")(?:\s*says)?\s*:",
+        flags=re.IGNORECASE,
+    )
+
+    replaced = False
+
+    def repl_func(match: re.Match) -> str:
+        nonlocal replaced
+        matched_cand = match.group(1).lower()
+        if matched_cand in cand_map:
+            replaced = True
+            return cand_map[matched_cand]
+        return match.group(0)
+
+    enriched = pattern.sub(repl_func, diag_raw)
+    return enriched, replaced
+
+
 def parse_timecoded_script(
     script_text: str,
     characters: list[CharacterRole] | None = None,
@@ -1461,7 +1574,17 @@ class PromptCompiler:
                         ).strip()
                         diag_str = f' | Dialogue: Narrator (VO) says: "{clean_d}"'
                     else:
-                        diag_str = f' | Dialogue: "{diag_raw}"'
+                        enriched_diag, replaced_speakers = (
+                            enrich_timeline_dialogue_speakers(
+                                diag_raw=diag_raw,
+                                characters=characters,
+                                char_tag_map=char_tag_map,
+                            )
+                        )
+                        if replaced_speakers:
+                            diag_str = f" | Dialogue: {enriched_diag}"
+                        else:
+                            diag_str = f' | Dialogue: "{diag_raw}"'
 
                 action_str = str(action or "").strip()
                 if action_str.startswith("["):

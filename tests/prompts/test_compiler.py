@@ -951,6 +951,37 @@ def test_compile_storyboard_with_keyframe_seed_offsets_image_indexes():
     assert "- Role B - Char2 <IMAGE_REF_1>:" in compiled
 
 
+def test_compile_storyboard_multi_speaker_dialogue_tag_binding():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Dumble Dior",
+            description="Wizard headmaster in streetwear",
+            reference_url="https://example.com/dumble.jpg",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Snape Dawg",
+            description="Potions master in dark robes",
+            reference_url="https://example.com/snape.jpg",
+        ),
+    ]
+    scene = SceneDirective(
+        scene_number=1,
+        active_roles=["Role A", "Role B"],
+        action="Wizard interaction in potions classroom",
+        dialogue='Dumble Dior: "Welcome to Dripwarts!" | Snape Dawg: "Potions class is in session!"',
+    )
+    compiled = compiler.compile_storyboard(
+        concept="Wizard interaction",
+        characters=chars,
+        scenes=[scene],
+    )
+    assert 'Role A - Dumble Dior <IMAGE_REF_0> says: "Welcome to Dripwarts!"' in compiled
+    assert 'Role B - Potion Master Dawg <IMAGE_REF_1> says: "Potions class is in session!"' in compiled
+
+
 
 
 

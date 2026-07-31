@@ -421,11 +421,12 @@ class OmniMashAgent:
             self.storage.save_session_prompt(
                 session.session_id, turn_index, meta_prompt
             )
+            effective_thread_id = parent_thread_id if is_conversational_edit else None
             gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
                 turn_index=turn_index,
                 prompt=meta_prompt,
-                parent_thread_id=parent_thread_id,
+                parent_thread_id=effective_thread_id,
                 voiceover=voiceover,
                 is_silent=is_silent,
                 audio_stem=audio_stem,
