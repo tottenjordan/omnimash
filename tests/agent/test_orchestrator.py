@@ -324,3 +324,44 @@ def test_process_user_turn_preserves_image_role_and_narrator(monkeypatch):
         assert char.image_role == "Product Reference"
         assert char.is_offscreen_narrator is True
 
+
+def test_conversational_edit_passes_parent_video_as_keyframe_seed(monkeypatch):
+    agent = OmniMashAgent(mock_mode=True)
+    captured_execute_args = []
+
+    orig_execute = agent._execute_turn_generation
+
+    def mock_execute_turn_generation(*args, **kwargs):
+        captured_execute_args.append((args, kwargs))
+        return orig_execute(*args, **kwargs)
+
+    monkeypatch.setattr(agent, "_execute_turn_generation", mock_execute_turn_generation)
+
+    # Initial turn (turn 0)
+    r1 = agent.process_user_turn(
+        user_id="u_conv",
+        project_id="p_conv",
+        prompt="Snape dancing in 90s rap video",
+        clip_index=0,
+    )
+    assert r1.success is True
+    assert r1.video_url is not None
+    parent_video_url = r1.video_url
+
+    captured_execute_args.clear()
+
+    # Conversational edit turn with parent_turn_id and is_conversational_edit=True
+    r2 = agent.process_user_turn(
+        user_id="u_conv",
+        project_id="p_conv",
+        prompt="Add gold chain around neck",
+        clip_index=0,
+        parent_turn_id=r1.turn_id,
+        is_conversational_edit=True,
+    )
+    assert r2.success is True
+    assert len(captured_execute_args) == 1
+    call_args, call_kwargs = captured_execute_args[0]
+    assert call_kwargs.get("keyframe_image_url") == parent_video_url
+
+
