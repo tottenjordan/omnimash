@@ -166,6 +166,8 @@ class KeyframeImageRequest(BaseModel):
     summary: str = ""
     characters: list[CharacterRoleModel | dict] | None = None
     reference_image_urls: list[str] | None = None
+    anchor_keyframe_url: str | None = None
+
 
 
 class KeyframeImageResponse(BaseModel):
@@ -531,6 +533,9 @@ UI_HTML = r"""<!DOCTYPE html>
                 setKeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
                 try {
+                    const anchorUrl = (idx > 0 && stageShots[0] && stageShots[0].keyframe_image_url)
+                        ? stageShots[0].keyframe_image_url
+                        : null;
                     const res = await fetch("/api/storyboard/keyframe-image", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -540,7 +545,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             location: shot.location || "",
                             style_lighting: shot.style_lighting || stageStyleTone,
                             summary: shot.summary || "",
-                            characters: characters
+                            characters: characters,
+                            anchor_keyframe_url: anchorUrl
                         })
                     });
                     const data = await res.json();
@@ -4566,6 +4572,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             style_tone=req.style_lighting,
             reference_image_urls=ref_urls,
             characters=req.characters,
+            anchor_keyframe_url=req.anchor_keyframe_url,
         )
         return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
 

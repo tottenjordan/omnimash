@@ -773,6 +773,61 @@ def test_generate_keyframe_image_with_character_roster() -> None:
     assert "VISUAL CONSISTENCY INSTRUCTION" in prompt_str
 
 
+def test_generate_keyframe_image_with_anchor_seed() -> None:
+    """Verify generate_keyframe_image attaches anchor_keyframe_url as @Image1 and prepends consistency instructions."""
+    import base64
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+    mock_candidate = MagicMock(
+        content=MagicMock(
+            parts=[
+                MagicMock(
+                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
+                )
+            ]
+        )
+    )
+    mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
+    mock_genai_client.models = mock_models
+    client.storage = MagicMock()
+    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/keyframe_shot2.png"
+
+    char = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Young spectacled wizard",
+        reference_url="gs://test-bucket/harry_ref.png",
+    )
+
+    def mock_fetch_bytes(url: str):
+        if url == "gs://test-bucket/anchor_shot1.png":
+            return (b"anchor_bytes", "image/png")
+        if url == "gs://test-bucket/harry_ref.png":
+            return (b"char_bytes", "image/png")
+        return (b"", "image/png")
+
+    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
+        client, "_fetch_image_bytes", side_effect=mock_fetch_bytes
+    ):
+        res_url = client.generate_keyframe_image(
+            prompt="Harry running through hallway",
+            style_tone="Gothic Trap",
+            characters=[char],
+            anchor_keyframe_url="gs://test-bucket/anchor_shot1.png",
+        )
+
+    assert "keyframe" in res_url
+    assert mock_models.generate_content.called
+    call_kwargs = mock_models.generate_content.call_args.kwargs
+    contents = call_kwargs["contents"]
+    assert len(contents) == 3
+    prompt_str = contents[2]
+    assert "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@Image1 while rendering the new action/angle." in prompt_str
+
+
 def test_load_reference_images_logs_diagnostics(
     caplog: pytest.LogCaptureFixture, tmp_path: Any
 ) -> None:

@@ -1250,6 +1250,7 @@ class OmniFlashClient:
         directors_notes: dict[str, Any] | str | None = None,
         style_preset: str | None = None,
         wardrobe: str | None = None,
+        anchor_keyframe_url: str | None = None,
     ) -> str:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 
@@ -1403,8 +1404,18 @@ class OmniFlashClient:
                 )
             try:
                 contents: list[Any] = []
+                if anchor_keyframe_url:
+                    anchor_bytes, anchor_mime = self._fetch_image_bytes(anchor_keyframe_url)
+                    if anchor_bytes:
+                        if hasattr(genai, "types") and hasattr(genai.types, "Part"):
+                            contents.append(genai.types.Part.from_bytes(data=anchor_bytes, mime_type=anchor_mime))
+                        else:
+                            contents.append({"inline_data": {"mime_type": anchor_mime, "data": base64.b64encode(anchor_bytes).decode("utf-8")}})
+
                 if reference_image_urls:
                     for ref_url in reference_image_urls:
+                        if anchor_keyframe_url and ref_url == anchor_keyframe_url:
+                            continue
                         img_bytes, mime_type = self._fetch_image_bytes(ref_url)
                         if img_bytes:
                             if hasattr(genai, "types") and hasattr(genai.types, "Part"):
@@ -1412,7 +1423,12 @@ class OmniFlashClient:
                             else:
                                 contents.append({"inline_data": {"mime_type": mime_type, "data": base64.b64encode(img_bytes).decode("utf-8")}})
 
+                anchor_instruction = ""
+                if anchor_keyframe_url:
+                    anchor_instruction = "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@Image1 while rendering the new action/angle.\n\n"
+
                 prompt_text = (
+                    f"{anchor_instruction}"
                     f"High quality cinematic 16:9 visual keyframe concept art.\n\n"
                     f"{character_roster_header}"
                     f"{style_preset_header}"
