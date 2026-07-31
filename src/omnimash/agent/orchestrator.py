@@ -356,6 +356,9 @@ class OmniMashAgent:
             self.storage.save_session_prompt(
                 session.session_id, turn_index, delta_prompt
             )
+            effective_keyframe = keyframe_image_url or getattr(
+                parent_turn, "video_url", None
+            )
             gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
                 turn_index=turn_index,
@@ -365,7 +368,7 @@ class OmniMashAgent:
                 is_silent=is_silent,
                 audio_stem=audio_stem,
                 characters=char_objs,
-                keyframe_image_url=keyframe_image_url,
+                keyframe_image_url=effective_keyframe,
             )
         else:
             if characters or scenes:
