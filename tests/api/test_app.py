@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 from fastapi.testclient import TestClient
 from omnimash.api.app import create_app
 
@@ -351,6 +353,40 @@ def test_api_storyboard_keyframe_image_endpoint():
     assert data["success"] is True
     assert "keyframe_image_url" in data
     assert data["keyframe_image_url"].startswith("data:image/svg+xml")
+
+
+def test_api_keyframe_image_with_anchor(monkeypatch):
+    captured_kwargs = {}
+
+    def mock_generate_keyframe_image(self, prompt, **kwargs):
+        captured_kwargs.update(kwargs)
+        captured_kwargs["prompt"] = prompt
+        return "https://storage.googleapis.com/test/kf_shot2.png"
+
+    monkeypatch.setattr(
+        "omnimash.engine.omni_client.OmniFlashClient.generate_keyframe_image",
+        mock_generate_keyframe_image,
+    )
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/storyboard/keyframe-image",
+        json={
+            "shot_index": 2,
+            "action": "Shot 2 action",
+            "anchor_keyframe_url": "https://storage.googleapis.com/test/kf_shot1.png",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["keyframe_image_url"] == "https://storage.googleapis.com/test/kf_shot2.png"
+    assert (
+        captured_kwargs.get("anchor_keyframe_url")
+        == "https://storage.googleapis.com/test/kf_shot1.png"
+    )
 
 
 def test_api_generate_shot_endpoint():
