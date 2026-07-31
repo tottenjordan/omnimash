@@ -459,6 +459,18 @@ def test_parse_timecoded_script_extracts_dialogue_into_shot_field():
     assert parsed[0]["action"] == "Dumble Dior steps up to the mic."
 
 
+def test_parse_timecoded_script_supports_theatrical_parenthetical_syntax():
+    script_text = (
+        'Harry: (Pulls out wand under glowing light. Audio: Whoosh sfx.) "Expelliarmus!"'
+    )
+    parsed = parse_timecoded_script(script_text)
+    assert len(parsed) >= 1
+    shot = parsed[0]
+    assert "Pulls out wand under glowing light." in shot["action"]
+    assert "Whoosh sfx." in shot["audio"]
+    assert shot["dialogue"] == 'Harry: "Expelliarmus!"'
+
+
 
 
 

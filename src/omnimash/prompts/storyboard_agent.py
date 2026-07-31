@@ -83,15 +83,15 @@ _RESERVED_KEYWORD_SET = {
 }
 
 
-def _extract_character_dialogue(text: str) -> tuple[str, str | None]:
+def _extract_character_dialogue(text: str) -> tuple[str, str | None, str | None]:
     """Extracts character dialogue from a line or action text if present.
 
-    Returns (action_text, dialogue_text).
+    Returns (action_text, dialogue_text, audio_text).
     If dialogue is found, action_text is the remaining action text before dialogue (or empty),
-    and dialogue_text is 'Character Name: Dialogue...'.
+    dialogue_text is 'Character Name: Dialogue...', and audio_text is parenthetical audio (or None).
     """
     if not text or not text.strip():
-        return text.strip(), None
+        return text.strip(), None, None
 
     stripped = text.strip()
 
@@ -122,10 +122,40 @@ def _extract_character_dialogue(text: str) -> tuple[str, str | None]:
                 action_part = re.sub(
                     r"\s*(?:ACTION|DIALOGUE):\s*$", "", action_part, flags=re.IGNORECASE
                 ).strip()
-                dialogue_part = f"{char_name}: {match.group(2).strip()}"
-                return action_part, dialogue_part
 
-    return stripped, None
+                raw_speech = match.group(2).strip()
+                paren_match = re.match(
+                    r"^\(([^)]+)\)\s*([\"'].*[\"']|[^\n]+)$", raw_speech, re.DOTALL
+                )
+                audio_part = None
+                if paren_match:
+                    parenthetical_content = paren_match.group(1).strip()
+                    spoken_dialogue = paren_match.group(2).strip()
+
+                    audio_match = re.search(
+                        r"\b(?:AUDIO|SOUND|SOUND EFFECT|SFX|MUSIC|SOUND DESIGN|BACKGROUND AUDIO|AUDIO CUES):\s*(.*)",
+                        parenthetical_content,
+                        re.IGNORECASE,
+                    )
+                    if audio_match:
+                        audio_part = audio_match.group(1).strip()
+                        paren_action = parenthetical_content[:audio_match.start()].strip()
+                    else:
+                        paren_action = parenthetical_content
+
+                    if paren_action:
+                        if action_part:
+                            action_part = f"{action_part} {paren_action}"
+                        else:
+                            action_part = paren_action
+
+                    dialogue_part = f"{char_name}: {spoken_dialogue}"
+                else:
+                    dialogue_part = f"{char_name}: {raw_speech}"
+
+                return action_part, dialogue_part, audio_part
+
+    return stripped, None, None
 
 
 def parse_timecoded_script(
@@ -193,20 +223,24 @@ def parse_timecoded_script(
             line_upper = line_str.upper()
             if line_upper.startswith("ACTION:"):
                 raw_act = line_str[7:].strip()
-                act_part, diag_part = _extract_character_dialogue(raw_act)
+                act_part, diag_part, aud_part = _extract_character_dialogue(raw_act)
                 if act_part:
                     action_lines.append(act_part)
                 if diag_part:
                     dialogue_lines.append(diag_part)
+                if aud_part:
+                    audio_lines.append(aud_part)
             elif line_upper.startswith("DIALOGUE:"):
                 raw_diag = line_str[9:].strip()
-                act_part, diag_part = _extract_character_dialogue(raw_diag)
+                act_part, diag_part, aud_part = _extract_character_dialogue(raw_diag)
                 if diag_part:
                     if act_part:
                         action_lines.append(act_part)
                     dialogue_lines.append(diag_part)
                 else:
                     dialogue_lines.append(raw_diag)
+                if aud_part:
+                    audio_lines.append(aud_part)
             elif line_upper.startswith(
                 ("AUDIO:", "SOUND:", "SOUND DESIGN:", "BACKGROUND AUDIO:", "AUDIO CUES:", "MUSIC:")
             ):
@@ -215,11 +249,13 @@ def parse_timecoded_script(
             elif line_str.startswith('"') and line_str.endswith('"'):
                 dialogue_lines.append(line_str.strip('"'))
             else:
-                act_part, diag_part = _extract_character_dialogue(line_str)
+                act_part, diag_part, aud_part = _extract_character_dialogue(line_str)
                 if diag_part:
                     if act_part:
                         action_lines.append(act_part)
                     dialogue_lines.append(diag_part)
+                    if aud_part:
+                        audio_lines.append(aud_part)
                 else:
                     inline_match = re.search(
                         r"(ACTION|DIALOGUE|AUDIO|SOUND|MUSIC):\s*", line_str, re.IGNORECASE
@@ -235,11 +271,13 @@ def parse_timecoded_script(
                             key = sections[j].upper()
                             val = sections[j + 1].strip()
                             if key == "ACTION":
-                                val_act, val_diag = _extract_character_dialogue(val)
+                                val_act, val_diag, val_aud = _extract_character_dialogue(val)
                                 if val_act:
                                     action_lines.append(val_act)
                                 if val_diag:
                                     dialogue_lines.append(val_diag)
+                                if val_aud:
+                                    audio_lines.append(val_aud)
                             elif key == "DIALOGUE":
                                 dialogue_lines.append(val)
                             elif key in ("AUDIO", "SOUND", "MUSIC"):
