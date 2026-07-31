@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 from fastapi.testclient import TestClient
 from omnimash.api.app import create_app
 
