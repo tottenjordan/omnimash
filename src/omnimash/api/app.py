@@ -2369,14 +2369,14 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                         📜 Screenplay Script
                                                                     </label>
                                                                     <span className="text-[10px] text-purple-400 font-mono">
-                                                                        Supports Character: (Action) "Dialogue"
+                                                                        Supports Character: (Action) "Dialogue" &amp; [0-5s] Timecoded Script
                                                                     </span>
                                                                 </div>
                                                                 <textarea
                                                                     rows={3}
                                                                     value={scene.screenplay_script || ""}
                                                                     onChange={(e) => updateScene(idx, "screenplay_script", e.target.value)}
-                                                                    placeholder='Character: (Action) "Dialogue"'
+                                                                    placeholder='e.g. Harry: (Pulls out wand. Audio: Whoosh sfx.) "Expelliarmus!" or [0-5s] Action: ... Dialogue: ...'
                                                                     className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
                                                                 />
                                                             </div>
@@ -2563,7 +2563,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     rows={6}
                                                     value={screenplayScript}
                                                     onChange={(e) => setScreenplayScript(e.target.value)}
-                                                    placeholder={`[DIRECTOR'S NOTES]\n- Tone: High-energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Friendly rivalry between Dumble Dior and Snape Dawg\n\n[0-3s] Action: Dumble Dior steps up to the mic under glowing neon lights. Audio: Heavy 808 trap beat with ambient crowd cheers. Dialogue: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n\n[3-6s] Action: Snape Dawg drops a heavy 808 trap beat. Audio: Crisp snare trills and sub-bass drop. Dialogue: Snape Dawg: "Potions class is in session, no cap!"\n\n[6-10s] Action: Both perform synchronized rap battle climax amidst stage smoke and purple rim lights. Audio: Climax 808 beat drop. Dialogue: Both: "Trap or Die!"`}
+                                                    placeholder={`[DIRECTOR'S NOTES]\n- Tone: High-energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Friendly rivalry between Dumble Dior and Snape Dawg\n\n# Supports both Character: (Action) "Dialogue" AND [0-3s] Timecoded Script:\n\nDumble Dior: (Steps up to the mic under glowing neon lights. Audio: Heavy 808 trap beat.) "Welcome to Dripwarts, turn the beat up!"\n\nSnape Dawg: (Drops a heavy 808 trap beat. Audio: Crisp snare trills and sub-bass drop.) "Potions class is in session, no cap!"\n\n[6-10s] Action: Both perform synchronized rap battle climax amidst stage smoke and purple rim lights. Audio: Climax 808 beat drop. Dialogue: Both: "Trap or Die!"`}
                                                     className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
                                                 />
                                             </div>
@@ -4047,7 +4047,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                             rows={12}
                                             value={screenplayScript}
                                             onChange={(e) => setScreenplayScript(e.target.value)}
-                                            placeholder="[DIRECTOR'S NOTES]..."
+                                            placeholder={`[DIRECTOR'S NOTES]\n- Tone: High-energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Friendly rivalry between Dumble Dior and Snape Dawg\n\n# Supports both Character: (Action) "Dialogue" AND [0-3s] Timecoded Script:\n\nDumble Dior: (Steps up to the mic under glowing neon lights. Audio: Heavy 808 trap beat.) "Welcome to Dripwarts, turn the beat up!"\n\nSnape Dawg: (Drops a heavy 808 trap beat. Audio: Crisp snare trills and sub-bass drop.) "Potions class is in session, no cap!"\n\n[6-10s] Action: Both perform synchronized rap battle climax amidst stage smoke and purple rim lights. Audio: Climax 808 beat drop. Dialogue: Both: "Trap or Die!"`}
                                             className="w-full bg-gray-950 border border-gray-800 rounded-xl p-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
                                         />
                                     </div>
