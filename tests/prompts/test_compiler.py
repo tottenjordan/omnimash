@@ -475,10 +475,10 @@ def test_compile_multi_role_prompt_with_screenplay_text():
         in prompt
     )
     assert (
-        '  Gothic Potion Master Fam: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard Bruv!"'
+        '  Role A - Gothic Potion Master Fam says: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard Bruv!"'
         in prompt
     )
-    assert '  Spectacled Wizard Bruv: (Bopping head to 120 BPM beat.) "No!"' in prompt
+    assert '  Role B - Spectacled Wizard Bruv says: (Bopping head to 120 BPM beat.) "No!"' in prompt
     assert "Scene 1 Audio Cues:" in prompt
 
 
@@ -1046,3 +1046,35 @@ def test_compile_storyboard_multi_speaker_dialogue_tag_binding():
         'Role B - Potion Master Dawg <IMAGE_REF_1> says: "Potions class is in session!"'
         in compiled
     )
+
+
+def test_compile_storyboard_screenplay_script_injects_character_tags():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Yo Totti",
+            description="Character A description",
+            reference_url="https://example.com/totti.jpg",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Bee Allison",
+            description="Character B description",
+            reference_url="https://example.com/allison.jpg",
+        ),
+    ]
+    scene = SceneDirective(
+        scene_number=1,
+        active_roles=["Role A", "Role B"],
+        action="Scene action",
+        screenplay_text='[04-07s] ACTION: Yo Totti looks around. DIALOGUE: Yo Totti: "let’s see..."',
+    )
+    compiled = compiler.compile_storyboard(
+        concept="Test screenplay script tag injection",
+        characters=chars,
+        scenes=[scene],
+    )
+    assert "### TIMELINE" in compiled
+    assert 'Role A - Yo Totti <IMAGE_REF_0> says: "let’s see..."' in compiled
+
