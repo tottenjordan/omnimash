@@ -358,8 +358,14 @@ def test_parse_screenplay_script():
     )
 
     # Spoken dialogue extraction and formatting
-    assert f'{get_character_identifier(characters[0])}: "Silence, Potter!"' in result["dialogue"]
-    assert f'{get_character_identifier(characters[1])}: "It was the beat, professor!"' in result["dialogue"]
+    assert (
+        f'{get_character_identifier(characters[0])}: "Silence, Potter!"'
+        in result["dialogue"]
+    )
+    assert (
+        f'{get_character_identifier(characters[1])}: "It was the beat, professor!"'
+        in result["dialogue"]
+    )
 
 
 def test_compile_prompt_with_screenplay_text():
@@ -464,7 +470,10 @@ def test_compile_multi_role_prompt_with_screenplay_text():
         scenes=scenes,
     )
 
-    assert f"- Scene 1 [{get_character_identifier(chars[0])}, {get_character_identifier(chars[1])}] (Screenplay Script):" in prompt
+    assert (
+        f"- Scene 1 [{get_character_identifier(chars[0])}, {get_character_identifier(chars[1])}] (Screenplay Script):"
+        in prompt
+    )
     assert (
         '  Gothic Potion Master Fam: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard Bruv!"'
         in prompt
@@ -490,9 +499,42 @@ def test_parse_screenplay_script_bracketed_roles_and_parentheticals_before_colon
     result = parse_screenplay_script(script, characters=chars)
     assert result["active_roles"] == ["Role A", "Role B", "Role C"]
     assert f'{get_character_identifier(chars[0])}: "Ah, blood!"' in result["dialogue"]
-    assert f'{get_character_identifier(chars[1])}: "You got that real gas?"' in result["dialogue"]
+    assert (
+        f'{get_character_identifier(chars[1])}: "You got that real gas?"'
+        in result["dialogue"]
+    )
     assert f'{get_character_identifier(chars[2])}: "don t play"' in result["dialogue"]
     assert f'{get_character_identifier(chars[0])}: "type shit"' in result["dialogue"]
+
+
+def test_parse_screenplay_script_supports_timecoded_syntax():
+    script_timecoded = '[0-5s] Action: Harry waves wand. Audio: Whoosh sfx. Dialogue: Harry: "Expelliarmus!"'
+    result = parse_screenplay_script(script_timecoded)
+    assert result["action"] == "Harry waves wand."
+    assert result["audio_cues"] == "Whoosh sfx."
+    assert result["dialogue"] == 'Harry: "Expelliarmus!"'
+    assert result["active_roles"] == ["Harry"]
+
+    chars = [
+        CharacterRole(role_id="Role B", name="Harry Potter", description="Wizard"),
+    ]
+    result_chars = parse_screenplay_script(script_timecoded, characters=chars)
+    assert result_chars["action"] == "Harry waves wand."
+    assert result_chars["audio_cues"] == "Whoosh sfx."
+    assert (
+        result_chars["dialogue"]
+        == f'{get_character_identifier(chars[0])}: "Expelliarmus!"'
+    )
+    assert result_chars["active_roles"] == ["Role B"]
+
+    script_theatrical_timecoded = (
+        '[00:00-00:05] Harry: (waves wand. Audio: Whoosh sfx.) "Expelliarmus!"'
+    )
+    result_theatrical = parse_screenplay_script(script_theatrical_timecoded)
+    assert result_theatrical["action"] == "waves wand."
+    assert result_theatrical["audio_cues"] == "Whoosh sfx."
+    assert result_theatrical["dialogue"] == 'Harry: "Expelliarmus!"'
+    assert result_theatrical["active_roles"] == ["Harry"]
 
 
 def test_compile_prompt_extracts_dialogue_directive_from_raw_prompt():
@@ -510,16 +552,17 @@ def test_compile_prompt_extracts_dialogue_directive_from_raw_prompt():
         "Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix."
         in full_prompt
     )
-    assert (
-        "Voiceover: I been cooking potions since first year. Burrr!."
-        in full_prompt
-    )
+    assert "Voiceover: I been cooking potions since first year. Burrr!." in full_prompt
 
 
 def test_parse_timecoded_script():
     chars = [
-        CharacterRole(role_id="Role A", name="Severus Snape", description="Gaunt wizard"),
-        CharacterRole(role_id="Role B", name="Harry Potter", description="Young wizard"),
+        CharacterRole(
+            role_id="Role A", name="Severus Snape", description="Gaunt wizard"
+        ),
+        CharacterRole(
+            role_id="Role B", name="Harry Potter", description="Young wizard"
+        ),
     ]
     script = (
         '[0-3s] Snape: (Standing in dark dungeon. Heavy thunder rumbles.) "Silence, Potter!"\n'
@@ -532,7 +575,10 @@ def test_parse_timecoded_script():
     assert blocks[0]["active_roles"] == ["Role A"]
     assert "Standing in dark dungeon" in blocks[0]["action"]
     assert "thunder" in blocks[0]["audio_cues"].lower()
-    assert f'{get_character_identifier(chars[0])}: "Silence, Potter!"' in blocks[0]["dialogue"]
+    assert (
+        f'{get_character_identifier(chars[0])}: "Silence, Potter!"'
+        in blocks[0]["dialogue"]
+    )
 
     assert blocks[1]["timecode"] == "[3-6s]"
     assert blocks[1]["active_roles"] == ["Role B"]
@@ -650,7 +696,10 @@ def test_compile_prompt_four_block_omni_flash_template():
 
     # 2. Verify Image Role tagging
     assert "[# Sources <FIRST_FRAME>@Image3]" in full_prompt
-    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image4]" in full_prompt
+    assert (
+        "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image4]"
+        in full_prompt
+    )
 
     # 3. Verify Off-Screen Narrator profile and speech formatting
     assert "Visual: Off-screen (Voiceover only). Do not show." in full_prompt
@@ -739,14 +788,14 @@ def test_four_block_character_identifier_symmetry():
     full_prompt = parts.to_full_prompt()
 
     assert "[# References <IMAGE_REF_0>@Image1]" in full_prompt
-    assert f"- {expected_id} <IMAGE_REF_0>: Young wizard with round glasses" in full_prompt
+    assert (
+        f"- {expected_id} <IMAGE_REF_0>: Young wizard with round glasses" in full_prompt
+    )
     assert f'{expected_id}: "Expelliarmus!"' in full_prompt
 
 
 def test_sanitize_real_names_prevents_over_sanitization():
-    full_names_text = (
-        "Harry Potter, Draco Malfoy, Gordon Ramsay, Donald Trump, Elon Musk, and Waka Flocka Flame entered the room."
-    )
+    full_names_text = "Harry Potter, Draco Malfoy, Gordon Ramsay, Donald Trump, Elon Musk, and Waka Flocka Flame entered the room."
     sanitized_full = sanitize_real_names(full_names_text)
     assert "Harry Potter" not in sanitized_full
     assert "Draco Malfoy" not in sanitized_full
@@ -803,9 +852,18 @@ def test_four_block_official_image_ref_tags():
     assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in full_prompt
 
     # Verify character profile binding format
-    assert "- Role A - Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in full_prompt
-    assert "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round wire-rim glasses" in full_prompt
-    assert "- Role C - Dungeon Corridor <FIRST_FRAME>: Starting frame of stone dungeon corridor" in full_prompt
+    assert (
+        "- Role A - Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard"
+        in full_prompt
+    )
+    assert (
+        "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round wire-rim glasses"
+        in full_prompt
+    )
+    assert (
+        "- Role C - Dungeon Corridor <FIRST_FRAME>: Starting frame of stone dungeon corridor"
+        in full_prompt
+    )
 
     # Verify timeline actions include <IMAGE_REF_N> tags
     assert "<IMAGE_REF_0>" in full_prompt
@@ -815,7 +873,10 @@ def test_four_block_official_image_ref_tags():
 def test_sanitize_real_names_pop_culture_keywords():
     text = "Snape Dawg, Draco, Voldemort, and Hogwarts."
     sanitized = sanitize_real_names(text)
-    assert sanitized == "Potion Master Dawg, Rival Wizard, Dark Sorcerer, and Academy Hall."
+    assert (
+        sanitized
+        == "Potion Master Dawg, Rival Wizard, Dark Sorcerer, and Academy Hall."
+    )
 
 
 def test_build_character_image_ref_tags_extracts_base_names_and_tokens():
@@ -978,19 +1039,10 @@ def test_compile_storyboard_multi_speaker_dialogue_tag_binding():
         characters=chars,
         scenes=[scene],
     )
-    assert 'Role A - Dumble Dior <IMAGE_REF_0> says: "Welcome to Dripwarts!"' in compiled
-    assert 'Role B - Potion Master Dawg <IMAGE_REF_1> says: "Potions class is in session!"' in compiled
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    assert (
+        'Role A - Dumble Dior <IMAGE_REF_0> says: "Welcome to Dripwarts!"' in compiled
+    )
+    assert (
+        'Role B - Potion Master Dawg <IMAGE_REF_1> says: "Potions class is in session!"'
+        in compiled
+    )
