@@ -1720,8 +1720,11 @@ class PromptCompiler:
                     timeline_lines.append(
                         f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}"
                     )
+                enriched_sp_text, _ = enrich_timeline_dialogue_speakers(
+                    sp_text.strip(), characters, char_tag_map
+                )
                 indented_script = "\n".join(
-                    f"  {line}" for line in sp_text.strip().splitlines()
+                    f"  {line}" for line in enriched_sp_text.strip().splitlines()
                 )
                 timeline_lines.append(
                     f"- Scene {scene_num} [{roles_str}] (Screenplay Script):\n{indented_script}"
