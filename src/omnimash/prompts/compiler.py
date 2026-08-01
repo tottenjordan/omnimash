@@ -1795,8 +1795,9 @@ class PromptCompiler:
         vocal_delivery: str | None = None,
         has_keyframe_seed: bool = False,
         keyframe_image_url: str | None = None,
+        edit_instruction: str | None = None,
     ) -> str:
-        return self.compile_multi_role_prompt(
+        base_prompt = self.compile_multi_role_prompt(
             concept=concept,
             characters=characters,
             scenes=scenes,
@@ -1807,6 +1808,15 @@ class PromptCompiler:
             has_keyframe_seed=has_keyframe_seed,
             keyframe_image_url=keyframe_image_url,
         )
+        if edit_instruction and edit_instruction.strip():
+            clean_instruction = edit_instruction.strip()
+            directive_block = (
+                "### CONVERSATIONAL EDIT DIRECTIVE\n"
+                "- Original Scene Baseline: You must retain 95% of the visual character likeness, setting, camera angle, lighting, dialogue, and soundscape from <FIRST_FRAME>@Image1.\n"
+                f'- Required Change: Modify only the following aspect: "{clean_instruction}". Keep all other elements identical.'
+            )
+            return f"{base_prompt}\n\n{directive_block}"
+        return base_prompt
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         """Parses concept using 3-tier deconstructor engine."""

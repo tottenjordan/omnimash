@@ -1,3 +1,3 @@
-from omnimash.storage.gcs import GcsStorageManager
+from omnimash.storage.gcs import GCSStorage, GcsStorageManager
 
-__all__ = ["GcsStorageManager"]
+__all__ = ["GCSStorage", "GcsStorageManager"]

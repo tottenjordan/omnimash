@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import uuid
+from typing import Any
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -108,6 +109,7 @@ class GenerateRequest(BaseModel):
     environment_tag: str | None = None
     vocal_delivery: str = ""
     optimize_prompt: bool = False
+    shot_directive: str | None = None
 
 
 class CommitRequest(BaseModel):
@@ -156,6 +158,41 @@ class StoryboardExpandRequest(BaseModel):
 
 class StoryboardExpandResponse(BaseModel):
     shots: list[StoryboardShotModel]
+
+
+class SaveStoryboardRequest(BaseModel):
+    name: str
+    storyboard_data: dict[str, Any]
+    session_name: str | None = None
+    is_library: bool = True
+
+
+class SaveStoryboardResponse(BaseModel):
+    success: bool
+    gcs_uri: str
+    message: str
+
+
+class StoryboardMetadataModel(BaseModel):
+    name: str
+    slug: str
+    concept: str = ""
+    shot_count: int = 0
+    updated_at: str = ""
+
+
+class StoryboardListResponse(BaseModel):
+    storyboards: list[StoryboardMetadataModel]
+
+
+class LoadStoryboardRequest(BaseModel):
+    slug: str
+    session_name: str | None = None
+
+
+class DeleteStoryboardRequest(BaseModel):
+    slug: str
+    session_name: str | None = None
 
 
 class KeyframeImageRequest(BaseModel):
@@ -429,6 +466,12 @@ UI_HTML = r"""<!DOCTYPE html>
             const [shotDiffLoading, setShotDiffLoading] = useState({});
             const [showInspectorMap, setShowInspectorMap] = useState({});
             const [selectedShotIndex, setSelectedShotIndex] = useState(1);
+            const [showSaveStoryboardModal, setShowSaveStoryboardModal] = useState(false);
+            const [storyboardSaveName, setStoryboardSaveName] = useState("");
+            const [savedStoryboards, setSavedStoryboards] = useState([]);
+            const [showStoryboardLibraryModal, setShowStoryboardLibraryModal] = useState(false);
+            const [showRemixModal, setShowRemixModal] = useState(false);
+            const [remixStyleTag, setRemixStyleTag] = useState("90s Cel-Shaded Anime");
             const [stageShots, setStageShots] = useState([
                 {
                     shot_index: 1,
@@ -476,6 +519,35 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stageSaveLoading, setStageSaveLoading] = useState(false);
             const [isBatchGeneratingVideos, setIsBatchGeneratingVideos] = useState(false);
             const [batchVideoProgress, setBatchVideoProgress] = useState({ current: 0, total: 0, activeShotIndex: 0 });
+
+            const fetchSavedStoryboards = async () => {
+                try {
+                    const res = await fetch("/api/storyboards");
+                    const data = await res.json();
+                    if (data && data.storyboards) {
+                        setSavedStoryboards(data.storyboards);
+                    }
+                } catch (err) {
+                    console.error("Failed to load storyboards:", err);
+                }
+            };
+
+            useEffect(() => {
+                fetchSavedStoryboards();
+            }, []);
+
+            const applyStoryboardData = (data) => {
+                const src = (data && data.storyboard_data) ? data.storyboard_data : data;
+                if (!src) return;
+                if (src.concept !== undefined) setConcept(src.concept);
+                if (src.aestheticTags !== undefined) setAestheticTags(src.aestheticTags);
+                if (src.environmentTag !== undefined) setEnvironmentTag(src.environmentTag);
+                if (src.audioBeat !== undefined) setAudioBeat(src.audioBeat);
+                if (src.vocalDelivery !== undefined) setVocalDelivery(src.vocalDelivery);
+                if (src.characters !== undefined) setCharacters(src.characters);
+                if (src.screenplay_script !== undefined) setScreenplayScript(src.screenplay_script);
+                if (src.scenes !== undefined) setScenes(src.scenes);
+            };
 
             const getShotTimecodeRange = (shots, idx) => {
                 if (!shots || idx < 0 || idx >= shots.length) return "0:00 - 0:10";
@@ -2248,15 +2320,34 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <div className="flex items-center justify-between border-b border-gray-800 pb-3">
                                                 <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
                                                     <span>🎬</span>
-                                                    <span>Multi-Scene Storyboard Sequence (~1-Min Cut)</span>
+                                                    <span>Storyboard Shot Grid - Multi-Scene Sequence (~1-Min Cut)</span>
                                                 </h3>
-                                                <button
-                                                    type="button"
-                                                    onClick={addScene}
-                                                    className="bg-pink-900/60 hover:bg-pink-800 text-pink-200 border border-pink-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
-                                                >
-                                                    <span>+ Add Scene</span>
-                                                </button>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowSaveStoryboardModal(true)}
+                                                        className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                                    >
+                                                        <span>💾 Save Storyboard</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            fetchSavedStoryboards();
+                                                            setShowStoryboardLibraryModal(true);
+                                                        }}
+                                                        className="bg-blue-900/60 hover:bg-blue-800 text-blue-200 border border-blue-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                                    >
+                                                        <span>📂 Storyboard Library</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={addScene}
+                                                        className="bg-pink-900/60 hover:bg-pink-800 text-pink-200 border border-pink-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                                    >
+                                                        <span>+ Add Scene</span>
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             <div className="space-y-4">
@@ -2972,6 +3063,23 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </button>
                                     </div>
                                             <div className="flex items-center space-x-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowSaveStoryboardModal(true)}
+                                                    className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
+                                                >
+                                                    <span>💾 Save Storyboard</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        fetchSavedStoryboards();
+                                                        setShowStoryboardLibraryModal(true);
+                                                    }}
+                                                    className="bg-blue-900/60 hover:bg-blue-800 border border-blue-700 text-blue-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
+                                                >
+                                                    <span>📂 Storyboard Library</span>
+                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setShowScreenplayModal(true)}
@@ -4234,6 +4342,288 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                 </div>
                             </div>
                         )}
+
+                        {/* Save Storyboard Modal */}
+                        {showSaveStoryboardModal && (
+                            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                                <div className="bg-gray-900 border-2 border-purple-500/80 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
+                                    <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                                        <h3 className="font-bold text-base text-purple-200 flex items-center gap-2">
+                                            <span>💾</span>
+                                            <span>Save Storyboard</span>
+                                        </h3>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowSaveStoryboardModal(false)}
+                                            className="text-gray-400 hover:text-white text-lg font-bold px-2 py-1"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <label className="block text-xs font-bold text-gray-300">Storyboard Title</label>
+                                        <input
+                                            type="text"
+                                            value={storyboardSaveName}
+                                            onChange={(e) => setStoryboardSaveName(e.target.value)}
+                                            placeholder="e.g. Trapwarts Showdown v1"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-purple-500"
+                                        />
+                                    </div>
+                                    <div className="pt-3 border-t border-gray-800 flex justify-end space-x-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowSaveStoryboardModal(false)}
+                                            className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-xs py-2 px-4 rounded-xl"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (!storyboardSaveName.trim()) return;
+                                                try {
+                                                    const res = await fetch("/api/storyboards/save", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({
+                                                            name: storyboardSaveName,
+                                                            session_name: sessionName,
+                                                            storyboard_data: {
+                                                                concept,
+                                                                aestheticTags,
+                                                                environmentTag,
+                                                                audioBeat,
+                                                                vocalDelivery,
+                                                                characters,
+                                                                screenplay_script: screenplayScript,
+                                                                scenes
+                                                            }
+                                                        })
+                                                    });
+                                                    const data = await res.json();
+                                                    if (data && data.success) {
+                                                        alert("Storyboard saved!");
+                                                        setShowSaveStoryboardModal(false);
+                                                        setStoryboardSaveName("");
+                                                        fetchSavedStoryboards();
+                                                    } else {
+                                                        alert("Error saving storyboard");
+                                                    }
+                                                } catch (err) {
+                                                    console.error("Failed to save storyboard:", err);
+                                                    alert("Failed to save storyboard");
+                                                }
+                                            }}
+                                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-2 px-5 rounded-xl shadow"
+                                        >
+                                            Save Storyboard
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Storyboard Library Modal */}
+                        {showStoryboardLibraryModal && (
+                            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                                <div className="bg-gray-900 border-2 border-blue-500/80 rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[85vh] flex flex-col">
+                                    <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-4">
+                                        <h3 className="font-bold text-base text-blue-200 flex items-center gap-2">
+                                            <span>📂</span>
+                                            <span>Storyboard Library</span>
+                                        </h3>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowStoryboardLibraryModal(false)}
+                                            className="text-gray-400 hover:text-white text-lg font-bold px-2 py-1"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div className="overflow-y-auto space-y-3 pr-2 flex-1">
+                                        {savedStoryboards.length === 0 ? (
+                                            <p className="text-xs text-gray-400 text-center py-8">No saved storyboards found.</p>
+                                        ) : (
+                                            savedStoryboards.map((sb, idx) => (
+                                                <div key={idx} className="bg-gray-950 border border-gray-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className="font-bold text-sm text-white">{sb.name}</h4>
+                                                            <span className="text-[10px] bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded font-mono">
+                                                                {sb.shot_count} Shots
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 line-clamp-1">{sb.concept || "No concept description"}</p>
+                                                        {sb.updated_at && (
+                                                            <span className="text-[10px] text-gray-500 block">
+                                                                Updated: {sb.updated_at}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const res = await fetch("/api/storyboards/load", {
+                                                                        method: "POST",
+                                                                        headers: { "Content-Type": "application/json" },
+                                                                        body: JSON.stringify({ slug: sb.slug, session_name: sessionName })
+                                                                    });
+                                                                    if (res.ok) {
+                                                                        const data = await res.json();
+                                                                        applyStoryboardData(data);
+                                                                        setShowStoryboardLibraryModal(false);
+                                                                    }
+                                                                } catch (err) {
+                                                                    console.error("Failed to load storyboard:", err);
+                                                                }
+                                                            }}
+                                                            className="bg-blue-900/60 hover:bg-blue-800 text-blue-200 border border-blue-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow"
+                                                        >
+                                                            📂 Load
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const res = await fetch("/api/storyboards/load", {
+                                                                        method: "POST",
+                                                                        headers: { "Content-Type": "application/json" },
+                                                                        body: JSON.stringify({ slug: sb.slug, session_name: sessionName })
+                                                                    });
+                                                                    if (res.ok) {
+                                                                        const data = await res.json();
+                                                                        applyStoryboardData(data);
+                                                                        setShowStoryboardLibraryModal(false);
+                                                                        setShowRemixModal(true);
+                                                                    }
+                                                                } catch (err) {
+                                                                    console.error("Failed to load and remix storyboard:", err);
+                                                                }
+                                                            }}
+                                                            className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow"
+                                                        >
+                                                            🎨 Re-Style / Remix
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    await fetch("/api/storyboards/delete", {
+                                                                        method: "POST",
+                                                                        headers: { "Content-Type": "application/json" },
+                                                                        body: JSON.stringify({ slug: sb.slug, session_name: sessionName })
+                                                                    });
+                                                                    fetchSavedStoryboards();
+                                                                } catch (err) {
+                                                                    console.error("Failed to delete storyboard:", err);
+                                                                }
+                                                            }}
+                                                            className="bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow"
+                                                        >
+                                                            🗑️ Delete
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Remix Styles Modal */}
+                        {showRemixModal && (
+                            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                                <div className="bg-gray-900 border-2 border-purple-500/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
+                                    <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                                        <h3 className="font-bold text-base text-purple-200 flex items-center gap-2">
+                                            <span>🎨</span>
+                                            <span>Remix Styles</span>
+                                        </h3>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowRemixModal(false)}
+                                            className="text-gray-400 hover:text-white text-lg font-bold px-2 py-1"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <label className="block text-xs font-bold text-gray-300">
+                                            Select Quick Preset Style or Custom Style
+                                        </label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[
+                                                "90s Cel-Shaded Anime",
+                                                "3D Pixar Claymation",
+                                                "Cyberpunk Neon",
+                                                "Vintage 70s Film",
+                                                "Cinematic 35mm"
+                                            ].map((stylePreset, sIdx) => (
+                                                <button
+                                                    key={sIdx}
+                                                    type="button"
+                                                    onClick={() => setRemixStyleTag(stylePreset)}
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+                                                        remixStyleTag === stylePreset
+                                                            ? "bg-purple-600 border-purple-500 text-white shadow-md shadow-purple-900/50"
+                                                            : "bg-gray-950 border-gray-800 text-gray-300 hover:border-gray-700"
+                                                    }`}
+                                                >
+                                                    {stylePreset}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={remixStyleTag}
+                                            onChange={(e) => setRemixStyleTag(e.target.value)}
+                                            placeholder="e.g. Cyberpunk Neon or custom style tag..."
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-purple-500"
+                                        />
+                                    </div>
+                                    <div className="pt-3 border-t border-gray-800 flex justify-end space-x-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowRemixModal(false)}
+                                            className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-xs py-2 px-4 rounded-xl"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (!remixStyleTag.trim()) return;
+                                                setAestheticTags([remixStyleTag.trim()]);
+                                                setScenes(scenes.map(s => ({
+                                                    ...s,
+                                                    style_lighting: remixStyleTag.trim(),
+                                                    style_tone: remixStyleTag.trim(),
+                                                    style: remixStyleTag.trim(),
+                                                    aesthetic_tag: remixStyleTag.trim()
+                                                })));
+                                                setStageShots(stageShots.map(s => ({
+                                                    ...s,
+                                                    style_lighting: remixStyleTag.trim(),
+                                                    style_tone: remixStyleTag.trim(),
+                                                    style: remixStyleTag.trim(),
+                                                    aesthetic_tag: remixStyleTag.trim()
+                                                })));
+                                                setStageStyleTone(remixStyleTag.trim());
+                                                setShowRemixModal(false);
+                                                alert("Applied new style across all shots!");
+                                            }}
+                                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-2 px-5 rounded-xl shadow"
+                                        >
+                                            Apply Style to All Shots
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </main>
                 </div>
             );
@@ -4355,7 +4745,100 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/diff", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
         sanitized_prompt = sanitize_real_names(req.prompt) if req.prompt else ""
-        is_edit = bool(req.parent_turn_id and not (req.scenes or req.concept))
+        is_edit = bool(req.parent_turn_id and not (req.scenes or req.concept or req.shot_directive))
+        compiled_override_val = req.compiled_override
+
+        if req.parent_turn_id and (req.shot_directive or req.scenes):
+            char_objs: list[CharacterRole] = []
+            if req.characters:
+                for c in req.characters:
+                    if isinstance(c, CharacterRole):
+                        char_objs.append(c)
+                    elif isinstance(c, dict):
+                        char_objs.append(
+                            CharacterRole(
+                                role_id=c.get("role_id", ""),
+                                name=sanitize_real_names(c.get("name", "")),
+                                description=sanitize_real_names(c.get("description", "")),
+                                reference_url=c.get("reference_url"),
+                                aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
+                                voice_style=sanitize_real_names(c.get("voice_style", "")),
+                                voice_profile=sanitize_real_names(c.get("voice_profile", "")),
+                                image_role=c.get("image_role", "Character Reference"),
+                                is_offscreen_narrator=c.get("is_offscreen_narrator", False),
+                            )
+                        )
+                    elif hasattr(c, "model_dump"):
+                        cd = c.model_dump()
+                        char_objs.append(
+                            CharacterRole(
+                                role_id=cd.get("role_id", ""),
+                                name=sanitize_real_names(cd.get("name", "")),
+                                description=sanitize_real_names(cd.get("description", "")),
+                                reference_url=cd.get("reference_url"),
+                                aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
+                                voice_style=sanitize_real_names(cd.get("voice_style", "")),
+                                voice_profile=sanitize_real_names(cd.get("voice_profile", "")),
+                                image_role=cd.get("image_role", "Character Reference"),
+                                is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
+                            )
+                        )
+                    elif hasattr(c, "role_id"):
+                        char_objs.append(
+                            CharacterRole(
+                                role_id=getattr(c, "role_id", ""),
+                                name=sanitize_real_names(getattr(c, "name", "")),
+                                description=sanitize_real_names(getattr(c, "description", "")),
+                                reference_url=getattr(c, "reference_url", None),
+                                aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
+                                voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
+                                voice_profile=sanitize_real_names(getattr(c, "voice_profile", "")),
+                                image_role=getattr(c, "image_role", "Character Reference"),
+                                is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
+                            )
+                        )
+
+            scene_objs: list[SceneDirective] = []
+            if req.scenes:
+                for s in req.scenes:
+                    if isinstance(s, SceneDirective):
+                        scene_objs.append(s)
+                    elif isinstance(s, dict):
+                        sp_script = s.get("screenplay_text") or s.get("screenplay_script")
+                        scene_objs.append(
+                            SceneDirective(
+                                scene_number=s.get("scene_number", 0),
+                                active_roles=s.get("active_roles", []),
+                                action=s.get("action", ""),
+                                dialogue=s.get("dialogue", ""),
+                                screenplay_text=sp_script if isinstance(sp_script, str) else None,
+                                audio_cues=s.get("audio_cues", ""),
+                            )
+                        )
+            elif req.shot_directive:
+                active_roles_list = [c.role_id or c.name for c in char_objs if c.role_id or c.name]
+                if not active_roles_list:
+                    active_roles_list = ["Role A"]
+                scene_objs.append(
+                    SceneDirective(
+                        scene_number=1,
+                        active_roles=active_roles_list,
+                        action=sanitize_real_names(req.shot_directive),
+                    )
+                )
+
+            if not compiled_override_val:
+                compiled_override_val = agent.taxonomy.compiler.compile_storyboard(
+                    concept=req.concept or sanitized_prompt,
+                    characters=char_objs,
+                    scenes=scene_objs,
+                    aesthetic_tags=req.aesthetic_tags,
+                    environment_tag=req.environment_tag,
+                    audio_beat=req.audio_stem,
+                    vocal_delivery=req.vocal_delivery,
+                    edit_instruction=req.prompt,
+                )
+
         agent_turn = agent.process_user_turn(
             user_id=req.user_id,
             project_id=req.project_id,
@@ -4368,7 +4851,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             voiceover=req.voiceover,
             is_silent=req.is_silent,
             on_screen_text=req.on_screen_text,
-            compiled_override=req.compiled_override,
+            compiled_override=compiled_override_val,
             session_name=req.session_name,
             concept=req.concept,
             characters=req.characters,
@@ -4892,6 +5375,58 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             for c in (raw_roster or [])
         ]
         return CharacterListResponse(characters=characters)
+
+    @app.post("/api/storyboards/save", response_model=SaveStoryboardResponse)
+    def save_storyboard(req: SaveStoryboardRequest) -> SaveStoryboardResponse:
+        _pub_url, gcs_uri = agent.storage.save_storyboard(
+            req.name,
+            req.storyboard_data,
+            session_id=req.session_name,
+        )
+        return SaveStoryboardResponse(
+            success=True,
+            gcs_uri=gcs_uri,
+            message=f"Storyboard saved successfully to {gcs_uri}",
+        )
+
+    @app.get("/api/storyboards", response_model=StoryboardListResponse)
+    def list_storyboards(session_name: str | None = None) -> StoryboardListResponse:
+        raw_storyboards = agent.storage.list_storyboards(session_id=session_name)
+        storyboards = [
+            StoryboardMetadataModel(
+                name=sb.get("name", ""),
+                slug=sb.get("slug", ""),
+                concept=sb.get("concept", ""),
+                shot_count=sb.get("shot_count", 0),
+                updated_at=sb.get("updated_at", ""),
+            )
+            for sb in (raw_storyboards or [])
+        ]
+        return StoryboardListResponse(storyboards=storyboards)
+
+    @app.post("/api/storyboards/load", response_model=dict[str, Any])
+    def load_storyboard(req: LoadStoryboardRequest) -> dict[str, Any]:
+        storyboard_data = agent.storage.load_storyboard(
+            req.slug, session_id=req.session_name
+        )
+        if storyboard_data is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Storyboard '{req.slug}' not found",
+            )
+        return storyboard_data
+
+    @app.post("/api/storyboards/delete", response_model=dict[str, Any])
+    def delete_storyboard(req: DeleteStoryboardRequest) -> dict[str, Any]:
+        deleted = agent.storage.delete_storyboard(
+            req.slug, session_id=req.session_name
+        )
+        message = (
+            f"Storyboard '{req.slug}' deleted successfully"
+            if deleted
+            else f"Storyboard '{req.slug}' not found"
+        )
+        return {"success": deleted, "message": message}
 
     @app.get("/api/media-proxy")
     def media_proxy(uri: str) -> Response:

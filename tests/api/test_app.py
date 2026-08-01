@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from omnimash.api.app import create_app
+from omnimash.api.app import UI_HTML, create_app
 
 
 def test_api_generate_endpoint():
@@ -599,6 +599,15 @@ def test_generate_shot_keyframe_seed_offsets_prompt_indexes():
     compiled = data.get("raw_compiled_prompt", "")
     assert "<FIRST_FRAME>@Image1" in compiled
     assert "<IMAGE_REF_0>@Image2" in compiled
+
+
+def test_ui_html_contains_storyboard_library_controls():
+    assert "Save Storyboard" in UI_HTML
+    assert "Storyboard Library" in UI_HTML
+    assert "/api/storyboards/save" in UI_HTML
+    assert "/api/storyboards/load" in UI_HTML
+    assert "Remix Styles" in UI_HTML
+
 
 
 

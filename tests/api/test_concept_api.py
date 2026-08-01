@@ -160,3 +160,52 @@ def test_generate_and_diff_endpoints_surface_error_and_generation_mode():
         "LOCAL_PROCEDURAL_ANIMATION",
     ]
     assert "error" in diff_data
+
+
+def test_api_diff_with_storyboard_shot_card_conversational_edit():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res_gen = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_test",
+            "project_id": "prj_test",
+            "prompt": "Snape 90s rap video",
+        },
+    )
+    assert res_gen.status_code == 200
+    gen_data = res_gen.json()
+    turn_id = gen_data["turn_id"]
+
+    res_diff = client.post(
+        "/api/diff",
+        json={
+            "user_id": "usr_test",
+            "project_id": "prj_test",
+            "prompt": "make him wear sunglasses",
+            "parent_turn_id": turn_id,
+            "scenes": [
+                {
+                    "scene_number": 1,
+                    "active_roles": ["Role A"],
+                    "action": "Snape stands in the studio.",
+                }
+            ],
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Snape",
+                    "description": "Potion Master",
+                }
+            ],
+        },
+    )
+    assert res_diff.status_code == 200
+    diff_data = res_diff.json()
+    assert diff_data["success"] is True
+    assert "### CONVERSATIONAL EDIT DIRECTIVE" in diff_data["raw_compiled_prompt"]
+    assert "Original Scene Baseline:" in diff_data["raw_compiled_prompt"]
+    assert (
+        'Required Change: Modify only the following aspect: "make him wear sunglasses"'
+        in diff_data["raw_compiled_prompt"]
+    )

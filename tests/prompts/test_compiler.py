@@ -1078,3 +1078,33 @@ def test_compile_storyboard_screenplay_script_injects_character_tags():
     assert "### TIMELINE" in compiled
     assert 'Role A - Yo Totti <IMAGE_REF_0> says: "let’s see..."' in compiled
 
+
+def test_compile_storyboard_with_conversational_edit_directive():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Yo Totti",
+            description="Character A description",
+            reference_url="https://example.com/totti.jpg",
+        ),
+    ]
+    scene = SceneDirective(
+        scene_number=1,
+        active_roles=["Role A"],
+        action="Yo Totti stands in the studio.",
+        dialogue="Yo Totti: \"Let's go.\"",
+    )
+    compiled = compiler.compile_storyboard(
+        concept="Test conversational edit directive",
+        characters=chars,
+        scenes=[scene],
+        edit_instruction="make him wear sunglasses",
+    )
+    assert "### CONVERSATIONAL EDIT DIRECTIVE" in compiled
+    assert "Original Scene Baseline:" in compiled
+    assert (
+        'Required Change: Modify only the following aspect: "make him wear sunglasses"'
+        in compiled
+    )
+

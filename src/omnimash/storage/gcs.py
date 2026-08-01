@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime, timezone
 import json
 import os
 import re
@@ -77,6 +78,7 @@ class GcsStorageManager:
             self._slugify(c["name"]): dict(c) for c in DEFAULT_CHARACTERS
         }
         self._mock_rosters: dict[str, list[dict[str, Any]]] = {}
+        self._mock_storyboards: dict[str, dict[str, Any]] = {}
 
         if not self.mock_mode and storage:
             try:
@@ -562,3 +564,185 @@ class GcsStorageManager:
             return default_sessions
         except Exception:
             return default_sessions
+
+    def _extract_storyboard_metadata(
+        self, data: dict[str, Any], fallback_slug: str = ""
+    ) -> dict[str, Any]:
+        """Extracts standard storyboard metadata dictionary from a storyboard payload."""
+        scenes = data.get("scenes", [])
+        shot_count = len(scenes) if isinstance(scenes, list) else 0
+        name = str(data.get("name") or "")
+        slug = str(data.get("slug") or fallback_slug or self._slugify(name))
+        concept = str(data.get("concept") or "")
+        updated_at = str(data.get("updated_at") or "")
+        return {
+            "name": name,
+            "slug": slug,
+            "concept": concept,
+            "shot_count": shot_count,
+            "updated_at": updated_at,
+        }
+
+    def save_storyboard(
+        self,
+        name: str,
+        storyboard_data: dict[str, Any],
+        session_id: str | None = None,
+    ) -> tuple[str, str]:
+        """Persists a storyboard grid payload as JSON in GCS under library or session scope."""
+        slug = self._slugify(name)
+        if session_id is None:
+            blob_path = f"library/storyboards/{slug}.json"
+        else:
+            blob_path = f"sessions/{session_id}/storyboards/{slug}.json"
+
+        payload = dict(storyboard_data)
+        payload["name"] = name
+        payload["slug"] = slug
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        content = json.dumps(payload, indent=2)
+        self.upload_bytes(
+            content.encode("utf-8"),
+            blob_path,
+            content_type="application/json",
+        )
+        self._mock_storyboards[slug] = payload
+        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+
+    def list_storyboards(
+        self,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Returns a list of storyboard metadata dicts from library and session scope."""
+        if not self.mock_mode and self._bucket:
+            try:
+                storyboards: list[dict[str, Any]] = []
+                seen_slugs: set[str] = set()
+
+                prefixes: list[str] = []
+                if session_id:
+                    prefixes.append(f"sessions/{session_id}/storyboards/")
+                prefixes.append("library/storyboards/")
+
+                for prefix in prefixes:
+                    blobs = self._bucket.list_blobs(prefix=prefix)
+                    for blob in blobs:
+                        if blob.name.endswith(".json"):
+                            try:
+                                data = json.loads(blob.download_as_text())
+                                if isinstance(data, dict):
+                                    slug = str(
+                                        data.get("slug", "")
+                                        or self._slugify(str(data.get("name", "")))
+                                    )
+                                    if slug not in seen_slugs:
+                                        seen_slugs.add(slug)
+                                        meta = self._extract_storyboard_metadata(
+                                            data, fallback_slug=slug
+                                        )
+                                        storyboards.append(meta)
+                                        self._mock_storyboards[slug] = data
+                            except Exception:
+                                pass
+                if storyboards:
+                    return storyboards
+            except Exception:
+                pass
+
+        return [
+            self._extract_storyboard_metadata(data, fallback_slug=slug)
+            for slug, data in self._mock_storyboards.items()
+        ]
+
+    def load_storyboard(
+        self,
+        slug: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Loads a storyboard payload by slug from session scope, library scope, or mock cache."""
+        clean_slug = self._slugify(slug)
+
+        if not self.mock_mode and self._bucket:
+            try:
+                paths_to_try: list[str] = []
+                if session_id:
+                    paths_to_try.append(
+                        f"sessions/{session_id}/storyboards/{clean_slug}.json"
+                    )
+                paths_to_try.append(f"library/storyboards/{clean_slug}.json")
+
+                for blob_path in paths_to_try:
+                    blob = self._bucket.blob(blob_path)
+                    if blob.exists():
+                        data = json.loads(blob.download_as_text())
+                        if isinstance(data, dict):
+                            self._mock_storyboards[clean_slug] = data
+                            return data
+            except Exception:
+                pass
+
+        if slug in self._mock_storyboards:
+            return self._mock_storyboards[slug]
+        if clean_slug in self._mock_storyboards:
+            return self._mock_storyboards[clean_slug]
+
+        for key, sb in self._mock_storyboards.items():
+            if (
+                key == clean_slug
+                or self._slugify(str(sb.get("name", ""))) == clean_slug
+            ):
+                return sb
+
+        return None
+
+    def delete_storyboard(
+        self,
+        slug: str,
+        session_id: str | None = None,
+    ) -> bool:
+        """Deletes a storyboard payload from GCS and removes it from mock cache."""
+        clean_slug = self._slugify(slug)
+        deleted = False
+
+        if not self.mock_mode and self._bucket:
+            try:
+                paths_to_try: list[str] = []
+                if session_id:
+                    paths_to_try.append(
+                        f"sessions/{session_id}/storyboards/{clean_slug}.json"
+                    )
+                paths_to_try.append(f"library/storyboards/{clean_slug}.json")
+
+                for blob_path in paths_to_try:
+                    blob = self._bucket.blob(blob_path)
+                    if blob.exists():
+                        blob.delete()
+                        deleted = True
+                        break
+            except Exception:
+                pass
+
+        deleted_from_mock = False
+        if slug in self._mock_storyboards:
+            del self._mock_storyboards[slug]
+            deleted_from_mock = True
+        elif clean_slug in self._mock_storyboards:
+            del self._mock_storyboards[clean_slug]
+            deleted_from_mock = True
+        else:
+            for key in list(self._mock_storyboards.keys()):
+                sb = self._mock_storyboards[key]
+                if (
+                    key == clean_slug
+                    or self._slugify(str(sb.get("name", ""))) == clean_slug
+                ):
+                    del self._mock_storyboards[key]
+                    deleted_from_mock = True
+                    break
+
+        return deleted or deleted_from_mock
+
+
+# Alias for backward compatibility and convenience
+GCSStorage = GcsStorageManager

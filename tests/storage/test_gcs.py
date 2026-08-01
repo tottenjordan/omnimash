@@ -1,5 +1,5 @@
 import os
-from omnimash.storage.gcs import GcsStorageManager
+from omnimash.storage.gcs import GCSStorage, GcsStorageManager
 from omnimash.engine.omni_client import OmniFlashClient
 
 
@@ -242,3 +242,110 @@ def test_gcs_normalize_media_source_path():
 
     raw_gcs = "gs://omnimash-media-hybrid-vertex/sessions/new_new_v2/clip.mp4"
     assert gcs._normalize_media_source_path(raw_gcs) == raw_gcs
+
+
+def test_save_and_load_storyboard():
+    storage = GCSStorage(bucket_name="test-omnimash-bucket", mock_mode=True)
+    storyboard_data = {
+        "concept": "A stylish wizard quest",
+        "scenes": [
+            {"scene_id": "shot_1", "description": "Intro shot"},
+            {"scene_id": "shot_2", "description": "Action shot"},
+        ],
+    }
+    pub_url, gcs_uri = storage.save_storyboard(
+        name="Harry Drip Quest",
+        storyboard_data=storyboard_data,
+        session_id=None,
+    )
+    assert "library/storyboards/harry_drip_quest.json" in gcs_uri
+    assert (
+        pub_url
+        == "https://storage.googleapis.com/test-omnimash-bucket/library/storyboards/harry_drip_quest.json"
+    )
+
+    loaded = storage.load_storyboard("harry_drip_quest")
+    assert loaded is not None
+    assert loaded["name"] == "Harry Drip Quest"
+    assert loaded["slug"] == "harry_drip_quest"
+    assert "updated_at" in loaded
+    assert loaded["concept"] == "A stylish wizard quest"
+    assert len(loaded["scenes"]) == 2
+
+    # Verify session-scoped save and load
+    session_data = {
+        "concept": "Session specific remix",
+        "scenes": [{"scene_id": "shot_s1"}],
+    }
+    pub_url_s, gcs_uri_s = storage.save_storyboard(
+        name="Draco Remix",
+        storyboard_data=session_data,
+        session_id="sess_101",
+    )
+    assert "sessions/sess_101/storyboards/draco_remix.json" in gcs_uri_s
+    loaded_s = storage.load_storyboard("draco_remix", session_id="sess_101")
+    assert loaded_s is not None
+    assert loaded_s["name"] == "Draco Remix"
+    assert len(loaded_s["scenes"]) == 1
+
+    assert storage.load_storyboard("non_existent_storyboard") is None
+
+
+def test_list_storyboards():
+    storage = GCSStorage(bucket_name="test-omnimash-bucket", mock_mode=True)
+    assert storage.list_storyboards() == []
+
+    storage.save_storyboard(
+        name="Storyboard One",
+        storyboard_data={
+            "concept": "First concept",
+            "scenes": [{}, {}, {}],
+        },
+    )
+    storage.save_storyboard(
+        name="Storyboard Two",
+        storyboard_data={
+            "concept": "Second concept",
+            "scenes": [],
+        },
+    )
+
+    storyboards = storage.list_storyboards()
+    assert len(storyboards) == 2
+    by_slug = {sb["slug"]: sb for sb in storyboards}
+    assert "storyboard_one" in by_slug
+    assert by_slug["storyboard_one"]["name"] == "Storyboard One"
+    assert by_slug["storyboard_one"]["concept"] == "First concept"
+    assert by_slug["storyboard_one"]["shot_count"] == 3
+    assert "updated_at" in by_slug["storyboard_one"]
+
+    assert "storyboard_two" in by_slug
+    assert by_slug["storyboard_two"]["shot_count"] == 0
+
+
+def test_delete_storyboard():
+    storage = GCSStorage(bucket_name="test-omnimash-bucket", mock_mode=True)
+    storage.save_storyboard(
+        name="To Be Deleted",
+        storyboard_data={"concept": "Temp concept", "scenes": [{}]},
+    )
+    assert len(storage.list_storyboards()) == 1
+
+    deleted = storage.delete_storyboard("to_be_deleted")
+    assert deleted is True
+    assert len(storage.list_storyboards()) == 0
+    assert storage.load_storyboard("to_be_deleted") is None
+    assert storage.delete_storyboard("to_be_deleted") is False
+
+
+def test_storyboard_save_and_load():
+    test_save_and_load_storyboard()
+
+
+def test_storyboard_list():
+    test_list_storyboards()
+
+
+def test_storyboard_delete():
+    test_delete_storyboard()
+
