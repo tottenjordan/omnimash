@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import uuid
+from typing import Any
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -156,6 +157,41 @@ class StoryboardExpandRequest(BaseModel):
 
 class StoryboardExpandResponse(BaseModel):
     shots: list[StoryboardShotModel]
+
+
+class SaveStoryboardRequest(BaseModel):
+    name: str
+    storyboard_data: dict[str, Any]
+    session_name: str | None = None
+    is_library: bool = True
+
+
+class SaveStoryboardResponse(BaseModel):
+    success: bool
+    gcs_uri: str
+    message: str
+
+
+class StoryboardMetadataModel(BaseModel):
+    name: str
+    slug: str
+    concept: str = ""
+    shot_count: int = 0
+    updated_at: str = ""
+
+
+class StoryboardListResponse(BaseModel):
+    storyboards: list[StoryboardMetadataModel]
+
+
+class LoadStoryboardRequest(BaseModel):
+    slug: str
+    session_name: str | None = None
+
+
+class DeleteStoryboardRequest(BaseModel):
+    slug: str
+    session_name: str | None = None
 
 
 class KeyframeImageRequest(BaseModel):
@@ -4892,6 +4928,58 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             for c in (raw_roster or [])
         ]
         return CharacterListResponse(characters=characters)
+
+    @app.post("/api/storyboards/save", response_model=SaveStoryboardResponse)
+    def save_storyboard(req: SaveStoryboardRequest) -> SaveStoryboardResponse:
+        _pub_url, gcs_uri = agent.storage.save_storyboard(
+            req.name,
+            req.storyboard_data,
+            session_id=req.session_name,
+        )
+        return SaveStoryboardResponse(
+            success=True,
+            gcs_uri=gcs_uri,
+            message=f"Storyboard saved successfully to {gcs_uri}",
+        )
+
+    @app.get("/api/storyboards", response_model=StoryboardListResponse)
+    def list_storyboards(session_name: str | None = None) -> StoryboardListResponse:
+        raw_storyboards = agent.storage.list_storyboards(session_id=session_name)
+        storyboards = [
+            StoryboardMetadataModel(
+                name=sb.get("name", ""),
+                slug=sb.get("slug", ""),
+                concept=sb.get("concept", ""),
+                shot_count=sb.get("shot_count", 0),
+                updated_at=sb.get("updated_at", ""),
+            )
+            for sb in (raw_storyboards or [])
+        ]
+        return StoryboardListResponse(storyboards=storyboards)
+
+    @app.post("/api/storyboards/load", response_model=dict[str, Any])
+    def load_storyboard(req: LoadStoryboardRequest) -> dict[str, Any]:
+        storyboard_data = agent.storage.load_storyboard(
+            req.slug, session_id=req.session_name
+        )
+        if storyboard_data is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Storyboard '{req.slug}' not found",
+            )
+        return storyboard_data
+
+    @app.post("/api/storyboards/delete", response_model=dict[str, Any])
+    def delete_storyboard(req: DeleteStoryboardRequest) -> dict[str, Any]:
+        deleted = agent.storage.delete_storyboard(
+            req.slug, session_id=req.session_name
+        )
+        message = (
+            f"Storyboard '{req.slug}' deleted successfully"
+            if deleted
+            else f"Storyboard '{req.slug}' not found"
+        )
+        return {"success": deleted, "message": message}
 
     @app.get("/api/media-proxy")
     def media_proxy(uri: str) -> Response:

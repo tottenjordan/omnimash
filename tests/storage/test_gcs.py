@@ -336,3 +336,16 @@ def test_delete_storyboard():
     assert len(storage.list_storyboards()) == 0
     assert storage.load_storyboard("to_be_deleted") is None
     assert storage.delete_storyboard("to_be_deleted") is False
+
+
+def test_storyboard_save_and_load():
+    test_save_and_load_storyboard()
+
+
+def test_storyboard_list():
+    test_list_storyboards()
+
+
+def test_storyboard_delete():
+    test_delete_storyboard()
+
