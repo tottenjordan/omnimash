@@ -109,6 +109,7 @@ class GenerateRequest(BaseModel):
     environment_tag: str | None = None
     vocal_delivery: str = ""
     optimize_prompt: bool = False
+    shot_directive: str | None = None
 
 
 class CommitRequest(BaseModel):
@@ -4391,7 +4392,100 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/diff", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
         sanitized_prompt = sanitize_real_names(req.prompt) if req.prompt else ""
-        is_edit = bool(req.parent_turn_id and not (req.scenes or req.concept))
+        is_edit = bool(req.parent_turn_id and not (req.scenes or req.concept or req.shot_directive))
+        compiled_override_val = req.compiled_override
+
+        if req.parent_turn_id and (req.shot_directive or req.scenes):
+            char_objs: list[CharacterRole] = []
+            if req.characters:
+                for c in req.characters:
+                    if isinstance(c, CharacterRole):
+                        char_objs.append(c)
+                    elif isinstance(c, dict):
+                        char_objs.append(
+                            CharacterRole(
+                                role_id=c.get("role_id", ""),
+                                name=sanitize_real_names(c.get("name", "")),
+                                description=sanitize_real_names(c.get("description", "")),
+                                reference_url=c.get("reference_url"),
+                                aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
+                                voice_style=sanitize_real_names(c.get("voice_style", "")),
+                                voice_profile=sanitize_real_names(c.get("voice_profile", "")),
+                                image_role=c.get("image_role", "Character Reference"),
+                                is_offscreen_narrator=c.get("is_offscreen_narrator", False),
+                            )
+                        )
+                    elif hasattr(c, "model_dump"):
+                        cd = c.model_dump()
+                        char_objs.append(
+                            CharacterRole(
+                                role_id=cd.get("role_id", ""),
+                                name=sanitize_real_names(cd.get("name", "")),
+                                description=sanitize_real_names(cd.get("description", "")),
+                                reference_url=cd.get("reference_url"),
+                                aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
+                                voice_style=sanitize_real_names(cd.get("voice_style", "")),
+                                voice_profile=sanitize_real_names(cd.get("voice_profile", "")),
+                                image_role=cd.get("image_role", "Character Reference"),
+                                is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
+                            )
+                        )
+                    elif hasattr(c, "role_id"):
+                        char_objs.append(
+                            CharacterRole(
+                                role_id=getattr(c, "role_id", ""),
+                                name=sanitize_real_names(getattr(c, "name", "")),
+                                description=sanitize_real_names(getattr(c, "description", "")),
+                                reference_url=getattr(c, "reference_url", None),
+                                aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
+                                voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
+                                voice_profile=sanitize_real_names(getattr(c, "voice_profile", "")),
+                                image_role=getattr(c, "image_role", "Character Reference"),
+                                is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
+                            )
+                        )
+
+            scene_objs: list[SceneDirective] = []
+            if req.scenes:
+                for s in req.scenes:
+                    if isinstance(s, SceneDirective):
+                        scene_objs.append(s)
+                    elif isinstance(s, dict):
+                        sp_script = s.get("screenplay_text") or s.get("screenplay_script")
+                        scene_objs.append(
+                            SceneDirective(
+                                scene_number=s.get("scene_number", 0),
+                                active_roles=s.get("active_roles", []),
+                                action=s.get("action", ""),
+                                dialogue=s.get("dialogue", ""),
+                                screenplay_text=sp_script if isinstance(sp_script, str) else None,
+                                audio_cues=s.get("audio_cues", ""),
+                            )
+                        )
+            elif req.shot_directive:
+                active_roles_list = [c.role_id or c.name for c in char_objs if c.role_id or c.name]
+                if not active_roles_list:
+                    active_roles_list = ["Role A"]
+                scene_objs.append(
+                    SceneDirective(
+                        scene_number=1,
+                        active_roles=active_roles_list,
+                        action=sanitize_real_names(req.shot_directive),
+                    )
+                )
+
+            if not compiled_override_val:
+                compiled_override_val = agent.taxonomy.compiler.compile_storyboard(
+                    concept=req.concept or sanitized_prompt,
+                    characters=char_objs,
+                    scenes=scene_objs,
+                    aesthetic_tags=req.aesthetic_tags,
+                    environment_tag=req.environment_tag,
+                    audio_beat=req.audio_stem,
+                    vocal_delivery=req.vocal_delivery,
+                    edit_instruction=req.prompt,
+                )
+
         agent_turn = agent.process_user_turn(
             user_id=req.user_id,
             project_id=req.project_id,
@@ -4404,7 +4498,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             voiceover=req.voiceover,
             is_silent=req.is_silent,
             on_screen_text=req.on_screen_text,
-            compiled_override=req.compiled_override,
+            compiled_override=compiled_override_val,
             session_name=req.session_name,
             concept=req.concept,
             characters=req.characters,
