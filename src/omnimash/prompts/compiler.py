@@ -699,7 +699,7 @@ def enrich_timeline_dialogue_speakers(
     if not characters:
         return diag_raw, False
 
-    cand_list: list[tuple[str, str]] = []
+    cand_list: list[tuple[str, str, str]] = []
     for c in characters:
         c_id = get_character_identifier(c)
         c_name = str(
@@ -712,6 +712,12 @@ def enrich_timeline_dialogue_speakers(
             if not isinstance(c, dict)
             else c.get("role_id", "") or ""
         ).strip()
+        c_voice_raw = (
+            getattr(c, "voice_style", "")
+            if not isinstance(c, dict)
+            else c.get("voice_style", "") or ""
+        )
+        c_voice_style = str(c_voice_raw or "").strip()
 
         tag_map = char_tag_map or {}
         tag = tag_map.get(c_id)
@@ -758,7 +764,7 @@ def enrich_timeline_dialogue_speakers(
 
         for cand in candidates:
             if cand and cand.strip():
-                cand_list.append((cand.strip(), target_replacement))
+                cand_list.append((cand.strip(), target_replacement, c_voice_style))
 
     if not cand_list:
         return diag_raw, False
@@ -766,12 +772,12 @@ def enrich_timeline_dialogue_speakers(
     # Sort longest candidates first so more specific labels take precedence
     cand_list.sort(key=lambda x: len(x[0]), reverse=True)
 
-    cand_map: dict[str, str] = {}
+    cand_map: dict[str, tuple[str, str]] = {}
     pattern_parts: list[str] = []
-    for cand, target in cand_list:
+    for cand, target, c_voice in cand_list:
         cand_lower = cand.lower()
         if cand_lower not in cand_map:
-            cand_map[cand_lower] = target
+            cand_map[cand_lower] = (target, c_voice)
             pattern_parts.append(re.escape(cand))
 
     if not pattern_parts:
@@ -789,7 +795,13 @@ def enrich_timeline_dialogue_speakers(
         matched_cand = match.group(1).lower()
         if matched_cand in cand_map:
             replaced = True
-            return cand_map[matched_cand]
+            target, c_voice = cand_map[matched_cand]
+            if c_voice and not diag_raw[match.end():].lstrip().startswith("("):
+                replacement = f"{target} (In a {c_voice})"
+                if match.end() < len(diag_raw) and not diag_raw[match.end()].isspace():
+                    replacement += " "
+                return replacement
+            return target
         return match.group(0)
 
     enriched = pattern.sub(repl_func, diag_raw)
@@ -1534,7 +1546,14 @@ class PromptCompiler:
                 desc_clean = (
                     sanitize_real_names(char.description) if char.description else ""
                 )
-                char_profiles.append(f"- {char_id}{tag_str}: {desc_clean}{style_str}")
+                voice_str = (
+                    f" [Voice Style: {char.voice_style.strip()}]"
+                    if getattr(char, "voice_style", None) and char.voice_style.strip()
+                    else ""
+                )
+                char_profiles.append(
+                    f"- {char_id}{tag_str}: {desc_clean}{style_str}{voice_str}"
+                )
 
         input_roles_str = "\n".join(input_roles).strip() if input_roles else "None."
         char_profiles_str = (
@@ -1634,7 +1653,9 @@ class PromptCompiler:
                     f"Voice Style ({char_id}{tag_str}): {char.voice_style.strip()}"
                 )
         if vocal_delivery and vocal_delivery.strip():
-            scene_inst_parts.append(f"Vocal Delivery: {vocal_delivery.strip()}")
+            scene_inst_parts.append(
+                f"Global Vocal Delivery: {vocal_delivery.strip()} (Note: Individual character Voice Styles take precedence over global delivery)."
+            )
 
         scene_instructions_str = (
             "\n".join(scene_inst_parts)

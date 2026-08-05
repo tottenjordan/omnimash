@@ -1108,3 +1108,86 @@ def test_compile_storyboard_with_conversational_edit_directive():
         in compiled
     )
 
+
+def test_character_profile_includes_voice_style():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            name="Snape",
+            role_id="Role A",
+            description="Potions Master",
+            voice_style="british accent",
+        )
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A"],
+            action="Snape teaches class.",
+        )
+    ]
+    compiled = compiler.compile_multi_role_prompt(
+        concept="Test character voice style",
+        characters=chars,
+        scenes=scenes,
+    )
+    assert "### CHARACTER PROFILES" in compiled
+    assert "[Voice Style: british accent]" in compiled
+
+
+def test_timeline_dialogue_includes_parenthetical_voice_style():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            name="Snape",
+            role_id="Role A",
+            description="Potions Master",
+            voice_style="british accent",
+        )
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A"],
+            action="Snape teaches class.",
+            dialogue='Snape: "Turn to page 394."',
+        )
+    ]
+    compiled = compiler.compile_multi_role_prompt(
+        concept="Test timeline dialogue voice style",
+        characters=chars,
+        scenes=scenes,
+    )
+    assert "### TIMELINE" in compiled
+    assert 'says: (In a british accent) "Turn to page 394."' in compiled
+
+
+def test_scene_instructions_vocal_delivery_priority():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            name="Snape",
+            role_id="Role A",
+            description="Potions Master",
+        )
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A"],
+            action="Snape teaches class.",
+        )
+    ]
+    compiled = compiler.compile_multi_role_prompt(
+        concept="Test scene instructions vocal delivery priority",
+        characters=chars,
+        scenes=scenes,
+        vocal_delivery="American accent",
+    )
+    assert "### SCENE INSTRUCTIONS" in compiled
+    assert (
+        "Global Vocal Delivery: American accent (Note: Individual character Voice Styles take precedence over global delivery)."
+        in compiled
+    )
+
+
