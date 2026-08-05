@@ -1469,6 +1469,84 @@ def test_build_multimodal_contents_extracts_base_names_and_tokens() -> None:
     assert "Swagrid <IMAGE_REF_1>" in text_val
 
 
+def test_safety_retry_preserves_multimodal_reference_images(
+    tmp_path: Any,
+) -> None:
+    """Verify that a 400 safety/prohibited content retry preserves multimodal reference images in kwargs['input']."""
+    import base64
+    from unittest.mock import MagicMock, patch
+    from omnimash.engine.omni_client import OmniFlashClient
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+    success_interaction = MagicMock(
+        id="inter_test_retry_123", output_video=mock_output_video
+    )
+
+    mock_interactions.create.side_effect = [
+        Exception("400 prohibited content guidelines violated"),
+        success_interaction,
+    ]
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    char = CharacterRole(
+        role_id="Role B",
+        name="Yo Totti",
+        description="Yo Totti character",
+        reference_url="http://example.com/yototti.jpg",
+    )
+
+    with patch.object(
+        client,
+        "_fetch_image_bytes",
+        return_value=(b"fake_jpg_bytes", "image/jpeg"),
+    ):
+        target_file = str(tmp_path / "test_safety_retry_out.mp4")
+        success, inter_id, error = client._generate_live_omni_flash_video(
+            prompt="Yo Totti in a rap battle",
+            target_rel_path=target_file,
+            characters=[char],
+            session_id="session_test_safety",
+        )
+
+    assert success is True
+    assert inter_id == "inter_test_retry_123"
+    assert error is None
+    assert mock_interactions.create.call_count == 2
+
+    second_call_kwargs = mock_interactions.create.call_args_list[1].kwargs
+    second_input = second_call_kwargs["input"]
+    assert isinstance(second_input, list)
+    assert len(second_input) == 1
+    assert second_input[0]["type"] == "user_input"
+
+    content = second_input[0]["content"]
+    image_parts = [
+        p
+        for p in content
+        if isinstance(p, dict) and p.get("type") == "image"
+    ]
+    text_parts = [
+        p
+        for p in content
+        if isinstance(p, dict) and p.get("type") == "text"
+    ]
+
+    assert (
+        len(image_parts) == 1
+    ), "Expected reference image part ('type': 'image') in retry payload content"
+    assert (
+        len(text_parts) == 1
+    ), "Expected fallback text part ('type': 'text') in retry payload content"
+    assert "parody" in text_parts[0].get("text", "").lower()
+
+
 
 
 
