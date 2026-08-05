@@ -609,6 +609,13 @@ def test_ui_html_contains_storyboard_library_controls():
     assert "Remix Styles" in UI_HTML
 
 
+def test_ui_html_contains_storyboard_workflow_guide():
+    assert "Workflow Guide" in UI_HTML
+    assert "Stage 1: Concept & Character Roster" in UI_HTML
+    assert "Keyframe Chaining" in UI_HTML
+    assert "Theatrical Syntax" in UI_HTML
+
+
 
 
 
