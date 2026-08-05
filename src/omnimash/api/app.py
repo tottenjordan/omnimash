@@ -110,6 +110,15 @@ class GenerateRequest(BaseModel):
     vocal_delivery: str = ""
     optimize_prompt: bool = False
     shot_directive: str | None = None
+    enable_safety_sanitization: bool = True
+
+
+class DiffRequest(GenerateRequest):
+    pass
+
+
+class ScenesRequest(GenerateRequest):
+    pass
 
 
 class CommitRequest(BaseModel):
@@ -227,6 +236,7 @@ class GenerateShotRequest(BaseModel):
     keyframe_image_url: str | None = None
     style_lighting: str = ""
     audio_stem: str | None = None
+    enable_safety_sanitization: bool = True
 
 
 class GenerateShotResponse(BaseModel):
@@ -419,6 +429,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             ]);
             const [copied, setCopied] = useState(false);
+            const [enableSafetySanitization, setEnableSafetySanitization] = useState(true);
 
             // Act 3: The Screening Room & Branching State
             const [currentVideo, setCurrentVideo] = useState("");
@@ -667,7 +678,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             characters: characters,
                             duration_seconds: parseFloat(shot.duration_seconds) || 10.0,
                             parent_turn_id: parentTurnId,
-                            audio_stem: shot.audio || null
+                            audio_stem: shot.audio || null,
+                            enable_safety_sanitization: enableSafetySanitization
                         })
                     });
                     const data = await res.json();
@@ -713,7 +725,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             prompt: diffText,
                             parent_turn_id: shot.turn_id || null,
                             clip_index: idx,
-                            session_name: sessionName
+                            session_name: sessionName,
+                            enable_safety_sanitization: enableSafetySanitization
                         })
                     });
                     const data = await res.json();
@@ -1127,7 +1140,8 @@ UI_HTML = r"""<!DOCTYPE html>
                         aesthetic_tags: aestheticTags,
                         environment_tag: environmentTag,
                         audio_stem: audioBeat,
-                        vocal_delivery: vocalDelivery
+                        vocal_delivery: vocalDelivery,
+                        enable_safety_sanitization: enableSafetySanitization
                     };
                     const endpoint = shotTurnId ? "/api/diff" : "/api/generate";
                     const res = await fetch(endpoint, {
@@ -1809,14 +1823,25 @@ UI_HTML = r"""<!DOCTYPE html>
                         {/* ========================================================= */}
                         {studioMode === "acts" && activeAct === 1 && (
                             <div className="space-y-6">
-                                <div className="bg-gradient-to-r from-purple-950/40 to-pink-950/40 border border-purple-800/50 rounded-2xl p-5">
-                                    <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
-                                        <span>🎭</span>
-                                        <span>Act 1: Global Production Context (Applies to All Shots)</span>
-                                    </h2>
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        Set character likeness, outfits, voice styles, and global parody environment once. Shared across all 10s video clips.
-                                    </p>
+                                <div className="bg-gradient-to-r from-purple-950/40 to-pink-950/40 border border-purple-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
+                                            <span>🎭</span>
+                                            <span>Act 1: Global Production Context (Applies to All Shots)</span>
+                                        </h2>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Set character likeness, outfits, voice styles, and global parody environment once. Shared across all 10s video clips.
+                                        </p>
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none">
+                                        <span>🛡️ Safety Sanitization</span>
+                                        <input
+                                            type="checkbox"
+                                            checked={enableSafetySanitization}
+                                            onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                            className="w-4 h-4 accent-purple-600 rounded cursor-pointer"
+                                        />
+                                    </label>
                                 </div>
 
                                 {/* 1. Visual Concept / Parody Prompt & Example Chips */}
@@ -2284,14 +2309,26 @@ UI_HTML = r"""<!DOCTYPE html>
                         {/* ========================================================= */}
                         {studioMode === "acts" && activeAct === 2 && (
                             <div className="space-y-6">
-                                <div className="bg-gradient-to-r from-pink-950/40 to-amber-950/40 border border-pink-800/50 rounded-2xl p-5">
-                                    <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
-                                        <span>🎛️</span>
-                                        <span>Act 2: Storyboard &amp; Shot Director (10-Second Video Clips)</span>
-                                    </h2>
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        Direct individual 10-second video shots using Guided Mode or Screenplay Scripting.
-                                    </p>
+                                <div className="bg-gradient-to-r from-pink-950/40 to-amber-950/40 border border-pink-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
+                                            <span>🎛️</span>
+                                            <span>Act 2: Storyboard &amp; Shot Director (10-Second Video Clips)</span>
+                                        </h2>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Direct individual 10-second video shots using Guided Mode or Screenplay Scripting.
+                                        </p>
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-pink-500 transition select-none">
+                                        <span>🛡️ Safety Sanitization</span>
+                                        <input
+                                            type="checkbox"
+                                            checked={enableSafetySanitization}
+                                            onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                            className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
+                                        />
+                                    </label>
+                                </div>
                                     <details className="mt-2 bg-gray-900/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-300">
                                         <summary className="font-bold text-purple-400 cursor-pointer flex items-center gap-1.5 select-none">
                                             <span>💡</span>
@@ -2557,10 +2594,20 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         Define your overall 30–60s video concept, select style &amp; tone presets, and upload reference image and audio assets.
                                                     </p>
                                                 </div>
-                                                <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setStoryboardPath("path1")}
+                                                <div className="flex items-center gap-3">
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-amber-500 transition select-none shadow-inner">
+                                                        <span>🛡️ Safety Sanitization</span>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={enableSafetySanitization}
+                                                            onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                                            className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                                                        />
+                                                    </label>
+                                                    <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setStoryboardPath("path1")}
                                                         className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
                                                             storyboardPath === "path1"
                                                                 ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black font-extrabold shadow"
@@ -3041,13 +3088,23 @@ UI_HTML = r"""<!DOCTYPE html>
                                             Tune shot directives, pre-render keyframe art, render clips one shot at a time, and apply conversational diffs.
                                         </p>
                                     </div>
-                                    <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setStoryboardPath("path1");
-                                                setActiveStage(1);
-                                            }}
+                                    <div className="flex items-center gap-3">
+                                        <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
+                                            <span>🛡️ Safety Sanitization</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={enableSafetySanitization}
+                                                onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                                className="w-4 h-4 accent-purple-500 rounded cursor-pointer"
+                                            />
+                                        </label>
+                                        <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setStoryboardPath("path1");
+                                                    setActiveStage(1);
+                                                }}
                                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
                                                 storyboardPath === "path1"
                                                     ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black font-extrabold shadow"
@@ -4818,8 +4875,14 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/generate", response_model=GenerateResponse)
     @app.post("/api/diff", response_model=GenerateResponse)
+    @app.post("/api/generate_clip", response_model=GenerateResponse)
+    @app.post("/api/scenes", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
-        sanitized_prompt = sanitize_real_names(req.prompt) if req.prompt else ""
+        sanitized_prompt = (
+            sanitize_real_names(req.prompt)
+            if (req.prompt and req.enable_safety_sanitization)
+            else (req.prompt or "")
+        )
         base_action = (req.concept or req.shot_directive or "").strip()
         if not base_action and req.scenes:
             first_scene = req.scenes[0]
@@ -4840,6 +4903,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
         compiled_override_val = req.compiled_override
 
+        def _clean(val: str | None) -> str:
+            if not val:
+                return ""
+            return sanitize_real_names(val) if req.enable_safety_sanitization else val
+
         if req.parent_turn_id and (req.shot_directive or req.scenes):
             char_objs: list[CharacterRole] = []
             if req.characters:
@@ -4850,12 +4918,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                         char_objs.append(
                             CharacterRole(
                                 role_id=c.get("role_id", ""),
-                                name=sanitize_real_names(c.get("name", "")),
-                                description=sanitize_real_names(c.get("description", "")),
+                                name=_clean(c.get("name", "")),
+                                description=_clean(c.get("description", "")),
                                 reference_url=c.get("reference_url"),
-                                aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
-                                voice_style=sanitize_real_names(c.get("voice_style", "")),
-                                voice_profile=sanitize_real_names(c.get("voice_profile", "")),
+                                aesthetic_tags=[_clean(t) for t in c.get("aesthetic_tags", [])],
+                                voice_style=_clean(c.get("voice_style", "")),
+                                voice_profile=_clean(c.get("voice_profile", "")),
                                 image_role=c.get("image_role", "Character Reference"),
                                 is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                             )
@@ -4865,12 +4933,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                         char_objs.append(
                             CharacterRole(
                                 role_id=cd.get("role_id", ""),
-                                name=sanitize_real_names(cd.get("name", "")),
-                                description=sanitize_real_names(cd.get("description", "")),
+                                name=_clean(cd.get("name", "")),
+                                description=_clean(cd.get("description", "")),
                                 reference_url=cd.get("reference_url"),
-                                aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
-                                voice_style=sanitize_real_names(cd.get("voice_style", "")),
-                                voice_profile=sanitize_real_names(cd.get("voice_profile", "")),
+                                aesthetic_tags=[_clean(t) for t in cd.get("aesthetic_tags", [])],
+                                voice_style=_clean(cd.get("voice_style", "")),
+                                voice_profile=_clean(cd.get("voice_profile", "")),
                                 image_role=cd.get("image_role", "Character Reference"),
                                 is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                             )
@@ -4879,12 +4947,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                         char_objs.append(
                             CharacterRole(
                                 role_id=getattr(c, "role_id", ""),
-                                name=sanitize_real_names(getattr(c, "name", "")),
-                                description=sanitize_real_names(getattr(c, "description", "")),
+                                name=_clean(getattr(c, "name", "")),
+                                description=_clean(getattr(c, "description", "")),
                                 reference_url=getattr(c, "reference_url", None),
-                                aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
-                                voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
-                                voice_profile=sanitize_real_names(getattr(c, "voice_profile", "")),
+                                aesthetic_tags=[_clean(t) for t in getattr(c, "aesthetic_tags", [])],
+                                voice_style=_clean(getattr(c, "voice_style", "")),
+                                voice_profile=_clean(getattr(c, "voice_profile", "")),
                                 image_role=getattr(c, "image_role", "Character Reference"),
                                 is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                             )
@@ -4915,7 +4983,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     SceneDirective(
                         scene_number=1,
                         active_roles=active_roles_list,
-                        action=sanitize_real_names(req.shot_directive),
+                        action=_clean(req.shot_directive),
                     )
                 )
 
@@ -4929,6 +4997,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     audio_beat=req.audio_stem,
                     vocal_delivery=req.vocal_delivery,
                     edit_instruction=req.prompt if is_edit else None,
+                    enable_sanitization=req.enable_safety_sanitization,
                 )
 
         agent_turn = agent.process_user_turn(
@@ -4952,6 +5021,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             environment_tag=req.environment_tag,
             vocal_delivery=req.vocal_delivery,
             optimize_prompt=req.optimize_prompt,
+            enable_sanitization=req.enable_safety_sanitization,
         )
         return GenerateResponse(
             success=agent_turn.success,
@@ -5200,11 +5270,20 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/generate-shot", response_model=GenerateShotResponse)
     def generate_shot(req: GenerateShotRequest) -> GenerateShotResponse:
-        sanitized_directive = sanitize_real_names(req.shot_directive)
+        sanitized_directive = (
+            sanitize_real_names(req.shot_directive)
+            if (req.shot_directive and req.enable_safety_sanitization)
+            else (req.shot_directive or "")
+        )
         keyframe_url = req.keyframe_image_url
 
         action_val, dialogue_val, audio_val, location_val, style_lighting_val, framing_motion_val = parse_shot_directive_if_needed(req)
         audio_stem_val = audio_val or req.audio_stem
+
+        def _clean(val: str | None) -> str:
+            if not val:
+                return ""
+            return sanitize_real_names(val) if req.enable_safety_sanitization else val
 
         char_objs: list[CharacterRole] = []
         ref_urls: list[str] = []
@@ -5219,12 +5298,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     char_objs.append(
                         CharacterRole(
                             role_id=c.get("role_id", ""),
-                            name=sanitize_real_names(c.get("name", "")),
-                            description=sanitize_real_names(c.get("description", "")),
+                            name=_clean(c.get("name", "")),
+                            description=_clean(c.get("description", "")),
                             reference_url=c.get("reference_url"),
-                            aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
-                            voice_style=sanitize_real_names(c.get("voice_style", "")),
-                            voice_profile=sanitize_real_names(c.get("voice_profile", "")),
+                            aesthetic_tags=[_clean(t) for t in c.get("aesthetic_tags", [])],
+                            voice_style=_clean(c.get("voice_style", "")),
+                            voice_profile=_clean(c.get("voice_profile", "")),
                             image_role=c.get("image_role", "Character Reference"),
                             is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                         )
@@ -5234,12 +5313,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     char_objs.append(
                         CharacterRole(
                             role_id=cd.get("role_id", ""),
-                            name=sanitize_real_names(cd.get("name", "")),
-                            description=sanitize_real_names(cd.get("description", "")),
+                            name=_clean(cd.get("name", "")),
+                            description=_clean(cd.get("description", "")),
                             reference_url=cd.get("reference_url"),
-                            aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
-                            voice_style=sanitize_real_names(cd.get("voice_style", "")),
-                            voice_profile=sanitize_real_names(cd.get("voice_profile", "")),
+                            aesthetic_tags=[_clean(t) for t in cd.get("aesthetic_tags", [])],
+                            voice_style=_clean(cd.get("voice_style", "")),
+                            voice_profile=_clean(cd.get("voice_profile", "")),
                             image_role=cd.get("image_role", "Character Reference"),
                             is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                         )
@@ -5248,12 +5327,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     char_objs.append(
                         CharacterRole(
                             role_id=getattr(c, "role_id", ""),
-                            name=sanitize_real_names(getattr(c, "name", "")),
-                            description=sanitize_real_names(getattr(c, "description", "")),
+                            name=_clean(getattr(c, "name", "")),
+                            description=_clean(getattr(c, "description", "")),
                             reference_url=getattr(c, "reference_url", None),
-                            aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
-                            voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
-                            voice_profile=sanitize_real_names(getattr(c, "voice_profile", "")),
+                            aesthetic_tags=[_clean(t) for t in getattr(c, "aesthetic_tags", [])],
+                            voice_style=_clean(getattr(c, "voice_style", "")),
+                            voice_profile=_clean(getattr(c, "voice_profile", "")),
                             image_role=getattr(c, "image_role", "Character Reference"),
                             is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                         )
@@ -5284,6 +5363,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             audio_beat=audio_stem_val,
             has_keyframe_seed=bool(keyframe_url),
             keyframe_image_url=keyframe_url,
+            enable_sanitization=req.enable_safety_sanitization,
         )
 
         # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor
@@ -5313,6 +5393,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             keyframe_image_url=keyframe_url,
             voiceover=dialogue_val if dialogue_val else None,
             audio_stem=audio_stem_val,
+            enable_sanitization=req.enable_safety_sanitization,
         )
         return GenerateShotResponse(
             success=agent_turn.success,

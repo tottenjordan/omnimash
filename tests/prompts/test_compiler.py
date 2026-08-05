@@ -1191,3 +1191,39 @@ def test_scene_instructions_vocal_delivery_priority():
     )
 
 
+def test_compiler_skips_sanitization_when_disabled():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            name="Harry Potter",
+            role_id="Role A",
+            description="Harry Potter with round glasses",
+        )
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A"],
+            action="Harry Potter casts Lumos.",
+        )
+    ]
+    compiled_enabled = compiler.compile_storyboard(
+        concept="Harry Potter parody",
+        characters=chars,
+        scenes=scenes,
+        enable_sanitization=True,
+    )
+    assert "Harry Potter" not in compiled_enabled
+    assert "Spectacled Wizard Bruv" in compiled_enabled
+
+    compiled_disabled = compiler.compile_storyboard(
+        concept="Harry Potter parody",
+        characters=chars,
+        scenes=scenes,
+        enable_sanitization=False,
+    )
+    assert "Harry Potter" in compiled_disabled
+    assert "Spectacled Wizard Bruv" not in compiled_disabled
+
+
+
