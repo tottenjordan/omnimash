@@ -472,6 +472,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [showStoryboardLibraryModal, setShowStoryboardLibraryModal] = useState(false);
             const [showRemixModal, setShowRemixModal] = useState(false);
             const [remixStyleTag, setRemixStyleTag] = useState("90s Cel-Shaded Anime");
+            const [showStoryboardGuideModal, setShowStoryboardGuideModal] = useState(false);
             const [stageShots, setStageShots] = useState([
                 {
                     shot_index: 1,
@@ -2342,6 +2343,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     </button>
                                                     <button
                                                         type="button"
+                                                        onClick={() => setShowStoryboardGuideModal(true)}
+                                                        className="bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                                    >
+                                                        <span>❓ Workflow Guide</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
                                                         onClick={addScene}
                                                         className="bg-pink-900/60 hover:bg-pink-800 text-pink-200 border border-pink-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
                                                     >
@@ -3079,6 +3087,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     className="bg-blue-900/60 hover:bg-blue-800 border border-blue-700 text-blue-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
                                                 >
                                                     <span>📂 Storyboard Library</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowStoryboardGuideModal(true)}
+                                                    className="bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
+                                                >
+                                                    <span>❓ Workflow Guide</span>
                                                 </button>
                                                 <button
                                                     type="button"
@@ -4337,6 +4352,66 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                             className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-2 px-5 rounded-xl shadow"
                                         >
                                             Close Best Practices
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Storyboard Workflow Guide Modal */}
+                        {showStoryboardGuideModal && (
+                            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                                <div className="bg-gray-900 border-2 border-indigo-500/80 rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative space-y-4 max-h-[85vh] overflow-y-auto">
+                                    <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                                        <h3 className="font-bold text-base text-indigo-200 flex items-center gap-2">
+                                            <span>❓</span>
+                                            <span>Storyboard & Multi-Shot Production Workflow Guide</span>
+                                        </h3>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowStoryboardGuideModal(false)}
+                                            className="text-gray-400 hover:text-white text-lg font-bold px-2 py-1"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div className="space-y-4 text-xs text-gray-300">
+                                        <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1">
+                                            <div className="font-bold text-indigo-400">Stage 1: Concept & Character Roster (The Anchor Stage)</div>
+                                            <p>Set your narrative concept, style tags, audio beat, and character roster in Tab 1 / Tab 2 controls. Establishing your cast binds reference images (@Image1, @Image2) as immutable visual anchors across all shots.</p>
+                                        </div>
+                                        <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-2">
+                                            <div className="font-bold text-indigo-400">Stage 2: Screenplay & Director's Notes Breakdown</div>
+                                            <p>Script your scene sequence in Widget 6 using either supported syntax format:</p>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] font-mono bg-black/50 p-2 rounded border border-gray-800">
+                                                <div>
+                                                    <div className="text-pink-400 font-bold mb-1">Theatrical Syntax</div>
+                                                    Harry: (Inspects wand. Audio: bass drop.) "Is this the 1017 edition?"
+                                                </div>
+                                                <div>
+                                                    <div className="text-blue-400 font-bold mb-1">Timecoded Syntax</div>
+                                                    [0-5s] Action: Harry inspects wand. Dialogue: "Is this the 1017 edition?"
+                                                </div>
+                                            </div>
+                                            <p>Clicking "🎬 Generate Storyboard Grid" deconstructs your script into 5-part shot cards with automated character tag bindings.</p>
+                                        </div>
+                                        <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1">
+                                            <div className="font-bold text-indigo-400">Stage 3: Interactive Sequential Shot Production & Keyframe Chaining</div>
+                                            <p>1. On Shot #1, click "🎨 Generate Keyframe" to establish camera framing and likeness, then click "🎬 Generate Video".</p>
+                                            <p>2. For Shots #2+, Keyframe Chaining automatically passes Shot #1's keyframe forward as &lt;FIRST_FRAME&gt;@Image1 to ensure 100% character identity continuity across scene cuts.</p>
+                                        </div>
+                                        <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1">
+                                            <div className="font-bold text-indigo-400">Stage 4: Conversational Diff Editing & Storyboard Library</div>
+                                            <p>Click "Edit / Diff" on any shot card to apply a targeted modification (e.g. "make him wear sunglasses") while preserving 95% of the original video baseline. Save full storyboards to your Library and use "🎨 Re-Style / Remix" to switch style tags across all shots in 1 click.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end pt-2 border-t border-gray-800">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowStoryboardGuideModal(false)}
+                                            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-xl shadow"
+                                        >
+                                            Got it, let's direct!
                                         </button>
                                     </div>
                                 </div>

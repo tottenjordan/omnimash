@@ -54,6 +54,7 @@ OmniMash works like an AI music video mixing studio:
 ## Table of Contents
 - [Architecture](#architecture)
   - [Multi-Scene 30–60s Master Video Assembly Architecture](#-multi-scene-3060s-master-video-assembly-architecture)
+- [Storyboard & Multi-Shot Production User Journey](#-storyboard--multi-shot-production-user-journey-act-2)
 - [Diagrams & Reference Architectures](#diagrams--reference-architectures)
 - [Getting Started & User Journey](#-getting-started--user-journey)
 - [Quickstart](#quickstart)
@@ -184,6 +185,72 @@ graph TD
 ```
 
 </details>
+
+---
+
+## 🎬 Storyboard & Multi-Shot Production User Journey (Act 2)
+
+OmniMash provides a canonical **4-Stage Storyboard & Multi-Shot Production Workflow** in **Act 2 (The Director's Studio)** that bridges open-ended creative concepts and fine-grained, shot-by-shot video directing. By decoupling initial narrative deconstruction from sequential keyframe chaining and conversational diff editing, the studio guarantees 100% character visual consistency, continuous audio sync, and surgical iteration across multi-shot productions.
+
+<div align="center">
+  <img src="docs/diagrams/omnimash_storyboard_4_stage_workflow.png" alt="Canonical 4-Stage Storyboard & Multi-Shot Production Workflow Diagram" width="100%" />
+</div>
+
+### 🏛️ The 4 Canonical Stages
+
+#### Stage 1: Concept & Character Roster Intake (The Anchor Stage)
+* **Narrative & Aesthetic Intake:** Users enter the core narrative concept, style tags (e.g., `Cinematic Trap Parody`, `Gritty 90s Rap Video`), background audio beats (e.g., `140 BPM Heavy 808 Trap`), and character roster definitions in the **Tab 1 / Tab 2** header interface.
+* **Visual Baseline & Reference Binding:** Establishing the character cast roster upfront binds dynamic Character Roles (`Role A`, `Role B`, etc.) to high-resolution reference image URLs (`gs://...` or HTTP URLs). These reference images serve as immutable visual anchors (`@Image1`, `@Image2`) per the [Gemini Omni Image Roles API](https://ai.google.dev/gemini-api/docs/omni#set-image-roles), locking character facial identity, wardrobe attire, and lighting across every shot in the sequence.
+
+#### Stage 2: Screenplay & Director's Notes Breakdown (The Narrative Pipeline)
+* **Screenplay & Scripting Syntax:** In **Widget 6 (Screenplay & Director's Notes)**, directors can script multi-shot sequences using either of two canonical formatting syntaxes:
+  - **Theatrical Syntax:** Explicit character dialogue and parenthetical stage/audio directions:
+    ```text
+    Harry: (Inspects the glowing wand. Audio: heavy sub-bass drop.) "Is this the 1017 edition?"
+    Ollivander: (Nods approvingly.) "For you, Mr. Potter? Just put 1017 in your bio."
+    ```
+  - **Timecoded Syntax:** Precise timestamp intervals for frame-accurate timing:
+    ```text
+    [0-5s] Action: Harry inspects glowing wand in dimly lit shop. Dialogue: "Is this the 1017 edition?"
+    [5-10s] Action: Ollivander leans over counter smiling. Dialogue: "Just put 1017 in your bio."
+    ```
+* **Automated Storyboard Deconstruction:** Clicking **`"🎬 Generate Storyboard Grid"`** invokes the NLP `PromptCompiler` to deconstruct the screenplay into structured **Shot Cards**. Each generated card automatically receives explicit `<IMAGE_REF_N>` tag bindings and a 5-part directorial breakdown:
+  1. `Action/Subject`: Core physical movement and character acting.
+  2. `Location`: Set dressing and background environment.
+  3. `Style & Lighting`: Color grading, lighting fixtures, and atmosphere.
+  4. `Framing & Motion`: Camera lens, angle, focal depth, and kinematic motion.
+  5. `Audio`: Soundscape, voiceover style, and sound effects.
+
+#### Stage 3: Interactive Sequential Shot Production & Keyframe Chaining (The Visual Chain)
+* **Shot #1 Master Anchor:** Production begins with Shot #1, which acts as the visual cornerstone of the scene sequence. Users first generate a high-resolution concept art keyframe image via **`gemini-3.1-flash-image`**, inspect and approve the composition, and then generate the 10-second 720p video clip via **`gemini-omni-flash-preview`**.
+* **Master Keyframe Visual Anchor Chaining (Shots #2+):** To prevent facial drift, wardrobe mutation, and lighting decay across camera cuts, subsequent shot cards (Shot #2, Shot #3, etc.) automatically employ **Master Keyframe Visual Anchor Chaining**. The engine seeds each subsequent shot generation request with Shot #1's approved keyframe image using the `<FIRST_FRAME>@Image1` conditioning syntax. This guarantees 100% character likeness and aesthetic continuity across consecutive scene cuts.
+
+```mermaid
+graph LR
+    subgraph Stage 1: Anchor
+        Roster["Cast Roster (@Image1, @Image2)"]
+    end
+    subgraph Stage 2: Narrative
+        Script["Screenplay (Theatrical / Timecoded)"] -->|"🎬 Generate Storyboard Grid"| Cards["5-Part Shot Cards + <IMAGE_REF_N>"]
+    end
+    subgraph Stage 3: Visual Chain
+        Cards --> Shot1Img["Shot #1 Keyframe (gemini-3.1-flash-image)"]
+        Shot1Img --> Shot1Vid["Shot #1 Video (gemini-omni-flash-preview)"]
+        Shot1Img -->|"<FIRST_FRAME>@Image1 Anchor Chaining"| Shot2["Shot #2+ Keyframe & Video Generation"]
+    end
+    subgraph Stage 4: Remix & Polish
+        Shot2 --> Diff["Conversational Diff Editing (95% Lock)"]
+        Diff --> Lib["💾 Save Storyboard / 🎨 1-Click Re-Style"]
+    end
+```
+
+#### Stage 4: Conversational Diff Editing & Storyboard Library Management (The Remix & Polish Stage)
+* **Guarded Conversational Diff Editing:** When refining an existing shot card, clicking **`"Edit / Diff"`** opens an interactive conversational edit session.
+  - **Non-Edit Guard:** Initial base generation turns are strictly guarded so they never receive conversational delta directives.
+  - **Targeted Diff Directives:** Subsequent edit iterations automatically inject the `### CONVERSATIONAL EDIT DIRECTIVE` block into the Four-Block prompt. This enforces a strict `[PRESERVATION LOCK]` to freeze 95% of the original visual baseline (facial identity, lighting, background composition) while isolating the user's delta request in `[ISOLATED DIFF]` (e.g., *"Swap the wand for a glowing diamond microphone"*).
+* **Storyboard Library & 1-Click Re-Style:**
+  - **`"💾 Save Storyboard"` & `"📂 Storyboard Library"`:** Save entire multi-shot storyboard bundles—including shot cards, keyframe references, script lines, and audio stems—to session-scoped cloud storage (`gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}/sessions/{session_name}/`). Saved storyboards can be reloaded instantly across sessions.
+  - **`"🎨 Re-Style / Remix"`:** Apply a 1-click aesthetic transformation across the entire storyboard. Switching the global style tag (e.g., from `Cinematic Trap Parody` to `Gothic Cyberpunk Parody`) automatically re-compiles and updates the aesthetic injections across all shot cards without rewriting individual action or dialogue directives.
 
 ---
 
