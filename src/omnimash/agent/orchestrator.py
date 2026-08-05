@@ -397,7 +397,7 @@ class OmniMashAgent:
                     environment_tag=environment_tag,
                     audio_beat=audio_stem,
                     vocal_delivery=vocal_delivery,
-                    edit_instruction=prompt if parent_turn else None,
+                    edit_instruction=prompt if (is_conversational_edit and parent_turn) else None,
                 )
                 meta_prompt = (
                     compiled_override if compiled_override else storyboard_prompt

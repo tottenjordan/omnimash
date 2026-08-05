@@ -4745,7 +4745,24 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/diff", response_model=GenerateResponse)
     def generate_video(req: GenerateRequest) -> GenerateResponse:
         sanitized_prompt = sanitize_real_names(req.prompt) if req.prompt else ""
-        is_edit = bool(req.parent_turn_id and not (req.scenes or req.concept or req.shot_directive))
+        base_action = (req.concept or req.shot_directive or "").strip()
+        if not base_action and req.scenes:
+            first_scene = req.scenes[0]
+            if isinstance(first_scene, dict):
+                base_action = str(first_scene.get("action", "")).strip()
+            elif hasattr(first_scene, "action"):
+                base_action = str(first_scene.action or "").strip()
+        is_edit = bool(
+            req.parent_turn_id
+            and (
+                not (req.scenes or req.concept or req.shot_directive)
+                or (
+                    req.prompt
+                    and req.prompt.strip()
+                    and req.prompt.strip() != base_action
+                )
+            )
+        )
         compiled_override_val = req.compiled_override
 
         if req.parent_turn_id and (req.shot_directive or req.scenes):
@@ -4836,7 +4853,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     environment_tag=req.environment_tag,
                     audio_beat=req.audio_stem,
                     vocal_delivery=req.vocal_delivery,
-                    edit_instruction=req.prompt,
+                    edit_instruction=req.prompt if is_edit else None,
                 )
 
         agent_turn = agent.process_user_turn(
