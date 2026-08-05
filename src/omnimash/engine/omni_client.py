@@ -509,6 +509,16 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         r"\bcauldron\b": "bubbling steam kettle",
         r"\bdungeon\b": "ancient stone academy hall",
         r"\bdark\s*mark\b": "golden skull emblem",
+        # Syrup, Foam Cup & Substance Parody Sanitization
+        r"\b(?:basilisk\s*)?syrup\b": "magical sparkling elixir",
+        r"\bpolystyrene\s*foam\s*cup\b": "enchanted crystal chalice",
+        r"\b(?:double\s*|white\s*)*foam\s*cups?\b": "golden goblet",
+        r"\b(?:double\s*|white\s*)*styrofoam\s*cups?\b": "golden goblet",
+        r"\btriple\s*stack\s*(?:the\s*)?cups?\b": "pour the elixir",
+        r"\beating\s*straight\s*through\b": "sparkling brightly inside",
+        r"\beat\s*through\s*the\s*cup\b": "sparkle inside the goblet",
+        r"\bcube\s*blood\b": "ice cube",
+        r"\btoo\s*volatile\b": "too potent for ordinary wizards",
     }
 
     for pattern, archetype in replacements.items():
