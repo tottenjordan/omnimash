@@ -936,6 +936,35 @@ def test_abstract_prompt_handles_parody_names() -> None:
     assert "an elderly iced-out shopkeeper wandmaker wizard" in res
 
 
+def test_abstract_prompt_sanitizes_syrup_and_foam_cup_terms() -> None:
+    """Verify abstract prompt for responsible AI sanitizes syrup, polystyrene foam cup, cup stacking, and volatile substance parody terms."""
+    prompt = (
+        "He is holding a white polystyrene foam cup that is sizzling as its glowing toxic-green contents eat through the cup. "
+        "Totti, this Basilisk syrup is eating straight through the enchanted thermoses! "
+        "Triple stack the cups, blood. We can't drop this tonight, my G, it's too volatile!"
+    )
+    res = _abstract_prompt_for_responsible_ai(prompt)
+    assert "basilisk syrup" not in res.lower()
+    assert "polystyrene foam cup" not in res.lower()
+    assert "eat through the cup" not in res.lower()
+    assert "eating straight through" not in res.lower()
+    assert "triple stack the cups" not in res.lower()
+    assert "too volatile" not in res.lower()
+    assert "magical sparkling elixir" in res
+    assert "enchanted crystal chalice" in res
+    assert "sparkle inside the goblet" in res
+    assert "sparkling brightly inside" in res
+    assert "pour the elixir" in res
+    assert "too potent for ordinary wizards" in res
+
+    # Also verify general foam/styrofoam cups, standalone syrup, and cube blood
+    extra_prompt = "Double foam cups and white styrofoam cups with cube blood and syrup."
+    extra_res = _abstract_prompt_for_responsible_ai(extra_prompt)
+    assert "golden goblet" in extra_res
+    assert "ice cube" in extra_res
+    assert "magical sparkling elixir" in extra_res
+
+
 def test_generate_keyframe_image_mock_mode() -> None:
     """Verify generate_keyframe_image returns a valid base64 SVG data URI in mock mode."""
     client = OmniFlashClient(mock_mode=True)
