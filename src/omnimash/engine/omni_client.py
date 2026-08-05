@@ -976,7 +976,25 @@ class OmniFlashClient:
                         exc_str,
                         fallback_prompt,
                     )
-                    kwargs["input"] = fallback_prompt
+                    current_input = kwargs.get("input", input_payload)
+                    if (
+                        isinstance(current_input, list)
+                        and len(current_input) > 0
+                        and isinstance(current_input[0], dict)
+                        and isinstance(current_input[0].get("content"), list)
+                    ):
+                        existing_content = current_input[0]["content"]
+                        image_parts = [
+                            p
+                            for p in existing_content
+                            if isinstance(p, dict) and p.get("type") != "text"
+                        ]
+                        text_part = {"type": "text", "text": fallback_prompt}
+                        kwargs["input"] = [
+                            {"type": "user_input", "content": image_parts + [text_part]}
+                        ]
+                    else:
+                        kwargs["input"] = fallback_prompt
                 elif (
                     "safety_settings" in exc_str
                     or "Unmarshaller" in exc_str
