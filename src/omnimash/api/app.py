@@ -2634,6 +2634,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
 
                                         {storyboardPath === "path1" && (
                                             <div className="bg-amber-950/60 border border-amber-500/50 rounded-xl p-3.5 flex items-start gap-3 text-amber-300 text-xs">
@@ -3186,6 +3187,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </button>
                                             </div>
                                         </div>
+                                    </div>
 
                                         {/* Shot Stepper Tabs Header */}
                                         <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
