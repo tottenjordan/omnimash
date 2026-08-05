@@ -746,6 +746,7 @@ class OmniFlashClient:
         characters: list[CharacterRole] | None = None,
         keyframe_image_url: str | None = None,
         directors_notes: dict[str, Any] | str | None = None,
+        enable_safety_sanitization: bool = True,
     ) -> list[dict[str, Any]] | str:
         """Assembles keyframe seed image, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
         keyframe_image_parts: list[dict[str, Any]] = []
@@ -772,6 +773,7 @@ class OmniFlashClient:
             characters=characters,
             starting_index=start_ref_idx,
             has_keyframe_seed=has_kf_seed,
+            enable_sanitization=enable_safety_sanitization,
         )
 
         input_roles_lines: list[str] = []
@@ -818,7 +820,11 @@ class OmniFlashClient:
                 char_lines.append(f"- {char_id}{tag_ref_str}: {desc}{tag_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
-        clean_prompt = sanitize_real_names(prompt) if prompt else ""
+        clean_prompt = (
+            sanitize_real_names(prompt)
+            if (prompt and enable_safety_sanitization)
+            else (prompt or "")
+        )
         if char_tag_map and clean_prompt:
             sorted_keys = sorted(char_tag_map.keys(), key=len, reverse=True)
             for c_id in sorted_keys:
@@ -861,6 +867,7 @@ class OmniFlashClient:
         session_id: str | None = None,
         keyframe_image_url: str | None = None,
         directors_notes: dict[str, Any] | str | None = None,
+        enable_safety_sanitization: bool = True,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -882,6 +889,7 @@ class OmniFlashClient:
             characters=characters,
             keyframe_image_url=keyframe_image_url,
             directors_notes=directors_notes,
+            enable_safety_sanitization=enable_safety_sanitization,
         )
 
         kwargs: dict[str, Any] = {
@@ -980,12 +988,19 @@ class OmniFlashClient:
                         and "content" in input_payload[0]
                         else str(input_payload)
                     )
-                    fallback_prompt = _abstract_prompt_for_responsible_ai(raw_text)
-                    logger.warning(
-                        "Gemini Omni Flash safety/likeness guardrail triggered (%s). Abstracting prompt with cartoon parody archetypes for retry: %s",
-                        exc_str,
-                        fallback_prompt,
-                    )
+                    if enable_safety_sanitization:
+                        fallback_prompt = _abstract_prompt_for_responsible_ai(raw_text)
+                        logger.warning(
+                            "Gemini Omni Flash safety/likeness guardrail triggered (%s). Abstracting prompt with cartoon parody archetypes for retry: %s",
+                            exc_str,
+                            fallback_prompt,
+                        )
+                    else:
+                        fallback_prompt = raw_text
+                        logger.warning(
+                            "Gemini Omni Flash safety/likeness guardrail triggered (%s). Safety sanitization disabled; keeping original prompt for retry.",
+                            exc_str,
+                        )
                     current_input = kwargs.get("input", input_payload)
                     if (
                         isinstance(current_input, list)
@@ -1054,6 +1069,7 @@ class OmniFlashClient:
         turn_index: int | None = None,
         characters: list[CharacterRole] | None = None,
         keyframe_image_url: str | None = None,
+        enable_safety_sanitization: bool = True,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -1071,6 +1087,7 @@ class OmniFlashClient:
             characters=characters,
             session_id=session_id,
             keyframe_image_url=keyframe_image_url,
+            enable_safety_sanitization=enable_safety_sanitization,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
@@ -1119,6 +1136,7 @@ class OmniFlashClient:
         turn_index: int | None = None,
         characters: list[CharacterRole] | None = None,
         keyframe_image_url: str | None = None,
+        enable_safety_sanitization: bool = True,
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -1136,6 +1154,7 @@ class OmniFlashClient:
             characters=characters,
             session_id=session_id,
             keyframe_image_url=keyframe_image_url,
+            enable_safety_sanitization=enable_safety_sanitization,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
@@ -1182,6 +1201,7 @@ class OmniFlashClient:
         is_silent: bool = False,
         audio_stem: str | None = None,
         characters: list[CharacterRole] | None = None,
+        enable_safety_sanitization: bool = True,
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
@@ -1189,7 +1209,11 @@ class OmniFlashClient:
 
         prompt = initial_prompt or "Reanchored video turn"
         success, inter_id, error_message = self._generate_live_omni_flash_video(
-            prompt, rel_path, characters=characters, session_id=session_id
+            prompt,
+            rel_path,
+            characters=characters,
+            session_id=session_id,
+            enable_safety_sanitization=enable_safety_sanitization,
         )
         generation_mode = "LIVE_OMNI_FLASH"
         if not success:

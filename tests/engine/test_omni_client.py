@@ -1576,6 +1576,47 @@ def test_safety_retry_preserves_multimodal_reference_images(
     assert "parody" in text_parts[0].get("text", "").lower()
 
 
+def test_omni_client_skips_safety_retry_abstraction_when_disabled(tmp_path):
+    client = OmniFlashClient(mock_mode=False)
+    client._genai_client = MagicMock()
+
+    mock_interactions = MagicMock()
+    client._genai_client.interactions = mock_interactions
+
+    err_resp = MagicMock()
+    err_resp.status_code = 400
+    err_resp.text = "Prompt violates safety policy or contains real person"
+
+    import base64
+
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+    mock_res = MagicMock(
+        id="inter_test_no_abstraction", output_video=mock_output_video
+    )
+
+    mock_interactions.create.side_effect = [
+        Exception(err_resp.text),
+        mock_res,
+    ]
+
+    target_file = os.path.join(tmp_path, "output.mp4")
+
+    success, inter_id, error = client._generate_live_omni_flash_video(
+        prompt="Harry Potter casting spells",
+        target_rel_path=target_file,
+        enable_safety_sanitization=False,
+    )
+
+    assert success is True
+    assert mock_interactions.create.call_count == 2
+
+    second_call_kwargs = mock_interactions.create.call_args_list[1].kwargs
+    second_input = second_call_kwargs["input"]
+    assert second_input == "Harry Potter casting spells"
+
+
+
 
 
 

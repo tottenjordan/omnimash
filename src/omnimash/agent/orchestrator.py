@@ -190,10 +190,16 @@ class OmniMashAgent:
         vocal_delivery: str | None = None,
         optimize_prompt: bool = False,
         keyframe_image_url: str | None = None,
+        enable_sanitization: bool = True,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
         )
+
+        def _clean(val: str | None) -> str:
+            if not val:
+                return ""
+            return sanitize_real_names(val) if enable_sanitization else val
 
         num_chunks = max(1, int(math.ceil(duration_seconds / 10.0)))
         if num_chunks > 1:
@@ -224,6 +230,7 @@ class OmniMashAgent:
                     environment_tag=environment_tag,
                     vocal_delivery=vocal_delivery,
                     optimize_prompt=optimize_prompt,
+                    enable_sanitization=enable_sanitization,
                 )
                 if not turn_resp.success:
                     return turn_resp
@@ -279,12 +286,12 @@ class OmniMashAgent:
                     char_objs.append(
                         CharacterRole(
                             role_id=c.role_id,
-                            name=sanitize_real_names(c.name),
-                            description=sanitize_real_names(c.description),
+                            name=_clean(c.name),
+                            description=_clean(c.description),
                             reference_url=c.reference_url,
-                            aesthetic_tags=[sanitize_real_names(t) for t in (c.aesthetic_tags or [])],
-                            voice_style=sanitize_real_names(c.voice_style or ""),
-                            voice_profile=sanitize_real_names(c.voice_profile or ""),
+                            aesthetic_tags=[_clean(t) for t in (c.aesthetic_tags or [])],
+                            voice_style=_clean(c.voice_style or ""),
+                            voice_profile=_clean(c.voice_profile or ""),
                             image_role=getattr(c, "image_role", "Character Reference"),
                             is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                         )
@@ -293,12 +300,12 @@ class OmniMashAgent:
                     char_objs.append(
                         CharacterRole(
                             role_id=c.get("role_id", ""),
-                            name=sanitize_real_names(c.get("name", "")),
-                            description=sanitize_real_names(c.get("description", "")),
+                            name=_clean(c.get("name", "")),
+                            description=_clean(c.get("description", "")),
                             reference_url=c.get("reference_url"),
-                            aesthetic_tags=[sanitize_real_names(t) for t in c.get("aesthetic_tags", [])],
-                            voice_style=sanitize_real_names(c.get("voice_style", "")),
-                            voice_profile=sanitize_real_names(c.get("voice_profile", "")),
+                            aesthetic_tags=[_clean(t) for t in c.get("aesthetic_tags", [])],
+                            voice_style=_clean(c.get("voice_style", "")),
+                            voice_profile=_clean(c.get("voice_profile", "")),
                             image_role=c.get("image_role", "Character Reference"),
                             is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                         )
@@ -308,12 +315,12 @@ class OmniMashAgent:
                     char_objs.append(
                         CharacterRole(
                             role_id=cd.get("role_id", ""),
-                            name=sanitize_real_names(cd.get("name", "")),
-                            description=sanitize_real_names(cd.get("description", "")),
+                            name=_clean(cd.get("name", "")),
+                            description=_clean(cd.get("description", "")),
                             reference_url=cd.get("reference_url"),
-                            aesthetic_tags=[sanitize_real_names(t) for t in cd.get("aesthetic_tags", [])],
-                            voice_style=sanitize_real_names(cd.get("voice_style", "")),
-                            voice_profile=sanitize_real_names(cd.get("voice_profile", "")),
+                            aesthetic_tags=[_clean(t) for t in cd.get("aesthetic_tags", [])],
+                            voice_style=_clean(cd.get("voice_style", "")),
+                            voice_profile=_clean(cd.get("voice_profile", "")),
                             image_role=cd.get("image_role", "Character Reference"),
                             is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                         )
@@ -322,12 +329,12 @@ class OmniMashAgent:
                     char_objs.append(
                         CharacterRole(
                             role_id=getattr(c, "role_id", ""),
-                            name=sanitize_real_names(getattr(c, "name", "")),
-                            description=sanitize_real_names(getattr(c, "description", "")),
+                            name=_clean(getattr(c, "name", "")),
+                            description=_clean(getattr(c, "description", "")),
                             reference_url=getattr(c, "reference_url", None),
-                            aesthetic_tags=[sanitize_real_names(t) for t in getattr(c, "aesthetic_tags", [])],
-                            voice_style=sanitize_real_names(getattr(c, "voice_style", "")),
-                            voice_profile=sanitize_real_names(getattr(c, "voice_profile", "")),
+                            aesthetic_tags=[_clean(t) for t in getattr(c, "aesthetic_tags", [])],
+                            voice_style=_clean(getattr(c, "voice_style", "")),
+                            voice_profile=_clean(getattr(c, "voice_profile", "")),
                             image_role=getattr(c, "image_role", "Character Reference"),
                             is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                         )
@@ -369,6 +376,7 @@ class OmniMashAgent:
                 audio_stem=audio_stem,
                 characters=char_objs,
                 keyframe_image_url=effective_keyframe,
+                enable_sanitization=enable_sanitization,
             )
         else:
             if characters or scenes:
@@ -398,6 +406,7 @@ class OmniMashAgent:
                     audio_beat=audio_stem,
                     vocal_delivery=vocal_delivery,
                     edit_instruction=prompt if (is_conversational_edit and parent_turn) else None,
+                    enable_sanitization=enable_sanitization,
                 )
                 meta_prompt = (
                     compiled_override if compiled_override else storyboard_prompt
@@ -417,7 +426,8 @@ class OmniMashAgent:
                 meta_prompt = self.taxonomy.compiler.optimize_prompt_for_omni_flash(
                     meta_prompt, use_llm=True
                 )
-            meta_prompt = sanitize_real_names(meta_prompt)
+            if enable_sanitization:
+                meta_prompt = sanitize_real_names(meta_prompt)
             raw_compiled_prompt = meta_prompt
             self.storage.save_session_prompt(
                 session.session_id, turn_index, meta_prompt
@@ -433,6 +443,7 @@ class OmniMashAgent:
                 audio_stem=audio_stem,
                 characters=char_objs,
                 keyframe_image_url=keyframe_image_url,
+                enable_sanitization=enable_sanitization,
             )
 
         if gen_res.error_message and not gen_res.video_url:
@@ -542,6 +553,7 @@ class OmniMashAgent:
         audio_stem: str | None = None,
         characters: list[CharacterRole] | None = None,
         keyframe_image_url: str | None = None,
+        enable_sanitization: bool = True,
     ) -> Any:
         if parent_thread_id:
             return self.omni_client.apply_interaction_diff(
@@ -554,6 +566,7 @@ class OmniMashAgent:
                 turn_index=turn_index,
                 characters=characters,
                 keyframe_image_url=keyframe_image_url,
+                enable_safety_sanitization=enable_sanitization,
             )
         return self.omni_client.generate_clip(
             prompt,
@@ -564,6 +577,7 @@ class OmniMashAgent:
             turn_index=turn_index,
             characters=characters,
             keyframe_image_url=keyframe_image_url,
+            enable_safety_sanitization=enable_sanitization,
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:

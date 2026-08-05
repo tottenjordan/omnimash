@@ -72,7 +72,10 @@ def sanitize_real_names(text: str) -> str:
     return result
 
 
-def get_character_identifier(char: CharacterRole | dict[str, Any] | Any) -> str:
+def get_character_identifier(
+    char: CharacterRole | dict[str, Any] | Any,
+    enable_sanitization: bool = True,
+) -> str:
     """Returns symmetric character identifier string in the format 'Role ID - Name' (or 'Name' if role_id is empty)."""
     if isinstance(char, dict):
         role_id = str(char.get("role_id", "") or "").strip()
@@ -81,7 +84,10 @@ def get_character_identifier(char: CharacterRole | dict[str, Any] | Any) -> str:
         role_id = str(getattr(char, "role_id", "") or "").strip()
         name = str(getattr(char, "name", "") or "").strip()
 
-    name_clean = sanitize_real_names(name) if name else ""
+    if enable_sanitization:
+        name_clean = sanitize_real_names(name) if name else ""
+    else:
+        name_clean = name if name else ""
 
     if role_id and name_clean:
         return f"{role_id} - {name_clean}"
@@ -96,6 +102,7 @@ def build_character_image_ref_tags(
     characters: list[CharacterRole] | None,
     starting_index: int = 1,
     has_keyframe_seed: bool = False,
+    enable_sanitization: bool = True,
 ) -> tuple[list[str], list[str], dict[str, str]]:
     """Builds official Gemini Omni Flash <IMAGE_REF_N> and <FIRST_FRAME> tag structures.
 
@@ -124,7 +131,7 @@ def build_character_image_ref_tags(
         if not ref_url or not isinstance(ref_url, str) or not ref_url.strip():
             continue
 
-        char_id = get_character_identifier(char)
+        char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
         role_id = str(
             getattr(char, "role_id", "")
             if not isinstance(char, dict)
@@ -149,9 +156,9 @@ def build_character_image_ref_tags(
             references_items.append(f"{tag}@Image{img_idx}")
             ref_counter += 1
 
-        name_clean = sanitize_real_names(name) if name else ""
+        name_clean = (sanitize_real_names(name) if name else "") if enable_sanitization else name
         base_name = re.sub(r"\s*\(.*?\)", "", name).strip() if name else ""
-        base_name_clean = sanitize_real_names(base_name) if base_name else ""
+        base_name_clean = (sanitize_real_names(base_name) if base_name else "") if enable_sanitization else base_name
 
         candidate_keys: set[str] = set()
         for k in (char_id, role_id, name, name_clean, base_name, base_name_clean):
@@ -164,7 +171,7 @@ def build_character_image_ref_tags(
                     tok = token.strip()
                     if tok:
                         candidate_keys.add(tok)
-                        tok_clean = sanitize_real_names(tok)
+                        tok_clean = sanitize_real_names(tok) if enable_sanitization else tok
                         if tok_clean and tok_clean.strip():
                             candidate_keys.add(tok_clean.strip())
 
@@ -1513,12 +1520,14 @@ class PromptCompiler:
         vocal_delivery: str | None = None,
         has_keyframe_seed: bool = False,
         keyframe_image_url: str | None = None,
+        enable_sanitization: bool = True,
     ) -> str:
         start_idx = 2 if (has_keyframe_seed or keyframe_image_url) else 1
         sources_items, references_items, char_tag_map = build_character_image_ref_tags(
             characters=characters,
             starting_index=start_idx,
             has_keyframe_seed=(has_keyframe_seed or bool(keyframe_image_url)),
+            enable_sanitization=enable_sanitization,
         )
 
         input_roles: list[str] = []
@@ -1529,7 +1538,7 @@ class PromptCompiler:
 
         char_profiles: list[str] = []
         for char in characters:
-            char_id = get_character_identifier(char)
+            char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
             tag = char_tag_map.get(char_id)
             tag_str = f" {tag}" if tag else ""
 
@@ -1543,9 +1552,12 @@ class PromptCompiler:
                     if char.aesthetic_tags
                     else ""
                 )
-                desc_clean = (
-                    sanitize_real_names(char.description) if char.description else ""
-                )
+                if enable_sanitization:
+                    desc_clean = (
+                        sanitize_real_names(char.description) if char.description else ""
+                    )
+                else:
+                    desc_clean = char.description or ""
                 voice_str = (
                     f" [Voice Style: {char.voice_style.strip()}]"
                     if getattr(char, "voice_style", None) and char.voice_style.strip()
@@ -1646,7 +1658,7 @@ class PromptCompiler:
 
         for char in characters:
             if char.voice_style and char.voice_style.strip():
-                char_id = get_character_identifier(char)
+                char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
                 tag = char_tag_map.get(char_id)
                 tag_str = f" {tag}" if tag else ""
                 scene_inst_parts.append(
@@ -1683,7 +1695,7 @@ class PromptCompiler:
                     for c in characters:
                         c_role = getattr(c, "role_id", "")
                         c_name = getattr(c, "name", "")
-                        c_id = get_character_identifier(c)
+                        c_id = get_character_identifier(c, enable_sanitization=enable_sanitization)
                         if r_str.lower() in (
                             c_role.lower(),
                             c_name.lower(),
@@ -1692,7 +1704,7 @@ class PromptCompiler:
                             matched_c = c
                             break
                 if matched_c:
-                    c_id = get_character_identifier(matched_c)
+                    c_id = get_character_identifier(matched_c, enable_sanitization=enable_sanitization)
                     tag = char_tag_map.get(c_id)
                     tag_str = f" {tag}" if tag else ""
                     roles_list.append(f"{c_id}{tag_str}")
@@ -1803,7 +1815,9 @@ class PromptCompiler:
             f"### SCENE INSTRUCTIONS\n{scene_instructions_str}\n\n"
             f"### TIMELINE\n{timeline_str}"
         )
-        return sanitize_real_names(compiled_result)
+        if enable_sanitization:
+            return sanitize_real_names(compiled_result)
+        return compiled_result
 
     def compile_storyboard(
         self,
@@ -1817,6 +1831,7 @@ class PromptCompiler:
         has_keyframe_seed: bool = False,
         keyframe_image_url: str | None = None,
         edit_instruction: str | None = None,
+        enable_sanitization: bool = True,
     ) -> str:
         base_prompt = self.compile_multi_role_prompt(
             concept=concept,
@@ -1828,6 +1843,7 @@ class PromptCompiler:
             vocal_delivery=vocal_delivery,
             has_keyframe_seed=has_keyframe_seed,
             keyframe_image_url=keyframe_image_url,
+            enable_sanitization=enable_sanitization,
         )
         if edit_instruction and edit_instruction.strip():
             clean_instruction = edit_instruction.strip()

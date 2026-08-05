@@ -616,6 +616,41 @@ def test_ui_html_contains_storyboard_workflow_guide():
     assert "Theatrical Syntax" in UI_HTML
 
 
+def test_ui_html_contains_safety_sanitization_toggle():
+    assert "Safety Sanitization" in UI_HTML
+    assert "enableSafetySanitization" in UI_HTML
+    assert "enable_safety_sanitization" in UI_HTML
+
+
+def test_api_generate_with_enable_safety_sanitization_toggle():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res_disabled = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_test",
+            "project_id": "prj_test",
+            "prompt": "Harry Potter casting spells",
+            "enable_safety_sanitization": False,
+        },
+    )
+    assert res_disabled.status_code == 200
+    assert res_disabled.json()["success"] is True
+
+    res_enabled = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_test",
+            "project_id": "prj_test",
+            "prompt": "Harry Potter casting spells",
+            "enable_safety_sanitization": True,
+        },
+    )
+    assert res_enabled.status_code == 200
+    assert res_enabled.json()["success"] is True
+
+
+
 
 
 
