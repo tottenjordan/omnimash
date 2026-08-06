@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from omnimash.agent.orchestrator import OmniMashAgent
 from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
@@ -154,6 +154,9 @@ class StoryboardShotModel(BaseModel):
     preceding_context: str = ""
     camera_transition: str = "Continuous match cut"
     character_continuity: str = "Maintain subject outfit, posture, and facial expression from preceding shot"
+    title_card_text: str | None = None
+    title_card_subtitle: str | None = None
+    narrator_text: str | None = None
 
 
 class StoryboardExpandRequest(BaseModel):
@@ -215,7 +218,6 @@ class KeyframeImageRequest(BaseModel):
     anchor_keyframe_url: str | None = None
 
 
-
 class KeyframeImageResponse(BaseModel):
     success: bool = True
     keyframe_image_url: str
@@ -237,6 +239,9 @@ class GenerateShotRequest(BaseModel):
     style_lighting: str = ""
     audio_stem: str | None = None
     enable_safety_sanitization: bool = True
+    title_card_text: str | None = None
+    title_card_subtitle: str | None = None
+    narrator_text: str | None = None
 
 
 class GenerateShotResponse(BaseModel):
@@ -254,6 +259,14 @@ class StitchClipsRequest(BaseModel):
     session_name: str
     clip_urls: list[str]
     master_title: str = "custom_stitched_cut"
+
+
+class StitchMasterRequest(BaseModel):
+    session_id: str | None = None
+    shot_clips: list[str] = Field(default_factory=list)
+    title_cards: list[dict[str, Any]] | None = None
+    narrator_audio_paths: list[str] | None = None
+    background_music_path: str | None = None
 
 
 class SaveFinalResponse(BaseModel):
@@ -456,6 +469,8 @@ UI_HTML = r"""<!DOCTYPE html>
             const [selectedClipUrls, setSelectedClipUrls] = useState([]);
             const [stitchLoading, setStitchLoading] = useState(false);
             const [stitchResultGcs, setStitchResultGcs] = useState(null);
+            const [stitchMasterLoading, setStitchMasterLoading] = useState(false);
+            const [stitchMasterResult, setStitchMasterResult] = useState(null);
 
             // Studio Mode Switcher State ("acts" | "stages")
             const [studioMode, setStudioMode] = useState("stages");
@@ -1307,6 +1322,57 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
+            // Stitch Master 30–60s Video Handler (POST /api/storyboard/stitch_master)
+            const handleStitchMaster = async () => {
+                setStitchMasterLoading(true);
+                setStitchMasterResult(null);
+                setLastError(null);
+                try {
+                    const shotClips = (stageShots || [])
+                        .map((s) => s.video_url)
+                        .filter(Boolean);
+                    const titleCards = (stageShots || [])
+                        .map((s, idx) => ({
+                            insert_at: idx,
+                            title_text: s.title_card_text || "",
+                            subtitle_text: s.title_card_subtitle || "",
+                            duration_seconds: 3.0,
+                        }))
+                        .filter((c) => c.title_text || c.subtitle_text);
+                    const narratorAudioPaths = (stageShots || [])
+                        .map((s) => s.narrator_text)
+                        .filter(Boolean);
+
+                    const payload = {
+                        session_id: sessionName,
+                        shot_clips: shotClips.length > 0 ? shotClips : ["/static/rendered/mock.mp4"],
+                        title_cards: titleCards,
+                        narrator_audio_paths: narratorAudioPaths,
+                        background_music_path: masterAudioUrl || null,
+                    };
+
+                    const res = await fetch("/api/storyboard/stitch_master", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await res.json();
+                    if (data && data.status === "ok") {
+                        setStitchMasterResult(data);
+                        if (data.master_video_url) {
+                            setCurrentVideo(data.master_video_url);
+                        }
+                    } else {
+                        setLastError(data.detail || "Failed to stitch master video.");
+                    }
+                } catch (err) {
+                    console.error("Failed to stitch master video:", err);
+                    setLastError(err.message || "Failed to stitch master video.");
+                } finally {
+                    setStitchMasterLoading(false);
+                }
+            };
+
             // Extend Scene Handler (POST /api/extend-scene)
             const handleExtendScene = async () => {
                 setExtendLoading(true);
@@ -1742,7 +1808,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
                                 }`}
                             >
-                                <span>💡 Stage 1: Vision &amp; Style</span>
+                                <span>💡 Step 1: Visual Concept &amp; Characters</span>
                                 {activeStage > 1 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                             </button>
                             <span className="text-gray-700 font-bold">➔</span>
@@ -1754,7 +1820,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
                                 }`}
                             >
-                                <span>📋 Stage 2: Storyboard Grid</span>
+                                <span>📋 Step 2: Shot Card Workstation</span>
                                 {activeStage > 2 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                             </button>
                             <span className="text-gray-700 font-bold">➔</span>
@@ -1766,7 +1832,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
                                 }`}
                             >
-                                <span>📽️ Stage 3: The Dailies</span>
+                                <span>🎬 Step 3: Render &amp; Stitch Master Video</span>
                                 {activeStage > 3 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                             </button>
                             <span className="text-gray-700 font-bold">➔</span>
@@ -2587,10 +2653,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <div>
                                                     <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
                                                         <span>💡</span>
-                                                        <span>Stage 1: 60s Vision &amp; Style Directing</span>
+                                                        <span>Step 1: Visual Concept &amp; Characters</span>
                                                     </h2>
                                                     <p className="text-xs text-gray-400 mt-1">
-                                                        Define your overall 30–60s video concept, select style &amp; tone presets, and upload reference image and audio assets.
+                                                        Open-ended NLP input, reference images, auto-generate N shots. Define your overall 30–60s video concept, select style &amp; tone presets, and upload reference image and audio assets.
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-3">
@@ -3082,10 +3148,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                     <div>
                                         <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
                                             <span>📋</span>
-                                            <span>Interactive Shot Production Workstation ({stageShots.length} Shots)</span>
+                                            <span>Step 2: Shot Card Workstation ({stageShots.length} Shots)</span>
                                         </h2>
                                         <p className="text-xs text-gray-400 mt-1">
-                                            Tune shot directives, pre-render keyframe art, render clips one shot at a time, and apply conversational diffs.
+                                            Structured cards with 4 widgets: 🎬 Action &amp; Camera, 💬 Spoken Dialogue &amp; Voice Style, 📺 Title Screen Overlay, 🎙️ Narrator Voiceover.
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-3">
@@ -3177,6 +3243,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 >
                                                     <span>🎬</span>
                                                     <span>Batch Render All Shots (1 ➔ N)</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={stitchMasterLoading}
+                                                    onClick={handleStitchMaster}
+                                                    className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                                                >
+                                                    <span>🎬</span>
+                                                    <span>{stitchMasterLoading ? "Stitching..." : "🎬 Stitch Master 30–60s Video (With Title Cards & Voiceover)"}</span>
                                                 </button>
                                                 <button
                                                     type="button"
@@ -3419,8 +3494,8 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                                 )}
                                                             </div>
 
-                                                            {/* 5-Part Directives Editor */}
-                                                            <div className="space-y-3 pt-2 text-xs">
+                                                            {/* Structured Shot Card Widgets (4 Core Widgets) */}
+                                                            <div className="space-y-4 pt-2 text-xs">
                                                                 <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-2.5">
                                                                     <label className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 block mb-1">⚡ Action Summary</label>
                                                                     <input
@@ -3430,82 +3505,146 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                                         className="w-full bg-gray-950 border border-amber-500/50 rounded-lg p-2 text-amber-200 font-bold text-xs focus:outline-none focus:border-amber-400"
                                                                     />
                                                                 </div>
-                                                                <div>
-                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5 flex items-center justify-between">
-                                                                        <span>1. Visual Action &amp; Scene Description</span>
-                                                                        <span className="text-[9px] text-gray-500 font-mono">Describe camera, character movement, and setting</span>
-                                                                    </label>
-                                                                    <textarea
-                                                                        rows={4}
-                                                                        value={shot.action || ""}
-                                                                        onChange={(e) => updateStageShot(idx, "action", e.target.value)}
-                                                                        placeholder="e.g. Spectacled Wizard Bruv enters courtyard under dramatic lighting. Dynamic zoom on glowing wand."
-                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-gray-200 focus:outline-none focus:border-pink-500 text-xs font-mono leading-relaxed"
-                                                                    />
-                                                                </div>
-                                                                <div>
-                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-0.5">2. Location</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={shot.location || ""}
-                                                                        onChange={(e) => updateStageShot(idx, "location", e.target.value)}
-                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-purple-500 text-xs"
-                                                                    />
-                                                                </div>
-                                                                <div>
-                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-0.5">3. Style &amp; Lighting</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={shot.style_lighting || ""}
-                                                                        onChange={(e) => updateStageShot(idx, "style_lighting", e.target.value)}
-                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-xs"
-                                                                    />
-                                                                    <div className="flex flex-wrap gap-1 mt-1.5">
-                                                                        {["🎨 90s Anime", "🍿 3D Stylized", "💥 Comic Book", "🖌️ 2D Vector", "👾 Pixel Art", "🏰 1930s Hose", "🐉 Claymation", "✨ Cyberpunk", "🎬 Cinematic"].map((preset) => (
-                                                                            <button
-                                                                                key={preset}
-                                                                                type="button"
-                                                                                onClick={() => updateStageShot(idx, "style_lighting", `${preset}, high-contrast lighting`)}
-                                                                                className="px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-950 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40 transition"
-                                                                            >
-                                                                                {preset}
-                                                                            </button>
-                                                                        ))}
+
+                                                                {/* Widget 1: 🎬 Action & Camera */}
+                                                                <div className="bg-gray-950/80 border border-purple-900/60 rounded-xl p-3.5 space-y-3">
+                                                                    <h4 className="text-xs font-bold text-pink-300 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-800 pb-2">
+                                                                        <span>🎬 Action &amp; Camera</span>
+                                                                    </h4>
+                                                                    <div className="space-y-3">
+                                                                        <div>
+                                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-pink-400 block mb-0.5 flex items-center justify-between">
+                                                                                <span>Visual Action &amp; Scene Description</span>
+                                                                                <span className="text-[9px] text-gray-500 font-mono">Describe camera, character movement, and setting</span>
+                                                                            </label>
+                                                                            <textarea
+                                                                                rows={3}
+                                                                                value={shot.action || ""}
+                                                                                onChange={(e) => updateStageShot(idx, "action", e.target.value)}
+                                                                                placeholder="e.g. Spectacled Wizard Bruv enters courtyard under dramatic lighting."
+                                                                                className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2.5 text-gray-200 focus:outline-none focus:border-pink-500 text-xs font-mono leading-relaxed"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                            <div>
+                                                                                <label className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-0.5">Location</label>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    value={shot.location || ""}
+                                                                                    onChange={(e) => updateStageShot(idx, "location", e.target.value)}
+                                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-purple-500 text-xs"
+                                                                                />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-0.5">Style &amp; Lighting</label>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    value={shot.style_lighting || ""}
+                                                                                    onChange={(e) => updateStageShot(idx, "style_lighting", e.target.value)}
+                                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-xs"
+                                                                                />
+                                                                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                                                                    {["🎨 90s Anime", "🍿 3D Stylized", "💥 Comic Book", "🖌️ 2D Vector", "👾 Pixel Art", "🏰 1930s Hose", "🐉 Claymation", "✨ Cyberpunk", "🎬 Cinematic"].map((preset) => (
+                                                                                        <button
+                                                                                            key={preset}
+                                                                                            type="button"
+                                                                                            onClick={() => updateStageShot(idx, "style_lighting", `${preset}, high-contrast lighting`)}
+                                                                                            className="px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-900 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40 transition"
+                                                                                        >
+                                                                                            {preset}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                            <div>
+                                                                                <label className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block mb-0.5">Framing &amp; Motion</label>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    value={shot.framing_motion || ""}
+                                                                                    onChange={(e) => updateStageShot(idx, "framing_motion", e.target.value)}
+                                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-cyan-500 text-xs"
+                                                                                />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">Audio Soundscape</label>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    value={shot.audio || ""}
+                                                                                    onChange={(e) => updateStageShot(idx, "audio", e.target.value)}
+                                                                                    placeholder="e.g. [0-3s] 140 BPM Trap Beat Intro"
+                                                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-xs font-mono"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+                                                                {/* Widget 2: 💬 Spoken Dialogue & Voice Style */}
+                                                                <div className="bg-gray-950/80 border border-rose-900/60 rounded-xl p-3.5 space-y-3">
+                                                                    <h4 className="text-xs font-bold text-rose-300 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-800 pb-2">
+                                                                        <span>💬 Spoken Dialogue &amp; Voice Style</span>
+                                                                    </h4>
                                                                     <div>
-                                                                        <label className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block mb-0.5">4. Framing &amp; Motion</label>
+                                                                        <label className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block mb-0.5 flex items-center justify-between">
+                                                                            <span>Dialogue &amp; On-Screen Speech</span>
+                                                                            <span className="text-[9px] text-gray-500 font-mono">Character dialogue &amp; voice style overlay</span>
+                                                                        </label>
                                                                         <input
                                                                             type="text"
-                                                                            value={shot.framing_motion || ""}
-                                                                            onChange={(e) => updateStageShot(idx, "framing_motion", e.target.value)}
-                                                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-cyan-500 text-xs"
-                                                                        />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">5. Audio Soundscape (Timecoded Audio Blocks)</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={shot.audio || ""}
-                                                                            onChange={(e) => updateStageShot(idx, "audio", e.target.value)}
-                                                                            placeholder="e.g. [0-3s] 140 BPM Trap Beat Intro | [3-10s] Heavy 808 Sub-Bass & Crisp Snares"
-                                                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-emerald-500 text-xs font-mono"
+                                                                            value={shot.dialogue || ""}
+                                                                            onChange={(e) => updateStageShot(idx, "dialogue", e.target.value)}
+                                                                            placeholder='e.g. Spectacled Wizard Bruv: "I been cooking potions since first year."'
+                                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-rose-500 text-xs"
                                                                         />
                                                                     </div>
                                                                 </div>
-                                                                <div>
-                                                                    <label className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block mb-0.5 flex items-center justify-between">
-                                                                        <span>6. Dialogue &amp; On-Screen Speech (Auto-populated from Screenplay)</span>
-                                                                        <span className="text-[9px] text-gray-500 font-mono">e.g. Dumble Dior: &quot;Welcome!&quot; | Snape Dawg: &quot;Potions class is in session!&quot;</span>
-                                                                    </label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={shot.dialogue || ""}
-                                                                        onChange={(e) => updateStageShot(idx, "dialogue", e.target.value)}
-                                                                        placeholder='e.g. Dumble Dior: "Welcome!" | Snape Dawg: "Potions class is in session!"'
-                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-rose-500 text-xs"
-                                                                    />
+
+                                                                {/* Widget 3: 📺 Title Screen Overlay */}
+                                                                <div className="bg-gray-950/80 border border-amber-900/60 rounded-xl p-3.5 space-y-3">
+                                                                    <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-800 pb-2">
+                                                                        <span>📺 Title Screen Overlay</span>
+                                                                    </h4>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                        <div>
+                                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-0.5">Title Card Text</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={shot.title_card_text || ""}
+                                                                                onChange={(e) => updateStageShot(idx, "title_card_text", e.target.value)}
+                                                                                placeholder="e.g. CHAPTER 1"
+                                                                                className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-xs"
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-0.5">Title Card Subtitle</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={shot.title_card_subtitle || ""}
+                                                                                onChange={(e) => updateStageShot(idx, "title_card_subtitle", e.target.value)}
+                                                                                placeholder="e.g. THE POTIONS CLASSROOM"
+                                                                                className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-amber-500 text-xs"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Widget 4: 🎙️ Narrator Voiceover */}
+                                                                <div className="bg-gray-950/80 border border-indigo-900/60 rounded-xl p-3.5 space-y-3">
+                                                                    <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-800 pb-2">
+                                                                        <span>🎙️ Narrator Voiceover</span>
+                                                                    </h4>
+                                                                    <div>
+                                                                        <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block mb-0.5">Narrator Text / Voiceover Script</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={shot.narrator_text || ""}
+                                                                            onChange={(e) => updateStageShot(idx, "narrator_text", e.target.value)}
+                                                                            placeholder="e.g. In the deep dungeons of Hogwarts, a wizarding battle begins..."
+                                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-indigo-500 text-xs"
+                                                                        />
+                                                                    </div>
                                                                 </div>
                                                             </div>
 
@@ -3668,24 +3807,35 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                         <div className="bg-gradient-to-r from-pink-950/40 via-purple-950/40 to-indigo-950/40 border border-pink-800/50 rounded-2xl p-5 shadow-xl flex items-center justify-between">
                                             <div>
                                                 <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
-                                                    <span>📽️</span>
-                                                    <span>Stage 3: The Dailies &amp; Single-Change Conversational Diff</span>
+                                                    <span>🎬</span>
+                                                    <span>Step 3: Render &amp; Stitch Master Video</span>
                                                 </h2>
                                                 <p className="text-xs text-gray-400 mt-1">
-                                                    Review generated clip iterations side-by-side. Perform single-change conversational diffs adhering to the Gemini Omni Flash golden rule.
+                                                    1-Click Batch Video Render + 1-Click Master Assembly with Title Screens &amp; Voiceovers.
                                                 </p>
                                             </div>
-                                            {!parentTurnId && (
+                                            <div className="flex items-center gap-2">
                                                 <button
                                                     type="button"
-                                                    disabled={loading}
-                                                    onClick={handleGenerate}
-                                                    className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
+                                                    disabled={stitchMasterLoading}
+                                                    onClick={handleStitchMaster}
+                                                    className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
                                                 >
-                                                    <span>⚡</span>
-                                                    <span>{loading ? "Generating..." : "Generate Initial Video Clip"}</span>
+                                                    <span>🎬</span>
+                                                    <span>{stitchMasterLoading ? "Stitching..." : "🎬 Stitch Master 30–60s Video (With Title Cards & Voiceover)"}</span>
                                                 </button>
-                                            )}
+                                                {!parentTurnId && (
+                                                    <button
+                                                        type="button"
+                                                        disabled={loading}
+                                                        onClick={handleGenerate}
+                                                        className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
+                                                    >
+                                                        <span>⚡</span>
+                                                        <span>{loading ? "Generating..." : "Generate Initial Video Clip"}</span>
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {/* Shot Selector Tabs / Dropdown */}
@@ -5430,6 +5580,27 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             gcs_uri=gcs_uri,
             message=f"Custom stitched master successfully saved to {gcs_uri}",
         )
+
+    @app.post("/api/storyboard/stitch_master")
+    def stitch_storyboard_master(req: StitchMasterRequest) -> dict[str, Any]:
+        master_path = agent.stitcher.stitch_storyboard_master(
+            shot_clips=req.shot_clips,
+            title_cards=req.title_cards,
+            narrator_audio_paths=req.narrator_audio_paths,
+            background_music_path=req.background_music_path,
+            session_id=req.session_id,
+        )
+        master_url = master_path
+        if not master_url.startswith("http") and not master_url.startswith("/static"):
+            if master_url.startswith("gs://"):
+                master_url = f"/api/media-proxy?uri={master_url}"
+            else:
+                master_url = f"/static/{os.path.basename(master_path)}"
+        return {
+            "status": "ok",
+            "master_video_path": master_path,
+            "master_video_url": master_url,
+        }
 
     @app.post("/api/extend-scene", response_model=GenerateResponse)
     def extend_scene(req: ExtendSceneRequest) -> GenerateResponse:
