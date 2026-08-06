@@ -1226,4 +1226,43 @@ def test_compiler_skips_sanitization_when_disabled():
     assert "Spectacled Wizard Bruv" not in compiled_disabled
 
 
+def test_compile_storyboard_with_title_card_and_narrator_widgets():
+    compiler = PromptCompiler()
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Harry",
+            description="Wizard with round glasses",
+        )
+    ]
+    scenes = [
+        SceneDirective(
+            scene_number=1,
+            active_roles=["Role A"],
+            action="Waving wand over bubbling cauldron.",
+            title_card_text="Trapwarts: Premium Specs",
+            title_card_subtitle="Part 1",
+            narrator_text="Deep within the potion studio...",
+        ),
+        SceneDirective(
+            scene_number=2,
+            active_roles=["Role A"],
+            action="Mixing ingredients.",
+            title_card_text="Trapwarts: Premium Specs",
+            narrator_text="The potion begins to glow.",
+        ),
+    ]
+    compiled = compiler.compile_storyboard(
+        concept="Trapwarts Potion Cooking",
+        characters=chars,
+        scenes=scenes,
+    )
+    assert "### TIMELINE" in compiled
+    assert '[Title Screen: "Trapwarts: Premium Specs" - "Part 1"]' in compiled
+    assert '[Title Screen: "Trapwarts: Premium Specs"]' in compiled
+    assert 'Narrator (Voiceover): "Deep within the potion studio..."' in compiled
+    assert 'Narrator (Voiceover): "The potion begins to glow."' in compiled
+
+
+
 

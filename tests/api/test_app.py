@@ -650,6 +650,45 @@ def test_api_generate_with_enable_safety_sanitization_toggle():
     assert res_enabled.json()["success"] is True
 
 
+def test_stitch_master_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/storyboard/stitch_master",
+        json={
+            "session_id": "test_stitch_master_session",
+            "shot_clips": ["/static/rendered/clip1.mp4", "/static/rendered/clip2.mp4"],
+            "title_cards": [
+                {
+                    "title": "Chapter 1",
+                    "subtitle": "The Intro",
+                    "duration": 3.0,
+                    "insert_at": 0,
+                }
+            ],
+            "narrator_audio_paths": ["/static/audio/narrator1.mp3"],
+            "background_music_path": "/static/audio/bg_music.mp3",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert "master_video_path" in data
+    assert "master_video_url" in data
+
+
+def test_ui_html_contains_simplified_3step_storyboard_workflow():
+    assert "Step 1: Visual Concept & Characters" in UI_HTML
+    assert "Step 2: Shot Card Workstation" in UI_HTML
+    assert "Step 3: Render & Stitch Master Video" in UI_HTML
+    assert "Action & Camera" in UI_HTML
+    assert "Spoken Dialogue & Voice Style" in UI_HTML
+    assert "Title Screen Overlay" in UI_HTML
+    assert "Narrator Voiceover" in UI_HTML
+    assert "Stitch Master 30–60s Video (With Title Cards & Voiceover)" in UI_HTML
+    assert "/api/storyboard/stitch_master" in UI_HTML
+
+
 
 
 

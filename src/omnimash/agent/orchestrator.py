@@ -395,6 +395,9 @@ class OmniMashAgent:
                                     dialogue=s.get("dialogue", ""),
                                     screenplay_text=sp_script if isinstance(sp_script, str) else None,
                                     audio_cues=s.get("audio_cues", ""),
+                                    title_card_text=s.get("title_card_text"),
+                                    title_card_subtitle=s.get("title_card_subtitle"),
+                                    narrator_text=s.get("narrator_text"),
                                 )
                             )
                 storyboard_prompt = self.taxonomy.compiler.compile_storyboard(
