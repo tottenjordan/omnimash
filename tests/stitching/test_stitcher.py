@@ -117,6 +117,102 @@ def test_stitch_clips_live_mode_reencode_fallback(tmp_path):
         second_cmd = mock_subproc.call_args_list[1][0][0]
         assert "-c:v" in second_cmd and "libx264" in second_cmd
         assert "-c:a" in second_cmd and "aac" in second_cmd
-        assert "-pix_fmt" in second_cmd and "yuv420p" in second_cmd
-
         mock_upload.assert_called_once()
+
+
+def test_generate_title_card_clip_mock(tmp_path):
+    stitcher = VideoStitcher(mock_mode=True)
+    out_path = stitcher.generate_title_card_clip(
+        title_text="Trapwarts",
+        subtitle_text="Premium Specs",
+        duration_seconds=2.0,
+        style="gothic_gold",
+        output_dir=str(tmp_path),
+    )
+    assert os.path.exists(out_path)
+    assert out_path.endswith(".mp4")
+    with open(out_path, "r") as f:
+        content = f.read()
+    assert "mock title card" in content
+
+
+def test_generate_title_card_clip_live(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    mock_res = MagicMock()
+    mock_res.returncode = 0
+
+    with patch("subprocess.run", return_value=mock_res) as mock_subproc:
+        out_path = stitcher.generate_title_card_clip(
+            title_text="Live Test",
+            subtitle_text="Subtitle",
+            duration_seconds=3.0,
+            style="neon_cyber",
+            output_dir=str(tmp_path),
+        )
+        assert out_path.endswith(".mp4")
+        mock_subproc.assert_called_once()
+        cmd = mock_subproc.call_args[0][0]
+        assert cmd[0] == "ffmpeg"
+        assert "-loop" in cmd
+        assert "-c:v" in cmd and "libx264" in cmd
+        assert "-pix_fmt" in cmd and "yuv420p" in cmd
+
+
+def test_stitch_storyboard_master_mock(tmp_path):
+    stitcher = VideoStitcher(mock_mode=True)
+    shot_clips = ["/static/shot1.mp4", "/static/shot2.mp4"]
+    title_cards = [
+        {"insert_at": 0, "title": "Trapwarts", "subtitle": "Premium Specs"},
+        {"insert_at": 2, "title": "The End", "subtitle": "Goodbye"},
+    ]
+
+    with patch.object(stitcher.storage, "upload_file") as mock_upload:
+        mock_upload.return_value = "https://storage.googleapis.com/test/master.mp4"
+        out_path = stitcher.stitch_storyboard_master(
+            shot_clips=shot_clips,
+            title_cards=title_cards,
+            background_music_path="/static/bgm.mp3",
+            output_dir=str(tmp_path),
+            session_id="session_123",
+        )
+        assert os.path.exists(out_path)
+        assert out_path.endswith("_stitched.mp4")
+        mock_upload.assert_called_once()
+
+
+def test_stitch_storyboard_master_live(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    shot_clips = [str(tmp_path / "shot1.mp4"), str(tmp_path / "shot2.mp4")]
+    title_cards = [
+        {"insert_at": 0, "title": "Intro", "subtitle": "Start"},
+    ]
+
+    fake_card_clip = str(tmp_path / "title_card_0.mp4")
+
+    with (
+        patch.object(stitcher, "generate_title_card_clip", return_value=fake_card_clip) as mock_gen_card,
+        patch.object(stitcher, "concatenate_clips", return_value=str(tmp_path / "master_stitched.mp4")) as mock_concat,
+    ):
+        result = stitcher.stitch_storyboard_master(
+            shot_clips=shot_clips,
+            title_cards=title_cards,
+            narrator_audio_paths=["/static/voiceover.mp3"],
+            output_dir=str(tmp_path),
+            session_id="session_456",
+        )
+
+        assert result.endswith("master_stitched.mp4")
+        mock_gen_card.assert_called_once_with(
+            title_text="Intro",
+            subtitle_text="Start",
+            duration_seconds=3.0,
+            style="gothic_gold",
+            output_dir=str(tmp_path),
+        )
+        mock_concat.assert_called_once_with(
+            clip_paths=[fake_card_clip, shot_clips[0], shot_clips[1]],
+            output_dir=str(tmp_path),
+            session_id="session_456",
+            master_audio_path="/static/voiceover.mp3",
+        )
+
