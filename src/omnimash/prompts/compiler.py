@@ -338,6 +338,10 @@ class SceneDirective:
     audio_cues: str = ""
     timecode: str = ""
     duration_seconds: float = 10.0
+    title_card_text: str | None = None
+    title_card_subtitle: str | None = None
+    narrator_text: str | None = None
+
 
 
 @dataclass
@@ -703,7 +707,16 @@ def enrich_timeline_dialogue_speakers(
     """
     if not diag_raw or not isinstance(diag_raw, str) or not diag_raw.strip():
         return diag_raw, False
+    has_narrator = bool(re.search(r"\bNarrator\s*(?:\(Voiceover\)|\(VO\))?\s*(?:says)?\s*:", diag_raw, re.IGNORECASE))
     if not characters:
+        if has_narrator:
+            enriched = re.sub(
+                r"\bNarrator\s*(?:\(Voiceover\)|\(VO\))?\s*(?:says)?\s*:",
+                "Narrator (Voiceover):",
+                diag_raw,
+                flags=re.IGNORECASE,
+            )
+            return enriched, True
         return diag_raw, False
 
     cand_list: list[tuple[str, str, str]] = []
@@ -812,6 +825,14 @@ def enrich_timeline_dialogue_speakers(
         return match.group(0)
 
     enriched = pattern.sub(repl_func, diag_raw)
+    if has_narrator:
+        enriched = re.sub(
+            r"\bNarrator\s*(?:\(Voiceover\)|\(VO\))?\s*(?:says)?\s*:",
+            "Narrator (Voiceover):",
+            enriched,
+            flags=re.IGNORECASE,
+        )
+        replaced = True
     return enriched, replaced
 
 
@@ -1599,7 +1620,16 @@ class PromptCompiler:
                     or getattr(scene, "screenplay_script", None)
                 )
             )
-            if (diag and str(diag).strip()) or (sp_text and str(sp_text).strip()):
+            narrator = (
+                scene.get("narrator_text")
+                if isinstance(scene, dict)
+                else getattr(scene, "narrator_text", None)
+            )
+            if (
+                (diag and str(diag).strip())
+                or (sp_text and str(sp_text).strip())
+                or (narrator and str(narrator).strip())
+            ):
                 has_dialogue = True
                 break
 
@@ -1773,17 +1803,49 @@ class PromptCompiler:
                     if isinstance(scene, dict)
                     else getattr(scene, "dialogue", "")
                 )
+                title_card_text = (
+                    scene.get("title_card_text")
+                    if isinstance(scene, dict)
+                    else getattr(scene, "title_card_text", None)
+                )
+                title_card_subtitle = (
+                    scene.get("title_card_subtitle")
+                    if isinstance(scene, dict)
+                    else getattr(scene, "title_card_subtitle", None)
+                )
+                narrator_text = (
+                    scene.get("narrator_text")
+                    if isinstance(scene, dict)
+                    else getattr(scene, "narrator_text", None)
+                )
+
+                action_str = str(action or "").strip()
+                if title_card_text and str(title_card_text).strip():
+                    tc_t = str(title_card_text).strip()
+                    if title_card_subtitle and str(title_card_subtitle).strip():
+                        tc_s = str(title_card_subtitle).strip()
+                        card_tag = f'[Title Screen: "{tc_t}" - "{tc_s}"]'
+                    else:
+                        card_tag = f'[Title Screen: "{tc_t}"]'
+                    if action_str:
+                        action_str = f"{action_str} {card_tag}"
+                    else:
+                        action_str = card_tag
+
                 diag_str = ""
-                if dialogue and str(dialogue).strip():
-                    diag_raw = str(dialogue).strip()
+                diag_raw = str(dialogue or "").strip()
+                narrator_raw = str(narrator_text or "").strip() if narrator_text else ""
+
+                diag_parts: list[str] = []
+                if diag_raw:
                     if "narrator" in diag_raw.lower():
                         clean_d = re.sub(
-                            r"^(?:(?:Role\s*\w+\s*\()?Narrator(?:\s*VO\))?\)?:\s*)[\"']?|[\"']?$",
+                            r"^(?:(?:Role\s*\w+\s*\()?Narrator(?:\s*(?:VO|Voiceover\)))?\)?:\s*)[\"']?|[\"']?$",
                             "",
                             diag_raw,
                             flags=re.IGNORECASE,
                         ).strip()
-                        diag_str = f' | Dialogue: Narrator (VO) says: "{clean_d}"'
+                        diag_parts.append(f'Narrator (VO) says: "{clean_d}"')
                     else:
                         enriched_diag, replaced_speakers = (
                             enrich_timeline_dialogue_speakers(
@@ -1793,11 +1855,16 @@ class PromptCompiler:
                             )
                         )
                         if replaced_speakers:
-                            diag_str = f" | Dialogue: {enriched_diag}"
+                            diag_parts.append(enriched_diag)
                         else:
-                            diag_str = f' | Dialogue: "{diag_raw}"'
+                            diag_parts.append(f'"{diag_raw}"')
 
-                action_str = str(action or "").strip()
+                if narrator_raw:
+                    diag_parts.append(f'Narrator (Voiceover): "{narrator_raw}"')
+
+                if diag_parts:
+                    diag_str = " | Dialogue: " + " / ".join(diag_parts)
+
                 if action_str.startswith("["):
                     timeline_lines.append(
                         f"- Scene {scene_num} [{roles_str}]: {action_str}{diag_str}"
