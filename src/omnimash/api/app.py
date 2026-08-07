@@ -620,6 +620,97 @@ UI_HTML = r"""<!DOCTYPE html>
             const [j3StitchLoading, setJ3StitchLoading] = useState(false);
             const [j3MasterVideoUrl, setJ3MasterVideoUrl] = useState("");
 
+            // Tab 3 Character Roles & Vault State
+            const [j3Characters, setJ3Characters] = useState([
+                {
+                    role_id: "Role A",
+                    name: "Harry",
+                    description: "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
+                    reference_url: "https://storage.googleapis.com/test/char1.jpg",
+                    voice_style: "High-energy confident rap flow",
+                    wardrobe: "Red Gucci Tracksuit, Cartier Glasses",
+                    aesthetic_tags: ["2000s Atlanta Trap Disstrack"]
+                },
+                {
+                    role_id: "Role B",
+                    name: "Draco",
+                    description: "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
+                    reference_url: "https://storage.googleapis.com/test/draco.jpg",
+                    voice_style: "Pompous arrogant drawl",
+                    wardrobe: "Platinum Slicked Hair, Diamond Iced-Out Chain",
+                    aesthetic_tags: ["Diamond Lightning Bolt Chain"]
+                }
+            ]);
+
+            const addJ3CharacterRole = () => {
+                const roleId = getNextAvailableRoleId(j3Characters);
+                const letter = roleId.replace("Role ", "");
+                const newRole = {
+                    role_id: roleId,
+                    name: `Character ${letter}`,
+                    description: "Distinct cinematic character with expressive facial features and stylized attire",
+                    reference_url: "",
+                    voice_style: "",
+                    wardrobe: "",
+                    aesthetic_tags: []
+                };
+                setJ3Characters([...j3Characters, newRole]);
+            };
+
+            const removeJ3CharacterRole = (index) => {
+                if (j3Characters.length <= 1) return;
+                const updated = j3Characters.filter((_, i) => i !== index).map((c, idx) => ({
+                    ...c,
+                    role_id: `Role ${String.fromCharCode(65 + idx)}`
+                }));
+                setJ3Characters(updated);
+            };
+
+            const updateJ3Character = (index, field, value) => {
+                const updated = [...j3Characters];
+                updated[index] = { ...updated[index], [field]: value };
+                setJ3Characters(updated);
+            };
+
+            const handleLoadJ3VaultCharacter = (c) => {
+                const roleId = getNextAvailableRoleId(j3Characters);
+                const newRole = {
+                    role_id: roleId,
+                    name: c.name || "",
+                    description: c.description || "",
+                    reference_url: c.reference_url || "",
+                    voice_style: c.voice_style || "",
+                    voice_profile: c.voice_profile || "",
+                    wardrobe: c.wardrobe || "",
+                    aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
+                };
+                setJ3Characters([...j3Characters, newRole]);
+            };
+
+            const handleAddJ3ShotCard = () => {
+                const nextIdx = j3ShotCards.length + 1;
+                const newCard = {
+                    shot_index: nextIdx,
+                    image_prompt: `Gaunt wizard action sequence for Shot #${nextIdx}`,
+                    action_directive: `Gaunt wizard action directive for Shot #${nextIdx}`,
+                    dialogue_text: "",
+                    keyframe_image_url: "",
+                    video_url: "",
+                    cumulative_state: []
+                };
+                setJ3ShotCards([...j3ShotCards, newCard]);
+            };
+
+            const handleRemoveJ3ShotCard = (targetShotIdx) => {
+                if (j3ShotCards.length <= 1) return;
+                const filtered = j3ShotCards.filter((c) => c.shot_index !== targetShotIdx);
+                const reindexed = filtered.map((c, i) => ({
+                    ...c,
+                    shot_index: i + 1
+                }));
+                setJ3ShotCards(reindexed);
+            };
+
             const handleJourney3Setup = async () => {
                 setJ3SetupLoading(true);
                 setLastError(null);
@@ -631,7 +722,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             master_description: j3MasterDescription,
                             aspect_ratio: aspectRatio,
                             enable_safety_sanitization: enableSafetySanitization,
-                            characters: [{ name: "Character 1", reference_url: j3CharRef }],
+                            characters: j3Characters.map(c => ({ role_id: c.role_id, name: c.name, reference_url: c.reference_url })),
                             products: [{ name: "Product 1", reference_url: j3ProductRef }],
                             style_presets: [j3StylePreset]
                         })
@@ -5217,7 +5308,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                         <span>Step 1: Concept &amp; Reference Uploaders</span>
                                     </h3>
 
-                                    <div className="space-y-3">
+                                    <div className="space-y-4">
                                         <div>
                                             <label className="text-xs font-bold text-gray-300 block mb-1">Master Concept Description:</label>
                                             <textarea
@@ -5229,17 +5320,87 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                             />
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1.5">
-                                                <label className="text-xs font-bold text-purple-300 block">Character Reference (@Image1):</label>
-                                                <input
-                                                    type="text"
-                                                    value={j3CharRef}
-                                                    onChange={(e) => setJ3CharRef(e.target.value)}
-                                                    placeholder="URL or GCS path for character"
-                                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs font-mono text-purple-200"
-                                                />
+                                        {/* 👥 Character Roles & Character Vault Widget */}
+                                        <div className="bg-gray-950/90 border border-purple-900/50 rounded-xl p-4 space-y-3">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800 pb-2.5">
+                                                <label className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>👥</span>
+                                                    <span>Character Roles &amp; Character Vault (Gemini Omni Image Roles)</span>
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={addJ3CharacterRole}
+                                                    className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow"
+                                                >
+                                                    <span>+ Add Character Role</span>
+                                                </button>
                                             </div>
+
+                                            {/* Vault Presets Chips */}
+                                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                                <span className="text-[11px] text-gray-400 font-medium">🏛️ Character Vault Presets:</span>
+                                                {savedVaultCharacters.slice(0, 10).map((c, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        type="button"
+                                                        onClick={() => handleLoadJ3VaultCharacter(c)}
+                                                        className="bg-gray-900 hover:bg-purple-950 border border-gray-800 hover:border-purple-600 text-gray-300 hover:text-purple-200 text-[11px] font-medium px-2.5 py-1 rounded-full transition"
+                                                    >
+                                                        + {c.name || c.role_id}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            {/* Dynamic Character Cards */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                                                {j3Characters.map((char, cIdx) => (
+                                                    <div key={cIdx} className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+                                                        <div className="flex items-center justify-between border-b border-gray-800 pb-1.5">
+                                                            <span className="text-xs font-bold text-purple-300">{char.role_id} - {char.name || "Character"}</span>
+                                                            {j3Characters.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeJ3CharacterRole(cIdx)}
+                                                                    className="text-red-400 hover:text-red-300 bg-red-950/60 border border-red-800/60 rounded px-2 py-0.5 text-[10px] font-bold transition"
+                                                                >
+                                                                    🗑️ Remove Character
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <input
+                                                                type="text"
+                                                                value={char.name || ""}
+                                                                onChange={(e) => updateJ3Character(cIdx, "name", e.target.value)}
+                                                                placeholder="Character Name"
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded p-1.5 text-xs text-white"
+                                                            />
+                                                            <div className="flex items-center gap-1.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={char.reference_url || ""}
+                                                                    onChange={(e) => updateJ3Character(cIdx, "reference_url", e.target.value)}
+                                                                    placeholder="Reference Image URL (@Image1, @Image2)"
+                                                                    className="w-full bg-gray-950 border border-gray-800 rounded p-1.5 text-xs font-mono text-purple-200"
+                                                                />
+                                                                {char.reference_url && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => updateJ3Character(cIdx, "reference_url", "")}
+                                                                        className="text-gray-400 hover:text-red-300 text-xs font-bold px-1.5"
+                                                                        title="Clear Image Reference"
+                                                                    >
+                                                                        ✕
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1.5">
                                                 <label className="text-xs font-bold text-teal-300 block">Product / Prop Reference (@Product1):</label>
                                                 <input
@@ -5262,10 +5423,43 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                             </div>
                                         </div>
 
+                                        {/* Animated Style Presets Pills & Selector */}
+                                        <div className="space-y-2 pt-2 border-t border-gray-800">
+                                            <label className="text-xs font-bold text-gray-300 block">Style &amp; Tone Presets (Click to Select):</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {[
+                                                    "Gritty 90s Cyberpunk",
+                                                    "Cinematic Trap Parody",
+                                                    "🎨 90s Cel-Shaded Anime",
+                                                    "🍿 3D Stylized Animation (Arcane)",
+                                                    "🐉 Claymation Stop-Motion",
+                                                    "💥 Comic Book Graphic Novel",
+                                                    "👾 16-Bit Pixel Art Anime",
+                                                    "🏰 1930s Rubber Hose Toon",
+                                                    "🖌️ 2D Vector Toon Parody",
+                                                    "✨ Cyberpunk Neon Anime"
+                                                ].map((presetName) => (
+                                                    <button
+                                                        key={presetName}
+                                                        type="button"
+                                                        onClick={() => setJ3StylePreset(presetName)}
+                                                        className={`px-3 py-1 rounded-full text-xs font-bold transition border ${
+                                                            j3StylePreset === presetName
+                                                                ? "bg-blue-600 border-blue-500 text-white shadow shadow-blue-900/50"
+                                                                : "bg-gray-950 border-gray-800 text-gray-400 hover:text-gray-200"
+                                                        }`}
+                                                    >
+                                                        {j3StylePreset === presetName && "✓ "}
+                                                        {presetName}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
                                         <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <div>
-                                                    <label className="text-xs font-bold text-gray-400 block mb-1">Style &amp; Tone Preset:</label>
+                                                    <label className="text-xs font-bold text-gray-400 block mb-1">Active Style Preset:</label>
                                                     <select
                                                         value={j3StylePreset}
                                                         onChange={(e) => setJ3StylePreset(e.target.value)}
@@ -5273,21 +5467,16 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     >
                                                         <option value="Gritty 90s Cyberpunk">Gritty 90s Cyberpunk</option>
                                                         <option value="Cinematic Trap Parody">Cinematic Trap Parody</option>
-                                                        <option value="90s Cel-Shaded Anime">90s Cel-Shaded Anime</option>
-                                                        <option value="Hyper-Realistic Noir">Hyper-Realistic Noir</option>
+                                                        <option value="🎨 90s Cel-Shaded Anime">🎨 90s Cel-Shaded Anime</option>
+                                                        <option value="🍿 3D Stylized Animation (Arcane)">🍿 3D Stylized Animation (Arcane)</option>
+                                                        <option value="🐉 Claymation Stop-Motion">🐉 Claymation Stop-Motion</option>
+                                                        <option value="💥 Comic Book Graphic Novel">💥 Comic Book Graphic Novel</option>
+                                                        <option value="👾 16-Bit Pixel Art Anime">👾 16-Bit Pixel Art Anime</option>
+                                                        <option value="🏰 1930s Rubber Hose Toon">🏰 1930s Rubber Hose Toon</option>
+                                                        <option value="🖌️ 2D Vector Toon Parody">🖌️ 2D Vector Toon Parody</option>
+                                                        <option value="✨ Cyberpunk Neon Anime">✨ Cyberpunk Neon Anime</option>
                                                     </select>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (j3MasterDescription.trim()) {
-                                                            setJ3StylePreset("Gritty 90s Cyberpunk");
-                                                        }
-                                                    }}
-                                                    className="bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold px-3 py-2 rounded-xl border border-gray-700 mt-5"
-                                                >
-                                                    🔍 AI Deconstruct
-                                                </button>
 
                                                 <div>
                                                     <label className="text-xs font-bold text-gray-400 block mb-1">Aspect Ratio Selector:</label>
@@ -5329,17 +5518,38 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
 
                                 {/* STEP 2: SHOT CARD WORKSTATION */}
                                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
-                                    <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                                        <span>📋</span>
-                                        <span>Step 2: Shot Card Workstation</span>
-                                    </h3>
+                                    <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                                        <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                            <span>📋</span>
+                                            <span>Step 2: Shot Card Workstation</span>
+                                        </h3>
+                                        <button
+                                            type="button"
+                                            onClick={handleAddJ3ShotCard}
+                                            className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-extrabold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition shadow"
+                                        >
+                                            <span>➕</span>
+                                            <span>+ Add Shot Card</span>
+                                        </button>
+                                    </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         {j3ShotCards.map((card, idx) => (
                                             <div key={card.shot_index || idx} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-3">
                                                 <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
                                                     <span className="text-xs font-bold text-blue-300">Shot Card #{card.shot_index} (Max 10s)</span>
-                                                    <span className="text-[10px] font-mono text-gray-400">Sequence Index: {card.shot_index}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] font-mono text-gray-400">Sequence Index: {card.shot_index}</span>
+                                                        {j3ShotCards.length > 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveJ3ShotCard(card.shot_index)}
+                                                                className="text-red-400 hover:text-red-300 bg-red-950/60 hover:bg-red-900/80 border border-red-800/60 rounded px-2 py-0.5 text-[10px] font-bold transition"
+                                                            >
+                                                                🗑️ Remove Shot
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
 
                                                 <div>

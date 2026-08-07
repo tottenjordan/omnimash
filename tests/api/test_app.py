@@ -885,6 +885,19 @@ def test_ui_html_renders_in_browser_without_syntax_error():
         assert "BROWSER ERROR:" not in output, f"Browser JavaScript compilation error detected: {output}"
 
 
+def test_ui_html_journey3_vault_and_preset_elements():
+    from omnimash.api.app import UI_HTML
+    assert "addJ3CharacterRole" in UI_HTML
+    assert "removeJ3CharacterRole" in UI_HTML
+    assert "handleAddJ3ShotCard" in UI_HTML
+    assert "handleRemoveJ3ShotCard" in UI_HTML
+    assert "Claymation Stop-Motion" in UI_HTML
+    assert "3D Stylized Animation (Arcane)" in UI_HTML
+    assert "16-Bit Pixel Art Anime" in UI_HTML
+    assert "Comic Book Graphic Novel" in UI_HTML
+    assert "1930s Rubber Hose Toon" in UI_HTML
+
+
 
 
 
