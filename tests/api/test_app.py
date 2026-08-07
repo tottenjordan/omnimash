@@ -819,6 +819,15 @@ def test_journey3_stitch_endpoint():
     assert "master_video_path" in data
 
 
+def test_ui_html_contains_journey3_components():
+    assert "Journey 3 - Multi-Shot Continuity Studio" in UI_HTML
+    assert "/api/journey3/setup" in UI_HTML
+    assert "/api/journey3/keyframe" in UI_HTML
+    assert "/api/journey3/generate-shot" in UI_HTML
+    assert "/api/journey3/stitch" in UI_HTML
+    assert "Cumulative State Inspector" in UI_HTML or "Cumulative Scene State" in UI_HTML
+
+
 
 
 
