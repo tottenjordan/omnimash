@@ -289,6 +289,8 @@ class Journey3KeyframePromptEditRequest(BaseModel):
     image_prompt: str
     aspect_ratio: str = "16:9"
     reference_image_urls: list[str] | None = None
+    style_preset: str | None = None
+    image_model: str | None = "gemini-3.1-flash-image"
 
 
 class Journey3ShotGenerateRequest(BaseModel):
@@ -594,6 +596,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [j3ProductRef, setJ3ProductRef] = useState("");
             const [j3StyleRef, setJ3StyleRef] = useState("");
             const [j3StylePreset, setJ3StylePreset] = useState("Gritty 90s Cyberpunk");
+            const [j3ImageModel, setJ3ImageModel] = useState("gemini-3.1-flash-image");
             const [lightboxImageUrl, setLightboxImageUrl] = useState(null);
 
             const compileJourney3ShotPromptPreview = (card, idx) => {
@@ -769,6 +772,16 @@ UI_HTML = r"""<!DOCTYPE html>
                 setJ3KeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
                 try {
+                    const refUrls = (characters || [])
+                        .map((c) => c && c.reference_url)
+                        .filter((url) => url && typeof url === "string" && url.trim().length > 0);
+                    if (j3ProductRef && typeof j3ProductRef === "string" && j3ProductRef.trim()) {
+                        refUrls.push(j3ProductRef.trim());
+                    }
+                    if (j3StyleRef && typeof j3StyleRef === "string" && j3StyleRef.trim()) {
+                        refUrls.push(j3StyleRef.trim());
+                    }
+
                     const res = await fetch("/api/journey3/keyframe", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -776,7 +789,10 @@ UI_HTML = r"""<!DOCTYPE html>
                             session_id: sessionName,
                             shot_index: shotIdx,
                             image_prompt: promptText,
-                            aspect_ratio: aspectRatio
+                            aspect_ratio: aspectRatio,
+                            reference_image_urls: refUrls,
+                            style_preset: j3StylePreset,
+                            image_model: j3ImageModel
                         })
                     });
                     const data = await res.json();
@@ -5704,6 +5720,18 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     </select>
                                                 </div>
 
+                                                <div>
+                                                    <label className="text-xs font-bold text-gray-400 block mb-1">Keyframe Image Model:</label>
+                                                    <select
+                                                        value={j3ImageModel}
+                                                        onChange={(e) => setJ3ImageModel(e.target.value)}
+                                                        className="bg-gray-950 border border-gray-800 text-xs font-bold text-purple-300 rounded-xl px-3 py-2 font-mono"
+                                                    >
+                                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image (Default)</option>
+                                                        <option value="gemini-3-pro-image">gemini-3-pro-image (Pro Quality)</option>
+                                                    </select>
+                                                </div>
+
                                                 <div className="flex items-center gap-2 mt-5 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl">
                                                     <span className="text-xs font-bold text-gray-300">Safety Sanitization Toggle:</span>
                                                     <input
@@ -6736,8 +6764,10 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     def journey3_keyframe(req: Journey3KeyframePromptEditRequest) -> dict[str, Any]:
         image_url = agent.omni_client.generate_keyframe_image(
             req.image_prompt,
+            style_tone=req.style_preset or "",
             reference_image_urls=req.reference_image_urls,
             aspect_ratio=req.aspect_ratio,
+            image_model=req.image_model or "gemini-3.1-flash-image",
         )
         return {
             "success": True,
