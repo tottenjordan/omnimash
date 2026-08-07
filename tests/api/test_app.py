@@ -900,6 +900,15 @@ def test_ui_html_journey3_comprehensive_enhancements():
     assert "gemini-3-pro-image" in UI_HTML
 
 
+def test_ui_html_contains_character_reference_sheet_controls():
+    from omnimash.api.app import UI_HTML
+    assert "Generate Character Reference Sheet" in UI_HTML
+    assert "/api/characters/generate-sheet" in UI_HTML
+    assert "/api/characters/save-sheet" in UI_HTML
+    assert "Save & Set as Active Character Reference" in UI_HTML
+    assert "Character Turnaround Reference Sheet Studio" in UI_HTML
+
+
 def test_journey3_keyframe_api_accepts_model_style_and_reference_urls():
     from omnimash.api.app import create_app
     from fastapi.testclient import TestClient
@@ -925,6 +934,53 @@ def test_journey3_keyframe_api_accepts_model_style_and_reference_urls():
     assert "keyframe_image_url" in data
     assert "raw_compiled_prompt" in data
     assert isinstance(data["raw_compiled_prompt"], str)
+
+
+def test_generate_character_sheet_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/characters/generate-sheet",
+        json={
+            "character_name": "Harry Potter",
+            "description": "Young wizard with round glasses",
+            "aesthetic_tags": ["Red Gucci Tracksuit"],
+            "aspect_ratio": "16:9",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "keyframe_image_url" in data
+    assert "raw_compiled_prompt" in data
+    assert "Harry Potter" in data["raw_compiled_prompt"] or "Red Gucci Tracksuit" in data["raw_compiled_prompt"]
+
+
+def test_save_character_sheet_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    b64_png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+    res = client.post(
+        "/api/characters/save-sheet",
+        json={
+            "session_name": "test_sheet_session",
+            "image_data": b64_png,
+            "custom_name": "Harry Sheet v1.png",
+            "set_as_active_reference": True,
+            "character_role_id": "Role A",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "gcs_uri" in data
+    assert "public_url" in data
+    assert "sessions/test_sheet_session/character_sheets/harry_sheet_v1.png" in data["gcs_uri"]
+    assert "sessions/test_sheet_session/character_sheets/harry_sheet_v1.png" in data["public_url"]
+
 
 
 

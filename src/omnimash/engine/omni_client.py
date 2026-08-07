@@ -1605,3 +1605,145 @@ class OmniFlashClient:
             )
             return _return(_get_mock_keyframe())
 
+    def generate_character_reference_sheet(
+        self,
+        source_image_url: str | None = None,
+        character_name: str = "",
+        description: str = "",
+        aesthetic_tags: list[str] | None = None,
+        custom_prompt_override: str | None = None,
+        image_model: str = "gemini-3.1-flash-image",
+        aspect_ratio: str = "16:9",
+        return_compiled_prompt: bool = False,
+    ) -> Any:
+        """Generates a multi-panel character reference sheet image using Gemini Flash Image."""
+        tags_str = ", ".join(aesthetic_tags) if aesthetic_tags else ""
+        if custom_prompt_override and custom_prompt_override.strip():
+            prompt_text = custom_prompt_override.strip()
+        else:
+            prompt_text = (
+                f"A multi-panel cinematic analog photo realistic with natural skin texture character sheet layout on a white background, "
+                f"featuring a single, consistent character based on your source @Image1, their visual likeness and description ({description}), "
+                f"and their wardrobe and aesthetic style signifiers ({tags_str}). On the far left, a high-detail, close-up feature bust. "
+                f"To the right of that, a vertical column featuring front, profile, and back head busts in high detail. "
+                f"To the right of that, a horizontal row of three matching-style full-body figures: direct front, three-quarter front, "
+                f"and three-quarter back views, all in neutral poses showing full gear. The perspectives and layout are precise, "
+                f"replicating exactly with the new character's details. No additional text."
+            )
+
+        if source_image_url:
+            if "(Reference Image: @Image1)" not in prompt_text:
+                prompt_text = f"{prompt_text} (Reference Image: @Image1)"
+
+        def _get_mock_ref_sheet() -> str:
+            clean_name = (character_name or "Character Reference Sheet").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+            clean_desc = (description or "").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")[:60]
+            desc_sub = f" - {clean_desc}" if clean_desc else ""
+            svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">'
+                '<defs>'
+                '<linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">'
+                '<stop offset="0%" stop-color="#0f172a"/>'
+                '<stop offset="100%" stop-color="#1e293b"/>'
+                '</linearGradient>'
+                '</defs>'
+                '<rect width="100%" height="100%" fill="url(#bgGrad)"/>'
+                '<rect x="40" y="40" width="1200" height="640" rx="12" fill="#ffffff"/>'
+                '<rect x="40" y="40" width="1200" height="60" rx="12" fill="#0f172a"/>'
+                f'<text x="60" y="78" fill="#f8fafc" font-size="22" font-weight="800" font-family="system-ui, sans-serif">CHARACTER REFERENCE SHEET: {clean_name.upper()}{desc_sub}</text>'
+                f'<text x="1220" y="78" text-anchor="end" fill="#94a3b8" font-size="14" font-family="monospace">{aspect_ratio} | MULTI-PANEL LAYOUT</text>'
+                '<rect x="60" y="120" width="280" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
+                '<text x="200" y="390" text-anchor="middle" fill="#64748b" font-size="16" font-weight="700">CLOSE-UP BUST</text>'
+                '<rect x="360" y="120" width="220" height="170" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
+                '<text x="470" y="210" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FRONT HEAD BUST</text>'
+                '<rect x="360" y="305" width="220" height="170" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
+                '<text x="470" y="395" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">PROFILE HEAD BUST</text>'
+                '<rect x="360" y="490" width="220" height="170" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
+                '<text x="470" y="580" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">BACK HEAD BUST</text>'
+                '<rect x="600" y="120" width="200" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
+                '<text x="700" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY FRONT</text>'
+                '<rect x="820" y="120" width="200" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
+                '<text x="920" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY 3/4 FRONT</text>'
+                '<rect x="1040" y="120" width="180" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
+                '<text x="1130" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY 3/4 BACK</text>'
+                '</svg>'
+            )
+            b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
+            return f"data:image/svg+xml;base64,{b64_svg}"
+
+        def _return(url: str) -> Any:
+            if return_compiled_prompt:
+                return url, prompt_text
+            return url
+
+        if self.mock_mode or not genai:
+            return _return(_get_mock_ref_sheet())
+
+        try:
+            effective_key = self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            if effective_key:
+                image_client = genai.Client(api_key=effective_key, vertexai=False)
+            else:
+                image_client = genai.Client(
+                    vertexai=True,
+                    project=self.project,
+                    location="global",
+                )
+            try:
+                contents: list[Any] = []
+
+                if source_image_url:
+                    img_bytes, mime_type = self._fetch_image_bytes(source_image_url)
+                    if img_bytes:
+                        if hasattr(genai, "types") and hasattr(genai.types, "Part"):
+                            contents.append(genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type))
+                        else:
+                            contents.append({"inline_data": {"mime_type": mime_type, "data": base64.b64encode(img_bytes).decode("utf-8")}})
+
+                contents.append(prompt_text)
+
+                config = None
+                if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig"):
+                    config = genai.types.GenerateContentConfig(
+                        safety_settings=_get_relaxed_safety_settings(),
+                    )
+
+                target_model = image_model if image_model and image_model.strip() else "gemini-3.1-flash-image"
+                response = image_client.models.generate_content(
+                    model=target_model,
+                    contents=contents,
+                    config=config,
+                )
+                if response and hasattr(response, "candidates") and response.candidates:
+                    for candidate in response.candidates:
+                        content = getattr(candidate, "content", None)
+                        parts = getattr(content, "parts", []) if content else []
+                        for part in parts:
+                            inline_data = getattr(part, "inline_data", None)
+                            if inline_data and getattr(inline_data, "data", None):
+                                data = inline_data.data
+                                img_bytes = (
+                                    base64.b64decode(data)
+                                    if isinstance(data, str)
+                                    else data
+                                )
+                                blob_name = f"ref_sheets/ref_sheet_{uuid.uuid4().hex[:8]}.png"
+                                self.storage.upload_bytes(
+                                    img_bytes, blob_name, content_type="image/png"
+                                )
+                                gcs_uri = self.storage.get_gcs_uri(blob_name)
+                                return _return(f"/api/media-proxy?uri={quote(gcs_uri, safe='')}")
+            except Exception as e:
+                logger.warning("gemini-3.1-flash-image generation failed for reference sheet: %s", e)
+
+            return _return(_get_mock_ref_sheet())
+        except Exception as exc:
+            logger.warning(
+                "Failed to generate character reference sheet via GenAI client: %s", exc
+            )
+            return _return(_get_mock_ref_sheet())
+
+
+OmniClient = OmniFlashClient
+
+

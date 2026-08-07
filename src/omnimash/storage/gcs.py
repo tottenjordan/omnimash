@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
 import dataclasses
 from datetime import datetime, timezone
 import json
 import os
 import re
 from typing import TYPE_CHECKING, Any
+import urllib.request
 from urllib.parse import parse_qs, unquote, urlparse
 
 from omnimash.config import settings
@@ -417,6 +419,67 @@ class GcsStorageManager:
             content_type="application/json",
         )
         self._mock_characters[slug] = character
+        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+
+    def save_character_sheet(
+        self,
+        image_data: str | bytes,
+        custom_name: str,
+        session_id: str | None = None,
+    ) -> tuple[str, str]:
+        """Saves a character reference sheet image to GCS under character_sheets/ or sessions/{session_id}/character_sheets/."""
+        name_base = custom_name.removesuffix(".png") if isinstance(custom_name, str) else "character_sheet_v1"
+        clean_name = self._slugify(name_base)
+        if not clean_name:
+            clean_name = "character_sheet_v1"
+
+        filename = f"{clean_name}.png"
+        if session_id:
+            blob_path = f"sessions/{session_id}/character_sheets/{filename}"
+        else:
+            blob_path = f"character_sheets/{filename}"
+
+        raw_bytes = b""
+        if isinstance(image_data, bytes):
+            raw_bytes = image_data
+        elif isinstance(image_data, str):
+            if image_data.startswith("data:"):
+                try:
+                    _header, encoded = image_data.split(",", 1)
+                    raw_bytes = base64.b64decode(encoded)
+                except Exception:
+                    pass
+            elif image_data.startswith("gs://"):
+                raw_bytes, _ = self.download_blob_bytes(image_data)
+            elif "/api/media-proxy" in image_data and "uri=" in image_data:
+                try:
+                    parsed = urlparse(image_data)
+                    qs = parse_qs(parsed.query)
+                    if "uri" in qs and qs["uri"]:
+                        raw_bytes, _ = self.download_blob_bytes(unquote(qs["uri"][0]))
+                except Exception:
+                    pass
+            elif image_data.startswith("http://") or image_data.startswith("https://"):
+                try:
+                    req = urllib.request.Request(
+                        image_data, headers={"User-Agent": "Mozilla/5.0"}
+                    )
+                    raw_bytes = urllib.request.urlopen(req, timeout=10).read()
+                except Exception:
+                    pass
+            elif os.path.exists(image_data):
+                raw_bytes, _ = self.load_bytes(image_data)
+            else:
+                # Try decoding as raw base64 string
+                try:
+                    raw_bytes = base64.b64decode(image_data)
+                except Exception:
+                    pass
+
+        if not raw_bytes and self.mock_mode:
+            raw_bytes = b"mock_character_sheet_bytes"
+
+        self.upload_bytes(raw_bytes, blob_path, content_type="image/png")
         return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
 
     def list_characters(
