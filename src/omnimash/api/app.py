@@ -22,6 +22,42 @@ from omnimash.prompts.compiler import (
 logger = logging.getLogger(__name__)
 
 
+class GenerateCharacterSheetRequest(BaseModel):
+    character_name: str | None = None
+    description: str | None = None
+    aesthetic_tags: list[str] = Field(default_factory=list)
+    aspect_ratio: str = "16:9"
+    model: str = "gemini-3.1-flash-image"
+    custom_prompt: str | None = None
+
+
+class GenerateCharacterSheetResponse(BaseModel):
+    success: bool
+    character_name: str | None = None
+    keyframe_image_url: str
+    compiled_prompt: str
+    raw_compiled_prompt: str
+    aspect_ratio: str
+    model: str
+    details: str | None = None
+
+
+class SaveCharacterSheetRequest(BaseModel):
+    session_name: str | None = None
+    image_data: str
+    custom_name: str = "character_sheet"
+    set_as_active_reference: bool = True
+    character_role_id: str | None = None
+
+
+class SaveCharacterSheetResponse(BaseModel):
+    success: bool
+    public_url: str
+    gcs_uri: str
+    storage_path: str = ""
+    details: str | None = None
+
+
 class CharacterRoleModel(BaseModel):
     role_id: str
     name: str = ""
@@ -450,6 +486,16 @@ UI_HTML = r"""<!DOCTYPE html>
                     wardrobe: "Platinum slicked hair, diamond iced-out chain, silver-trimmed robes"
                 }
             ]);
+            const [charSheetDrawerOpen, setCharSheetDrawerOpen] = useState({});
+            const [charSheetModel, setCharSheetModel] = useState({});
+            const [charSheetAspectRatio, setCharSheetAspectRatio] = useState({});
+            const [charSheetPrompt, setCharSheetPrompt] = useState({});
+            const [charSheetFileName, setCharSheetFileName] = useState({});
+            const [charSheetGenerating, setCharSheetGenerating] = useState({});
+            const [charSheetSaving, setCharSheetSaving] = useState({});
+            const [charSheetPreview, setCharSheetPreview] = useState({});
+            const [charSheetCompiledPrompt, setCharSheetCompiledPrompt] = useState({});
+
             const [charTagInputs, setCharTagInputs] = useState({});
 
             const [aestheticTags, setAestheticTags] = useState([
@@ -1472,6 +1518,104 @@ UI_HTML = r"""<!DOCTYPE html>
                 updated[index] = { ...updated[index], [field]: value };
                 setScenes(updated);
             };
+            // Character Turnaround Reference Sheet Handlers
+            const getDefaultTurnaroundPrompt = (char) => {
+                const desc = (char && char.description) || "";
+                const tags = ((char && char.aesthetic_tags) || []).join(", ");
+                return "A multi-panel cinematic analog photo realistic with natural skin texture character sheet layout on a white background, featuring a single, consistent character based on your source @Image1, their visual likeness and description (" + desc + "), and their wardrobe and aesthetic style signifiers (" + tags + "). On the far left, a high-detail, close-up feature bust. To the right of that, a vertical column featuring front, profile, and back head busts in high detail. To the right of that, a horizontal row of three matching-style full-body figures: direct front, three-quarter front, and three-quarter back views, all in neutral poses showing full gear. The perspectives and layout are precise, replicating exactly with the new character's details. No additional text.";
+            };
+
+            const handleToggleCharSheetDrawer = (idx, char) => {
+                const isOpen = !charSheetDrawerOpen[idx];
+                setCharSheetDrawerOpen(prev => ({ ...prev, [idx]: isOpen }));
+                if (isOpen) {
+                    if (charSheetPrompt[idx] === undefined) {
+                        setCharSheetPrompt(prev => ({ ...prev, [idx]: getDefaultTurnaroundPrompt(char) }));
+                    }
+                    if (!charSheetFileName[idx]) {
+                        const slugName = ((char && char.name) || (char && char.role_id) || "character")
+                            .toLowerCase()
+                            .replace(new RegExp("[^a-z0-9]+", "g"), "_")
+                            .replace(new RegExp("^_+|_+$", "g"), "");
+                        setCharSheetFileName(prev => ({ ...prev, [idx]: slugName + "_sheet_v1" }));
+                    }
+                    if (!charSheetModel[idx]) {
+                        setCharSheetModel(prev => ({ ...prev, [idx]: "gemini-3.1-flash-image" }));
+                    }
+                    if (!charSheetAspectRatio[idx]) {
+                        setCharSheetAspectRatio(prev => ({ ...prev, [idx]: "16:9" }));
+                    }
+                }
+            };
+
+            const handleGenerateCharSheet = async (idx, char) => {
+                setCharSheetGenerating(prev => ({ ...prev, [idx]: true }));
+                try {
+                    const promptToUse = charSheetPrompt[idx] || getDefaultTurnaroundPrompt(char);
+                    const res = await fetch("/api/characters/generate-sheet", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            character_name: char.name || char.role_id,
+                            description: char.description || "",
+                            aesthetic_tags: char.aesthetic_tags || [],
+                            aspect_ratio: charSheetAspectRatio[idx] || "16:9",
+                            model: charSheetModel[idx] || "gemini-3.1-flash-image",
+                            custom_prompt: promptToUse
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        setCharSheetPreview(prev => ({ ...prev, [idx]: data.keyframe_image_url }));
+                        if (data.compiled_prompt || data.raw_compiled_prompt) {
+                            setCharSheetCompiledPrompt(prev => ({ ...prev, [idx]: data.raw_compiled_prompt || data.compiled_prompt }));
+                        }
+                    } else {
+                        alert("Failed to generate character sheet: " + (data.detail || data.details || "Unknown error"));
+                    }
+                } catch (err) {
+                    console.error("Error generating character sheet:", err);
+                    alert("Error generating character sheet: " + err.message);
+                } finally {
+                    setCharSheetGenerating(prev => ({ ...prev, [idx]: false }));
+                }
+            };
+
+            const handleSaveCharSheet = async (idx, char) => {
+                const previewUrl = charSheetPreview[idx];
+                if (!previewUrl) {
+                    alert("Please generate a character sheet preview first.");
+                    return;
+                }
+                setCharSheetSaving(prev => ({ ...prev, [idx]: true }));
+                try {
+                    const res = await fetch("/api/characters/save-sheet", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName,
+                            image_data: previewUrl,
+                            custom_name: charSheetFileName[idx] || (char.role_id + "_sheet"),
+                            set_as_active_reference: true,
+                            character_role_id: char.role_id
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success && data.public_url) {
+                        updateCharacter(idx, "reference_url", data.public_url);
+                        alert("Character reference sheet saved & active! URL: " + data.public_url);
+                        setCharSheetDrawerOpen(prev => ({ ...prev, [idx]: false }));
+                    } else {
+                        alert("Failed to save character sheet: " + (data.detail || data.details || "Unknown error"));
+                    }
+                } catch (err) {
+                    console.error("Error saving character sheet:", err);
+                    alert("Error saving character sheet: " + err.message);
+                } finally {
+                    setCharSheetSaving(prev => ({ ...prev, [idx]: false }));
+                }
+            };
+
 
             const toggleSceneRole = (sceneIndex, roleId) => {
                 const scene = scenes[sceneIndex];
@@ -2607,6 +2751,146 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         </div>
                                                     )}
                                                 </div>
+
+                                                {/* 🖼️ Turnaround Reference Sheet Generator Studio Drawer */}
+                                                <div className="pt-2 border-t border-gray-800/80">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleCharSheetDrawer(idx, char)}
+                                                        className="w-full bg-gradient-to-r from-purple-900/80 via-indigo-900/80 to-pink-900/80 hover:from-purple-800 hover:via-indigo-800 hover:to-pink-800 text-purple-100 border border-purple-600/60 font-bold text-xs py-2 px-3 rounded-xl shadow flex items-center justify-center gap-2 transition"
+                                                    >
+                                                        <span>🖼️</span>
+                                                        <span>{charSheetDrawerOpen[idx] ? "Close Turnaround Studio" : "🖼️ Generate Character Reference Sheet"}</span>
+                                                    </button>
+
+                                                    {charSheetDrawerOpen[idx] && (
+                                                        <div className="bg-gray-900/95 border border-purple-700/60 rounded-xl p-3.5 space-y-3 mt-3 shadow-2xl text-left">
+                                                            <div className="flex items-center justify-between border-b border-purple-900/50 pb-2">
+                                                                <h4 className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                                    <span>🖼️</span>
+                                                                    <span>Character Turnaround Reference Sheet Studio</span>
+                                                                </h4>
+                                                                <span className="text-[10px] text-purple-400 font-mono">
+                                                                    {char.role_id} • {char.name || "Character"}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Model & Aspect Ratio controls */}
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                <div>
+                                                                    <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                        🤖 Model
+                                                                    </label>
+                                                                    <select
+                                                                        value={charSheetModel[idx] || "gemini-3.1-flash-image"}
+                                                                        onChange={(e) => setCharSheetModel({ ...charSheetModel, [idx]: e.target.value })}
+                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                    >
+                                                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                                                        <option value="gemini-3-pro-image">gemini-3-pro-image</option>
+                                                                    </select>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                        📐 Aspect Ratio
+                                                                    </label>
+                                                                    <select
+                                                                        value={charSheetAspectRatio[idx] || "16:9"}
+                                                                        onChange={(e) => setCharSheetAspectRatio({ ...charSheetAspectRatio, [idx]: e.target.value })}
+                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                    >
+                                                                        <option value="16:9">16:9</option>
+                                                                        <option value="1:1">1:1</option>
+                                                                        <option value="9:16">9:16</option>
+                                                                        <option value="21:9">21:9</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Layout Prompt Textarea */}
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-1">
+                                                                    <label className="block text-[10px] font-bold text-gray-300 uppercase tracking-wider">
+                                                                        ✍️ Turnaround Layout Prompt
+                                                                    </label>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setCharSheetPrompt({ ...charSheetPrompt, [idx]: getDefaultTurnaroundPrompt(char) })}
+                                                                        className="text-[10px] text-purple-400 hover:text-purple-300 underline"
+                                                                    >
+                                                                        Reset Prompt
+                                                                    </button>
+                                                                </div>
+                                                                <textarea
+                                                                    rows={4}
+                                                                    value={charSheetPrompt[idx] !== undefined ? charSheetPrompt[idx] : getDefaultTurnaroundPrompt(char)}
+                                                                    onChange={(e) => setCharSheetPrompt({ ...charSheetPrompt, [idx]: e.target.value })}
+                                                                    placeholder="Turnaround layout prompt..."
+                                                                    className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                />
+                                                            </div>
+
+                                                            {/* Custom File Name & Render Button */}
+                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                                                                <div className="sm:col-span-2">
+                                                                    <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                        📁 Custom File Name
+                                                                    </label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={charSheetFileName[idx] || ""}
+                                                                        onChange={(e) => setCharSheetFileName({ ...charSheetFileName, [idx]: e.target.value })}
+                                                                        placeholder="e.g. harry_potter_sheet_v1"
+                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                    />
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={charSheetGenerating[idx]}
+                                                                    onClick={() => handleGenerateCharSheet(idx, char)}
+                                                                    className="w-full bg-gradient-to-r from-amber-600 to-pink-600 hover:from-amber-500 hover:to-pink-500 text-white font-bold text-xs py-2 px-3 rounded-lg shadow flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                                                                >
+                                                                    <span>⚡</span>
+                                                                    <span>{charSheetGenerating[idx] ? "Rendering..." : "⚡ Render Character Sheet"}</span>
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Image Preview & Save Button */}
+                                                            {charSheetPreview[idx] && (
+                                                                <div className="pt-3 border-t border-purple-900/40 space-y-3">
+                                                                    <label className="block text-[10px] font-bold text-amber-300 uppercase tracking-wider">
+                                                                        ✨ Rendered Reference Sheet Preview (Click to Zoom)
+                                                                    </label>
+                                                                    <div
+                                                                        onClick={() => setLightboxImageUrl(getDisplayableRefUrl(charSheetPreview[idx]))}
+                                                                        className="relative cursor-pointer group rounded-xl overflow-hidden border-2 border-amber-500/60 hover:border-amber-400 shadow-xl transition bg-black"
+                                                                    >
+                                                                        <img
+                                                                            src={getDisplayableRefUrl(charSheetPreview[idx])}
+                                                                            alt={char.name || char.role_id}
+                                                                            className="w-full h-auto max-h-72 object-contain mx-auto"
+                                                                        />
+                                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                                                            <span className="bg-gray-900/90 text-white text-xs font-bold px-3 py-1.5 rounded-full border border-gray-600 shadow flex items-center gap-1">
+                                                                                🔍 Click for Lightbox Zoom
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={charSheetSaving[idx]}
+                                                                        onClick={() => handleSaveCharSheet(idx, char)}
+                                                                        className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50"
+                                                                    >
+                                                                        <span>⚓</span>
+                                                                        <span>{charSheetSaving[idx] ? "Saving Sheet..." : "⚓ Save & Set as Active Character Reference"}</span>
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -3532,6 +3816,146 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                     )}
                                                                 </div>
                                                             </div>
+
+                                                                {/* 🖼️ Turnaround Reference Sheet Generator Studio Drawer */}
+                                                                <div className="pt-2 border-t border-gray-800/80">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleCharSheetDrawer(cIdx, char)}
+                                                                        className="w-full bg-gradient-to-r from-purple-900/80 via-indigo-900/80 to-pink-900/80 hover:from-purple-800 hover:via-indigo-800 hover:to-pink-800 text-purple-100 border border-purple-600/60 font-bold text-xs py-2 px-3 rounded-xl shadow flex items-center justify-center gap-2 transition"
+                                                                    >
+                                                                        <span>🖼️</span>
+                                                                        <span>{charSheetDrawerOpen[cIdx] ? "Close Turnaround Studio" : "🖼️ Generate Character Reference Sheet"}</span>
+                                                                    </button>
+
+                                                                    {charSheetDrawerOpen[cIdx] && (
+                                                                        <div className="bg-gray-900/95 border border-purple-700/60 rounded-xl p-3.5 space-y-3 mt-3 shadow-2xl text-left">
+                                                                            <div className="flex items-center justify-between border-b border-purple-900/50 pb-2">
+                                                                                <h4 className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                    <span>🖼️</span>
+                                                                                    <span>Character Turnaround Reference Sheet Studio</span>
+                                                                                </h4>
+                                                                                <span className="text-[10px] text-purple-400 font-mono">
+                                                                                    {char.role_id} • {char.name || "Character"}
+                                                                                </span>
+                                                                            </div>
+
+                                                                            {/* Model & Aspect Ratio controls */}
+                                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                                <div>
+                                                                                    <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                                        🤖 Model
+                                                                                    </label>
+                                                                                    <select
+                                                                                        value={charSheetModel[cIdx] || "gemini-3.1-flash-image"}
+                                                                                        onChange={(e) => setCharSheetModel({ ...charSheetModel, [cIdx]: e.target.value })}
+                                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                                    >
+                                                                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                                                                        <option value="gemini-3-pro-image">gemini-3-pro-image</option>
+                                                                                    </select>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                                        📐 Aspect Ratio
+                                                                                    </label>
+                                                                                    <select
+                                                                                        value={charSheetAspectRatio[cIdx] || "16:9"}
+                                                                                        onChange={(e) => setCharSheetAspectRatio({ ...charSheetAspectRatio, [cIdx]: e.target.value })}
+                                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                                    >
+                                                                                        <option value="16:9">16:9</option>
+                                                                                        <option value="1:1">1:1</option>
+                                                                                        <option value="9:16">9:16</option>
+                                                                                        <option value="21:9">21:9</option>
+                                                                                    </select>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Layout Prompt Textarea */}
+                                                                            <div>
+                                                                                <div className="flex items-center justify-between mb-1">
+                                                                                    <label className="block text-[10px] font-bold text-gray-300 uppercase tracking-wider">
+                                                                                        ✍️ Turnaround Layout Prompt
+                                                                                    </label>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setCharSheetPrompt({ ...charSheetPrompt, [cIdx]: getDefaultTurnaroundPrompt(char) })}
+                                                                                        className="text-[10px] text-purple-400 hover:text-purple-300 underline"
+                                                                                    >
+                                                                                        Reset Prompt
+                                                                                    </button>
+                                                                                </div>
+                                                                                <textarea
+                                                                                    rows={4}
+                                                                                    value={charSheetPrompt[cIdx] !== undefined ? charSheetPrompt[cIdx] : getDefaultTurnaroundPrompt(char)}
+                                                                                    onChange={(e) => setCharSheetPrompt({ ...charSheetPrompt, [cIdx]: e.target.value })}
+                                                                                    placeholder="Turnaround layout prompt..."
+                                                                                    className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                                />
+                                                                            </div>
+
+                                                                            {/* Custom File Name & Render Button */}
+                                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                                                                                <div className="sm:col-span-2">
+                                                                                    <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                                        📁 Custom File Name
+                                                                                    </label>
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        value={charSheetFileName[cIdx] || ""}
+                                                                                        onChange={(e) => setCharSheetFileName({ ...charSheetFileName, [cIdx]: e.target.value })}
+                                                                                        placeholder="e.g. harry_potter_sheet_v1"
+                                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                                    />
+                                                                                </div>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    disabled={charSheetGenerating[cIdx]}
+                                                                                    onClick={() => handleGenerateCharSheet(cIdx, char)}
+                                                                                    className="w-full bg-gradient-to-r from-amber-600 to-pink-600 hover:from-amber-500 hover:to-pink-500 text-white font-bold text-xs py-2 px-3 rounded-lg shadow flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                                                                                >
+                                                                                    <span>⚡</span>
+                                                                                    <span>{charSheetGenerating[cIdx] ? "Rendering..." : "⚡ Render Character Sheet"}</span>
+                                                                                </button>
+                                                                            </div>
+
+                                                                            {/* Image Preview & Save Button */}
+                                                                            {charSheetPreview[cIdx] && (
+                                                                                <div className="pt-3 border-t border-purple-900/40 space-y-3">
+                                                                                    <label className="block text-[10px] font-bold text-amber-300 uppercase tracking-wider">
+                                                                                        ✨ Rendered Reference Sheet Preview (Click to Zoom)
+                                                                                    </label>
+                                                                                    <div
+                                                                                        onClick={() => setLightboxImageUrl(getDisplayableRefUrl(charSheetPreview[cIdx]))}
+                                                                                        className="relative cursor-pointer group rounded-xl overflow-hidden border-2 border-amber-500/60 hover:border-amber-400 shadow-xl transition bg-black"
+                                                                                    >
+                                                                                        <img
+                                                                                            src={getDisplayableRefUrl(charSheetPreview[cIdx])}
+                                                                                            alt={char.name || char.role_id}
+                                                                                            className="w-full h-auto max-h-72 object-contain mx-auto"
+                                                                                        />
+                                                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                                                                            <span className="bg-gray-900/90 text-white text-xs font-bold px-3 py-1.5 rounded-full border border-gray-600 shadow flex items-center gap-1">
+                                                                                                🔍 Click for Lightbox Zoom
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        disabled={charSheetSaving[cIdx]}
+                                                                                        onClick={() => handleSaveCharSheet(cIdx, char)}
+                                                                                        className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50"
+                                                                                    >
+                                                                                        <span>⚓</span>
+                                                                                        <span>{charSheetSaving[cIdx] ? "Saving Sheet..." : "⚓ Save & Set as Active Character Reference"}</span>
+                                                                                    </button>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -5640,6 +6064,146 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                                 </div>
                                                             )}
                                                         </div>
+
+                                                                        {/* 🖼️ Turnaround Reference Sheet Generator Studio Drawer */}
+                                                                        <div className="pt-2 border-t border-gray-800/80">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleToggleCharSheetDrawer(idx, char)}
+                                                                                className="w-full bg-gradient-to-r from-purple-900/80 via-indigo-900/80 to-pink-900/80 hover:from-purple-800 hover:via-indigo-800 hover:to-pink-800 text-purple-100 border border-purple-600/60 font-bold text-xs py-2 px-3 rounded-xl shadow flex items-center justify-center gap-2 transition"
+                                                                            >
+                                                                                <span>🖼️</span>
+                                                                                <span>{charSheetDrawerOpen[idx] ? "Close Turnaround Studio" : "🖼️ Generate Character Reference Sheet"}</span>
+                                                                            </button>
+
+                                                                            {charSheetDrawerOpen[idx] && (
+                                                                                <div className="bg-gray-900/95 border border-purple-700/60 rounded-xl p-3.5 space-y-3 mt-3 shadow-2xl text-left">
+                                                                                    <div className="flex items-center justify-between border-b border-purple-900/50 pb-2">
+                                                                                        <h4 className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                            <span>🖼️</span>
+                                                                                            <span>Character Turnaround Reference Sheet Studio</span>
+                                                                                        </h4>
+                                                                                        <span className="text-[10px] text-purple-400 font-mono">
+                                                                                            {char.role_id} • {char.name || "Character"}
+                                                                                        </span>
+                                                                                    </div>
+
+                                                                                    {/* Model & Aspect Ratio controls */}
+                                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                                        <div>
+                                                                                            <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                                                🤖 Model
+                                                                                            </label>
+                                                                                            <select
+                                                                                                value={charSheetModel[idx] || "gemini-3.1-flash-image"}
+                                                                                                onChange={(e) => setCharSheetModel({ ...charSheetModel, [idx]: e.target.value })}
+                                                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                                            >
+                                                                                                <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                                                                                <option value="gemini-3-pro-image">gemini-3-pro-image</option>
+                                                                                            </select>
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                                                📐 Aspect Ratio
+                                                                                            </label>
+                                                                                            <select
+                                                                                                value={charSheetAspectRatio[idx] || "16:9"}
+                                                                                                onChange={(e) => setCharSheetAspectRatio({ ...charSheetAspectRatio, [idx]: e.target.value })}
+                                                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                                            >
+                                                                                                <option value="16:9">16:9</option>
+                                                                                                <option value="1:1">1:1</option>
+                                                                                                <option value="9:16">9:16</option>
+                                                                                                <option value="21:9">21:9</option>
+                                                                                            </select>
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    {/* Layout Prompt Textarea */}
+                                                                                    <div>
+                                                                                        <div className="flex items-center justify-between mb-1">
+                                                                                            <label className="block text-[10px] font-bold text-gray-300 uppercase tracking-wider">
+                                                                                                ✍️ Turnaround Layout Prompt
+                                                                                            </label>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => setCharSheetPrompt({ ...charSheetPrompt, [idx]: getDefaultTurnaroundPrompt(char) })}
+                                                                                                className="text-[10px] text-purple-400 hover:text-purple-300 underline"
+                                                                                            >
+                                                                                                Reset Prompt
+                                                                                            </button>
+                                                                                        </div>
+                                                                                        <textarea
+                                                                                            rows={4}
+                                                                                            value={charSheetPrompt[idx] !== undefined ? charSheetPrompt[idx] : getDefaultTurnaroundPrompt(char)}
+                                                                                            onChange={(e) => setCharSheetPrompt({ ...charSheetPrompt, [idx]: e.target.value })}
+                                                                                            placeholder="Turnaround layout prompt..."
+                                                                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    {/* Custom File Name & Render Button */}
+                                                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                                                                                        <div className="sm:col-span-2">
+                                                                                            <label className="block text-[10px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
+                                                                                                📁 Custom File Name
+                                                                                            </label>
+                                                                                            <input
+                                                                                                type="text"
+                                                                                                value={charSheetFileName[idx] || ""}
+                                                                                                onChange={(e) => setCharSheetFileName({ ...charSheetFileName, [idx]: e.target.value })}
+                                                                                                placeholder="e.g. harry_potter_sheet_v1"
+                                                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                                            />
+                                                                                        </div>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            disabled={charSheetGenerating[idx]}
+                                                                                            onClick={() => handleGenerateCharSheet(idx, char)}
+                                                                                            className="w-full bg-gradient-to-r from-amber-600 to-pink-600 hover:from-amber-500 hover:to-pink-500 text-white font-bold text-xs py-2 px-3 rounded-lg shadow flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                                                                                        >
+                                                                                            <span>⚡</span>
+                                                                                            <span>{charSheetGenerating[idx] ? "Rendering..." : "⚡ Render Character Sheet"}</span>
+                                                                                        </button>
+                                                                                    </div>
+
+                                                                                    {/* Image Preview & Save Button */}
+                                                                                    {charSheetPreview[idx] && (
+                                                                                        <div className="pt-3 border-t border-purple-900/40 space-y-3">
+                                                                                            <label className="block text-[10px] font-bold text-amber-300 uppercase tracking-wider">
+                                                                                                ✨ Rendered Reference Sheet Preview (Click to Zoom)
+                                                                                            </label>
+                                                                                            <div
+                                                                                                onClick={() => setLightboxImageUrl(getDisplayableRefUrl(charSheetPreview[idx]))}
+                                                                                                className="relative cursor-pointer group rounded-xl overflow-hidden border-2 border-amber-500/60 hover:border-amber-400 shadow-xl transition bg-black"
+                                                                                            >
+                                                                                                <img
+                                                                                                    src={getDisplayableRefUrl(charSheetPreview[idx])}
+                                                                                                    alt={char.name || char.role_id}
+                                                                                                    className="w-full h-auto max-h-72 object-contain mx-auto"
+                                                                                                />
+                                                                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                                                                                    <span className="bg-gray-900/90 text-white text-xs font-bold px-3 py-1.5 rounded-full border border-gray-600 shadow flex items-center gap-1">
+                                                                                                        🔍 Click for Lightbox Zoom
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled={charSheetSaving[idx]}
+                                                                                                onClick={() => handleSaveCharSheet(idx, char)}
+                                                                                                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50"
+                                                                                            >
+                                                                                                <span>⚓</span>
+                                                                                                <span>{charSheetSaving[idx] ? "Saving Sheet..." : "⚓ Save & Set as Active Character Reference"}</span>
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -7156,6 +7720,83 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             media_type=content_type,
             headers={"Cache-Control": "public, max-age=86400"},
         )
+
+
+    @app.post("/api/characters/generate-sheet", response_model=GenerateCharacterSheetResponse)
+    async def generate_character_sheet_endpoint(req: GenerateCharacterSheetRequest):
+        try:
+            tag_str = ", ".join(req.aesthetic_tags) if req.aesthetic_tags else "standard aesthetic"
+            desc = req.description or ""
+            default_turnaround_prompt = (
+                f"A multi-panel cinematic analog photo realistic with natural skin texture character sheet layout on a white background, "
+                f"featuring a single, consistent character based on your source @Image1, their visual likeness and description ({desc}), "
+                f"and their wardrobe and aesthetic style signifiers ({tag_str}). On the far left, a high-detail, close-up feature bust. "
+                f"To the right of that, a vertical column featuring front, profile, and back head busts in high detail. "
+                f"To the right of that, a horizontal row of three matching-style full-body figures: direct front, three-quarter front, "
+                f"and three-quarter back views, all in neutral poses showing full gear. The perspectives and layout are precise, "
+                f"replicating exactly with the new character details. No additional text."
+            )
+            prompt_to_use = req.custom_prompt or default_turnaround_prompt
+
+            keyframe_res = agent.omni_client.generate_keyframe_image(
+                prompt=prompt_to_use,
+                aspect_ratio=req.aspect_ratio,
+                image_model=req.model,
+            )
+
+            if isinstance(keyframe_res, dict):
+                url = keyframe_res.get("keyframe_image_url", "")
+                compiled = keyframe_res.get("raw_compiled_prompt", prompt_to_use)
+            else:
+                url = str(keyframe_res)
+                compiled = prompt_to_use
+
+            return GenerateCharacterSheetResponse(
+                success=True,
+                character_name=req.character_name,
+                keyframe_image_url=url,
+                compiled_prompt=compiled,
+                raw_compiled_prompt=compiled,
+                aspect_ratio=req.aspect_ratio,
+                model=req.model,
+            )
+        except Exception as e:
+            logger.error(f"Error generating character turnaround sheet: {e}", exc_info=True)
+            return GenerateCharacterSheetResponse(
+                success=False,
+                character_name=req.character_name,
+                keyframe_image_url="",
+                compiled_prompt="",
+                raw_compiled_prompt="",
+                aspect_ratio=req.aspect_ratio,
+                model=req.model,
+                details=str(e),
+            )
+
+
+    @app.post("/api/characters/save-sheet", response_model=SaveCharacterSheetResponse)
+    async def save_character_sheet_endpoint(req: SaveCharacterSheetRequest):
+        try:
+            saved_path, public_url = agent.storage.save_character_sheet(
+                image_data=req.image_data,
+                custom_name=req.custom_name,
+                session_id=req.session_name,
+            )
+            return SaveCharacterSheetResponse(
+                success=True,
+                public_url=public_url,
+                gcs_uri=saved_path,
+                storage_path=saved_path,
+            )
+        except Exception as e:
+            logger.error(f"Error saving character turnaround sheet: {e}", exc_info=True)
+            return SaveCharacterSheetResponse(
+                success=False,
+                public_url="",
+                gcs_uri="",
+                storage_path="",
+                details=str(e),
+            )
 
     return app
 

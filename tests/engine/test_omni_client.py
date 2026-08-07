@@ -6,6 +6,7 @@ import pytest
 
 import omnimash.config
 from omnimash.engine.omni_client import (
+    OmniClient,
     OmniFlashClient,
     _abstract_prompt_for_responsible_ai,
     _generate_dynamic_audio_wav,
@@ -1614,6 +1615,80 @@ def test_omni_client_skips_safety_retry_abstraction_when_disabled(tmp_path):
     second_call_kwargs = mock_interactions.create.call_args_list[1].kwargs
     second_input = second_call_kwargs["input"]
     assert second_input == "Harry Potter casting spells"
+
+
+def test_generate_character_reference_sheet_mock_mode() -> None:
+    client = OmniClient(mock_mode=True)
+    assert client is OmniFlashClient or isinstance(client, OmniFlashClient)
+
+    url = client.generate_character_reference_sheet(
+        character_name="Cyber Monk",
+        description="A futuristic monk with cybernetic implants",
+        aesthetic_tags=["Neon Robes", "Laser Staff"],
+    )
+    assert url.startswith("data:image/svg+xml;base64,")
+
+    url2, prompt = client.generate_character_reference_sheet(
+        source_image_url="http://example.com/source.png",
+        character_name="Cyber Monk",
+        description="A futuristic monk with cybernetic implants",
+        aesthetic_tags=["Neon Robes", "Laser Staff"],
+        return_compiled_prompt=True,
+    )
+    assert url2.startswith("data:image/svg+xml;base64,")
+    assert "A multi-panel cinematic analog photo realistic" in prompt
+    assert "futuristic monk" in prompt
+    assert "Neon Robes, Laser Staff" in prompt
+    assert "(Reference Image: @Image1)" in prompt
+
+
+def test_generate_character_reference_sheet_custom_override() -> None:
+    client = OmniClient(mock_mode=True)
+    custom_p = "Custom multi-panel prompt override for character sheet"
+    url, prompt = client.generate_character_reference_sheet(
+        custom_prompt_override=custom_p,
+        return_compiled_prompt=True,
+    )
+    assert prompt == custom_p
+
+
+def test_generate_character_reference_sheet_genai_call() -> None:
+    import base64
+
+    client = OmniClient(mock_mode=False)
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+    mock_candidate = MagicMock(
+        content=MagicMock(
+            parts=[
+                MagicMock(
+                    inline_data=MagicMock(data=base64.b64encode(b"fake_ref_sheet_png").decode("utf-8"))
+                )
+            ]
+        )
+    )
+    mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
+    mock_genai_client.models = mock_models
+    client.storage = MagicMock()
+    client.storage.get_gcs_uri.return_value = "gs://test-bucket/ref_sheets/sheet1.png"
+
+    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
+        client, "_fetch_image_bytes", return_value=(b"fake_source_bytes", "image/png")
+    ):
+        res_url = client.generate_character_reference_sheet(
+            source_image_url="gs://test-bucket/source.png",
+            character_name="Astronaut",
+            description="Sci-fi explorer",
+            image_model="gemini-3.1-flash-image",
+        )
+
+    assert "ref_sheets" in res_url
+    assert mock_models.generate_content.called
+    call_kwargs = mock_models.generate_content.call_args.kwargs
+    assert call_kwargs["model"] == "gemini-3.1-flash-image"
+    contents = call_kwargs["contents"]
+    assert len(contents) == 2  # 1 image part + 1 prompt text
+
 
 
 
