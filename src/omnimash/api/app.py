@@ -618,9 +618,14 @@ UI_HTML = r"""<!DOCTYPE html>
 
                 const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
                 
-                const block1_keyframe = card.keyframe_image_url 
-                    ? `\n\n# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.`
-                    : "";
+                let block1_keyframe = "";
+                if (card.keyframe_image_url) {
+                    if (card.keyframe_role === "Style & Scene Reference") {
+                        block1_keyframe = `\n\n# Visual Style & Scene Reference:\nAttached Image #1 is a visual reference for the background environment and art style. Maintain the scene's color palette, lighting scheme, and layout found in Attached Image #1, but generate a new cinematic composition and action according to the prompt. Do not use this as a strict first frame.`;
+                    } else {
+                        block1_keyframe = `\n\n# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.`;
+                    }
+                }
 
                 const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
                 const block3 = `### VISUAL ACTION & CAMERA\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
@@ -636,6 +641,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     action_directive: "Gaunt wizard puts on a golden velvet blindfold",
                     dialogue_text: "I see all.",
                     keyframe_image_url: "",
+                    keyframe_role: "Strict First Frame",
                     video_url: "",
                     cumulative_state: []
                 },
@@ -645,6 +651,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     action_directive: "Gaunt wizard raises staff slowly while blindfolded",
                     dialogue_text: "Taste the magic.",
                     keyframe_image_url: "",
+                    keyframe_role: "Strict First Frame",
                     video_url: "",
                     cumulative_state: []
                 }
@@ -729,6 +736,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     action_directive: `Gaunt wizard action directive for Shot #${nextIdx}`,
                     dialogue_text: "",
                     keyframe_image_url: "",
+                    keyframe_role: "Strict First Frame",
                     video_url: "",
                     cumulative_state: []
                 };
@@ -5843,6 +5851,28 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
                                                     />
                                                 </div>
+
+                                                {card.keyframe_image_url && (
+                                                    <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-2.5 space-y-1 mt-3">
+                                                        <label className="text-xs font-bold text-blue-300 block">Omni Flash Image Constraint Role:</label>
+                                                        <select
+                                                            value={card.keyframe_role || "Strict First Frame"}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                setJ3ShotCards((prev) =>
+                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, keyframe_role: val, compiled_override: undefined } : c))
+                                                                );
+                                                            }}
+                                                            className="w-full bg-black border border-blue-800/60 rounded px-2 py-1.5 text-xs text-blue-200 focus:outline-none"
+                                                        >
+                                                            <option value="Strict First Frame">Literal First Frame (Source Media)</option>
+                                                            <option value="Style & Scene Reference">Style & Background Inspiration (Reference Media)</option>
+                                                        </select>
+                                                        <p className="text-[10px] text-blue-400/80 leading-snug">
+                                                            Select how Omni Flash parses this frame. <b>Source Media</b> literally binds it to the first second of video. <b>Reference Media</b> relaxes the camera, merely pulling art style and general scene composition.
+                                                        </p>
+                                                    </div>
+                                                )}
 
                                                 <div className="flex justify-end pt-1">
                                                     <button
