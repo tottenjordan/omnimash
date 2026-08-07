@@ -829,6 +829,26 @@ UI_HTML = r"""<!DOCTYPE html>
                 setJ3ShotCards(reindexed);
             };
 
+            const handleLinkToPrevShot = (cardIdx) => {
+                if (cardIdx <= 0) return;
+                const prevCard = j3ShotCards[cardIdx - 1];
+                if (!prevCard) return;
+                const sourceUrl = prevCard.keyframe_image_url || prevCard.video_url || "";
+                if (!sourceUrl) return;
+
+                setJ3ShotCards((prev) =>
+                    prev.map((c, i) => {
+                        if (i !== cardIdx) return c;
+                        return {
+                            ...c,
+                            keyframe_image_url: sourceUrl,
+                            keyframe_role: "Strict First Frame",
+                            compiled_override: undefined
+                        };
+                    })
+                );
+            };
+
             const handleJourney3Setup = async () => {
                 setJ3SetupLoading(true);
                 setLastError(null);
@@ -6433,7 +6453,21 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                 <div className="space-y-1.5">
                                                     <label className="text-xs font-bold text-amber-300 block flex items-center justify-between">
                                                         <span>🖼️ Storyboard Keyframe Visual Anchor:</span>
-                                                        {card.keyframe_image_url && <span className="text-[10px] text-gray-400 font-normal">(Click photo to enlarge 🔍)</span>}
+                                                        <div className="flex items-center gap-2">
+                                                            {cardIdx > 0 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleLinkToPrevShot(cardIdx)}
+                                                                    disabled={!j3ShotCards[cardIdx - 1]?.keyframe_image_url && !j3ShotCards[cardIdx - 1]?.video_url}
+                                                                    className="text-[11px] font-extrabold bg-blue-950/80 hover:bg-blue-900 text-blue-300 border border-blue-700/60 rounded-lg px-2.5 py-1 transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed shadow"
+                                                                    title="Inherit previous shot's keyframe image as starting frame anchor"
+                                                                >
+                                                                    <span>🔗</span>
+                                                                    <span>Continue From Shot #{j3ShotCards[cardIdx - 1].shot_index} Frame</span>
+                                                                </button>
+                                                            )}
+                                                            {card.keyframe_image_url && <span className="text-[10px] text-gray-400 font-normal">(Click photo to enlarge 🔍)</span>}
+                                                        </div>
                                                     </label>
                                                     {card.keyframe_image_url ? (
                                                         <div
