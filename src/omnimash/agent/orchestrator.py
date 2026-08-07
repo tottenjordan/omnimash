@@ -11,6 +11,7 @@ from omnimash.engine.omni_client import OmniFlashClient
 from omnimash.ingestion.media_extractor import MediaExtractor
 from omnimash.prompts.compiler import (
     CharacterRole,
+    CumulativeShotState,
     MetaPromptTags,
     SceneDirective,
     sanitize_real_names,
@@ -36,6 +37,149 @@ class AgentTurnResponse:
     reference_analysis: dict | None = None
 
 
+class Journey3StateTracker:
+    """Tracks cumulative character and scene state modifications across shot directives for Journey 3."""
+
+    def __init__(self) -> None:
+        self._session_states: dict[str, CumulativeShotState] = {}
+
+    def get_cumulative_state(self, session_id: str) -> CumulativeShotState:
+        if session_id not in self._session_states:
+            self._session_states[session_id] = CumulativeShotState()
+        return self._session_states[session_id]
+
+    def clear_session(self, session_id: str) -> None:
+        if session_id in self._session_states:
+            del self._session_states[session_id]
+
+    def record_shot_directive(
+        self,
+        session_id: str,
+        shot_index: int,
+        action_text: str,
+        dialogue_text: str = "",
+    ) -> None:
+        state = self.get_cumulative_state(session_id)
+        combined_text = f"{action_text or ''} {dialogue_text or ''}".strip()
+        if not combined_text:
+            return
+
+        removal_verbs = [
+            "removes",
+            "remove",
+            "takes off",
+            "take off",
+            "taking off",
+            "drops",
+            "drop",
+            "unsets",
+            "unset",
+            "loses",
+            "lose",
+            "takes away",
+        ]
+
+        # 1. Removal / un-setting
+        for verb in removal_verbs:
+            pattern = r"\b" + re.escape(verb) + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_\s]+)"
+            for m in re.finditer(pattern, combined_text, re.IGNORECASE):
+                target = m.group(1).strip().lower()
+                target_words = [
+                    w for w in re.split(r"\s+", target) if w not in ("a", "an", "the", "and", "or")
+                ]
+                if not target_words:
+                    continue
+                for char in list(state.character_states.keys()):
+                    for st_desc in list(state.character_states[char]):
+                        st_lower = st_desc.lower()
+                        if any(tw in st_lower for tw in target_words):
+                            state.remove_character_state(char, st_desc)
+                for sc_desc in list(state.scene_states):
+                    sc_lower = sc_desc.lower()
+                    if any(tw in sc_lower for tw in target_words):
+                        if sc_desc in state.scene_states:
+                            state.scene_states.remove(sc_desc)
+
+        # 2. Addition / setting keywords & character state extraction
+        tracked_keywords = [
+            "blindfold",
+            "handcuffed",
+            "magic aura",
+            "golden cup",
+            "holding",
+            "wearing",
+            "neon candles",
+        ]
+
+        stop_words = {
+            "Yo",
+            "The",
+            "A",
+            "An",
+            "In",
+            "On",
+            "At",
+            "With",
+            "After",
+            "Before",
+            "Suddenly",
+            "As",
+            "Shot",
+            "And",
+            "Or",
+        }
+        char_name: str | None = None
+        for w in combined_text.split():
+            clean_w = re.sub(r"[^\w]", "", w)
+            if clean_w and clean_w[0].isupper() and clean_w not in stop_words:
+                char_name = clean_w
+                break
+
+        addition_verbs = [
+            "puts on",
+            "wears",
+            "wearing",
+            "holding",
+            "holds",
+            "picks up",
+            "has",
+            "equipped with",
+        ]
+        for verb in addition_verbs:
+            pattern = r"\b" + re.escape(verb) + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_\s]+)"
+            for m in re.finditer(pattern, combined_text, re.IGNORECASE):
+                item_desc = m.group(1).strip()
+                item_desc = re.split(r"[,;.]", item_desc)[0].strip()
+                if item_desc:
+                    full_desc = (
+                        f"{verb} {item_desc}" if verb in ("wearing", "holding") else item_desc
+                    )
+                    if char_name:
+                        state.add_character_state(char_name, full_desc)
+                    else:
+                        state.add_scene_state(full_desc)
+
+        for kw in tracked_keywords:
+            if re.search(r"\b" + re.escape(kw) + r"\b", combined_text, re.IGNORECASE):
+                is_removed = any(
+                    re.search(
+                        r"\b" + re.escape(rv) + r"\s+.*" + re.escape(kw),
+                        combined_text,
+                        re.IGNORECASE,
+                    )
+                    for rv in removal_verbs
+                )
+                if not is_removed:
+                    existing = state.format_cumulative_state_block().lower()
+                    if kw not in existing:
+                        if kw in ("neon candles", "magic aura") and not char_name:
+                            state.add_scene_state(f"with {kw}")
+                        elif char_name:
+                            state.add_character_state(char_name, kw)
+                        else:
+                            state.add_scene_state(kw)
+
+
 class OmniMashAgent:
     def __init__(self, mock_mode: bool | None = None):
         self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
@@ -47,6 +191,7 @@ class OmniMashAgent:
         self.storage = GcsStorageManager(mock_mode=mock_mode)
         self.stitcher = VideoStitcher(mock_mode=mock_mode)
         self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
+        self.journey3_tracker = Journey3StateTracker()
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         return self.taxonomy.deconstruct_concept(concept)
