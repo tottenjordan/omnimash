@@ -614,7 +614,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     : "Initial scene baseline.";
 
                 const actionStr = card.action_directive || `Action sequence for Shot #${card.shot_index}`;
-                const dialogueStr = card.dialogue_text ? `"${card.dialogue_text}"` : "None (Ambient soundscape).";
+                const dialogueStr = card.dialogue_text ? card.dialogue_text : "None (Ambient soundscape).";
 
                 const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
                 const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
@@ -5852,7 +5852,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
 
                                                 <div className="space-y-2 pt-1">
                                                     <div>
-                                                        <label className="text-[11px] font-bold text-gray-300 block">Action:</label>
+                                                        <label className="text-[11px] font-bold text-gray-300 block">Scene Instructions (Background, Camera, Action Directive):</label>
                                                         <input
                                                             type="text"
                                                             value={card.action_directive || ""}
@@ -5868,7 +5868,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     </div>
 
                                                     <div>
-                                                        <label className="text-[11px] font-bold text-gray-300 block">Dialogue:</label>
+                                                        <label className="text-[11px] font-bold text-gray-300 block">Timeline & Audio Intent (w/ or w/o dialogue):</label>
                                                         <input
                                                             type="text"
                                                             value={card.dialogue_text || ""}
