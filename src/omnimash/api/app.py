@@ -6779,10 +6779,31 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
         shot_cards = []
         for s in shots:
+            enriched_image_prompt = s.action
+            if char_objs:
+                matched_chars = []
+                for c in char_objs:
+                    name = c.name.lower() if c.name else ""
+                    role = c.role_id.lower() if c.role_id else ""
+                    action_lower = s.action.lower()
+                    
+                    if (name and name in action_lower) or (role and role in action_lower):
+                        tags = []
+                        if getattr(c, "wardrobe", ""):
+                            tags.append(c.wardrobe.strip())
+                        if getattr(c, "aesthetic_tags", None):
+                            tags.extend(c.aesthetic_tags)
+                        
+                        if tags:
+                            matched_chars.append(f"{c.name or c.role_id} ({', '.join(tags)})")
+                
+                if matched_chars:
+                    enriched_image_prompt += f" | Wardrobe & Style: {' ; '.join(matched_chars)}"
+
             card = {
                 "shot_index": s.shot_index,
                 "action_directive": s.action,
-                "image_prompt": s.action,
+                "image_prompt": enriched_image_prompt,
                 "duration_seconds": s.duration_seconds,
                 "location": s.location,
                 "style_lighting": s.style_lighting,
