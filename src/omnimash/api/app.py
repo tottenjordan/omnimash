@@ -618,7 +618,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
                 const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
                 const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
-                const block3 = `### VISUAL ACTION & CAMERA\n- Shot Number: ${card.shot_index}\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
+                const block3 = `### VISUAL ACTION & CAMERA\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
                 const block4 = `### TIMELINE & DIALOGUE\n- ${dialogueStr}`;
 
                 return `${block1}\n\n${block2}\n\n${block3}\n\n${block4}`;
@@ -641,7 +641,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     dialogue_text: "Taste the magic.",
                     keyframe_image_url: "",
                     video_url: "",
-                    cumulative_state: ["Snape is blindfolded"]
+                    cumulative_state: []
                 }
             ]);
             const [j3KeyframeLoadingMap, setJ3KeyframeLoadingMap] = useState({});
@@ -842,7 +842,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                     ? {
                                         ...c,
                                         video_url: data.video_url,
-                                        cumulative_state: data.cumulative_state || c.cumulative_state || (shotIdx > 1 ? ["Snape is blindfolded"] : [])
+                                        cumulative_state: data.cumulative_state || c.cumulative_state || (shotIdx > 1 ? ["Prior action completed"] : [])
                                       }
                                     : c
                             )

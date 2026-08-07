@@ -2356,7 +2356,6 @@ def compile_journey3_shot_prompt(
     block2 = f"### CUMULATIVE SHOT STATE\n{state_str}"
     block3 = (
         f"### VISUAL ACTION & CAMERA\n"
-        f"- Shot Number: {shot_number}\n"
         f"- Action Directive: {action_str}\n"
         f"- Aspect Ratio: {aspect_ratio}"
     )
