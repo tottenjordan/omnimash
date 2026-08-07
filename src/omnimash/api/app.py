@@ -590,10 +590,35 @@ UI_HTML = r"""<!DOCTYPE html>
             // Tab 3: Journey 3 Multi-Shot Continuity Studio State
             const [activeTab, setActiveTab] = useState("journey3");
             const [j3MasterDescription, setJ3MasterDescription] = useState("Cyberpunk wizard battle in Tokyo street");
-            const [j3CharRef, setJ3CharRef] = useState("https://storage.googleapis.com/test/char1.jpg");
-            const [j3ProductRef, setJ3ProductRef] = useState("https://storage.googleapis.com/test/prod1.jpg");
-            const [j3StyleRef, setJ3StyleRef] = useState("https://storage.googleapis.com/test/style1.jpg");
+            const [j3CharRef, setJ3CharRef] = useState("");
+            const [j3ProductRef, setJ3ProductRef] = useState("");
+            const [j3StyleRef, setJ3StyleRef] = useState("");
             const [j3StylePreset, setJ3StylePreset] = useState("Gritty 90s Cyberpunk");
+            const [lightboxImageUrl, setLightboxImageUrl] = useState(null);
+
+            const compileJourney3ShotPromptPreview = (card, idx) => {
+                const rosterLines = (characters || []).map((c, i) => {
+                    const refStr = c.reference_url ? ` (@Image${i + 1})` : "";
+                    const tags = (c.aesthetic_tags || []).length > 0 ? `, Wardrobe: ${c.aesthetic_tags.join(", ")}` : "";
+                    const voice = c.voice_profile ? `, Voice: ${c.voice_profile}` : "";
+                    const narrator = c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator]" : "";
+                    return `- ${c.role_id} (${c.name || "Character"}${refStr}): ${c.description || "Visual profile"}${tags}${voice}${narrator}`;
+                }).join("\n") || "None.";
+
+                const stateLines = (card.cumulative_state || []).length > 0
+                    ? card.cumulative_state.map(st => `- ${st}`).join("\n")
+                    : "Initial scene baseline.";
+
+                const actionStr = card.action_directive || `Action sequence for Shot #${card.shot_index}`;
+                const dialogueStr = card.dialogue_text ? `Spoken Quote: "${card.dialogue_text}"` : "None (Ambient soundscape).";
+
+                const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
+                const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
+                const block3 = `### VISUAL ACTION & CAMERA\n- Shot Number: ${card.shot_index}\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
+                const block4 = `### TIMELINE & DIALOGUE\n- ${dialogueStr}`;
+
+                return `${block1}\n\n${block2}\n\n${block3}\n\n${block4}`;
+            };
             const [j3SetupLoading, setJ3SetupLoading] = useState(false);
             const [j3ShotCards, setJ3ShotCards] = useState([
                 {
@@ -5305,7 +5330,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
                                     <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
                                         <span>💡</span>
-                                        <span>Step 1: Concept &amp; Reference Uploaders</span>
+                                        <span>Step 1: Master Concept &amp; Character Roles Manager</span>
                                     </h3>
 
                                     <div className="space-y-4">
@@ -5316,84 +5341,271 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                 onChange={(e) => setJ3MasterDescription(e.target.value)}
                                                 rows={3}
                                                 placeholder="Describe the multi-shot continuous scene..."
-                                                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 font-mono"
                                             />
                                         </div>
 
-                                        {/* 👥 Character Roles & Character Vault Widget */}
-                                        <div className="bg-gray-950/90 border border-purple-900/50 rounded-xl p-4 space-y-3">
-                                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800 pb-2.5">
-                                                <label className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
-                                                    <span>👥</span>
-                                                    <span>Character Roles &amp; Character Vault (Gemini Omni Image Roles)</span>
-                                                </label>
-                                                <button
-                                                    type="button"
-                                                    onClick={addJ3CharacterRole}
-                                                    className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow"
-                                                >
-                                                    <span>+ Add Character Role</span>
-                                                </button>
+                                        {/* 👥 Full-Featured Character Roles & Character Vault Widget */}
+                                        <div className="bg-gray-950/90 border border-purple-900/50 rounded-xl p-4 space-y-4">
+                                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-3">
+                                                <div>
+                                                    <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                                        <span>👥</span>
+                                                        <span>Character Roles &amp; Character Vault (Gemini Omni Image Roles)</span>
+                                                    </h3>
+                                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                                        Define character roles with visual descriptions, voice style profiles, off-screen narrator flags, and attached reference images.
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSaveSessionRoster}
+                                                        className="bg-gray-900 hover:bg-gray-800 text-purple-300 hover:text-purple-200 border border-purple-900/60 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                        title="Save current cast roster to session"
+                                                    >
+                                                        <span>💾</span>
+                                                        <span>Save Cast</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleLoadSessionRoster}
+                                                        className="bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                        title="Restore saved cast roster for this session"
+                                                    >
+                                                        <span>📂</span>
+                                                        <span>Restore Cast</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={addCharacterRole}
+                                                        className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                                    >
+                                                        <span>+ Add Character Role</span>
+                                                    </button>
+                                                </div>
                                             </div>
 
-                                            {/* Vault Presets Chips */}
-                                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                                <span className="text-[11px] text-gray-400 font-medium">🏛️ Character Vault Presets:</span>
-                                                {savedVaultCharacters.slice(0, 10).map((c, idx) => (
-                                                    <button
-                                                        key={idx}
-                                                        type="button"
-                                                        onClick={() => handleLoadJ3VaultCharacter(c)}
-                                                        className="bg-gray-900 hover:bg-purple-950 border border-gray-800 hover:border-purple-600 text-gray-300 hover:text-purple-200 text-[11px] font-medium px-2.5 py-1 rounded-full transition"
-                                                    >
-                                                        + {c.name || c.role_id}
-                                                    </button>
-                                                ))}
+                                            {/* 🏛️ Character Vault & Saved Library */}
+                                            <div className="bg-gray-900/90 border border-purple-900/50 rounded-xl p-3.5 space-y-2.5">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                                                        <span>🏛️</span>
+                                                        <span>Character Vault &amp; Saved Library</span>
+                                                    </label>
+                                                    <span className="text-[10px] text-gray-400 font-mono">
+                                                        {savedVaultCharacters.length} Preset(s) Available
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {savedVaultCharacters.map((c, vIdx) => {
+                                                        const chipText = c.name || c.role_id || `Preset ${vIdx + 1}`;
+                                                        return (
+                                                            <button
+                                                                key={vIdx}
+                                                                type="button"
+                                                                onClick={() => handleLoadVaultCharacter(c)}
+                                                                className="bg-purple-950/70 hover:bg-purple-900 text-purple-200 border border-purple-800/80 hover:border-purple-500 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                                                                title={`Click to load ${c.name || c.role_id} into roster`}
+                                                            >
+                                                                {c.reference_url && (
+                                                                    <img
+                                                                        src={getDisplayableRefUrl(c.reference_url)}
+                                                                        alt={c.name || "Preset"}
+                                                                        className="w-4 h-4 rounded-full object-cover border border-purple-400/50"
+                                                                    />
+                                                                )}
+                                                                <span>+</span>
+                                                                <span>{chipText}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
 
                                             {/* Dynamic Character Cards */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                                                {j3Characters.map((char, cIdx) => (
-                                                    <div key={cIdx} className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
-                                                        <div className="flex items-center justify-between border-b border-gray-800 pb-1.5">
-                                                            <span className="text-xs font-bold text-purple-300">{char.role_id} - {char.name || "Character"}</span>
-                                                            {j3Characters.length > 1 && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {characters.map((char, idx) => (
+                                                    <div key={idx} className="bg-gray-900 border border-gray-800/90 rounded-xl p-4 space-y-3 relative group">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-bold font-mono bg-pink-950 text-pink-300 px-2.5 py-1 rounded border border-pink-800/80">
+                                                                {char.role_id}
+                                                            </span>
+                                                            <div className="flex items-center space-x-2">
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => removeJ3CharacterRole(cIdx)}
-                                                                    className="text-red-400 hover:text-red-300 bg-red-950/60 border border-red-800/60 rounded px-2 py-0.5 text-[10px] font-bold transition"
+                                                                    onClick={() => handleSaveCharacterToVault(char)}
+                                                                    className="bg-gray-950 hover:bg-purple-950 text-purple-300 hover:text-purple-200 border border-purple-900/60 hover:border-purple-700 text-xs px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 shadow-sm font-medium"
+                                                                    title="Save character to vault library"
                                                                 >
-                                                                    🗑️ Remove Character
+                                                                    <span>💾</span>
+                                                                    <span>Save to Vault</span>
                                                                 </button>
-                                                            )}
+                                                                {characters.length > 1 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeCharacter(idx)}
+                                                                        className="text-gray-500 hover:text-red-400 text-xs px-2 py-1 transition"
+                                                                        title="Remove Character Role"
+                                                                    >
+                                                                        🗑️ Remove
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                        <div className="space-y-1.5">
+                                                        <div>
+                                                            <label className="block text-[11px] text-gray-400 mb-1">Character Name</label>
                                                             <input
                                                                 type="text"
                                                                 value={char.name || ""}
-                                                                onChange={(e) => updateJ3Character(cIdx, "name", e.target.value)}
-                                                                placeholder="Character Name"
-                                                                className="w-full bg-gray-950 border border-gray-800 rounded p-1.5 text-xs text-white"
+                                                                onChange={(e) => updateCharacter(idx, "name", e.target.value)}
+                                                                placeholder="e.g. Harry"
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-medium"
                                                             />
-                                                            <div className="flex items-center gap-1.5">
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[11px] text-gray-400 mb-1">Visual Likeness &amp; Description</label>
+                                                            <textarea
+                                                                rows={2}
+                                                                value={char.description || ""}
+                                                                onChange={(e) => updateCharacter(idx, "description", e.target.value)}
+                                                                placeholder="Visual description for prompt compiler..."
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                            />
+                                                        </div>
+
+                                                        {/* Wardrobe & Aesthetic Style Signifiers Tag Manager */}
+                                                        <div>
+                                                            <label className="block text-[11px] font-bold text-pink-400 uppercase tracking-wider mb-1">
+                                                                👔 Wardrobe &amp; Aesthetic Style Signifiers
+                                                            </label>
+                                                            <div className="flex flex-wrap gap-1.5 mb-2">
+                                                                {(char.aesthetic_tags || []).map((tag, tIdx) => (
+                                                                    <span
+                                                                        key={tIdx}
+                                                                        className="bg-purple-950/70 border border-purple-800/80 text-purple-200 text-xs px-2.5 py-0.5 rounded-lg flex items-center gap-1.5"
+                                                                    >
+                                                                        <span>{tag}</span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => removeCharAestheticTag(idx, tag)}
+                                                                            className="text-purple-400 hover:text-white font-bold text-xs"
+                                                                            title="Remove Style Tag"
+                                                                        >
+                                                                            ×
+                                                                        </button>
+                                                                    </span>
+                                                                ))}
+                                                                {(!char.aesthetic_tags || char.aesthetic_tags.length === 0) && (
+                                                                    <span className="text-[10px] text-gray-500 italic">No specific character style tags</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex gap-1.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={charTagInputs[idx] || ""}
+                                                                    onChange={(e) => setCharTagInputs({ ...charTagInputs, [idx]: e.target.value })}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === "Enter") {
+                                                                            e.preventDefault();
+                                                                            addCharAestheticTag(idx);
+                                                                        }
+                                                                    }}
+                                                                    placeholder="e.g. Red Gucci Tracksuit, Cartier Glasses..."
+                                                                    className="flex-1 bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => addCharAestheticTag(idx)}
+                                                                    className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs px-3 py-1.5 rounded-lg shadow transition"
+                                                                >
+                                                                    + Add Style
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[11px] text-gray-400 mb-1">
+                                                                🎙️ Voice Profile / Vocal Style
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={char.voice_profile || ""}
+                                                                onChange={(e) => updateCharacter(idx, "voice_profile", e.target.value)}
+                                                                placeholder="e.g. Deep raspy baritone voice with fast rap cadence..."
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                            />
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                                            <div>
+                                                                <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-1">
+                                                                    🖼️ Gemini Image Role
+                                                                </label>
+                                                                <select
+                                                                    value={char.image_role || "Character Reference"}
+                                                                    onChange={(e) => updateCharacter(idx, "image_role", e.target.value)}
+                                                                    className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                >
+                                                                    <option value="Character Reference">Character Reference</option>
+                                                                    <option value="Product Reference">Product Reference</option>
+                                                                    <option value="Starting Frame">Starting Frame</option>
+                                                                    <option value="Style Reference">Style Reference</option>
+                                                                </select>
+                                                            </div>
+                                                            <div className="flex items-end pb-1">
+                                                                <label className="flex items-center space-x-2 cursor-pointer text-[11px] text-gray-300 bg-gray-950 border border-gray-800 hover:border-amber-500/50 p-2 rounded-lg w-full transition">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={!!char.is_offscreen_narrator}
+                                                                        onChange={(e) => updateCharacter(idx, "is_offscreen_narrator", e.target.checked)}
+                                                                        className="rounded border-gray-700 text-amber-500 focus:ring-amber-500 bg-gray-950 w-4 h-4"
+                                                                    />
+                                                                    <span className="font-bold text-amber-300">🎙️ Off-Screen Narrator</span>
+                                                                </label>
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[11px] text-gray-400 mb-1">
+                                                                🖼️ Reference Image URL <span className="text-purple-400 text-[10px]">(Gemini Omni Image Role)</span>
+                                                            </label>
+                                                            <div className="flex items-center gap-2">
                                                                 <input
                                                                     type="text"
                                                                     value={char.reference_url || ""}
-                                                                    onChange={(e) => updateJ3Character(cIdx, "reference_url", e.target.value)}
-                                                                    placeholder="Reference Image URL (@Image1, @Image2)"
-                                                                    className="w-full bg-gray-950 border border-gray-800 rounded p-1.5 text-xs font-mono text-purple-200"
+                                                                    onChange={(e) => updateCharacter(idx, "reference_url", e.target.value)}
+                                                                    placeholder="https://example.com/character_reference.jpg"
+                                                                    className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                                 />
                                                                 {char.reference_url && (
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => updateJ3Character(cIdx, "reference_url", "")}
-                                                                        className="text-gray-400 hover:text-red-300 text-xs font-bold px-1.5"
-                                                                        title="Clear Image Reference"
+                                                                        onClick={() => updateCharacter(idx, "reference_url", "")}
+                                                                        className="text-gray-400 hover:text-red-400 font-bold text-xs px-2"
+                                                                        title="Clear Reference URL"
                                                                     >
                                                                         ✕
                                                                     </button>
                                                                 )}
                                                             </div>
+                                                            {char.reference_url && (
+                                                                <div
+                                                                    onClick={() => setLightboxImageUrl(getDisplayableRefUrl(char.reference_url))}
+                                                                    className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2 mt-2 cursor-pointer hover:border-amber-400 transition group"
+                                                                >
+                                                                    <img
+                                                                        src={getDisplayableRefUrl(char.reference_url)}
+                                                                        alt={char.name || "Reference"}
+                                                                        className="w-12 h-12 object-cover rounded-md border border-purple-500/50"
+                                                                    />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <span className="text-xs font-bold text-purple-200 block truncate">{char.name || "Ref Preview"}</span>
+                                                                        <span className="text-[10px] text-gray-400 block truncate">{char.reference_url}</span>
+                                                                    </div>
+                                                                    <span className="text-[10px] text-amber-300 font-bold opacity-0 group-hover:opacity-100 transition">🔍 Enlarge</span>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 ))}
@@ -5407,7 +5619,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     type="text"
                                                     value={j3ProductRef}
                                                     onChange={(e) => setJ3ProductRef(e.target.value)}
-                                                    placeholder="URL or GCS path for prop/product"
+                                                    placeholder="URL or GCS path for prop/product (starts empty)"
                                                     className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs font-mono text-teal-200"
                                                 />
                                             </div>
@@ -5417,7 +5629,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     type="text"
                                                     value={j3StyleRef}
                                                     onChange={(e) => setJ3StyleRef(e.target.value)}
-                                                    placeholder="URL or GCS path for style/environment"
+                                                    placeholder="URL or GCS path for style/environment (starts empty)"
                                                     className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs font-mono text-pink-200"
                                                 />
                                             </div>
@@ -5552,6 +5764,36 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     </div>
                                                 </div>
 
+                                                {/* Storyboard Keyframe Photo Card (Prominent & Click to Enlarge) */}
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-amber-300 block flex items-center justify-between">
+                                                        <span>🖼️ Storyboard Keyframe Visual Anchor:</span>
+                                                        {card.keyframe_image_url && <span className="text-[10px] text-gray-400 font-normal">(Click photo to enlarge 🔍)</span>}
+                                                    </label>
+                                                    {card.keyframe_image_url ? (
+                                                        <div
+                                                            onClick={() => setLightboxImageUrl(getDisplayableRefUrl(card.keyframe_image_url))}
+                                                            className="cursor-pointer group relative overflow-hidden rounded-xl border border-purple-800/80 shadow-lg hover:border-amber-400 transition"
+                                                        >
+                                                            <img
+                                                                src={getDisplayableRefUrl(card.keyframe_image_url)}
+                                                                alt={`Keyframe Shot #${card.shot_index}`}
+                                                                className="w-full h-56 object-cover group-hover:scale-105 transition duration-300"
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                                                <span className="bg-black/80 text-white font-bold text-xs py-1.5 px-3 rounded-full border border-white/30 flex items-center gap-1.5">
+                                                                    <span>🔍</span> Click to Enlarge
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-full h-36 bg-gray-900 border border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center text-xs text-gray-500 gap-1">
+                                                            <span>🖼️ No Keyframe Image Generated Yet</span>
+                                                            <span className="text-[10px] text-gray-600">Click "Re-Generate Keyframe" below to render frame</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
                                                 <div>
                                                     <label className="text-xs font-bold text-gray-300 block mb-1">Editable Keyframe Image Prompt Textarea:</label>
                                                     <textarea
@@ -5567,15 +5809,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     />
                                                 </div>
 
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="flex items-center gap-2">
-                                                        {card.keyframe_image_url ? (
-                                                            <img src={getDisplayableRefUrl(card.keyframe_image_url)} alt="Keyframe Preview" className="w-16 h-12 object-cover rounded-lg border border-gray-700" />
-                                                        ) : (
-                                                            <div className="w-16 h-12 bg-gray-900 border border-dashed border-gray-800 rounded-lg flex items-center justify-center text-[10px] text-gray-500">No Frame</div>
-                                                        )}
-                                                        <span className="text-[11px] text-gray-400">Keyframe Preview</span>
-                                                    </div>
+                                                <div className="flex justify-end pt-1">
                                                     <button
                                                         type="button"
                                                         disabled={j3KeyframeLoadingMap[card.shot_index]}
@@ -5618,6 +5852,25 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                             className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white"
                                                         />
                                                     </div>
+                                                </div>
+
+                                                {/* Live Final Video Generation Prompt Inspector Widget */}
+                                                <div className="bg-gray-900 border border-purple-900/50 rounded-xl p-3.5 space-y-2 pt-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-xs font-bold text-pink-300 uppercase tracking-wider flex items-center gap-2">
+                                                            <span>📝</span>
+                                                            <span>Final Video Generation Prompt (Live 4-Block Compiler)</span>
+                                                        </label>
+                                                        <span className="text-[10px] bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800 font-mono">
+                                                            Live Payload Output
+                                                        </span>
+                                                    </div>
+                                                    <textarea
+                                                        readOnly
+                                                        rows={7}
+                                                        value={compileJourney3ShotPromptPreview(card, idx)}
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-[11px] font-mono text-purple-200 focus:outline-none"
+                                                    />
                                                 </div>
 
                                                 {/* STEP 3 WITHIN SHOT CARD OR SECTION */}
@@ -5697,7 +5950,28 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                     </div>
                                 </div>
                             </div>
-                        )}
+                    {/* Fullscreen Lightbox Modal */}
+                    {lightboxImageUrl && (
+                        <div
+                            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+                            onClick={() => setLightboxImageUrl(null)}
+                        >
+                            <div className="relative max-w-5xl max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                    type="button"
+                                    onClick={() => setLightboxImageUrl(null)}
+                                    className="absolute -top-10 right-0 text-white hover:text-red-400 text-sm font-bold bg-gray-900 border border-gray-700 px-3 py-1 rounded-full transition shadow-lg"
+                                >
+                                    ✕ Close Fullscreen
+                                </button>
+                                <img
+                                    src={lightboxImageUrl}
+                                    alt="Enlarged Visual Preview"
+                                    className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-gray-700 shadow-2xl"
+                                />
+                            </div>
+                        </div>
+                    )}
                     </main>
                 </div>
             );
