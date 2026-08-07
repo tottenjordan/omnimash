@@ -1264,5 +1264,22 @@ def test_compile_storyboard_with_title_card_and_narrator_widgets():
     assert 'Narrator (Voiceover): "The potion begins to glow."' in compiled
 
 
+def test_compile_storyboard_with_aspect_ratio():
+    compiler = PromptCompiler()
+    chars = [CharacterRole(role_id="Role A", name="Harry", description="Wizard")]
+    scenes = [SceneDirective(scene_number=1, active_roles=["Role A"], action="Cooking")]
+
+    for ratio in ["16:9", "9:16", "1:1", "21:9"]:
+        compiled = compiler.compile_storyboard(
+            concept="Aspect Ratio Test",
+            characters=chars,
+            scenes=scenes,
+            aspect_ratio=ratio,
+        )
+        assert "### SCENE INSTRUCTIONS" in compiled
+        assert f"- Aspect Ratio: {ratio}" in compiled
+
+
+
 
 

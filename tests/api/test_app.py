@@ -1,5 +1,11 @@
 from fastapi.testclient import TestClient
-from omnimash.api.app import UI_HTML, create_app
+from omnimash.api.app import (
+    UI_HTML,
+    GenerateRequest,
+    GenerateShotRequest,
+    StitchMasterRequest,
+    create_app,
+)
 
 
 def test_api_generate_endpoint():
@@ -687,6 +693,31 @@ def test_ui_html_contains_simplified_3step_storyboard_workflow():
     assert "Narrator Voiceover" in UI_HTML
     assert "Stitch Master 30–60s Video (With Title Cards & Voiceover)" in UI_HTML
     assert "/api/storyboard/stitch_master" in UI_HTML
+
+
+def test_api_aspect_ratio_request_models_and_endpoints():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    gen_req = GenerateRequest(prompt="Test", aspect_ratio="9:16")
+    assert gen_req.aspect_ratio == "9:16"
+
+    shot_req = GenerateShotRequest(shot_directive="Test", aspect_ratio="1:1")
+    assert shot_req.aspect_ratio == "1:1"
+
+    stitch_req = StitchMasterRequest(session_id="test", aspect_ratio="21:9")
+    assert stitch_req.aspect_ratio == "21:9"
+
+    res_gen = client.post("/api/generate", json={"prompt": "Aspect Test", "aspect_ratio": "9:16"})
+    assert res_gen.status_code == 200
+
+    res_shot = client.post("/api/generate-shot", json={"shot_directive": "Shot aspect test", "aspect_ratio": "1:1"})
+    assert res_shot.status_code == 200
+
+    res_stitch = client.post("/api/storyboard/stitch_master", json={"session_id": "test_s", "aspect_ratio": "21:9"})
+    assert res_stitch.status_code == 200
+    assert res_stitch.json()["status"] == "ok"
+
 
 
 

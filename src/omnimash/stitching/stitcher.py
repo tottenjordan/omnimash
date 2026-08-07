@@ -220,6 +220,7 @@ class VideoStitcher:
         duration_seconds: float = 3.0,
         style: str = "gothic_gold",
         output_dir: str = "/tmp",
+        aspect_ratio: str = "16:9",
     ) -> str:
         os.makedirs(output_dir, exist_ok=True)
         clip_filename = f"title_card_{uuid.uuid4().hex[:8]}.mp4"
@@ -238,6 +239,14 @@ class VideoStitcher:
 
         img_path = os.path.join(output_dir, f"title_card_{uuid.uuid4().hex[:8]}.png")
 
+        aspect_map = {
+            "16:9": (1280, 720),
+            "9:16": (720, 1280),
+            "1:1": (1080, 1080),
+            "21:9": (1680, 720),
+        }
+        width, height = aspect_map.get(aspect_ratio, (1280, 720))
+
         try:
             if style == "neon_cyber":
                 bg_color = (10, 10, 20)
@@ -252,7 +261,7 @@ class VideoStitcher:
                 title_color = (255, 255, 255)
                 subtitle_color = (180, 180, 180)
 
-            img = Image.new("RGB", (1280, 720), color=bg_color)
+            img = Image.new("RGB", (width, height), color=bg_color)
             draw = ImageDraw.Draw(img)
 
             try:
@@ -276,14 +285,14 @@ class VideoStitcher:
                 s_h = s_bbox[3] - s_bbox[1]
                 spacing = 20
                 total_h = t_h + spacing + s_h
-                t_y = (720 - total_h) / 2
+                t_y = (height - total_h) / 2
                 s_y = t_y + t_h + spacing
 
-                draw.text(((1280 - t_w) / 2, t_y), title_text, fill=title_color, font=title_font)
-                draw.text(((1280 - s_w) / 2, s_y), subtitle_text, fill=subtitle_color, font=subtitle_font)
+                draw.text(((width - t_w) / 2, t_y), title_text, fill=title_color, font=title_font)
+                draw.text(((width - s_w) / 2, s_y), subtitle_text, fill=subtitle_color, font=subtitle_font)
             else:
-                t_y = (720 - t_h) / 2
-                draw.text(((1280 - t_w) / 2, t_y), title_text, fill=title_color, font=title_font)
+                t_y = (height - t_h) / 2
+                draw.text(((width - t_w) / 2, t_y), title_text, fill=title_color, font=title_font)
 
             img.save(img_path)
 
@@ -301,7 +310,7 @@ class VideoStitcher:
                 "-pix_fmt",
                 "yuv420p",
                 "-vf",
-                "scale=1280:720",
+                f"scale={width}:{height}",
                 "-r",
                 "30",
                 out_path,
@@ -332,6 +341,7 @@ class VideoStitcher:
         background_music_path: str | None = None,
         output_dir: str = "/tmp",
         session_id: str | None = None,
+        aspect_ratio: str = "16:9",
     ) -> str:
         ordered_clips = list(shot_clips)
 
@@ -354,6 +364,7 @@ class VideoStitcher:
                     duration_seconds=float(duration),
                     style=style,
                     output_dir=output_dir,
+                    aspect_ratio=aspect_ratio,
                 )
                 idx = max(0, min(int(insert_at), len(ordered_clips)))
                 ordered_clips.insert(idx, card_clip_path)

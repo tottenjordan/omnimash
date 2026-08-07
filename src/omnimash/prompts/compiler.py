@@ -1542,6 +1542,7 @@ class PromptCompiler:
         has_keyframe_seed: bool = False,
         keyframe_image_url: str | None = None,
         enable_sanitization: bool = True,
+        aspect_ratio: str = "16:9",
     ) -> str:
         start_idx = 2 if (has_keyframe_seed or keyframe_image_url) else 1
         sources_items, references_items, char_tag_map = build_character_image_ref_tags(
@@ -1604,6 +1605,8 @@ class PromptCompiler:
         scene_inst_parts.append(
             "Camera & Lighting: In a single continuous shot. No scene cuts."
         )
+        if aspect_ratio and aspect_ratio.strip():
+            scene_inst_parts.append(f"- Aspect Ratio: {aspect_ratio.strip()}")
 
         has_dialogue = False
         for scene in scenes:
@@ -1899,6 +1902,7 @@ class PromptCompiler:
         keyframe_image_url: str | None = None,
         edit_instruction: str | None = None,
         enable_sanitization: bool = True,
+        aspect_ratio: str = "16:9",
     ) -> str:
         base_prompt = self.compile_multi_role_prompt(
             concept=concept,
@@ -1911,6 +1915,7 @@ class PromptCompiler:
             has_keyframe_seed=has_keyframe_seed,
             keyframe_image_url=keyframe_image_url,
             enable_sanitization=enable_sanitization,
+            aspect_ratio=aspect_ratio,
         )
         if edit_instruction and edit_instruction.strip():
             clean_instruction = edit_instruction.strip()

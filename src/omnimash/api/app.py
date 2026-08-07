@@ -111,6 +111,7 @@ class GenerateRequest(BaseModel):
     optimize_prompt: bool = False
     shot_directive: str | None = None
     enable_safety_sanitization: bool = True
+    aspect_ratio: str = "16:9"
 
 
 class DiffRequest(GenerateRequest):
@@ -216,6 +217,7 @@ class KeyframeImageRequest(BaseModel):
     characters: list[CharacterRoleModel | dict] | None = None
     reference_image_urls: list[str] | None = None
     anchor_keyframe_url: str | None = None
+    aspect_ratio: str = "16:9"
 
 
 class KeyframeImageResponse(BaseModel):
@@ -242,6 +244,7 @@ class GenerateShotRequest(BaseModel):
     title_card_text: str | None = None
     title_card_subtitle: str | None = None
     narrator_text: str | None = None
+    aspect_ratio: str = "16:9"
 
 
 class GenerateShotResponse(BaseModel):
@@ -267,6 +270,7 @@ class StitchMasterRequest(BaseModel):
     title_cards: list[dict[str, Any]] | None = None
     narrator_audio_paths: list[str] | None = None
     background_music_path: str | None = None
+    aspect_ratio: str = "16:9"
 
 
 class SaveFinalResponse(BaseModel):
@@ -443,6 +447,7 @@ UI_HTML = r"""<!DOCTYPE html>
             ]);
             const [copied, setCopied] = useState(false);
             const [enableSafetySanitization, setEnableSafetySanitization] = useState(true);
+            const [aspectRatio, setAspectRatio] = useState("16:9");
 
             // Act 3: The Screening Room & Branching State
             const [currentVideo, setCurrentVideo] = useState("");
@@ -604,7 +609,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             style_tone: stageStyleTone,
                             target_duration: parseFloat(stageTargetDuration) || 30.0,
                             characters: characters,
-                            screenplay_script: screenplayScript
+                            screenplay_script: screenplayScript,
+                            aspect_ratio: aspectRatio
                         })
                     });
                     const data = await res.json();
@@ -645,7 +651,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             style_lighting: shot.style_lighting || stageStyleTone,
                             summary: shot.summary || "",
                             characters: characters,
-                            anchor_keyframe_url: anchorUrl
+                            anchor_keyframe_url: anchorUrl,
+                            aspect_ratio: aspectRatio
                         })
                     });
                     const data = await res.json();
@@ -694,7 +701,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             duration_seconds: parseFloat(shot.duration_seconds) || 10.0,
                             parent_turn_id: parentTurnId,
                             audio_stem: shot.audio || null,
-                            enable_safety_sanitization: enableSafetySanitization
+                            enable_safety_sanitization: enableSafetySanitization,
+                            aspect_ratio: aspectRatio
                         })
                     });
                     const data = await res.json();
@@ -741,7 +749,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             parent_turn_id: shot.turn_id || null,
                             clip_index: idx,
                             session_name: sessionName,
-                            enable_safety_sanitization: enableSafetySanitization
+                            enable_safety_sanitization: enableSafetySanitization,
+                            aspect_ratio: aspectRatio
                         })
                     });
                     const data = await res.json();
@@ -1156,7 +1165,8 @@ UI_HTML = r"""<!DOCTYPE html>
                         environment_tag: environmentTag,
                         audio_stem: audioBeat,
                         vocal_delivery: vocalDelivery,
-                        enable_safety_sanitization: enableSafetySanitization
+                        enable_safety_sanitization: enableSafetySanitization,
+                        aspect_ratio: aspectRatio
                     };
                     const endpoint = shotTurnId ? "/api/diff" : "/api/generate";
                     const res = await fetch(endpoint, {
@@ -1349,6 +1359,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         title_cards: titleCards,
                         narrator_audio_paths: narratorAudioPaths,
                         background_music_path: masterAudioUrl || null,
+                        aspect_ratio: aspectRatio
                     };
 
                     const res = await fetch("/api/storyboard/stitch_master", {
@@ -1808,7 +1819,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
                                 }`}
                             >
-                                <span>💡 Step 1: Visual Concept &amp; Characters</span>
+                                <span>💡 Step 1: Visual Concept & Characters</span>
                                 {activeStage > 1 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                             </button>
                             <span className="text-gray-700 font-bold">➔</span>
@@ -1832,7 +1843,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
                                 }`}
                             >
-                                <span>🎬 Step 3: Render &amp; Stitch Master Video</span>
+                                <span>🎬 Step 3: Render & Stitch Master Video</span>
                                 {activeStage > 3 && <span className="text-[10px] bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
                             </button>
                             <span className="text-gray-700 font-bold">➔</span>
@@ -1899,15 +1910,30 @@ UI_HTML = r"""<!DOCTYPE html>
                                             Set character likeness, outfits, voice styles, and global parody environment once. Shared across all 10s video clips.
                                         </p>
                                     </div>
-                                    <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none">
-                                        <span>🛡️ Safety Sanitization</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={enableSafetySanitization}
-                                            onChange={(e) => setEnableSafetySanitization(e.target.checked)}
-                                            className="w-4 h-4 accent-purple-600 rounded cursor-pointer"
-                                        />
-                                    </label>
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
+                                            <span className="text-gray-300">📐 Aspect Ratio</span>
+                                            <select
+                                                value={aspectRatio}
+                                                onChange={(e) => setAspectRatio(e.target.value)}
+                                                className="bg-gray-900 text-purple-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-purple-500 cursor-pointer"
+                                            >
+                                                <option value="16:9">16:9 Widescreen</option>
+                                                <option value="9:16">9:16 Portrait / Shorts</option>
+                                                <option value="1:1">1:1 Square / Instagram</option>
+                                                <option value="21:9">21:9 Ultrawide</option>
+                                            </select>
+                                        </div>
+                                        <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none">
+                                            <span>🛡️ Safety Sanitization</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={enableSafetySanitization}
+                                                onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                                className="w-4 h-4 accent-purple-600 rounded cursor-pointer"
+                                            />
+                                        </label>
+                                    </div>
                                 </div>
 
                                 {/* 1. Visual Concept / Parody Prompt & Example Chips */}
@@ -2385,15 +2411,30 @@ UI_HTML = r"""<!DOCTYPE html>
                                             Direct individual 10-second video shots using Guided Mode or Screenplay Scripting.
                                         </p>
                                     </div>
-                                    <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-pink-500 transition select-none">
-                                        <span>🛡️ Safety Sanitization</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={enableSafetySanitization}
-                                            onChange={(e) => setEnableSafetySanitization(e.target.checked)}
-                                            className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
-                                        />
-                                    </label>
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-pink-500 transition select-none shadow-inner">
+                                            <span className="text-gray-300">📐 Aspect Ratio</span>
+                                            <select
+                                                value={aspectRatio}
+                                                onChange={(e) => setAspectRatio(e.target.value)}
+                                                className="bg-gray-900 text-pink-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-pink-500 cursor-pointer"
+                                            >
+                                                <option value="16:9">16:9 Widescreen</option>
+                                                <option value="9:16">9:16 Portrait / Shorts</option>
+                                                <option value="1:1">1:1 Square / Instagram</option>
+                                                <option value="21:9">21:9 Ultrawide</option>
+                                            </select>
+                                        </div>
+                                        <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-pink-500 transition select-none">
+                                            <span>🛡️ Safety Sanitization</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={enableSafetySanitization}
+                                                onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                                className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
+                                            />
+                                        </label>
+                                    </div>
                                 </div>
                                     <details className="mt-2 bg-gray-900/80 border border-gray-800 rounded-xl p-3 text-xs text-gray-300">
                                         <summary className="font-bold text-purple-400 cursor-pointer flex items-center gap-1.5 select-none">
@@ -2653,13 +2694,26 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <div>
                                                     <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
                                                         <span>💡</span>
-                                                        <span>Step 1: Visual Concept &amp; Characters</span>
+                                                        <span>Step 1: Visual Concept & Characters</span>
                                                     </h2>
                                                     <p className="text-xs text-gray-400 mt-1">
                                                         Open-ended NLP input, reference images, auto-generate N shots. Define your overall 30–60s video concept, select style &amp; tone presets, and upload reference image and audio assets.
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-3">
+                                                    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-amber-500 transition select-none shadow-inner">
+                                                        <span className="text-gray-300">📐 Aspect Ratio</span>
+                                                        <select
+                                                            value={aspectRatio}
+                                                            onChange={(e) => setAspectRatio(e.target.value)}
+                                                            className="bg-gray-900 text-amber-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
+                                                        >
+                                                            <option value="16:9">16:9 Widescreen</option>
+                                                            <option value="9:16">9:16 Portrait / Shorts</option>
+                                                            <option value="1:1">1:1 Square / Instagram</option>
+                                                            <option value="21:9">21:9 Ultrawide</option>
+                                                        </select>
+                                                    </div>
                                                     <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-amber-500 transition select-none shadow-inner">
                                                         <span>🛡️ Safety Sanitization</span>
                                                         <input
@@ -3155,6 +3209,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
+                                            <span className="text-gray-300">📐 Aspect Ratio</span>
+                                            <select
+                                                value={aspectRatio}
+                                                onChange={(e) => setAspectRatio(e.target.value)}
+                                                className="bg-gray-900 text-purple-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-purple-500 cursor-pointer"
+                                            >
+                                                <option value="16:9">16:9 Widescreen</option>
+                                                <option value="9:16">9:16 Portrait / Shorts</option>
+                                                <option value="1:1">1:1 Square / Instagram</option>
+                                                <option value="21:9">21:9 Ultrawide</option>
+                                            </select>
+                                        </div>
                                         <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
                                             <span>🛡️ Safety Sanitization</span>
                                             <input
@@ -3390,7 +3457,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             </div>
 
                                                             {/* 16:9 Large Keyframe Preview Container */}
-                                                            <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group shadow-inner">
+                                                            <div className={`${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group shadow-inner`}>
                                                                 {shot.keyframe_image_url ? (
                                                                     <img
                                                                         src={getDisplayableRefUrl(shot.keyframe_image_url)}
@@ -3757,7 +3824,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                                 </div>
 
                                                                 {/* Video or Keyframe Preview */}
-                                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center relative">
+                                                                <div className={`${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center relative`}>
                                                                     {s.video_url ? (
                                                                         <video
                                                                             src={getDisplayableRefUrl(s.video_url)}
@@ -3808,7 +3875,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                             <div>
                                                 <h2 className="text-base font-bold text-pink-200 flex items-center gap-2">
                                                     <span>🎬</span>
-                                                    <span>Step 3: Render &amp; Stitch Master Video</span>
+                                                    <span>Step 3: Render & Stitch Master Video</span>
                                                 </h2>
                                                 <p className="text-xs text-gray-400 mt-1">
                                                     1-Click Batch Video Render + 1-Click Master Assembly with Title Screens &amp; Voiceovers.
@@ -3907,7 +3974,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
 
                                                     return (
                                                         <div className="space-y-3">
-                                                            <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group">
+                                                            <div className={`${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group`}>
                                                                 {shotVideo ? (
                                                                     <video src={getDisplayableRefUrl(shotVideo)} controls className="w-full h-full object-cover" />
                                                                 ) : (
@@ -3965,7 +4032,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                     <span className="text-xs font-bold text-gray-400">Previous / Baseline Reference Clip</span>
                                                     <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded">BASELINE</span>
                                                 </div>
-                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center">
+                                                <div className={`${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center`}>
                                                     {history.length > 1 ? (
                                                         <video src={getDisplayableRefUrl(history[history.length - 2].videoUrl)} controls className="w-full h-full object-cover" />
                                                     ) : (
@@ -4046,7 +4113,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                 <span className="text-xs font-bold text-emerald-300">Stitched 30–60s Master Video Player</span>
                                                 <span className="text-[11px] font-mono text-gray-400">Master: {masterTitle}.mp4</span>
                                             </div>
-                                            <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center max-w-4xl mx-auto">
+                                            <div className={`${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center max-w-4xl mx-auto`}>
                                                 <video src={getDisplayableRefUrl(currentVideo)} controls className="w-full h-full object-contain" />
                                             </div>
                                         </div>
@@ -4193,7 +4260,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                 src={currentVideo}
                                                 controls
                                                 loop
-                                                className="w-full aspect-video object-contain bg-black"
+                                                className={`w-full ${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} object-contain bg-black`}
                                             />
                                             <div className="p-4 bg-gray-900/90 border-t border-gray-800 flex flex-wrap items-center justify-between gap-3">
                                                 <div className="flex items-center space-x-2 text-xs">
@@ -5152,6 +5219,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     vocal_delivery=req.vocal_delivery,
                     edit_instruction=req.prompt if is_edit else None,
                     enable_sanitization=req.enable_safety_sanitization,
+                    aspect_ratio=req.aspect_ratio,
                 )
 
         agent_turn = agent.process_user_turn(
@@ -5176,6 +5244,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             vocal_delivery=req.vocal_delivery,
             optimize_prompt=req.optimize_prompt,
             enable_sanitization=req.enable_safety_sanitization,
+            aspect_ratio=req.aspect_ratio,
         )
         return GenerateResponse(
             success=agent_turn.success,
@@ -5375,6 +5444,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             reference_image_urls=ref_urls,
             characters=req.characters,
             anchor_keyframe_url=req.anchor_keyframe_url,
+            aspect_ratio=req.aspect_ratio,
         )
         return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
 
@@ -5518,6 +5588,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             has_keyframe_seed=bool(keyframe_url),
             keyframe_image_url=keyframe_url,
             enable_sanitization=req.enable_safety_sanitization,
+            aspect_ratio=req.aspect_ratio,
         )
 
         # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor
@@ -5528,6 +5599,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     style_tone=req.style_lighting or style_lighting_val,
                     reference_image_urls=ref_urls,
                     characters=req.characters,
+                    aspect_ratio=req.aspect_ratio,
                 )
             except Exception as exc:
                 logger.warning("Auto keyframe image generation before video generation failed: %s", exc)
@@ -5548,6 +5620,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             voiceover=dialogue_val if dialogue_val else None,
             audio_stem=audio_stem_val,
             enable_sanitization=req.enable_safety_sanitization,
+            aspect_ratio=req.aspect_ratio,
         )
         return GenerateShotResponse(
             success=agent_turn.success,
@@ -5589,6 +5662,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             narrator_audio_paths=req.narrator_audio_paths,
             background_music_path=req.background_music_path,
             session_id=req.session_id,
+            aspect_ratio=req.aspect_ratio,
         )
         master_url = master_path
         if not master_url.startswith("http") and not master_url.startswith("/static"):
