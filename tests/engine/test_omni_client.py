@@ -770,7 +770,7 @@ def test_generate_keyframe_image_with_character_roster() -> None:
     assert len(contents) == 2  # 1 image part + 1 prompt text
     prompt_str = contents[1]
     assert "# Character Roster & Visual Directives:" in prompt_str
-    assert f"- {get_character_identifier(char)}: Young spectacled wizard [Style: Cartier Glasses, Oversized Tee] (Reference Image: @Image1)" in prompt_str
+    assert f"- {get_character_identifier(char)}: (Reference Image: @Image1)" in prompt_str
 
 
 def test_generate_keyframe_image_with_anchor_seed() -> None:
@@ -1123,7 +1123,7 @@ def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_pres
     client.storage = MagicMock()
     client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/keyframe_wardrobe_test.png"
 
-    char = CharacterRole(
+    char1 = CharacterRole(
         role_id="Role A",
         name="Snape",
         description="Gothic Potion Master",
@@ -1131,14 +1131,22 @@ def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_pres
         aesthetic_tags=["Iced Chain", "Dark Robes"],
         wardrobe="Black Velvet Trench Coat with Silver Embroidery",
     )
+    char2 = CharacterRole(
+        role_id="Role B",
+        name="Draco",
+        description="Platinum rival wizard",
+        reference_url=None,
+        aesthetic_tags=["Platinum Hair", "Emerald Ring"],
+        wardrobe="Slytherin Tracksuit and Gucci Slides",
+    )
 
     with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
         client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
     ):
         res_url = client.generate_keyframe_image(
-            prompt="Snape brewing a potion in a rap video",
+            prompt="Snape and Draco brewing a potion in a rap video",
             style_tone="90s_rap_video",
-            characters=[char],
+            characters=[char1, char2],
             style_preset="90s_rap_video",
             wardrobe="Custom Gold Chain and Sunglasses",
         )
@@ -1149,11 +1157,10 @@ def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_pres
     contents = call_kwargs["contents"]
     prompt_str = contents[1]
 
-    # Verify character roster contains wardrobe & aesthetic tags
+    # Verify character roster formatting: char1 (reference) uses (Reference Image: @Image1), char2 (no reference) lists description & wardrobe & style
     assert "# Character Roster & Visual Directives:" in prompt_str
-    assert f"- {get_character_identifier(char)}: Gothic Potion Master" in prompt_str
-    assert "[Wardrobe: Black Velvet Trench Coat with Silver Embroidery]" in prompt_str
-    assert "[Style: Iced Chain, Dark Robes]" in prompt_str
+    assert f"- {get_character_identifier(char1)}: (Reference Image: @Image1)" in prompt_str
+    assert f"- {get_character_identifier(char2)}: Platinum rival wizard [Wardrobe: Slytherin Tracksuit and Gucci Slides] [Style: Platinum Hair, Emerald Ring]" in prompt_str
 
     # Verify style preset context header
     assert "# Style Preset (90s_rap_video):" in prompt_str
@@ -1162,12 +1169,9 @@ def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_pres
     # Verify global wardrobe directives header
     assert "# Wardrobe Directives:\nCustom Gold Chain and Sunglasses" in prompt_str
 
-    # Verify reference image token is bound
-    assert "(Reference Image: @Image1)" in prompt_str
-
 
 def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
-    """Verify generate_keyframe_image parses dictionary characters containing wardrobe and aesthetic tags."""
+    """Verify generate_keyframe_image parses dictionary characters containing wardrobe and aesthetic tags when no reference_url is set."""
     import base64
 
     client = OmniFlashClient(mock_mode=False)
@@ -1191,7 +1195,7 @@ def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
         "role_id": "Role B",
         "name": "Draco",
         "description": "Platinum rival wizard",
-        "reference_url": "gs://test-bucket/draco_ref.png",
+        "reference_url": None,
         "aesthetic_tags": ["Platinum Hair", "Emerald Ring"],
         "wardrobe": "Slytherin Tracksuit and Gucci Slides",
     }
@@ -1209,7 +1213,7 @@ def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
     assert "keyframe" in res_url
     assert mock_models.generate_content.called
     call_kwargs = mock_models.generate_content.call_args.kwargs
-    prompt_str = call_kwargs["contents"][1]
+    prompt_str = call_kwargs["contents"][-1]
 
     assert f"- {get_character_identifier(char_dict)}: Platinum rival wizard" in prompt_str
     assert "[Wardrobe: Slytherin Tracksuit and Gucci Slides]" in prompt_str
