@@ -289,6 +289,7 @@ class Journey3KeyframePromptEditRequest(BaseModel):
     image_prompt: str
     aspect_ratio: str = "16:9"
     reference_image_urls: list[str] | None = None
+    characters: list[dict[str, Any]] | None = None
     style_preset: str | None = None
     image_model: str | None = "gemini-3.1-flash-image"
 
@@ -805,6 +806,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             image_prompt: promptText,
                             aspect_ratio: aspectRatio,
                             reference_image_urls: refUrls,
+                            characters: characters,
                             style_preset: j3StylePreset,
                             image_model: j3ImageModel
                         })
@@ -5847,7 +5849,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                                 prev.map((c) => (c.shot_index === card.shot_index ? { ...c, image_prompt: val, compiled_override: undefined } : c))
                                                             );
                                                         }}
-                                                        rows={2}
+                                                        rows={6}
                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
                                                     />
                                                 </div>
@@ -6825,10 +6827,30 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/journey3/keyframe")
     def journey3_keyframe(req: Journey3KeyframePromptEditRequest) -> dict[str, Any]:
+        char_objs: list[CharacterRole] = []
+        if req.characters:
+            for i, c in enumerate(req.characters):
+                if isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", f"Role{i}"),
+                            name=c.get("name", ""),
+                            description=c.get("description", ""),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=c.get("aesthetic_tags", []),
+                            voice_style=c.get("voice_style", ""),
+                            voice_profile=c.get("voice_profile", ""),
+                            wardrobe=c.get("wardrobe", ""),
+                            image_role=c.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=c.get("is_offscreen_narrator", False),
+                        )
+                    )
+
         image_url = agent.omni_client.generate_keyframe_image(
             req.image_prompt,
             style_tone=req.style_preset or "",
             reference_image_urls=req.reference_image_urls,
+            characters=char_objs if char_objs else None,
             aspect_ratio=req.aspect_ratio,
             image_model=req.image_model or "gemini-3.1-flash-image",
         )
