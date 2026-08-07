@@ -756,6 +756,8 @@ def test_journey3_keyframe_endpoint():
     data = res.json()
     assert data["success"] is True
     assert "keyframe_image_url" in data
+    assert "raw_compiled_prompt" in data
+    assert isinstance(data["raw_compiled_prompt"], str)
 
 
 def test_journey3_generate_shot_endpoint():
@@ -921,6 +923,8 @@ def test_journey3_keyframe_api_accepts_model_style_and_reference_urls():
     data = res.json()
     assert data["success"] is True
     assert "keyframe_image_url" in data
+    assert "raw_compiled_prompt" in data
+    assert isinstance(data["raw_compiled_prompt"], str)
 
 
 
