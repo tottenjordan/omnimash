@@ -1431,8 +1431,8 @@ def test_four_block_official_image_ref_tags() -> None:
     assert "### INPUT ROLES" in text_val
     assert "[# Sources <FIRST_FRAME>@Image1]" in text_val
     assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in text_val
-    assert "- Role A - Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in text_val
-    assert "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round glasses" in text_val
+    assert "- Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in text_val
+    assert "- Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round glasses" in text_val
 
 
 def test_abstract_prompt_preserves_character_tags_and_image_refs() -> None:
@@ -1692,6 +1692,35 @@ def test_generate_character_reference_sheet_genai_call() -> None:
     assert call_kwargs["model"] == "gemini-3.1-flash-image"
     contents = call_kwargs["contents"]
     assert len(contents) == 2  # 1 image part + 1 prompt text
+
+
+def test_clean_character_names_and_in_text_image_tag_replacement() -> None:
+    """Verify clean character name formatting and in-text (@ImageN) tag replacement in keyframe prompt generation."""
+    import unittest.mock
+    from omnimash.engine.omni_client import OmniClient
+    from omnimash.prompts.compiler import CharacterRole, get_character_identifier
+
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Swagrid Tha Plug",
+        description="Legendary supplier wizard",
+        reference_url="gs://test-bucket/swagrid.png",
+    )
+    assert get_character_identifier(char1) == "Swagrid Tha Plug"
+
+    client = OmniClient(mock_mode=True)
+    with unittest.mock.patch.object(
+        client, "_fetch_image_bytes", return_value=(b"fake_bytes", "image/png")
+    ):
+        image_url, compiled_prompt = client.generate_keyframe_image(
+            prompt="Swagrid Tha Plug walks into the room",
+            characters=[char1],
+            return_compiled_prompt=True,
+        )
+
+    assert "- Swagrid Tha Plug: (Reference Image: @Image1)" in compiled_prompt
+    assert "Role A - Swagrid Tha Plug" not in compiled_prompt
+    assert "Swagrid Tha Plug (@Image1) walks into the room" in compiled_prompt
 
 
 

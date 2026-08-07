@@ -76,7 +76,7 @@ def get_character_identifier(
     char: CharacterRole | dict[str, Any] | Any,
     enable_sanitization: bool = True,
 ) -> str:
-    """Returns symmetric character identifier string in the format 'Role ID - Name' (or 'Name' if role_id is empty)."""
+    """Returns character identifier string (returns 'name_clean' if present, omitting 'role_id - ' prefix; otherwise 'role_id')."""
     if isinstance(char, dict):
         role_id = str(char.get("role_id", "") or "").strip()
         name = str(char.get("name", "") or "").strip()
@@ -89,12 +89,10 @@ def get_character_identifier(
     else:
         name_clean = name if name else ""
 
-    if role_id and name_clean:
-        return f"{role_id} - {name_clean}"
-    if role_id:
-        return role_id
     if name_clean:
         return name_clean
+    if role_id:
+        return role_id
     return "Character"
 
 
@@ -184,6 +182,31 @@ def build_character_image_ref_tags(
         img_idx += 1
 
     return sources_items, references_items, char_tag_map
+
+
+def replace_character_in_text_image_tags(
+    text: str,
+    name_to_tag: dict[str, str],
+) -> str:
+    """Replaces character name mentions in text with 'name (@ImageN)' if not already tagged."""
+    if not text or not name_to_tag:
+        return text
+    sorted_keys = sorted(name_to_tag.keys(), key=len, reverse=True)
+    result = text
+    for key in sorted_keys:
+        tag = name_to_tag[key]
+        if not tag or not key or len(key.strip()) < 2:
+            continue
+        pattern = r"\b" + re.escape(key) + r"\b"
+        def _repl(match: re.Match) -> str:
+            matched_text = match.group(0)
+            end_pos = match.end()
+            remaining = result[end_pos:]
+            if re.match(r"\s*\(" + re.escape(tag) + r"\)", remaining) or re.match(r"\s*" + re.escape(tag), remaining):
+                return matched_text
+            return f"{matched_text} ({tag})"
+        result = re.sub(pattern, _repl, result)
+    return result
 
 
 logger = logging.getLogger(__name__)
@@ -2326,6 +2349,7 @@ def compile_journey3_shot_prompt(
     character_roster: str = "",
     timeline_dialogue: str = "",
     enable_sanitization: bool = True,
+    characters: list[CharacterRole] | list[dict[str, Any]] | None = None,
 ) -> str:
     """Compiles lean 4-block prompt for Journey 3 shot generation.
 
@@ -2335,6 +2359,31 @@ def compile_journey3_shot_prompt(
     3. ### VISUAL ACTION & CAMERA
     4. ### TIMELINE & DIALOGUE
     """
+    if characters and not character_roster:
+        char_lines: list[str] = []
+        ref_idx = 1
+        for char in characters:
+            char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
+            ref_url = (
+                getattr(char, "reference_url", None)
+                if not isinstance(char, dict)
+                else char.get("reference_url")
+            )
+            if ref_url and isinstance(ref_url, str) and ref_url.strip():
+                char_lines.append(f"- {char_id}: (Reference Image: @Image{ref_idx})")
+                ref_idx += 1
+            else:
+                desc = (
+                    getattr(char, "description", "")
+                    if not isinstance(char, dict)
+                    else char.get("description", "")
+                ) or ""
+                if enable_sanitization and desc:
+                    desc = sanitize_real_names(desc)
+                char_lines.append(f"- {char_id}: {desc}")
+        if char_lines:
+            character_roster = "\n".join(char_lines)
+
     roster_str = character_roster.strip() if character_roster else "None."
     if enable_sanitization and roster_str != "None.":
         roster_str = sanitize_real_names(roster_str)
@@ -2348,6 +2397,52 @@ def compile_journey3_shot_prompt(
     if enable_sanitization and action_str:
         action_str = sanitize_real_names(action_str)
 
+    name_to_tag: dict[str, str] = {}
+    if characters:
+        img_idx = 1
+        for char in characters:
+            ref_url = (
+                getattr(char, "reference_url", None)
+                if not isinstance(char, dict)
+                else char.get("reference_url")
+            )
+            if ref_url and isinstance(ref_url, str) and ref_url.strip():
+                tag = f"@Image{img_idx}"
+                img_idx += 1
+                char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
+                role_id = str(
+                    getattr(char, "role_id", "")
+                    if not isinstance(char, dict)
+                    else char.get("role_id", "") or ""
+                ).strip()
+                name = str(
+                    getattr(char, "name", "")
+                    if not isinstance(char, dict)
+                    else char.get("name", "") or ""
+                ).strip()
+
+                name_clean = (sanitize_real_names(name) if name else "") if enable_sanitization else name
+                base_name = re.sub(r"\s*\(.*?\)", "", name).strip() if name else ""
+                base_name_clean = (sanitize_real_names(base_name) if base_name else "") if enable_sanitization else base_name
+
+                for k in (char_id, role_id, name, name_clean, base_name, base_name_clean):
+                    if k and k.strip():
+                        name_to_tag[k.strip()] = tag
+
+    if roster_str != "None.":
+        for line in roster_str.splitlines():
+            m = re.search(r"-\s*([^:\n]+):\s*\(Reference Image:\s*(@Image\d+)\)", line)
+            if m:
+                c_name = m.group(1).strip()
+                c_tag = m.group(2).strip()
+                name_to_tag[c_name] = c_tag
+                b_name = re.sub(r"\s*\(.*?\)", "", c_name).strip()
+                if b_name:
+                    name_to_tag[b_name] = c_tag
+
+    if name_to_tag and action_str:
+        action_str = replace_character_in_text_image_tags(action_str, name_to_tag)
+
     dialogue_str = timeline_dialogue.strip() if timeline_dialogue else "None."
     if enable_sanitization and dialogue_str != "None.":
         dialogue_str = sanitize_real_names(dialogue_str)
@@ -2356,6 +2451,7 @@ def compile_journey3_shot_prompt(
     block2 = f"### CUMULATIVE SHOT STATE\n{state_str}"
     block3 = (
         f"### VISUAL ACTION & CAMERA\n"
+        f"- Shot Number: {shot_number}\n"
         f"- Action Directive: {action_str}\n"
         f"- Aspect Ratio: {aspect_ratio}"
     )
