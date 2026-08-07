@@ -769,8 +769,7 @@ def test_generate_keyframe_image_with_character_roster() -> None:
     assert len(contents) == 2  # 1 image part + 1 prompt text
     prompt_str = contents[1]
     assert "# Character Roster & Visual Directives:" in prompt_str
-    assert f"- {get_character_identifier(char)}: Young spectacled wizard [Style: Cartier Glasses, Oversized Tee]" in prompt_str
-    assert "VISUAL CONSISTENCY INSTRUCTION" in prompt_str
+    assert f"- {get_character_identifier(char)}: Young spectacled wizard [Style: Cartier Glasses, Oversized Tee] (Reference Image: @Image1)" in prompt_str
 
 
 def test_generate_keyframe_image_with_anchor_seed() -> None:
@@ -1162,8 +1161,8 @@ def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_pres
     # Verify global wardrobe directives header
     assert "# Wardrobe Directives:\nCustom Gold Chain and Sunglasses" in prompt_str
 
-    # Verify visual consistency instruction includes wardrobe and style presets
-    assert "VISUAL CONSISTENCY INSTRUCTION: Render all character roles matching their exact outfits, wardrobe, hair, facial features, accessories, and aesthetic style tags specified in the character roster and style presets." in prompt_str
+    # Verify reference image token is bound
+    assert "(Reference Image: @Image1)" in prompt_str
 
 
 def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
@@ -1203,6 +1202,7 @@ def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
             prompt="Draco in potion laboratory",
             style_tone="cyberpunk_drift",
             characters=[char_dict],
+            style_preset="cyberpunk_drift",
         )
 
     assert "keyframe" in res_url

@@ -6846,13 +6846,14 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                         )
                     )
 
-        image_url = agent.omni_client.generate_keyframe_image(
+        image_url, compiled_prompt = agent.omni_client.generate_keyframe_image(
             req.image_prompt,
             style_tone=req.style_preset or "",
             reference_image_urls=req.reference_image_urls,
             characters=char_objs if char_objs else None,
             aspect_ratio=req.aspect_ratio,
             image_model=req.image_model or "gemini-3.1-flash-image",
+            return_compiled_prompt=True,
         )
         return {
             "success": True,
@@ -6860,6 +6861,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             "shot_index": req.shot_index,
             "image_prompt": req.image_prompt,
             "keyframe_image_url": image_url,
+            "raw_compiled_prompt": compiled_prompt,
         }
 
     @app.post("/api/journey3/generate-shot")

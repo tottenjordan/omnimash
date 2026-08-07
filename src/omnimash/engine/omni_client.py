@@ -589,6 +589,7 @@ class OmniFlashClient:
         self._dev_client: Any = None
         self._vertex_client: Any = None
         self._genai_client: Any = None
+        self.last_keyframe_prompt: str = ""
         self.storage = GcsStorageManager(
             bucket_name=bucket_name,
             project_id=self.project,
@@ -1310,7 +1311,8 @@ class OmniFlashClient:
         anchor_keyframe_url: str | None = None,
         aspect_ratio: str = "16:9",
         image_model: str = "gemini-3.1-flash-image",
-    ) -> str:
+        return_compiled_prompt: bool = False,
+    ) -> Any:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 
         Supports multimodal character reference image inputs, character roster metadata (wardrobe, aesthetic tags), and style presets.
@@ -1318,13 +1320,13 @@ class OmniFlashClient:
         sanitized_prompt = sanitize_real_names(prompt)
         full_prompt = f"{sanitized_prompt}, style: {style_tone}" if style_tone else sanitized_prompt
 
-        char_objs: list[CharacterRole] = []
+        all_char_objs: list[CharacterRole] = []
         if characters:
             for c in characters:
                 if isinstance(c, CharacterRole):
-                    char_objs.append(c)
+                    all_char_objs.append(c)
                 elif isinstance(c, dict):
-                    char_objs.append(
+                    all_char_objs.append(
                         CharacterRole(
                             role_id=c.get("role_id", ""),
                             name=c.get("name", ""),
@@ -1339,7 +1341,7 @@ class OmniFlashClient:
                 elif hasattr(c, "role_id") or hasattr(c, "name"):
                     raw_tags = getattr(c, "aesthetic_tags", [])
                     str_tags = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
-                    char_objs.append(
+                    all_char_objs.append(
                         CharacterRole(
                             role_id=getattr(c, "role_id", ""),
                             name=getattr(c, "name", ""),
@@ -1352,10 +1354,86 @@ class OmniFlashClient:
                         )
                     )
 
-        if char_objs and not reference_image_urls:
-            reference_image_urls = [
-                c.reference_url for c in char_objs if c.reference_url
-            ]
+        def _is_char_in_prompt(char: CharacterRole, raw_p: str, san_p: str) -> bool:
+            r_lower = raw_p.lower()
+            s_lower = san_p.lower()
+
+            role_id = (char.role_id or "").strip()
+            if role_id and (role_id.lower() in r_lower or role_id.lower() in s_lower):
+                return True
+
+            name = (char.name or "").strip()
+            if name:
+                if name.lower() in r_lower or name.lower() in s_lower:
+                    return True
+
+                stop_words = {"the", "and", "fam", "bruv", "chef", "blood", "star", "queen", "king", "master"}
+                words = [w.lower() for w in re.split(r"\W+", name) if len(w) >= 3 and w.lower() not in stop_words]
+                for w in words:
+                    if w in r_lower or w in s_lower:
+                        return True
+
+                san_name = sanitize_real_names(name).strip()
+                if san_name:
+                    if san_name.lower() in r_lower or san_name.lower() in s_lower:
+                        return True
+                    san_words = [w.lower() for w in re.split(r"\W+", san_name) if len(w) >= 3 and w.lower() not in stop_words]
+                    for w in san_words:
+                        if w in r_lower or w in s_lower:
+                            return True
+            return False
+
+        if all_char_objs:
+            char_objs = [c for c in all_char_objs if _is_char_in_prompt(c, prompt, sanitized_prompt)]
+        else:
+            char_objs = []
+
+        if char_objs:
+            active_ref_urls = {c.reference_url for c in char_objs if c.reference_url}
+            if reference_image_urls:
+                reference_image_urls = [u for u in reference_image_urls if u in active_ref_urls]
+            else:
+                reference_image_urls = [c.reference_url for c in char_objs if c.reference_url]
+        elif characters is not None:
+            reference_image_urls = []
+
+        style_preset_header = ""
+        if style_preset and style_preset.strip():
+            from omnimash.prompts.compiler import AESTHETIC_SIGNIFIERS
+
+            preset_key = style_preset.lower().strip()
+            if preset_key in AESTHETIC_SIGNIFIERS:
+                signifiers = AESTHETIC_SIGNIFIERS[preset_key]
+                preset_wardrobe = signifiers.get("wardrobe", "")
+                preset_camera = signifiers.get("camera", "")
+                style_preset_header = (
+                    f"# Style Preset ({style_preset}):\n"
+                    f"- Preset Wardrobe Baseline: {preset_wardrobe}\n"
+                    f"- Camera & Visual Style: {preset_camera}\n\n"
+                )
+            else:
+                style_preset_header = f"# Style Preset Context:\nStyle: {style_preset}\n\n"
+
+        global_wardrobe_header = f"# Wardrobe Directives:\n{wardrobe}\n\n" if wardrobe else ""
+
+        ref_url_to_token: dict[str, str] = {}
+        token_counter = 1
+        if anchor_keyframe_url:
+            ref_url_to_token[anchor_keyframe_url] = f"@Image{token_counter}"
+            token_counter += 1
+
+        if reference_image_urls:
+            for ref_url in reference_image_urls:
+                if anchor_keyframe_url and ref_url == anchor_keyframe_url:
+                    continue
+                if ref_url not in ref_url_to_token:
+                    ref_url_to_token[ref_url] = f"@Image{token_counter}"
+                    token_counter += 1
+        elif char_objs:
+            for c in char_objs:
+                if c.reference_url and c.reference_url not in ref_url_to_token:
+                    ref_url_to_token[c.reference_url] = f"@Image{token_counter}"
+                    token_counter += 1
 
         character_roster_header = ""
         if char_objs:
@@ -1364,29 +1442,23 @@ class OmniFlashClient:
                 char_id = get_character_identifier(c)
                 wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
                 tag_str = f" [Style: {', '.join(c.aesthetic_tags)}]" if c.aesthetic_tags else ""
-                ref_str = f" (Reference Image: {c.reference_url})" if c.reference_url else ""
+                token = ref_url_to_token.get(c.reference_url) if c.reference_url else None
+                ref_str = f" (Reference Image: {token})" if token else (f" (Reference Image: {c.reference_url})" if c.reference_url else "")
                 char_lines.append(f"- {char_id}: {c.description}{wardrobe_str}{tag_str}{ref_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
-        effective_preset = style_preset or style_tone
-        style_preset_header = ""
-        if effective_preset:
-            from omnimash.prompts.compiler import AESTHETIC_SIGNIFIERS
+        anchor_instruction = ""
+        if anchor_keyframe_url:
+            anchor_instruction = "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@Image1 while rendering the new action/angle.\n\n"
 
-            preset_key = effective_preset.lower().strip()
-            if preset_key in AESTHETIC_SIGNIFIERS:
-                signifiers = AESTHETIC_SIGNIFIERS[preset_key]
-                preset_wardrobe = signifiers.get("wardrobe", "")
-                preset_camera = signifiers.get("camera", "")
-                style_preset_header = (
-                    f"# Style Preset ({effective_preset}):\n"
-                    f"- Preset Wardrobe Baseline: {preset_wardrobe}\n"
-                    f"- Camera & Visual Style: {preset_camera}\n\n"
-                )
-            else:
-                style_preset_header = f"# Style Preset Context:\nStyle: {effective_preset}\n\n"
-
-        global_wardrobe_header = f"# Wardrobe Directives:\n{wardrobe}\n\n" if wardrobe else ""
+        prompt_text = (
+            f"{anchor_instruction}"
+            f"{character_roster_header}"
+            f"{style_preset_header}"
+            f"{global_wardrobe_header}"
+            f"# Scene Action & Lighting:\n{full_prompt}"
+        )
+        self.last_keyframe_prompt = prompt_text
 
         def _get_mock_keyframe() -> str:
             clean_prompt = (
@@ -1448,8 +1520,13 @@ class OmniFlashClient:
             b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
             return f"data:image/svg+xml;base64,{b64_svg}"
 
+        def _return(url: str) -> Any:
+            if return_compiled_prompt:
+                return url, prompt_text
+            return url
+
         if self.mock_mode or not genai:
-            return _get_mock_keyframe()
+            return _return(_get_mock_keyframe())
 
         try:
             effective_key = self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -1463,6 +1540,7 @@ class OmniFlashClient:
                 )
             try:
                 contents: list[Any] = []
+
                 if anchor_keyframe_url:
                     anchor_bytes, anchor_mime = self._fetch_image_bytes(anchor_keyframe_url)
                     if anchor_bytes:
@@ -1482,19 +1560,8 @@ class OmniFlashClient:
                             else:
                                 contents.append({"inline_data": {"mime_type": mime_type, "data": base64.b64encode(img_bytes).decode("utf-8")}})
 
-                anchor_instruction = ""
-                if anchor_keyframe_url:
-                    anchor_instruction = "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@Image1 while rendering the new action/angle.\n\n"
-
-                prompt_text = (
-                    f"{anchor_instruction}"
-                    f"High quality cinematic {aspect_ratio} visual keyframe concept art.\n\n"
-                    f"{character_roster_header}"
-                    f"{style_preset_header}"
-                    f"{global_wardrobe_header}"
-                    f"# Scene Action & Lighting:\n{full_prompt}\n\n"
-                    f"VISUAL CONSISTENCY INSTRUCTION: Render all character roles matching their exact outfits, wardrobe, hair, facial features, accessories, and aesthetic style tags specified in the character roster and style presets."
-                )
+                logger.info("==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n%s\n=====================================================================", prompt_text)
+                print(f"\n==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n{prompt_text}\n=====================================================================\n", flush=True)
                 contents.append(prompt_text)
 
                 config = None
@@ -1527,14 +1594,14 @@ class OmniFlashClient:
                                     img_bytes, blob_name, content_type="image/png"
                                 )
                                 gcs_uri = self.storage.get_gcs_uri(blob_name)
-                                return f"/api/media-proxy?uri={quote(gcs_uri, safe='')}"
+                                return _return(f"/api/media-proxy?uri={quote(gcs_uri, safe='')}")
             except Exception as e:
                 logger.warning("gemini-3.1-flash-image generation failed for keyframe: %s", e)
 
-            return _get_mock_keyframe()
+            return _return(_get_mock_keyframe())
         except Exception as exc:
             logger.warning(
                 "Failed to generate keyframe image via GenAI client: %s", exc
             )
-            return _get_mock_keyframe()
+            return _return(_get_mock_keyframe())
 
