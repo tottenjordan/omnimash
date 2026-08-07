@@ -894,6 +894,33 @@ def test_ui_html_journey3_comprehensive_enhancements():
     assert 'const [j3StyleRef, setJ3StyleRef] = useState("");' in UI_HTML
     assert "Storyboard Keyframe Visual Anchor" in UI_HTML
     assert "Click photo to enlarge" in UI_HTML
+    assert "j3ImageModel" in UI_HTML
+    assert "gemini-3-pro-image" in UI_HTML
+
+
+def test_journey3_keyframe_api_accepts_model_style_and_reference_urls():
+    from omnimash.api.app import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/journey3/keyframe",
+        json={
+            "session_id": "test_j3_session",
+            "shot_index": 1,
+            "image_prompt": "Wizard in neon dungeon",
+            "aspect_ratio": "16:9",
+            "reference_image_urls": ["https://storage.googleapis.com/test/char.jpg"],
+            "style_preset": "Cinematic Trap Parody",
+            "image_model": "gemini-3-pro-image"
+        }
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "keyframe_image_url" in data
 
 
 

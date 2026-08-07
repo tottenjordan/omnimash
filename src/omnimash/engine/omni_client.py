@@ -1309,6 +1309,7 @@ class OmniFlashClient:
         wardrobe: str | None = None,
         anchor_keyframe_url: str | None = None,
         aspect_ratio: str = "16:9",
+        image_model: str = "gemini-3.1-flash-image",
     ) -> str:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 
@@ -1502,8 +1503,9 @@ class OmniFlashClient:
                         safety_settings=_get_relaxed_safety_settings(),
                     )
 
+                target_model = image_model if image_model and image_model.strip() else "gemini-3.1-flash-image"
                 response = image_client.models.generate_content(
-                    model="gemini-3.1-flash-image",
+                    model=target_model,
                     contents=contents,
                     config=config,
                 )
