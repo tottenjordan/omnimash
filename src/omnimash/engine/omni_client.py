@@ -789,7 +789,7 @@ class OmniFlashClient:
             )
 
         tone_header = ""
-        if keyframe_image_parts:
+        if keyframe_image_parts and "# Visual Tone & Starting Frame Anchor" not in prompt:
             tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
 
         notes_header = ""

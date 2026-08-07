@@ -617,11 +617,16 @@ UI_HTML = r"""<!DOCTYPE html>
                 const dialogueStr = card.dialogue_text ? card.dialogue_text : "None (Ambient soundscape).";
 
                 const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
+                
+                const block1_keyframe = card.keyframe_image_url 
+                    ? `\n\n# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.`
+                    : "";
+
                 const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
                 const block3 = `### VISUAL ACTION & CAMERA\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
                 const block4 = `### TIMELINE & DIALOGUE\n- ${dialogueStr}`;
 
-                return `${block1}\n\n${block2}\n\n${block3}\n\n${block4}`;
+                return `${block1}${block1_keyframe}\n\n${block2}\n\n${block3}\n\n${block4}`;
             };
             const [j3SetupLoading, setJ3SetupLoading] = useState(false);
             const [j3ShotCards, setJ3ShotCards] = useState([
