@@ -15,6 +15,7 @@ from omnimash.ingestion.media_extractor import (
 from omnimash.prompts.compiler import (
     CharacterRole,
     SceneDirective,
+    compile_journey3_shot_prompt,
     sanitize_real_names,
 )
 
@@ -270,6 +271,40 @@ class StitchMasterRequest(BaseModel):
     title_cards: list[dict[str, Any]] | None = None
     narrator_audio_paths: list[str] | None = None
     background_music_path: str | None = None
+    aspect_ratio: str = "16:9"
+
+
+class Journey3SetupRequest(BaseModel):
+    master_description: str
+    aspect_ratio: str = "16:9"
+    characters: list[dict[str, Any]] | None = None
+    products: list[dict[str, Any]] | None = None
+    style_presets: list[str] | None = None
+    enable_safety_sanitization: bool = True
+
+
+class Journey3KeyframePromptEditRequest(BaseModel):
+    session_id: str | None = None
+    shot_index: int
+    image_prompt: str
+    aspect_ratio: str = "16:9"
+    reference_image_urls: list[str] | None = None
+
+
+class Journey3ShotGenerateRequest(BaseModel):
+    session_id: str | None = None
+    shot_index: int
+    action_directive: str
+    dialogue_text: str = ""
+    keyframe_image_url: str | None = None
+    aspect_ratio: str = "16:9"
+    enable_safety_sanitization: bool = True
+
+
+class Journey3StitchMasterRequest(BaseModel):
+    session_id: str | None = None
+    shot_clips: list[str] = Field(default_factory=list)
+    title_cards: list[dict[str, Any]] | None = None
     aspect_ratio: str = "16:9"
 
 
@@ -5672,6 +5707,162 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 master_url = f"/static/{os.path.basename(master_path)}"
         return {
             "status": "ok",
+            "master_video_path": master_path,
+            "master_video_url": master_url,
+        }
+
+    @app.post("/api/journey3/setup")
+    def journey3_setup(req: Journey3SetupRequest) -> dict[str, Any]:
+        char_objs: list[CharacterRole] = []
+        if req.characters:
+            for c in req.characters:
+                if isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", ""),
+                            name=c.get("name", ""),
+                            description=c.get("description", ""),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=c.get("aesthetic_tags", []),
+                            voice_style=c.get("voice_style", ""),
+                            voice_profile=c.get("voice_profile", ""),
+                            wardrobe=c.get("wardrobe", ""),
+                            image_role=c.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=c.get("is_offscreen_narrator", False),
+                        )
+                    )
+
+        style_tone = (
+            req.style_presets[0] if req.style_presets else "Cinematic Trap Parody"
+        )
+        shots = agent.storyboard_agent.expand_vision(
+            concept=req.master_description,
+            style_tone=style_tone,
+            target_duration=30.0,
+            characters=char_objs if char_objs else None,
+        )
+
+        shot_cards = []
+        for s in shots:
+            card = {
+                "shot_index": s.shot_index,
+                "action_directive": s.action,
+                "image_prompt": s.action,
+                "duration_seconds": s.duration_seconds,
+                "location": s.location,
+                "style_lighting": s.style_lighting,
+                "framing_motion": s.framing_motion,
+                "audio": s.audio,
+                "dialogue": getattr(s, "dialogue", ""),
+                "summary": getattr(s, "summary", ""),
+                "keyframe_image_url": getattr(s, "keyframe_image_url", ""),
+            }
+            shot_cards.append(card)
+
+        return {
+            "success": True,
+            "master_description": req.master_description,
+            "aspect_ratio": req.aspect_ratio,
+            "shot_cards": shot_cards,
+            "shots": shot_cards,
+        }
+
+    @app.post("/api/journey3/keyframe")
+    def journey3_keyframe(req: Journey3KeyframePromptEditRequest) -> dict[str, Any]:
+        image_url = agent.omni_client.generate_keyframe_image(
+            req.image_prompt,
+            reference_image_urls=req.reference_image_urls,
+            aspect_ratio=req.aspect_ratio,
+        )
+        return {
+            "success": True,
+            "session_id": req.session_id,
+            "shot_index": req.shot_index,
+            "image_prompt": req.image_prompt,
+            "keyframe_image_url": image_url,
+        }
+
+    @app.post("/api/journey3/generate-shot")
+    def journey3_generate_shot(req: Journey3ShotGenerateRequest) -> dict[str, Any]:
+        session_id = req.session_id or "default_j3_session"
+
+        agent.journey3_tracker.record_shot_directive(
+            session_id=session_id,
+            shot_index=req.shot_index,
+            action_text=req.action_directive,
+            dialogue_text=req.dialogue_text,
+        )
+        cum_state = agent.journey3_tracker.get_cumulative_state(session_id)
+
+        compiled_prompt = compile_journey3_shot_prompt(
+            shot_number=req.shot_index,
+            action_directive=req.action_directive,
+            cumulative_state=cum_state,
+            aspect_ratio=req.aspect_ratio,
+            timeline_dialogue=req.dialogue_text,
+            enable_sanitization=req.enable_safety_sanitization,
+        )
+
+        keyframe_url = req.keyframe_image_url
+        if not keyframe_url and req.action_directive:
+            try:
+                keyframe_url = agent.omni_client.generate_keyframe_image(
+                    req.action_directive,
+                    aspect_ratio=req.aspect_ratio,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Keyframe image generation failed in journey3_generate_shot: %s",
+                    exc,
+                )
+
+        agent_turn = agent.process_user_turn(
+            user_id="usr_default",
+            project_id="prj_default",
+            prompt=req.action_directive,
+            compiled_override=compiled_prompt,
+            clip_index=req.shot_index,
+            session_name=session_id,
+            keyframe_image_url=keyframe_url,
+            voiceover=req.dialogue_text if req.dialogue_text else None,
+            enable_sanitization=req.enable_safety_sanitization,
+            aspect_ratio=req.aspect_ratio,
+        )
+
+        return {
+            "success": agent_turn.success,
+            "session_id": session_id,
+            "shot_index": req.shot_index,
+            "video_url": agent_turn.video_url,
+            "keyframe_image_url": keyframe_url,
+            "turn_id": agent_turn.turn_id,
+            "status": agent_turn.status_event,
+            "generation_mode": getattr(
+                agent_turn, "generation_mode", "LIVE_OMNI_FLASH"
+            ),
+            "error": agent_turn.error_message,
+            "raw_compiled_prompt": agent_turn.raw_compiled_prompt or compiled_prompt,
+            "cumulative_state": cum_state.format_cumulative_state_block(),
+        }
+
+    @app.post("/api/journey3/stitch")
+    def journey3_stitch(req: Journey3StitchMasterRequest) -> dict[str, Any]:
+        master_path = agent.stitcher.stitch_storyboard_master(
+            shot_clips=req.shot_clips,
+            title_cards=req.title_cards,
+            session_id=req.session_id,
+            aspect_ratio=req.aspect_ratio,
+        )
+        master_url = master_path
+        if not master_url.startswith("http") and not master_url.startswith("/static"):
+            if master_url.startswith("gs://"):
+                master_url = f"/api/media-proxy?uri={master_url}"
+            else:
+                master_url = f"/static/{os.path.basename(master_path)}"
+        return {
+            "status": "ok",
+            "success": True,
+            "session_id": req.session_id,
             "master_video_path": master_path,
             "master_video_url": master_url,
         }

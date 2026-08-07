@@ -719,6 +719,107 @@ def test_api_aspect_ratio_request_models_and_endpoints():
     assert res_stitch.json()["status"] == "ok"
 
 
+def test_journey3_setup_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/journey3/setup",
+        json={
+            "master_description": "Cyberpunk wizard battle in Tokyo street",
+            "aspect_ratio": "16:9",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "shot_cards" in data
+    assert len(data["shot_cards"]) > 0
+    card = data["shot_cards"][0]
+    assert "shot_index" in card
+    assert "image_prompt" in card
+    assert "action_directive" in card
+
+
+def test_journey3_keyframe_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/journey3/keyframe",
+        json={
+            "session_id": "test_j3_session",
+            "shot_index": 1,
+            "image_prompt": "Wizard stirring cauldrons in neon dungeon",
+            "aspect_ratio": "16:9",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "keyframe_image_url" in data
+
+
+def test_journey3_generate_shot_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res1 = client.post(
+        "/api/journey3/generate-shot",
+        json={
+            "session_id": "test_j3_session",
+            "shot_index": 1,
+            "action_directive": "Gaunt wizard puts on a golden velvet blindfold",
+            "dialogue_text": "I see all.",
+        },
+    )
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert data1["success"] is True
+    assert "video_url" in data1
+    assert "raw_compiled_prompt" in data1
+    assert "blindfold" in data1["raw_compiled_prompt"].lower()
+
+    res2 = client.post(
+        "/api/journey3/generate-shot",
+        json={
+            "session_id": "test_j3_session",
+            "shot_index": 2,
+            "action_directive": "Gaunt wizard raises staff slowly",
+            "dialogue_text": "Taste the magic.",
+        },
+    )
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["success"] is True
+    assert "raw_compiled_prompt" in data2
+    assert "blindfold" in data2["raw_compiled_prompt"].lower()
+
+
+def test_journey3_stitch_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/journey3/stitch",
+        json={
+            "session_id": "test_j3_session",
+            "shot_clips": ["/static/rendered/clip1.mp4", "/static/rendered/clip2.mp4"],
+            "title_cards": [
+                {
+                    "title": "Journey 3 Master",
+                    "subtitle": "Chapter 1",
+                    "duration": 3.0,
+                    "insert_at": 0,
+                }
+            ],
+            "aspect_ratio": "16:9",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert "master_video_path" in data
+
+
+
 
 
 
