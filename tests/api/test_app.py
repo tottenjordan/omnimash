@@ -828,6 +828,45 @@ def test_ui_html_contains_journey3_components():
     assert "Cumulative State Inspector" in UI_HTML or "Cumulative Scene State" in UI_HTML
 
 
+def test_ui_html_syntax_and_tag_balance():
+    import re
+    match = re.search(r'<script type="text/babel">(.*?)</script>', UI_HTML, re.DOTALL)
+    assert match is not None, "UI_HTML must contain a <script type='text/babel'> block"
+
+    babel_js = match.group(1)
+
+    # Remove string content inside double quotes, single quotes, and backticks to prevent false tag matches inside text
+    clean_js = re.sub(r'"[^"]*"', '""', babel_js)
+    clean_js = re.sub(r"'[^']*'", "''", clean_js)
+    clean_js = re.sub(r'`[^`]*`', '``', clean_js, flags=re.DOTALL)
+    clean_js = re.sub(r'//.*', '', clean_js)
+
+    tag_pattern = re.compile(r'</?([A-Za-z][A-Za-z0-9.]*)\b[^>]*>')
+    lines = clean_js.split("\n")
+    stack = []
+
+    for line_idx, line in enumerate(lines, 1):
+        for m in tag_pattern.finditer(line):
+            full_tag = m.group(0)
+            tag_name = m.group(1)
+
+            if full_tag.endswith("/>") or tag_name.lower() in ["img", "input", "br", "hr", "meta", "link"]:
+                continue
+
+            if full_tag.startswith("</"):
+                if stack and stack[-1][0] == tag_name:
+                    stack.pop()
+                elif stack:
+                    for idx in range(len(stack) - 1, -1, -1):
+                        if stack[idx][0] == tag_name:
+                            stack = stack[:idx]
+                            break
+            else:
+                stack.append((tag_name, line_idx))
+
+    assert len(stack) == 0, f"Unclosed JSX tags remaining on stack at end of UI_HTML: {stack}"
+
+
 
 
 

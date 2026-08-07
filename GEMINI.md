@@ -17,6 +17,10 @@ Always refer to [CODE_STANDARDS.md](CODE_STANDARDS.md) when writing code, making
 - **Sole Video Model:** Gemini Omni Flash (`gemini-omni-flash-preview`) is our SOLE video+audio generation model across all scenes, initial clips, and conversational interaction diffs.
 - **PROHIBITED:** NEVER use or reference Veo models (`veo-2.0-generate-001`, `veo-1.0`, etc.) under ANY circumstances — not even for testing or fallback.
 
+## 🖥️ Web UI (`UI_HTML`) Guardrails
+- **JSX Tag Balance Verification:** Whenever editing `UI_HTML` in `src/omnimash/api/app.py`, you MUST verify that all HTML/JSX tags (`<div>`, `<label>`, `<button>`, `<select>`, `<main>`) are 100% balanced and closed. Unbalanced JSX tags crash in-browser Babel compilation and cause the page to render blank (dark blue screen).
+- **Mandatory Validation:** Run `uv run pytest tests/api/test_app.py` to ensure `test_ui_html_syntax_and_tag_balance` passes before committing any UI changes.
+
 ---
 
 ## 📝 Project Notes & Knowledge
