@@ -2280,3 +2280,87 @@ class PromptCompiler:
             audio_beat=audio_beat,
             vocal_delivery=vocal_delivery,
         )
+
+
+@dataclass
+class CumulativeShotState:
+    character_states: dict[str, list[str]] = field(default_factory=dict)
+    scene_states: list[str] = field(default_factory=list)
+
+    def add_character_state(self, character: str, state_desc: str) -> None:
+        if character not in self.character_states:
+            self.character_states[character] = []
+        if state_desc not in self.character_states[character]:
+            self.character_states[character].append(state_desc)
+
+    def remove_character_state(self, character: str, state_desc: str) -> None:
+        if character in self.character_states:
+            if state_desc in self.character_states[character]:
+                self.character_states[character].remove(state_desc)
+            if not self.character_states[character]:
+                del self.character_states[character]
+
+    def add_scene_state(self, state_desc: str) -> None:
+        if state_desc not in self.scene_states:
+            self.scene_states.append(state_desc)
+
+    def format_cumulative_state_block(self) -> str:
+        lines: list[str] = []
+        if self.character_states:
+            lines.append("Character States:")
+            for char, states in self.character_states.items():
+                for st in states:
+                    lines.append(f"- {char}: {st}")
+        if self.scene_states:
+            lines.append("Scene States:")
+            for sc in self.scene_states:
+                lines.append(f"- {sc}")
+        return "\n".join(lines) if lines else "None."
+
+
+def compile_journey3_shot_prompt(
+    shot_number: int,
+    action_directive: str,
+    cumulative_state: CumulativeShotState | None = None,
+    aspect_ratio: str = "16:9",
+    character_roster: str = "",
+    timeline_dialogue: str = "",
+    enable_sanitization: bool = True,
+) -> str:
+    """Compiles lean 4-block prompt for Journey 3 shot generation.
+
+    Blocks:
+    1. ### INPUT ROLES & REFERENCES
+    2. ### CUMULATIVE SHOT STATE
+    3. ### VISUAL ACTION & CAMERA
+    4. ### TIMELINE & DIALOGUE
+    """
+    roster_str = character_roster.strip() if character_roster else "None."
+    if enable_sanitization and roster_str != "None.":
+        roster_str = sanitize_real_names(roster_str)
+
+    if cumulative_state:
+        state_str = cumulative_state.format_cumulative_state_block().strip()
+    else:
+        state_str = "None."
+
+    action_str = action_directive.strip()
+    if enable_sanitization and action_str:
+        action_str = sanitize_real_names(action_str)
+
+    dialogue_str = timeline_dialogue.strip() if timeline_dialogue else "None."
+    if enable_sanitization and dialogue_str != "None.":
+        dialogue_str = sanitize_real_names(dialogue_str)
+
+    block1 = f"### INPUT ROLES & REFERENCES\n{roster_str}"
+    block2 = f"### CUMULATIVE SHOT STATE\n{state_str}"
+    block3 = (
+        f"### VISUAL ACTION & CAMERA\n"
+        f"- Shot Number: {shot_number}\n"
+        f"- Action Directive: {action_str}\n"
+        f"- Aspect Ratio: {aspect_ratio}"
+    )
+    block4 = f"### TIMELINE & DIALOGUE\n{dialogue_str}"
+
+    return f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
+
