@@ -301,6 +301,7 @@ class Journey3ShotGenerateRequest(BaseModel):
     keyframe_image_url: str | None = None
     aspect_ratio: str = "16:9"
     enable_safety_sanitization: bool = True
+    compiled_override: str | None = None
 
 
 class Journey3StitchMasterRequest(BaseModel):
@@ -613,7 +614,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     : "Initial scene baseline.";
 
                 const actionStr = card.action_directive || `Action sequence for Shot #${card.shot_index}`;
-                const dialogueStr = card.dialogue_text ? `Spoken Quote: "${card.dialogue_text}"` : "None (Ambient soundscape).";
+                const dialogueStr = card.dialogue_text ? `"${card.dialogue_text}"` : "None (Ambient soundscape).";
 
                 const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
                 const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
@@ -829,7 +830,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             dialogue_text: card.dialogue_text || "",
                             keyframe_image_url: card.keyframe_image_url || null,
                             aspect_ratio: aspectRatio,
-                            enable_safety_sanitization: enableSafetySanitization
+                            enable_safety_sanitization: enableSafetySanitization,
+                            compiled_override: card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card)
                         })
                     });
                     const data = await res.json();
@@ -5850,7 +5852,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
 
                                                 <div className="space-y-2 pt-1">
                                                     <div>
-                                                        <label className="text-[11px] font-bold text-gray-300 block">Editable Shot Action Directive:</label>
+                                                        <label className="text-[11px] font-bold text-gray-300 block">Action:</label>
                                                         <input
                                                             type="text"
                                                             value={card.action_directive || ""}
@@ -5866,7 +5868,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     </div>
 
                                                     <div>
-                                                        <label className="text-[11px] font-bold text-gray-300 block">Spoken Dialogue Input:</label>
+                                                        <label className="text-[11px] font-bold text-gray-300 block">Dialogue:</label>
                                                         <input
                                                             type="text"
                                                             value={card.dialogue_text || ""}
@@ -5894,10 +5896,15 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         </span>
                                                     </div>
                                                     <textarea
-                                                        readOnly
                                                         rows={7}
-                                                        value={compileJourney3ShotPromptPreview(card, idx)}
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-[11px] font-mono text-purple-200 focus:outline-none"
+                                                        value={card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card)}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setJ3ShotCards((prev) =>
+                                                                prev.map((c) => (c.shot_index === card.shot_index ? { ...c, compiled_override: val } : c))
+                                                            );
+                                                        }}
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-[11px] font-mono text-purple-200 focus:outline-none focus:border-purple-500"
                                                     />
                                                 </div>
 
@@ -6789,14 +6796,17 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
         cum_state = agent.journey3_tracker.get_cumulative_state(session_id)
 
-        compiled_prompt = compile_journey3_shot_prompt(
-            shot_number=req.shot_index,
-            action_directive=req.action_directive,
-            cumulative_state=cum_state,
-            aspect_ratio=req.aspect_ratio,
-            timeline_dialogue=req.dialogue_text,
-            enable_sanitization=req.enable_safety_sanitization,
-        )
+        if req.compiled_override:
+            compiled_prompt = req.compiled_override
+        else:
+            compiled_prompt = compile_journey3_shot_prompt(
+                shot_number=req.shot_index,
+                action_directive=req.action_directive,
+                cumulative_state=cum_state,
+                aspect_ratio=req.aspect_ratio,
+                timeline_dialogue=req.dialogue_text,
+                enable_sanitization=req.enable_safety_sanitization,
+            )
 
         keyframe_url = req.keyframe_image_url
         if not keyframe_url and req.action_directive:
