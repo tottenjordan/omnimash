@@ -301,6 +301,7 @@ class Journey3ShotGenerateRequest(BaseModel):
     keyframe_image_url: str | None = None
     aspect_ratio: str = "16:9"
     enable_safety_sanitization: bool = True
+    compiled_override: str | None = None
 
 
 class Journey3StitchMasterRequest(BaseModel):
@@ -613,14 +614,24 @@ UI_HTML = r"""<!DOCTYPE html>
                     : "Initial scene baseline.";
 
                 const actionStr = card.action_directive || `Action sequence for Shot #${card.shot_index}`;
-                const dialogueStr = card.dialogue_text ? `Spoken Quote: "${card.dialogue_text}"` : "None (Ambient soundscape).";
+                const dialogueStr = card.dialogue_text ? card.dialogue_text : "None (Ambient soundscape).";
 
                 const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
+                
+                let block1_keyframe = "";
+                if (card.keyframe_image_url) {
+                    if (card.keyframe_role === "Style & Scene Reference") {
+                        block1_keyframe = `\n\n# Visual Style & Scene Reference:\nAttached Image #1 is a visual reference for the background environment and art style. Maintain the scene color palette, lighting scheme, and layout found in Attached Image #1, but generate a new cinematic composition and action according to the prompt. Do not use this as a strict first frame.`;
+                    } else {
+                        block1_keyframe = `\n\n# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.`;
+                    }
+                }
+
                 const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
-                const block3 = `### VISUAL ACTION & CAMERA\n- Shot Number: ${card.shot_index}\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
+                const block3 = `### VISUAL ACTION & CAMERA\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
                 const block4 = `### TIMELINE & DIALOGUE\n- ${dialogueStr}`;
 
-                return `${block1}\n\n${block2}\n\n${block3}\n\n${block4}`;
+                return `${block1}${block1_keyframe}\n\n${block2}\n\n${block3}\n\n${block4}`;
             };
             const [j3SetupLoading, setJ3SetupLoading] = useState(false);
             const [j3ShotCards, setJ3ShotCards] = useState([
@@ -630,6 +641,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     action_directive: "Gaunt wizard puts on a golden velvet blindfold",
                     dialogue_text: "I see all.",
                     keyframe_image_url: "",
+                    keyframe_role: "Strict First Frame",
                     video_url: "",
                     cumulative_state: []
                 },
@@ -639,8 +651,9 @@ UI_HTML = r"""<!DOCTYPE html>
                     action_directive: "Gaunt wizard raises staff slowly while blindfolded",
                     dialogue_text: "Taste the magic.",
                     keyframe_image_url: "",
+                    keyframe_role: "Strict First Frame",
                     video_url: "",
-                    cumulative_state: ["Snape is blindfolded"]
+                    cumulative_state: []
                 }
             ]);
             const [j3KeyframeLoadingMap, setJ3KeyframeLoadingMap] = useState({});
@@ -723,6 +736,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     action_directive: `Gaunt wizard action directive for Shot #${nextIdx}`,
                     dialogue_text: "",
                     keyframe_image_url: "",
+                    keyframe_role: "Strict First Frame",
                     video_url: "",
                     cumulative_state: []
                 };
@@ -829,7 +843,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             dialogue_text: card.dialogue_text || "",
                             keyframe_image_url: card.keyframe_image_url || null,
                             aspect_ratio: aspectRatio,
-                            enable_safety_sanitization: enableSafetySanitization
+                            enable_safety_sanitization: enableSafetySanitization,
+                            compiled_override: card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card)
                         })
                     });
                     const data = await res.json();
@@ -840,7 +855,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                     ? {
                                         ...c,
                                         video_url: data.video_url,
-                                        cumulative_state: data.cumulative_state || c.cumulative_state || (shotIdx > 1 ? ["Snape is blindfolded"] : [])
+                                        cumulative_state: Array.isArray(data.cumulative_state) ? data.cumulative_state : (data.cumulative_state ? [data.cumulative_state] : (c.cumulative_state || (shotIdx > 1 ? ["Prior action completed"] : [])))
                                       }
                                     : c
                             )
@@ -5829,13 +5844,35 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         onChange={(e) => {
                                                             const val = e.target.value;
                                                             setJ3ShotCards((prev) =>
-                                                                prev.map((c) => (c.shot_index === card.shot_index ? { ...c, image_prompt: val } : c))
+                                                                prev.map((c) => (c.shot_index === card.shot_index ? { ...c, image_prompt: val, compiled_override: undefined } : c))
                                                             );
                                                         }}
                                                         rows={2}
                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
                                                     />
                                                 </div>
+
+                                                {card.keyframe_image_url && (
+                                                    <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-2.5 space-y-1 mt-3">
+                                                        <label className="text-xs font-bold text-blue-300 block">Omni Flash Image Constraint Role:</label>
+                                                        <select
+                                                            value={card.keyframe_role || "Strict First Frame"}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                setJ3ShotCards((prev) =>
+                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, keyframe_role: val, compiled_override: undefined } : c))
+                                                                );
+                                                            }}
+                                                            className="w-full bg-black border border-blue-800/60 rounded px-2 py-1.5 text-xs text-blue-200 focus:outline-none"
+                                                        >
+                                                            <option value="Strict First Frame">Literal First Frame (Source Media)</option>
+                                                            <option value="Style & Scene Reference">Style & Background Inspiration (Reference Media)</option>
+                                                        </select>
+                                                        <p className="text-[10px] text-blue-400/80 leading-snug">
+                                                            Select how Omni Flash parses this frame. <b>Source Media</b> literally binds it to the first second of video. <b>Reference Media</b> relaxes the camera, merely pulling art style and general scene composition.
+                                                        </p>
+                                                    </div>
+                                                )}
 
                                                 <div className="flex justify-end pt-1">
                                                     <button
@@ -5850,14 +5887,14 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
 
                                                 <div className="space-y-2 pt-1">
                                                     <div>
-                                                        <label className="text-[11px] font-bold text-gray-300 block">Editable Shot Action Directive:</label>
+                                                        <label className="text-[11px] font-bold text-gray-300 block">Scene Instructions (Background, Camera, Action Directive):</label>
                                                         <input
                                                             type="text"
                                                             value={card.action_directive || ""}
                                                             onChange={(e) => {
                                                                 const val = e.target.value;
                                                                 setJ3ShotCards((prev) =>
-                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, action_directive: val } : c))
+                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, action_directive: val, compiled_override: undefined } : c))
                                                                 );
                                                             }}
                                                             placeholder="Action directive..."
@@ -5866,14 +5903,14 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     </div>
 
                                                     <div>
-                                                        <label className="text-[11px] font-bold text-gray-300 block">Spoken Dialogue Input:</label>
+                                                        <label className="text-[11px] font-bold text-gray-300 block">Timeline & Audio Intent (w/ or w/o dialogue):</label>
                                                         <input
                                                             type="text"
                                                             value={card.dialogue_text || ""}
                                                             onChange={(e) => {
                                                                 const val = e.target.value;
                                                                 setJ3ShotCards((prev) =>
-                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, dialogue_text: val } : c))
+                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, dialogue_text: val, compiled_override: undefined } : c))
                                                                 );
                                                             }}
                                                             placeholder="Spoken dialogue..."
@@ -5894,10 +5931,15 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         </span>
                                                     </div>
                                                     <textarea
-                                                        readOnly
                                                         rows={7}
-                                                        value={compileJourney3ShotPromptPreview(card, idx)}
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-[11px] font-mono text-purple-200 focus:outline-none"
+                                                        value={card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card)}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setJ3ShotCards((prev) =>
+                                                                prev.map((c) => (c.shot_index === card.shot_index ? { ...c, compiled_override: val } : c))
+                                                            );
+                                                        }}
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-[11px] font-mono text-purple-200 focus:outline-none focus:border-purple-500"
                                                     />
                                                 </div>
 
@@ -6737,10 +6779,31 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
         shot_cards = []
         for s in shots:
+            enriched_image_prompt = s.action
+            if char_objs:
+                matched_chars = []
+                for c in char_objs:
+                    name = c.name.lower() if c.name else ""
+                    role = c.role_id.lower() if c.role_id else ""
+                    action_lower = s.action.lower()
+                    
+                    if (name and name in action_lower) or (role and role in action_lower):
+                        tags = []
+                        if getattr(c, "wardrobe", ""):
+                            tags.append(c.wardrobe.strip())
+                        if getattr(c, "aesthetic_tags", None):
+                            tags.extend(c.aesthetic_tags)
+                        
+                        if tags:
+                            matched_chars.append(f"{c.name or c.role_id} ({', '.join(tags)})")
+                
+                if matched_chars:
+                    enriched_image_prompt += f" | Wardrobe & Style: {' ; '.join(matched_chars)}"
+
             card = {
                 "shot_index": s.shot_index,
                 "action_directive": s.action,
-                "image_prompt": s.action,
+                "image_prompt": enriched_image_prompt,
                 "duration_seconds": s.duration_seconds,
                 "location": s.location,
                 "style_lighting": s.style_lighting,
@@ -6789,14 +6852,17 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
         cum_state = agent.journey3_tracker.get_cumulative_state(session_id)
 
-        compiled_prompt = compile_journey3_shot_prompt(
-            shot_number=req.shot_index,
-            action_directive=req.action_directive,
-            cumulative_state=cum_state,
-            aspect_ratio=req.aspect_ratio,
-            timeline_dialogue=req.dialogue_text,
-            enable_sanitization=req.enable_safety_sanitization,
-        )
+        if req.compiled_override:
+            compiled_prompt = req.compiled_override
+        else:
+            compiled_prompt = compile_journey3_shot_prompt(
+                shot_number=req.shot_index,
+                action_directive=req.action_directive,
+                cumulative_state=cum_state,
+                aspect_ratio=req.aspect_ratio,
+                timeline_dialogue=req.dialogue_text,
+                enable_sanitization=req.enable_safety_sanitization,
+            )
 
         keyframe_url = req.keyframe_image_url
         if not keyframe_url and req.action_directive:
@@ -6837,7 +6903,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             ),
             "error": agent_turn.error_message,
             "raw_compiled_prompt": agent_turn.raw_compiled_prompt or compiled_prompt,
-            "cumulative_state": cum_state.format_cumulative_state_block(),
+            "cumulative_state": [f"{char}: {st}" for char, states in cum_state.character_states.items() for st in states] + cum_state.scene_states,
         }
 
     @app.post("/api/journey3/stitch")

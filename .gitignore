@@ -28,3 +28,13 @@ static/sessions/*
 *.wav
 *.mov
 *.webm
+
+# Node and frontend testing
+node_modules/
+package.json
+package-lock.json
+
+# IDE and OS
+.DS_Store
+.idea/
+.vscode/

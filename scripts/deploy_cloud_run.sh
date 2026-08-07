@@ -3,7 +3,7 @@ set -e
 
 PROJECT_ID=${GOOGLE_CLOUD_PROJECT:-"hybrid-vertex"}
 REGION=${GOOGLE_CLOUD_REGION:-"us-central1"}
-SERVICE_NAME="omnimash"
+SERVICE_NAME="omnimash-api"
 
 echo "=========================================================="
 echo "🚀 Deploying OmniMash Full-Stack Application to Cloud Run"
