@@ -796,6 +796,92 @@ def test_journey3_generate_shot_endpoint():
     assert "blindfold" in data2["raw_compiled_prompt"].lower()
 
 
+def test_journey3_setup_included_character_ids_and_prompt_deduplication():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    chars = [
+        {
+            "role_id": "char_1",
+            "name": "Wizard Harry",
+            "reference_url": "gs://bucket/harry.png",
+            "wardrobe": "Blue Robe",
+            "aesthetic_tags": ["Glasses"],
+        },
+        {
+            "role_id": "char_2",
+            "name": "Ron",
+            "reference_url": None,
+            "wardrobe": "Red Sweater",
+            "aesthetic_tags": ["Freckles"],
+        },
+    ]
+    res = client.post(
+        "/api/journey3/setup",
+        json={
+            "master_description": "Wizard Harry and Ron cast spells together in the dungeon",
+            "aspect_ratio": "16:9",
+            "characters": chars,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    cards = data["shot_cards"]
+    assert len(cards) > 0
+    card = cards[0]
+    assert "included_character_ids" in card
+    assert isinstance(card["included_character_ids"], list)
+    if "char_1" in card["included_character_ids"]:
+        assert "Blue Robe" not in card["image_prompt"]
+
+
+def test_journey3_keyframe_character_filtering():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    chars = [
+        {"role_id": "char_1", "name": "Harry", "description": "Wizard"},
+        {"role_id": "char_2", "name": "Ron", "description": "Sidekick"},
+    ]
+    res = client.post(
+        "/api/journey3/keyframe",
+        json={
+            "session_id": "test_j3_filter",
+            "shot_index": 1,
+            "image_prompt": "Harry in potions class",
+            "characters": chars,
+            "included_character_ids": ["char_1"],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    raw_prompt = data["raw_compiled_prompt"]
+    assert "Harry" in raw_prompt
+    assert "Ron" not in raw_prompt
+
+
+def test_journey3_generate_shot_character_filtering():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    chars = [
+        {"role_id": "char_1", "name": "Harry", "description": "Wizard"},
+        {"role_id": "char_2", "name": "Ron", "description": "Sidekick"},
+    ]
+    res = client.post(
+        "/api/journey3/generate-shot",
+        json={
+            "session_id": "test_j3_gen_filter",
+            "shot_index": 1,
+            "action_directive": "Harry raises staff",
+            "characters": chars,
+            "included_character_ids": ["char_1"],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+
+
 def test_journey3_stitch_endpoint():
     app = create_app(mock_mode=True)
     client = TestClient(app)

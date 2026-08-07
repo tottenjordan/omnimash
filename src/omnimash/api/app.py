@@ -327,6 +327,7 @@ class Journey3KeyframePromptEditRequest(BaseModel):
     aspect_ratio: str = "16:9"
     reference_image_urls: list[str] | None = None
     characters: list[dict[str, Any]] | None = None
+    included_character_ids: list[str] | None = None
     style_preset: str | None = None
     image_model: str | None = "gemini-3.1-flash-image"
 
@@ -340,6 +341,8 @@ class Journey3ShotGenerateRequest(BaseModel):
     aspect_ratio: str = "16:9"
     enable_safety_sanitization: bool = True
     compiled_override: str | None = None
+    characters: list[dict[str, Any]] | None = None
+    included_character_ids: list[str] | None = None
 
 
 class Journey3StitchMasterRequest(BaseModel):
@@ -649,7 +652,10 @@ UI_HTML = r"""<!DOCTYPE html>
             const [lightboxImageUrl, setLightboxImageUrl] = useState(null);
 
             const compileJourney3ShotPromptPreview = (card, idx) => {
-                const rosterLines = (characters || []).map((c, i) => {
+                const charPool = (j3Characters && j3Characters.length > 0) ? j3Characters : (characters || []);
+                const includedIds = card ? card.included_character_ids : null;
+                const activeChars = charPool.filter(c => !includedIds || includedIds.includes(c.role_id));
+                const rosterLines = activeChars.map((c, i) => {
                     const refStr = c.reference_url ? ` (@Image${i + 1})` : "";
                     const tags = (c.aesthetic_tags || []).length > 0 ? `, Wardrobe: ${c.aesthetic_tags.join(", ")}` : "";
                     const voice = c.voice_profile ? `, Voice: ${c.voice_profile}` : "";
@@ -657,17 +663,17 @@ UI_HTML = r"""<!DOCTYPE html>
                     return `- ${c.role_id} (${c.name || "Character"}${refStr}): ${c.description || "Visual profile"}${tags}${voice}${narrator}`;
                 }).join("\n") || "None.";
 
-                const stateLines = (card.cumulative_state || []).length > 0
+                const stateLines = (card && card.cumulative_state || []).length > 0
                     ? card.cumulative_state.map(st => `- ${st}`).join("\n")
                     : "Initial scene baseline.";
 
-                const actionStr = card.action_directive || `Action sequence for Shot #${card.shot_index}`;
-                const dialogueStr = card.dialogue_text ? card.dialogue_text : "None (Ambient soundscape).";
+                const actionStr = (card && card.action_directive) || `Action sequence for Shot #${card ? card.shot_index : 1}`;
+                const dialogueStr = (card && card.dialogue_text) ? card.dialogue_text : "None (Ambient soundscape).";
 
                 const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
                 
                 let block1_keyframe = "";
-                if (card.keyframe_image_url) {
+                if (card && card.keyframe_image_url) {
                     if (card.keyframe_role === "Style & Scene Reference") {
                         block1_keyframe = `\n\n# Visual Style & Scene Reference:\nAttached Image #1 is a visual reference for the background environment and art style. Maintain the scene color palette, lighting scheme, and layout found in Attached Image #1, but generate a new cinematic composition and action according to the prompt. Do not use this as a strict first frame.`;
                     } else {
@@ -691,7 +697,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     keyframe_image_url: "",
                     keyframe_role: "Strict First Frame",
                     video_url: "",
-                    cumulative_state: []
+                    cumulative_state: [],
+                    included_character_ids: ["Role A", "Role B"]
                 },
                 {
                     shot_index: 2,
@@ -701,7 +708,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     keyframe_image_url: "",
                     keyframe_role: "Strict First Frame",
                     video_url: "",
-                    cumulative_state: []
+                    cumulative_state: [],
+                    included_character_ids: ["Role A", "Role B"]
                 }
             ]);
             const [j3KeyframeLoadingMap, setJ3KeyframeLoadingMap] = useState({});
@@ -778,6 +786,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
             const handleAddJ3ShotCard = () => {
                 const nextIdx = j3ShotCards.length + 1;
+                const defaultCharIds = (j3Characters || []).map(c => c.role_id);
                 const newCard = {
                     shot_index: nextIdx,
                     image_prompt: `Gaunt wizard action sequence for Shot #${nextIdx}`,
@@ -786,9 +795,28 @@ UI_HTML = r"""<!DOCTYPE html>
                     keyframe_image_url: "",
                     keyframe_role: "Strict First Frame",
                     video_url: "",
-                    cumulative_state: []
+                    cumulative_state: [],
+                    included_character_ids: defaultCharIds
                 };
                 setJ3ShotCards([...j3ShotCards, newCard]);
+            };
+
+            const toggleCharacterInShot = (cardIdx, roleId, isChecked) => {
+                const defaultCharIds = (j3Characters || []).map(c => c.role_id);
+                setJ3ShotCards((prev) =>
+                    prev.map((card, idx) => {
+                        if (idx !== cardIdx) return card;
+                        const currentList = card.included_character_ids || defaultCharIds;
+                        const updatedList = isChecked
+                            ? Array.from(new Set([...currentList, roleId]))
+                            : currentList.filter((id) => id !== roleId);
+                        return {
+                            ...card,
+                            included_character_ids: updatedList,
+                            compiled_override: undefined
+                        };
+                    })
+                );
             };
 
             const handleRemoveJ3ShotCard = (targetShotIdx) => {
@@ -819,7 +847,14 @@ UI_HTML = r"""<!DOCTYPE html>
                     });
                     const data = await res.json();
                     if (data && data.shot_cards && data.shot_cards.length > 0) {
-                        setJ3ShotCards(data.shot_cards);
+                        const defaultCharIds = (j3Characters || []).map(c => c.role_id);
+                        const processedCards = data.shot_cards.map(card => ({
+                            ...card,
+                            included_character_ids: (card.included_character_ids && card.included_character_ids.length > 0)
+                                ? card.included_character_ids
+                                : defaultCharIds
+                        }));
+                        setJ3ShotCards(processedCards);
                     } else if (data && data.error) {
                         setLastError(data.error);
                     }
@@ -830,10 +865,12 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
-            const handleJourney3Keyframe = async (shotIdx, promptText) => {
+            const handleJourney3Keyframe = async (shotIdx, promptText, includedCharacterIds) => {
                 setJ3KeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
                 try {
+                    const card = j3ShotCards.find(c => c.shot_index === shotIdx);
+                    const charIds = includedCharacterIds || (card ? card.included_character_ids : undefined);
                     const refUrls = (characters || [])
                         .map((c) => c && c.reference_url)
                         .filter((url) => url && typeof url === "string" && url.trim().length > 0);
@@ -855,7 +892,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             reference_image_urls: refUrls,
                             characters: characters,
                             style_preset: j3StylePreset,
-                            image_model: j3ImageModel
+                            image_model: j3ImageModel,
+                            included_character_ids: charIds
                         })
                     });
                     const data = await res.json();
@@ -893,7 +931,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             keyframe_image_url: card.keyframe_image_url || null,
                             aspect_ratio: aspectRatio,
                             enable_safety_sanitization: enableSafetySanitization,
-                            compiled_override: card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card)
+                            compiled_override: card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card),
+                            included_character_ids: card.included_character_ids
                         })
                     });
                     const data = await res.json();
@@ -6357,8 +6396,8 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {j3ShotCards.map((card, idx) => (
-                                            <div key={card.shot_index || idx} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-3">
+                                        {j3ShotCards.map((card, cardIdx) => (
+                                            <div key={card.shot_index || cardIdx} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-3">
                                                 <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
                                                     <span className="text-xs font-bold text-blue-300">Shot Card #{card.shot_index} (Max 10s)</span>
                                                     <div className="flex items-center gap-2">
@@ -6373,6 +6412,21 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                             </button>
                                                         )}
                                                     </div>
+                                                </div>
+
+                                                <div className="flex flex-wrap items-center gap-2 mb-3 bg-gray-950/80 p-2.5 rounded-xl border border-gray-800">
+                                                  <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">👥 Shot Cast & References:</span>
+                                                  {j3Characters.map(char => {
+                                                    const isIncluded = (card.included_character_ids || []).includes(char.role_id);
+                                                    return (
+                                                      <label key={char.role_id} className={`cursor-pointer px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${isIncluded ? 'bg-purple-900/80 text-purple-200 border border-purple-600 shadow' : 'bg-gray-900 text-gray-500 border border-gray-800 opacity-60'}`}>
+                                                        <input type="checkbox" checked={isIncluded} onChange={(e) => toggleCharacterInShot(cardIdx, char.role_id, e.target.checked)} className="hidden" />
+                                                        <span>{isIncluded ? '☑' : '☐'}</span>
+                                                        <span>{char.role_id} ({char.name || 'Unnamed'})</span>
+                                                        {char.reference_url && <span className="text-[10px] text-amber-300" title="Reference Image Attached">🖼️</span>}
+                                                      </label>
+                                                    );
+                                                  })}
                                                 </div>
 
                                                 {/* Storyboard Keyframe Photo Card (Prominent & Click to Enlarge) */}
@@ -6446,7 +6500,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     <button
                                                         type="button"
                                                         disabled={j3KeyframeLoadingMap[card.shot_index]}
-                                                        onClick={() => handleJourney3Keyframe(card.shot_index, card.image_prompt)}
+                                                        onClick={() => handleJourney3Keyframe(card.shot_index, card.image_prompt, card.included_character_ids)}
                                                         className="bg-purple-900/70 hover:bg-purple-800 text-purple-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-purple-700 transition"
                                                     >
                                                         🖼️ {j3KeyframeLoadingMap[card.shot_index] ? "Generating Keyframe..." : "Re-Generate Keyframe"}
@@ -7348,25 +7402,32 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         shot_cards = []
         for s in shots:
             enriched_image_prompt = s.action
+            matched_char_ids: list[str] = []
             if char_objs:
-                matched_chars = []
+                matched_style_strings: list[str] = []
                 for c in char_objs:
                     name = c.name.lower() if c.name else ""
                     role = c.role_id.lower() if c.role_id else ""
                     action_lower = s.action.lower()
-                    
+
                     if (name and name in action_lower) or (role and role in action_lower):
-                        tags = []
-                        if getattr(c, "wardrobe", ""):
-                            tags.append(c.wardrobe.strip())
-                        if getattr(c, "aesthetic_tags", None):
-                            tags.extend(c.aesthetic_tags)
-                        
-                        if tags:
-                            matched_chars.append(f"{c.name or c.role_id} ({', '.join(tags)})")
-                
-                if matched_chars:
-                    enriched_image_prompt += f" | Wardrobe & Style: {' ; '.join(matched_chars)}"
+                        matched_char_ids.append(c.role_id)
+                        if not c.reference_url or not c.reference_url.strip():
+                            tags = []
+                            if getattr(c, "wardrobe", ""):
+                                tags.append(c.wardrobe.strip())
+                            if getattr(c, "aesthetic_tags", None):
+                                tags.extend(c.aesthetic_tags)
+
+                            if tags:
+                                matched_style_strings.append(
+                                    f"{c.name or c.role_id} ({', '.join(tags)})"
+                                )
+
+                if matched_style_strings:
+                    enriched_image_prompt += (
+                        f" | Wardrobe & Style: {' ; '.join(matched_style_strings)}"
+                    )
 
             card = {
                 "shot_index": s.shot_index,
@@ -7380,6 +7441,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 "dialogue": getattr(s, "dialogue", ""),
                 "summary": getattr(s, "summary", ""),
                 "keyframe_image_url": getattr(s, "keyframe_image_url", ""),
+                "included_character_ids": matched_char_ids,
             }
             shot_cards.append(card)
 
@@ -7395,7 +7457,19 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     def journey3_keyframe(req: Journey3KeyframePromptEditRequest) -> dict[str, Any]:
         char_objs: list[CharacterRole] = []
         if req.characters:
-            for i, c in enumerate(req.characters):
+            chars_to_use = req.characters
+            if req.included_character_ids is not None:
+                chars_to_use = [
+                    c
+                    for c in req.characters
+                    if (
+                        c.get("role_id")
+                        if isinstance(c, dict)
+                        else getattr(c, "role_id", "")
+                    )
+                    in req.included_character_ids
+                ]
+            for i, c in enumerate(chars_to_use):
                 if isinstance(c, dict):
                     char_objs.append(
                         CharacterRole(
@@ -7411,6 +7485,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                         )
                     )
+                elif isinstance(c, CharacterRole):
+                    char_objs.append(c)
 
         image_url, compiled_prompt = agent.omni_client.generate_keyframe_image(
             req.image_prompt,
@@ -7433,6 +7509,39 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/journey3/generate-shot")
     def journey3_generate_shot(req: Journey3ShotGenerateRequest) -> dict[str, Any]:
         session_id = req.session_id or "default_j3_session"
+
+        char_objs: list[CharacterRole] = []
+        if req.characters:
+            chars_to_use = req.characters
+            if req.included_character_ids is not None:
+                chars_to_use = [
+                    c
+                    for c in req.characters
+                    if (
+                        c.get("role_id")
+                        if isinstance(c, dict)
+                        else getattr(c, "role_id", "")
+                    )
+                    in req.included_character_ids
+                ]
+            for i, c in enumerate(chars_to_use):
+                if isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", f"Role{i}"),
+                            name=c.get("name", ""),
+                            description=c.get("description", ""),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=c.get("aesthetic_tags", []),
+                            voice_style=c.get("voice_style", ""),
+                            voice_profile=c.get("voice_profile", ""),
+                            wardrobe=c.get("wardrobe", ""),
+                            image_role=c.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=c.get("is_offscreen_narrator", False),
+                        )
+                    )
+                elif isinstance(c, CharacterRole):
+                    char_objs.append(c)
 
         agent.journey3_tracker.record_shot_directive(
             session_id=session_id,
@@ -7460,6 +7569,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 keyframe_url = agent.omni_client.generate_keyframe_image(
                     req.action_directive,
                     aspect_ratio=req.aspect_ratio,
+                    characters=char_objs if char_objs else None,
                 )
             except Exception as exc:
                 logger.warning(

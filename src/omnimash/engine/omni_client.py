@@ -1440,11 +1440,19 @@ class OmniFlashClient:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in char_objs:
                 char_id = get_character_identifier(c)
-                wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
-                tag_str = f" [Style: {', '.join(c.aesthetic_tags)}]" if c.aesthetic_tags else ""
-                token = ref_url_to_token.get(c.reference_url) if c.reference_url else None
-                ref_str = f" (Reference Image: {token})" if token else (f" (Reference Image: {c.reference_url})" if c.reference_url else "")
-                char_lines.append(f"- {char_id}: {c.description}{wardrobe_str}{tag_str}{ref_str}")
+                if c.reference_url and c.reference_url.strip():
+                    token = ref_url_to_token.get(c.reference_url, c.reference_url)
+                    char_lines.append(f"- {char_id}: (Reference Image: {token})")
+                else:
+                    wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
+                    tag_str = (
+                        f" [Style: {', '.join(c.aesthetic_tags)}]"
+                        if c.aesthetic_tags
+                        else ""
+                    )
+                    char_lines.append(
+                        f"- {char_id}: {c.description}{wardrobe_str}{tag_str}"
+                    )
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         anchor_instruction = ""
