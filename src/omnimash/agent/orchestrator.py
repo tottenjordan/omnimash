@@ -191,6 +191,7 @@ class OmniMashAgent:
         optimize_prompt: bool = False,
         keyframe_image_url: str | None = None,
         enable_sanitization: bool = True,
+        aspect_ratio: str = "16:9",
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
@@ -231,6 +232,7 @@ class OmniMashAgent:
                     vocal_delivery=vocal_delivery,
                     optimize_prompt=optimize_prompt,
                     enable_sanitization=enable_sanitization,
+                    aspect_ratio=aspect_ratio,
                 )
                 if not turn_resp.success:
                     return turn_resp
@@ -377,6 +379,7 @@ class OmniMashAgent:
                 characters=char_objs,
                 keyframe_image_url=effective_keyframe,
                 enable_sanitization=enable_sanitization,
+                aspect_ratio=aspect_ratio,
             )
         else:
             if characters or scenes:
@@ -410,6 +413,7 @@ class OmniMashAgent:
                     vocal_delivery=vocal_delivery,
                     edit_instruction=prompt if (is_conversational_edit and parent_turn) else None,
                     enable_sanitization=enable_sanitization,
+                    aspect_ratio=aspect_ratio,
                 )
                 meta_prompt = (
                     compiled_override if compiled_override else storyboard_prompt
@@ -447,6 +451,7 @@ class OmniMashAgent:
                 characters=char_objs,
                 keyframe_image_url=keyframe_image_url,
                 enable_sanitization=enable_sanitization,
+                aspect_ratio=aspect_ratio,
             )
 
         if gen_res.error_message and not gen_res.video_url:
@@ -557,6 +562,7 @@ class OmniMashAgent:
         characters: list[CharacterRole] | None = None,
         keyframe_image_url: str | None = None,
         enable_sanitization: bool = True,
+        aspect_ratio: str = "16:9",
     ) -> Any:
         if parent_thread_id:
             return self.omni_client.apply_interaction_diff(
@@ -570,6 +576,7 @@ class OmniMashAgent:
                 characters=characters,
                 keyframe_image_url=keyframe_image_url,
                 enable_safety_sanitization=enable_sanitization,
+                aspect_ratio=aspect_ratio,
             )
         return self.omni_client.generate_clip(
             prompt,
@@ -581,6 +588,7 @@ class OmniMashAgent:
             characters=characters,
             keyframe_image_url=keyframe_image_url,
             enable_safety_sanitization=enable_sanitization,
+            aspect_ratio=aspect_ratio,
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:

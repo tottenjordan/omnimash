@@ -207,6 +207,7 @@ def test_stitch_storyboard_master_live(tmp_path):
             subtitle_text="Start",
             duration_seconds=3.0,
             style="gothic_gold",
+            aspect_ratio="16:9",
             output_dir=str(tmp_path),
         )
         mock_concat.assert_called_once_with(
@@ -215,4 +216,55 @@ def test_stitch_storyboard_master_live(tmp_path):
             session_id="session_456",
             master_audio_path="/static/voiceover.mp3",
         )
+
+
+def test_generate_title_card_clip_aspect_ratios(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    mock_res = MagicMock()
+    mock_res.returncode = 0
+
+    for aspect_ratio, expected_scale in [
+        ("9:16", "scale=720:1280"),
+        ("1:1", "scale=1080:1080"),
+        ("21:9", "scale=1680:720"),
+    ]:
+        with patch("subprocess.run", return_value=mock_res) as mock_subproc:
+            out_path = stitcher.generate_title_card_clip(
+                title_text="Aspect Test",
+                aspect_ratio=aspect_ratio,
+                output_dir=str(tmp_path),
+            )
+            assert out_path.endswith(".mp4")
+            mock_subproc.assert_called_once()
+            cmd = mock_subproc.call_args[0][0]
+            assert "-vf" in cmd
+            vf_arg = cmd[cmd.index("-vf") + 1]
+            assert expected_scale in vf_arg
+
+
+def test_stitch_storyboard_master_aspect_ratio_passed_down(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    shot_clips = [str(tmp_path / "shot1.mp4")]
+    title_cards = [{"insert_at": 0, "title": "Intro", "subtitle": "Start"}]
+    fake_card_clip = str(tmp_path / "title_card_0.mp4")
+
+    with (
+        patch.object(stitcher, "generate_title_card_clip", return_value=fake_card_clip) as mock_gen_card,
+        patch.object(stitcher, "concatenate_clips", return_value=str(tmp_path / "master_stitched.mp4")),
+    ):
+        stitcher.stitch_storyboard_master(
+            shot_clips=shot_clips,
+            title_cards=title_cards,
+            aspect_ratio="9:16",
+            output_dir=str(tmp_path),
+        )
+        mock_gen_card.assert_called_once_with(
+            title_text="Intro",
+            subtitle_text="Start",
+            duration_seconds=3.0,
+            style="gothic_gold",
+            aspect_ratio="9:16",
+            output_dir=str(tmp_path),
+        )
+
 

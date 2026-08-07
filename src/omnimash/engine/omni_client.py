@@ -868,6 +868,7 @@ class OmniFlashClient:
         keyframe_image_url: str | None = None,
         directors_notes: dict[str, Any] | str | None = None,
         enable_safety_sanitization: bool = True,
+        aspect_ratio: str = "16:9",
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -1070,6 +1071,7 @@ class OmniFlashClient:
         characters: list[CharacterRole] | None = None,
         keyframe_image_url: str | None = None,
         enable_safety_sanitization: bool = True,
+        aspect_ratio: str = "16:9",
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -1088,6 +1090,7 @@ class OmniFlashClient:
             session_id=session_id,
             keyframe_image_url=keyframe_image_url,
             enable_safety_sanitization=enable_safety_sanitization,
+            aspect_ratio=aspect_ratio,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
@@ -1137,6 +1140,7 @@ class OmniFlashClient:
         characters: list[CharacterRole] | None = None,
         keyframe_image_url: str | None = None,
         enable_safety_sanitization: bool = True,
+        aspect_ratio: str = "16:9",
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -1155,6 +1159,7 @@ class OmniFlashClient:
             session_id=session_id,
             keyframe_image_url=keyframe_image_url,
             enable_safety_sanitization=enable_safety_sanitization,
+            aspect_ratio=aspect_ratio,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
@@ -1303,6 +1308,7 @@ class OmniFlashClient:
         style_preset: str | None = None,
         wardrobe: str | None = None,
         anchor_keyframe_url: str | None = None,
+        aspect_ratio: str = "16:9",
     ) -> str:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 
@@ -1435,7 +1441,7 @@ class OmniFlashClient:
                 f'<text x="640" y="470" dominant-baseline="middle" text-anchor="middle" fill="#38bdf8" font-size="18" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="1">{style_label}</text>'
                 '<!-- Footer Metadata -->'
                 '<text x="100" y="640" fill="#64748b" font-size="16" font-family="monospace">REC ● 00:00:00:00</text>'
-                '<text x="1180" y="640" text-anchor="end" fill="#64748b" font-size="16" font-family="monospace">16:9 | 4K UHD | 24 FPS</text>'
+                f'<text x="1180" y="640" text-anchor="end" fill="#64748b" font-size="16" font-family="monospace">{aspect_ratio} | 4K UHD | 24 FPS</text>'
                 '</svg>'
             )
             b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
@@ -1481,7 +1487,7 @@ class OmniFlashClient:
 
                 prompt_text = (
                     f"{anchor_instruction}"
-                    f"High quality cinematic 16:9 visual keyframe concept art.\n\n"
+                    f"High quality cinematic {aspect_ratio} visual keyframe concept art.\n\n"
                     f"{character_roster_header}"
                     f"{style_preset_header}"
                     f"{global_wardrobe_header}"
