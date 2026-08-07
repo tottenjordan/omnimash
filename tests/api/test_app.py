@@ -945,6 +945,7 @@ def test_generate_character_sheet_endpoint():
         json={
             "character_name": "Harry Potter",
             "description": "Young wizard with round glasses",
+            "source_image_url": "https://storage.googleapis.com/test-bucket/ref.jpg",
             "aesthetic_tags": ["Red Gucci Tracksuit"],
             "aspect_ratio": "16:9",
         },
@@ -955,6 +956,7 @@ def test_generate_character_sheet_endpoint():
     assert "keyframe_image_url" in data
     assert "raw_compiled_prompt" in data
     assert "Harry Potter" in data["raw_compiled_prompt"] or "Red Gucci Tracksuit" in data["raw_compiled_prompt"]
+    assert "(Reference Image: @Image1)" in data["raw_compiled_prompt"]
 
 
 def test_save_character_sheet_endpoint():

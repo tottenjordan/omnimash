@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 class GenerateCharacterSheetRequest(BaseModel):
     character_name: str | None = None
     description: str | None = None
+    source_image_url: str | None = None
     aesthetic_tags: list[str] = Field(default_factory=list)
     aspect_ratio: str = "16:9"
     model: str = "gemini-3.1-flash-image"
@@ -1558,6 +1559,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         body: JSON.stringify({
                             character_name: char.name || char.role_id,
                             description: char.description || "",
+                            source_image_url: char.reference_url,
                             aesthetic_tags: char.aesthetic_tags || [],
                             aspect_ratio: charSheetAspectRatio[idx] || "16:9",
                             model: charSheetModel[idx] || "gemini-3.1-flash-image",
@@ -7725,31 +7727,25 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/characters/generate-sheet", response_model=GenerateCharacterSheetResponse)
     async def generate_character_sheet_endpoint(req: GenerateCharacterSheetRequest):
         try:
-            tag_str = ", ".join(req.aesthetic_tags) if req.aesthetic_tags else "standard aesthetic"
-            desc = req.description or ""
-            default_turnaround_prompt = (
-                f"A multi-panel cinematic analog photo realistic with natural skin texture character sheet layout on a white background, "
-                f"featuring a single, consistent character based on your source @Image1, their visual likeness and description ({desc}), "
-                f"and their wardrobe and aesthetic style signifiers ({tag_str}). On the far left, a high-detail, close-up feature bust. "
-                f"To the right of that, a vertical column featuring front, profile, and back head busts in high detail. "
-                f"To the right of that, a horizontal row of three matching-style full-body figures: direct front, three-quarter front, "
-                f"and three-quarter back views, all in neutral poses showing full gear. The perspectives and layout are precise, "
-                f"replicating exactly with the new character details. No additional text."
-            )
-            prompt_to_use = req.custom_prompt or default_turnaround_prompt
-
-            keyframe_res = agent.omni_client.generate_keyframe_image(
-                prompt=prompt_to_use,
-                aspect_ratio=req.aspect_ratio,
+            res = agent.omni_client.generate_character_reference_sheet(
+                source_image_url=req.source_image_url,
+                character_name=req.character_name or "",
+                description=req.description or "",
+                aesthetic_tags=req.aesthetic_tags,
+                custom_prompt_override=req.custom_prompt,
                 image_model=req.model,
+                aspect_ratio=req.aspect_ratio,
+                return_compiled_prompt=True,
             )
 
-            if isinstance(keyframe_res, dict):
-                url = keyframe_res.get("keyframe_image_url", "")
-                compiled = keyframe_res.get("raw_compiled_prompt", prompt_to_use)
+            if isinstance(res, tuple) and len(res) == 2:
+                url, compiled = res
+            elif isinstance(res, dict):
+                url = res.get("keyframe_image_url", "")
+                compiled = res.get("raw_compiled_prompt", "")
             else:
-                url = str(keyframe_res)
-                compiled = prompt_to_use
+                url = str(res)
+                compiled = ""
 
             return GenerateCharacterSheetResponse(
                 success=True,
