@@ -621,7 +621,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 let block1_keyframe = "";
                 if (card.keyframe_image_url) {
                     if (card.keyframe_role === "Style & Scene Reference") {
-                        block1_keyframe = `\n\n# Visual Style & Scene Reference:\nAttached Image #1 is a visual reference for the background environment and art style. Maintain the scene's color palette, lighting scheme, and layout found in Attached Image #1, but generate a new cinematic composition and action according to the prompt. Do not use this as a strict first frame.`;
+                        block1_keyframe = `\n\n# Visual Style & Scene Reference:\nAttached Image #1 is a visual reference for the background environment and art style. Maintain the scene color palette, lighting scheme, and layout found in Attached Image #1, but generate a new cinematic composition and action according to the prompt. Do not use this as a strict first frame.`;
                     } else {
                         block1_keyframe = `\n\n# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.`;
                     }
