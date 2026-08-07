@@ -842,7 +842,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                     ? {
                                         ...c,
                                         video_url: data.video_url,
-                                        cumulative_state: data.cumulative_state || c.cumulative_state || (shotIdx > 1 ? ["Prior action completed"] : [])
+                                        cumulative_state: Array.isArray(data.cumulative_state) ? data.cumulative_state : (data.cumulative_state ? [data.cumulative_state] : (c.cumulative_state || (shotIdx > 1 ? ["Prior action completed"] : [])))
                                       }
                                     : c
                             )
@@ -5831,7 +5831,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         onChange={(e) => {
                                                             const val = e.target.value;
                                                             setJ3ShotCards((prev) =>
-                                                                prev.map((c) => (c.shot_index === card.shot_index ? { ...c, image_prompt: val } : c))
+                                                                prev.map((c) => (c.shot_index === card.shot_index ? { ...c, image_prompt: val, compiled_override: undefined } : c))
                                                             );
                                                         }}
                                                         rows={2}
@@ -5859,7 +5859,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                             onChange={(e) => {
                                                                 const val = e.target.value;
                                                                 setJ3ShotCards((prev) =>
-                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, action_directive: val } : c))
+                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, action_directive: val, compiled_override: undefined } : c))
                                                                 );
                                                             }}
                                                             placeholder="Action directive..."
@@ -5875,7 +5875,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                             onChange={(e) => {
                                                                 const val = e.target.value;
                                                                 setJ3ShotCards((prev) =>
-                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, dialogue_text: val } : c))
+                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, dialogue_text: val, compiled_override: undefined } : c))
                                                                 );
                                                             }}
                                                             placeholder="Spoken dialogue..."
@@ -6847,7 +6847,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             ),
             "error": agent_turn.error_message,
             "raw_compiled_prompt": agent_turn.raw_compiled_prompt or compiled_prompt,
-            "cumulative_state": cum_state.format_cumulative_state_block(),
+            "cumulative_state": [f"{char}: {st}" for char, states in cum_state.character_states.items() for st in states] + cum_state.scene_states,
         }
 
     @app.post("/api/journey3/stitch")
