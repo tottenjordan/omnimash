@@ -5192,6 +5192,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                     </div>
                                 </div>
                             </div>
+                        )}
                         {/* ========================================================= */}
                         {/* 🚀 TAB 3: JOURNEY 3 - MULTI-SHOT CONTINUITY STUDIO       */}
                         {/* ========================================================= */}

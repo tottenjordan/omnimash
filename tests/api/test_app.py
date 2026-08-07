@@ -835,12 +835,13 @@ def test_ui_html_syntax_and_tag_balance():
 
     babel_js = match.group(1)
 
-    # Remove string content inside double quotes, single quotes, and backticks to prevent false tag matches inside text
+    # 1. Remove string content inside double quotes, single quotes, and backticks
     clean_js = re.sub(r'"[^"]*"', '""', babel_js)
     clean_js = re.sub(r"'[^']*'", "''", clean_js)
     clean_js = re.sub(r'`[^`]*`', '``', clean_js, flags=re.DOTALL)
     clean_js = re.sub(r'//.*', '', clean_js)
 
+    # 2. Check JSX tag stack
     tag_pattern = re.compile(r'</?([A-Za-z][A-Za-z0-9.]*)\b[^>]*>')
     lines = clean_js.split("\n")
     stack = []
@@ -865,6 +866,23 @@ def test_ui_html_syntax_and_tag_balance():
                 stack.append((tag_name, line_idx))
 
     assert len(stack) == 0, f"Unclosed JSX tags remaining on stack at end of UI_HTML: {stack}"
+
+
+def test_ui_html_renders_in_browser_without_syntax_error():
+    import subprocess
+    import os
+    skill_dir = "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill"
+    test_script = "/usr/local/google/home/jordantotten/.gemini/jetski/brain/3e6e0805-9daf-47da-ae1a-2c3ac07b54e9/scratch/playwright_test_darkblue.js"
+
+    if os.path.exists(skill_dir) and os.path.exists(test_script):
+        res = subprocess.run(
+            ["node", "run.js", test_script],
+            cwd=skill_dir,
+            capture_output=True,
+            text=True
+        )
+        output = res.stdout + res.stderr
+        assert "BROWSER ERROR:" not in output, f"Browser JavaScript compilation error detected: {output}"
 
 
 
