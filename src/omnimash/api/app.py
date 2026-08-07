@@ -5950,28 +5950,30 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                     </div>
                                 </div>
                             </div>
-                    {/* Fullscreen Lightbox Modal */}
-                    {lightboxImageUrl && (
-                        <div
-                            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
-                            onClick={() => setLightboxImageUrl(null)}
-                        >
-                            <div className="relative max-w-5xl max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                    type="button"
-                                    onClick={() => setLightboxImageUrl(null)}
-                                    className="absolute -top-10 right-0 text-white hover:text-red-400 text-sm font-bold bg-gray-900 border border-gray-700 px-3 py-1 rounded-full transition shadow-lg"
-                                >
-                                    ✕ Close Fullscreen
-                                </button>
-                                <img
-                                    src={lightboxImageUrl}
-                                    alt="Enlarged Visual Preview"
-                                    className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-gray-700 shadow-2xl"
-                                />
+                        )}
+
+                        {/* Fullscreen Lightbox Modal */}
+                        {lightboxImageUrl && (
+                            <div
+                                className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+                                onClick={() => setLightboxImageUrl(null)}
+                            >
+                                <div className="relative max-w-5xl max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLightboxImageUrl(null)}
+                                        className="absolute -top-10 right-0 text-white hover:text-red-400 text-sm font-bold bg-gray-900 border border-gray-700 px-3 py-1 rounded-full transition shadow-lg"
+                                    >
+                                        ✕ Close Fullscreen
+                                    </button>
+                                    <img
+                                        src={lightboxImageUrl}
+                                        alt="Enlarged Visual Preview"
+                                        className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-gray-700 shadow-2xl"
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
                     </main>
                 </div>
             );
