@@ -15,6 +15,7 @@ from omnimash.ingestion.media_extractor import (
 from omnimash.prompts.compiler import (
     CharacterRole,
     SceneDirective,
+    compile_journey3_shot_prompt,
     sanitize_real_names,
 )
 
@@ -270,6 +271,40 @@ class StitchMasterRequest(BaseModel):
     title_cards: list[dict[str, Any]] | None = None
     narrator_audio_paths: list[str] | None = None
     background_music_path: str | None = None
+    aspect_ratio: str = "16:9"
+
+
+class Journey3SetupRequest(BaseModel):
+    master_description: str
+    aspect_ratio: str = "16:9"
+    characters: list[dict[str, Any]] | None = None
+    products: list[dict[str, Any]] | None = None
+    style_presets: list[str] | None = None
+    enable_safety_sanitization: bool = True
+
+
+class Journey3KeyframePromptEditRequest(BaseModel):
+    session_id: str | None = None
+    shot_index: int
+    image_prompt: str
+    aspect_ratio: str = "16:9"
+    reference_image_urls: list[str] | None = None
+
+
+class Journey3ShotGenerateRequest(BaseModel):
+    session_id: str | None = None
+    shot_index: int
+    action_directive: str
+    dialogue_text: str = ""
+    keyframe_image_url: str | None = None
+    aspect_ratio: str = "16:9"
+    enable_safety_sanitization: bool = True
+
+
+class Journey3StitchMasterRequest(BaseModel):
+    session_id: str | None = None
+    shot_clips: list[str] = Field(default_factory=list)
+    title_cards: list[dict[str, Any]] | None = None
     aspect_ratio: str = "16:9"
 
 
@@ -551,6 +586,169 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stageSaveLoading, setStageSaveLoading] = useState(false);
             const [isBatchGeneratingVideos, setIsBatchGeneratingVideos] = useState(false);
             const [batchVideoProgress, setBatchVideoProgress] = useState({ current: 0, total: 0, activeShotIndex: 0 });
+
+            // Tab 3: Journey 3 Multi-Shot Continuity Studio State
+            const [activeTab, setActiveTab] = useState("journey3");
+            const [j3MasterDescription, setJ3MasterDescription] = useState("Cyberpunk wizard battle in Tokyo street");
+            const [j3CharRef, setJ3CharRef] = useState("https://storage.googleapis.com/test/char1.jpg");
+            const [j3ProductRef, setJ3ProductRef] = useState("https://storage.googleapis.com/test/prod1.jpg");
+            const [j3StyleRef, setJ3StyleRef] = useState("https://storage.googleapis.com/test/style1.jpg");
+            const [j3StylePreset, setJ3StylePreset] = useState("Gritty 90s Cyberpunk");
+            const [j3SetupLoading, setJ3SetupLoading] = useState(false);
+            const [j3ShotCards, setJ3ShotCards] = useState([
+                {
+                    shot_index: 1,
+                    image_prompt: "Gaunt wizard stirring cauldrons in neon dungeon",
+                    action_directive: "Gaunt wizard puts on a golden velvet blindfold",
+                    dialogue_text: "I see all.",
+                    keyframe_image_url: "",
+                    video_url: "",
+                    cumulative_state: []
+                },
+                {
+                    shot_index: 2,
+                    image_prompt: "Gaunt wizard walking through foggy street",
+                    action_directive: "Gaunt wizard raises staff slowly while blindfolded",
+                    dialogue_text: "Taste the magic.",
+                    keyframe_image_url: "",
+                    video_url: "",
+                    cumulative_state: ["Snape is blindfolded"]
+                }
+            ]);
+            const [j3KeyframeLoadingMap, setJ3KeyframeLoadingMap] = useState({});
+            const [j3ShotGeneratingMap, setJ3ShotGeneratingMap] = useState({});
+            const [j3StitchLoading, setJ3StitchLoading] = useState(false);
+            const [j3MasterVideoUrl, setJ3MasterVideoUrl] = useState("");
+
+            const handleJourney3Setup = async () => {
+                setJ3SetupLoading(true);
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/journey3/setup", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            master_description: j3MasterDescription,
+                            aspect_ratio: aspectRatio,
+                            enable_safety_sanitization: enableSafetySanitization,
+                            characters: [{ name: "Character 1", reference_url: j3CharRef }],
+                            products: [{ name: "Product 1", reference_url: j3ProductRef }],
+                            style_presets: [j3StylePreset]
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.shot_cards && data.shot_cards.length > 0) {
+                        setJ3ShotCards(data.shot_cards);
+                    } else if (data && data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    setLastError(err.message || String(err));
+                } finally {
+                    setJ3SetupLoading(false);
+                }
+            };
+
+            const handleJourney3Keyframe = async (shotIdx, promptText) => {
+                setJ3KeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: true }));
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/journey3/keyframe", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_id: sessionName,
+                            shot_index: shotIdx,
+                            image_prompt: promptText,
+                            aspect_ratio: aspectRatio
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.keyframe_image_url) {
+                        setJ3ShotCards((prev) =>
+                            prev.map((card) =>
+                                card.shot_index === shotIdx
+                                    ? { ...card, keyframe_image_url: data.keyframe_image_url }
+                                    : card
+                            )
+                        );
+                    } else if (data && data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    setLastError(err.message || String(err));
+                } finally {
+                    setJ3KeyframeLoadingMap((prev) => ({ ...prev, [shotIdx]: false }));
+                }
+            };
+
+            const handleJourney3GenerateShot = async (card) => {
+                const shotIdx = card.shot_index;
+                setJ3ShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: true }));
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/journey3/generate-shot", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_id: sessionName,
+                            shot_index: shotIdx,
+                            action_directive: card.action_directive || "",
+                            dialogue_text: card.dialogue_text || "",
+                            keyframe_image_url: card.keyframe_image_url || null,
+                            aspect_ratio: aspectRatio,
+                            enable_safety_sanitization: enableSafetySanitization
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.video_url) {
+                        setJ3ShotCards((prev) =>
+                            prev.map((c) =>
+                                c.shot_index === shotIdx
+                                    ? {
+                                        ...c,
+                                        video_url: data.video_url,
+                                        cumulative_state: data.cumulative_state || c.cumulative_state || (shotIdx > 1 ? ["Snape is blindfolded"] : [])
+                                      }
+                                    : c
+                            )
+                        );
+                    } else if (data && data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    setLastError(err.message || String(err));
+                } finally {
+                    setJ3ShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: false }));
+                }
+            };
+
+            const handleJourney3Stitch = async () => {
+                setJ3StitchLoading(true);
+                setLastError(null);
+                try {
+                    const clips = j3ShotCards.map((c) => c.video_url).filter(Boolean);
+                    const res = await fetch("/api/journey3/stitch", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_id: sessionName,
+                            shot_clips: clips.length > 0 ? clips : ["/static/rendered/clip1.mp4"],
+                            aspect_ratio: aspectRatio
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && (data.master_video_url || data.master_video_path)) {
+                        setJ3MasterVideoUrl(data.master_video_url || data.master_video_path);
+                    } else if (data && data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    setLastError(err.message || String(err));
+                } finally {
+                    setJ3StitchLoading(false);
+                }
+            };
 
             const fetchSavedStoryboards = async () => {
                 try {
@@ -1681,9 +1879,9 @@ UI_HTML = r"""<!DOCTYPE html>
                         <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
                             <button
                                 type="button"
-                                onClick={() => setStudioMode("acts")}
+                                onClick={() => { setStudioMode("acts"); setActiveTab("acts"); }}
                                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                                    studioMode === "acts"
+                                    studioMode === "acts" && activeTab !== "journey3"
                                         ? "bg-purple-600 text-white shadow shadow-purple-900/50"
                                         : "text-gray-400 hover:text-gray-200"
                                 }`}
@@ -1693,15 +1891,27 @@ UI_HTML = r"""<!DOCTYPE html>
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setStudioMode("stages")}
+                                onClick={() => { setStudioMode("stages"); setActiveTab("stages"); }}
                                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                                    studioMode === "stages"
+                                    studioMode === "stages" && activeTab !== "journey3"
                                         ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow shadow-amber-900/50 font-extrabold"
                                         : "text-gray-400 hover:text-gray-200"
                                 }`}
                             >
                                 <span>🎬</span>
                                 <span>4-Stage Storyboard Journey</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setActiveTab("journey3"); setStudioMode("journey3"); }}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                                    activeTab === "journey3" || studioMode === "journey3"
+                                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow shadow-blue-900/50 font-extrabold"
+                                        : "text-gray-400 hover:text-gray-200"
+                                }`}
+                            >
+                                <span>🚀</span>
+                                <span>Tab 3: 🚀 Journey 3 - Multi-Shot Continuity Studio</span>
                             </button>
                         </div>
 
@@ -1769,7 +1979,16 @@ UI_HTML = r"""<!DOCTYPE html>
                     </header>
 
                     {/* Navigation Bar based on Studio Mode */}
-                    {studioMode === "acts" ? (
+                    {activeTab === "journey3" || studioMode === "journey3" ? (
+                        <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-4">
+                            <button
+                                onClick={() => { setActiveTab("journey3"); setStudioMode("journey3"); }}
+                                className="flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition bg-blue-600/30 text-blue-300 border border-blue-500 shadow-lg shadow-blue-900/20"
+                            >
+                                <span>Tab 3: 🚀 Journey 3 - Multi-Shot Continuity Studio</span>
+                            </button>
+                        </div>
+                    ) : studioMode === "acts" ? (
                         <div className="bg-gray-900/60 border-b border-gray-800/80 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-6">
                             <button
                                 onClick={() => setActiveAct(1)}
@@ -4973,6 +5192,300 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                     </div>
                                 </div>
                             </div>
+                        {/* ========================================================= */}
+                        {/* 🚀 TAB 3: JOURNEY 3 - MULTI-SHOT CONTINUITY STUDIO       */}
+                        {/* ========================================================= */}
+                        {(activeTab === "journey3" || studioMode === "journey3") && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-r from-blue-950/50 via-indigo-950/50 to-purple-950/50 border border-blue-800/50 rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-lg font-extrabold text-blue-200 flex items-center gap-2">
+                                            <span>🚀</span>
+                                            <span>Tab 3: 🚀 Journey 3 - Multi-Shot Continuity Studio</span>
+                                        </h2>
+                                        <p className="text-xs text-gray-300 mt-1">
+                                            Multi-shot AI continuous scene generation with visual reference uploaders, keyframe prompt editing, and cumulative state tracking across sequential shots.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* STEP 1: CONCEPT & REFERENCE UPLOADERS */}
+                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                                        <span>💡</span>
+                                        <span>Step 1: Concept &amp; Reference Uploaders</span>
+                                    </h3>
+
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-300 block mb-1">Master Concept Description:</label>
+                                            <textarea
+                                                value={j3MasterDescription}
+                                                onChange={(e) => setJ3MasterDescription(e.target.value)}
+                                                rows={3}
+                                                placeholder="Describe the multi-shot continuous scene..."
+                                                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1.5">
+                                                <label className="text-xs font-bold text-purple-300 block">Character Reference (@Image1):</label>
+                                                <input
+                                                    type="text"
+                                                    value={j3CharRef}
+                                                    onChange={(e) => setJ3CharRef(e.target.value)}
+                                                    placeholder="URL or GCS path for character"
+                                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs font-mono text-purple-200"
+                                                />
+                                            </div>
+                                            <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1.5">
+                                                <label className="text-xs font-bold text-teal-300 block">Product / Prop Reference (@Product1):</label>
+                                                <input
+                                                    type="text"
+                                                    value={j3ProductRef}
+                                                    onChange={(e) => setJ3ProductRef(e.target.value)}
+                                                    placeholder="URL or GCS path for prop/product"
+                                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs font-mono text-teal-200"
+                                                />
+                                            </div>
+                                            <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1.5">
+                                                <label className="text-xs font-bold text-pink-300 block">Style &amp; Scene Reference (@StyleRef):</label>
+                                                <input
+                                                    type="text"
+                                                    value={j3StyleRef}
+                                                    onChange={(e) => setJ3StyleRef(e.target.value)}
+                                                    placeholder="URL or GCS path for style/environment"
+                                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs font-mono text-pink-200"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <div>
+                                                    <label className="text-xs font-bold text-gray-400 block mb-1">Style &amp; Tone Preset:</label>
+                                                    <select
+                                                        value={j3StylePreset}
+                                                        onChange={(e) => setJ3StylePreset(e.target.value)}
+                                                        className="bg-gray-950 border border-gray-800 text-xs font-bold text-blue-200 rounded-xl px-3 py-2"
+                                                    >
+                                                        <option value="Gritty 90s Cyberpunk">Gritty 90s Cyberpunk</option>
+                                                        <option value="Cinematic Trap Parody">Cinematic Trap Parody</option>
+                                                        <option value="90s Cel-Shaded Anime">90s Cel-Shaded Anime</option>
+                                                        <option value="Hyper-Realistic Noir">Hyper-Realistic Noir</option>
+                                                    </select>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (j3MasterDescription.trim()) {
+                                                            setJ3StylePreset("Gritty 90s Cyberpunk");
+                                                        }
+                                                    }}
+                                                    className="bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold px-3 py-2 rounded-xl border border-gray-700 mt-5"
+                                                >
+                                                    🔍 AI Deconstruct
+                                                </button>
+
+                                                <div>
+                                                    <label className="text-xs font-bold text-gray-400 block mb-1">Aspect Ratio Selector:</label>
+                                                    <select
+                                                        value={aspectRatio}
+                                                        onChange={(e) => setAspectRatio(e.target.value)}
+                                                        className="bg-gray-950 border border-gray-800 text-xs font-bold text-amber-200 rounded-xl px-3 py-2"
+                                                    >
+                                                        <option value="16:9">16:9 (Landscape)</option>
+                                                        <option value="9:16">9:16 (Vertical/Reels)</option>
+                                                        <option value="1:1">1:1 (Square)</option>
+                                                        <option value="21:9">21:9 (Cinematic Ultra-Wide)</option>
+                                                    </select>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 mt-5 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl">
+                                                    <span className="text-xs font-bold text-gray-300">Safety Sanitization Toggle:</span>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={enableSafetySanitization}
+                                                        onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                                        className="rounded border-gray-700 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                disabled={j3SetupLoading}
+                                                onClick={handleJourney3Setup}
+                                                className="bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 hover:from-blue-400 hover:to-purple-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 border border-blue-400/30 disabled:opacity-50 mt-5"
+                                            >
+                                                <span>✨</span>
+                                                <span>{j3SetupLoading ? "Setting up Continuity Studio..." : "✨ Create Multi-Shot Continuity Studio"}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* STEP 2: SHOT CARD WORKSTATION */}
+                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                        <span>📋</span>
+                                        <span>Step 2: Shot Card Workstation</span>
+                                    </h3>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {j3ShotCards.map((card, idx) => (
+                                            <div key={card.shot_index || idx} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-3">
+                                                <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
+                                                    <span className="text-xs font-bold text-blue-300">Shot Card #{card.shot_index} (Max 10s)</span>
+                                                    <span className="text-[10px] font-mono text-gray-400">Sequence Index: {card.shot_index}</span>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs font-bold text-gray-300 block mb-1">Editable Keyframe Image Prompt Textarea:</label>
+                                                    <textarea
+                                                        value={card.image_prompt || ""}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setJ3ShotCards((prev) =>
+                                                                prev.map((c) => (c.shot_index === card.shot_index ? { ...c, image_prompt: val } : c))
+                                                            );
+                                                        }}
+                                                        rows={2}
+                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        {card.keyframe_image_url ? (
+                                                            <img src={getDisplayableRefUrl(card.keyframe_image_url)} alt="Keyframe Preview" className="w-16 h-12 object-cover rounded-lg border border-gray-700" />
+                                                        ) : (
+                                                            <div className="w-16 h-12 bg-gray-900 border border-dashed border-gray-800 rounded-lg flex items-center justify-center text-[10px] text-gray-500">No Frame</div>
+                                                        )}
+                                                        <span className="text-[11px] text-gray-400">Keyframe Preview</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        disabled={j3KeyframeLoadingMap[card.shot_index]}
+                                                        onClick={() => handleJourney3Keyframe(card.shot_index, card.image_prompt)}
+                                                        className="bg-purple-900/70 hover:bg-purple-800 text-purple-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-purple-700 transition"
+                                                    >
+                                                        🖼️ {j3KeyframeLoadingMap[card.shot_index] ? "Generating Keyframe..." : "Re-Generate Keyframe"}
+                                                    </button>
+                                                </div>
+
+                                                <div className="space-y-2 pt-1">
+                                                    <div>
+                                                        <label className="text-[11px] font-bold text-gray-300 block">Editable Shot Action Directive:</label>
+                                                        <input
+                                                            type="text"
+                                                            value={card.action_directive || ""}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                setJ3ShotCards((prev) =>
+                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, action_directive: val } : c))
+                                                                );
+                                                            }}
+                                                            placeholder="Action directive..."
+                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[11px] font-bold text-gray-300 block">Spoken Dialogue Input:</label>
+                                                        <input
+                                                            type="text"
+                                                            value={card.dialogue_text || ""}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                setJ3ShotCards((prev) =>
+                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, dialogue_text: val } : c))
+                                                                );
+                                                            }}
+                                                            placeholder="Spoken dialogue..."
+                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* STEP 3 WITHIN SHOT CARD OR SECTION */}
+                                                <div className="pt-2 border-t border-gray-800/80 space-y-2">
+                                                    {/* Cumulative State Inspector Badge/Box */}
+                                                    <div className="bg-blue-950/40 border border-blue-800/60 rounded-lg p-2 text-xs">
+                                                        <span className="font-bold text-blue-300 block">Cumulative State Inspector:</span>
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {card.cumulative_state && card.cumulative_state.length > 0 ? (
+                                                                card.cumulative_state.map((st, sidx) => (
+                                                                    <span key={sidx} className="bg-blue-900/60 text-blue-200 border border-blue-700 px-2 py-0.5 rounded text-[10px] font-mono">
+                                                                        [Active State: {st}]
+                                                                    </span>
+                                                                ))
+                                                            ) : (
+                                                                <span className="text-[10px] text-gray-500 font-mono">[Active State: Initial scene state]</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between gap-2 pt-1">
+                                                        <button
+                                                            type="button"
+                                                            disabled={j3ShotGeneratingMap[card.shot_index]}
+                                                            onClick={() => handleJourney3GenerateShot(card)}
+                                                            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs py-2 px-3 rounded-xl shadow flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                                        >
+                                                            <span>🎬</span>
+                                                            <span>{j3ShotGeneratingMap[card.shot_index] ? "Rendering..." : "🎬 Render 10s Shot Video"}</span>
+                                                        </button>
+                                                    </div>
+
+                                                    {card.video_url && (
+                                                        <div className="aspect-video bg-black rounded-lg overflow-hidden border border-gray-800 mt-2">
+                                                            <video src={getDisplayableRefUrl(card.video_url)} controls className="w-full h-full object-contain" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* STEP 3: MASTER ASSEMBLY & STITCHING */}
+                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
+                                        <span>🎬</span>
+                                        <span>Step 3: Cumulative Scene State &amp; Master Assembly</span>
+                                    </h3>
+
+                                    <div className="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-bold text-gray-300">Stitch All Generated Clips into Master Sequence</span>
+                                            <span className="text-[10px] font-mono text-gray-400">Total Shots: {j3ShotCards.length}</span>
+                                        </div>
+
+                                        {j3MasterVideoUrl && (
+                                            <div className="space-y-2">
+                                                <span className="text-xs font-bold text-green-300 block">Stitched Master Preview:</span>
+                                                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 max-w-2xl mx-auto">
+                                                    <video src={getDisplayableRefUrl(j3MasterVideoUrl)} controls className="w-full h-full object-contain" />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex justify-end">
+                                            <button
+                                                type="button"
+                                                disabled={j3StitchLoading}
+                                                onClick={handleJourney3Stitch}
+                                                className="bg-gradient-to-r from-pink-500 via-purple-600 to-indigo-600 hover:from-pink-400 hover:to-indigo-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                <span>🎬</span>
+                                                <span>{j3StitchLoading ? "Stitching Master Video..." : "🎬 Stitch Master Video"}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </main>
                 </div>
@@ -5672,6 +6185,162 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 master_url = f"/static/{os.path.basename(master_path)}"
         return {
             "status": "ok",
+            "master_video_path": master_path,
+            "master_video_url": master_url,
+        }
+
+    @app.post("/api/journey3/setup")
+    def journey3_setup(req: Journey3SetupRequest) -> dict[str, Any]:
+        char_objs: list[CharacterRole] = []
+        if req.characters:
+            for c in req.characters:
+                if isinstance(c, dict):
+                    char_objs.append(
+                        CharacterRole(
+                            role_id=c.get("role_id", ""),
+                            name=c.get("name", ""),
+                            description=c.get("description", ""),
+                            reference_url=c.get("reference_url"),
+                            aesthetic_tags=c.get("aesthetic_tags", []),
+                            voice_style=c.get("voice_style", ""),
+                            voice_profile=c.get("voice_profile", ""),
+                            wardrobe=c.get("wardrobe", ""),
+                            image_role=c.get("image_role", "Character Reference"),
+                            is_offscreen_narrator=c.get("is_offscreen_narrator", False),
+                        )
+                    )
+
+        style_tone = (
+            req.style_presets[0] if req.style_presets else "Cinematic Trap Parody"
+        )
+        shots = agent.storyboard_agent.expand_vision(
+            concept=req.master_description,
+            style_tone=style_tone,
+            target_duration=30.0,
+            characters=char_objs if char_objs else None,
+        )
+
+        shot_cards = []
+        for s in shots:
+            card = {
+                "shot_index": s.shot_index,
+                "action_directive": s.action,
+                "image_prompt": s.action,
+                "duration_seconds": s.duration_seconds,
+                "location": s.location,
+                "style_lighting": s.style_lighting,
+                "framing_motion": s.framing_motion,
+                "audio": s.audio,
+                "dialogue": getattr(s, "dialogue", ""),
+                "summary": getattr(s, "summary", ""),
+                "keyframe_image_url": getattr(s, "keyframe_image_url", ""),
+            }
+            shot_cards.append(card)
+
+        return {
+            "success": True,
+            "master_description": req.master_description,
+            "aspect_ratio": req.aspect_ratio,
+            "shot_cards": shot_cards,
+            "shots": shot_cards,
+        }
+
+    @app.post("/api/journey3/keyframe")
+    def journey3_keyframe(req: Journey3KeyframePromptEditRequest) -> dict[str, Any]:
+        image_url = agent.omni_client.generate_keyframe_image(
+            req.image_prompt,
+            reference_image_urls=req.reference_image_urls,
+            aspect_ratio=req.aspect_ratio,
+        )
+        return {
+            "success": True,
+            "session_id": req.session_id,
+            "shot_index": req.shot_index,
+            "image_prompt": req.image_prompt,
+            "keyframe_image_url": image_url,
+        }
+
+    @app.post("/api/journey3/generate-shot")
+    def journey3_generate_shot(req: Journey3ShotGenerateRequest) -> dict[str, Any]:
+        session_id = req.session_id or "default_j3_session"
+
+        agent.journey3_tracker.record_shot_directive(
+            session_id=session_id,
+            shot_index=req.shot_index,
+            action_text=req.action_directive,
+            dialogue_text=req.dialogue_text,
+        )
+        cum_state = agent.journey3_tracker.get_cumulative_state(session_id)
+
+        compiled_prompt = compile_journey3_shot_prompt(
+            shot_number=req.shot_index,
+            action_directive=req.action_directive,
+            cumulative_state=cum_state,
+            aspect_ratio=req.aspect_ratio,
+            timeline_dialogue=req.dialogue_text,
+            enable_sanitization=req.enable_safety_sanitization,
+        )
+
+        keyframe_url = req.keyframe_image_url
+        if not keyframe_url and req.action_directive:
+            try:
+                keyframe_url = agent.omni_client.generate_keyframe_image(
+                    req.action_directive,
+                    aspect_ratio=req.aspect_ratio,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Keyframe image generation failed in journey3_generate_shot: %s",
+                    exc,
+                )
+
+        agent_turn = agent.process_user_turn(
+            user_id="usr_default",
+            project_id="prj_default",
+            prompt=req.action_directive,
+            compiled_override=compiled_prompt,
+            clip_index=req.shot_index,
+            session_name=session_id,
+            keyframe_image_url=keyframe_url,
+            voiceover=req.dialogue_text if req.dialogue_text else None,
+            enable_sanitization=req.enable_safety_sanitization,
+            aspect_ratio=req.aspect_ratio,
+        )
+
+        return {
+            "success": agent_turn.success,
+            "session_id": session_id,
+            "shot_index": req.shot_index,
+            "video_url": agent_turn.video_url,
+            "keyframe_image_url": keyframe_url,
+            "turn_id": agent_turn.turn_id,
+            "status": agent_turn.status_event,
+            "generation_mode": getattr(
+                agent_turn, "generation_mode", "LIVE_OMNI_FLASH"
+            ),
+            "error": agent_turn.error_message,
+            "raw_compiled_prompt": agent_turn.raw_compiled_prompt or compiled_prompt,
+            "cumulative_state": cum_state.format_cumulative_state_block(),
+        }
+
+    @app.post("/api/journey3/stitch")
+    def journey3_stitch(req: Journey3StitchMasterRequest) -> dict[str, Any]:
+        master_path = agent.stitcher.stitch_storyboard_master(
+            shot_clips=req.shot_clips,
+            title_cards=req.title_cards,
+            session_id=req.session_id,
+            aspect_ratio=req.aspect_ratio,
+        )
+        master_url = master_path
+        if not master_url.startswith("http") and not master_url.startswith("/static"):
+            if master_url.startswith("gs://"):
+                master_url = f"/api/media-proxy?uri={master_url}"
+            else:
+                master_url = f"/static/{os.path.basename(master_path)}"
+        return {
+            "status": "ok",
+            "success": True,
+            "session_id": req.session_id,
             "master_video_path": master_path,
             "master_video_url": master_url,
         }
