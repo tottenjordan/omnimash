@@ -1118,4 +1118,3 @@ def test_journey3_clean_names_and_in_text_image_tag_replacement():
 
 
 
-
