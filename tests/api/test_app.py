@@ -1108,6 +1108,95 @@ def test_journey3_clean_names_and_in_text_image_tag_replacement():
     assert "Swagrid Tha Plug (@Image1) glides out of the forest" in compiled
 
 
+def test_journey3_keyframe_excluded_character_reference_url_filtering(monkeypatch):
+    from omnimash.api.app import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    captured_kwargs = {}
+
+    def mock_generate_keyframe_image(self, prompt, **kwargs):
+        captured_kwargs.update(kwargs)
+        return "https://storage.googleapis.com/test-bucket/keyframe.jpg", "Compiled Keyframe Prompt"
+
+    monkeypatch.setattr(
+        "omnimash.engine.omni_client.OmniFlashClient.generate_keyframe_image",
+        mock_generate_keyframe_image,
+    )
+
+    chars = [
+        {"role_id": "Role A", "name": "Harry", "reference_url": "https://storage.googleapis.com/test/refA.jpg"},
+        {"role_id": "Role B", "name": "Draco", "reference_url": "https://storage.googleapis.com/test/refB.jpg"},
+    ]
+
+    res = client.post(
+        "/api/journey3/keyframe",
+        json={
+            "session_id": "test_j3_ref_filter",
+            "shot_index": 1,
+            "image_prompt": "Harry and Draco wizard duel",
+            "characters": chars,
+            "included_character_ids": ["Role A"],
+            "reference_image_urls": [
+                "https://storage.googleapis.com/test/refA.jpg",
+                "https://storage.googleapis.com/test/refB.jpg",
+                "https://storage.googleapis.com/test/style.jpg",
+            ],
+        },
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+
+    passed_ref_urls = captured_kwargs.get("reference_image_urls", [])
+    assert "https://storage.googleapis.com/test/refA.jpg" in passed_ref_urls
+    assert "https://storage.googleapis.com/test/style.jpg" in passed_ref_urls
+    assert "https://storage.googleapis.com/test/refB.jpg" not in passed_ref_urls
+
+
+def test_journey3_keyframe_fallback_for_stale_included_character_ids():
+    from omnimash.api.app import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    chars = [
+        {"role_id": "Role A", "name": "Harry", "description": "Wizard A"},
+        {"role_id": "Role B", "name": "Draco", "description": "Wizard B"},
+    ]
+
+    res = client.post(
+        "/api/journey3/keyframe",
+        json={
+            "session_id": "test_j3_stale_fallback",
+            "shot_index": 1,
+            "image_prompt": "Harry and Draco battle in neon alley",
+            "characters": chars,
+            "included_character_ids": ["Stale_Role_X"],
+        },
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    compiled = data.get("raw_compiled_prompt", "")
+    assert "Harry" in compiled
+    assert "Draco" in compiled or "Rival Wizard" in compiled
+
+
+def test_ui_html_journey3_character_selection_and_sync_patterns():
+    from omnimash.api.app import UI_HTML
+
+    assert "validIncludedChars" in UI_HTML
+    assert "characters: j3Characters" in UI_HTML
+    assert "updatedRoleIds" in UI_HTML
+
+
+
 
 
 
