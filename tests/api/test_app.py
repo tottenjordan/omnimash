@@ -1070,6 +1070,15 @@ def test_save_character_sheet_endpoint():
     assert "sessions/test_sheet_session/character_sheets/harry_sheet_v1.png" in data["public_url"]
 
 
+def test_ui_html_contains_continuation_link_button():
+    from omnimash.api.app import UI_HTML
+
+    assert "handleLinkToPrevShot" in UI_HTML
+    assert "Continue From Shot #" in UI_HTML
+    assert "Inherit previous shot's keyframe image as starting frame anchor" in UI_HTML
+
+
+
 
 
 
