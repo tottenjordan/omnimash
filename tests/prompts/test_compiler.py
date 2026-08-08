@@ -853,15 +853,15 @@ def test_four_block_official_image_ref_tags():
 
     # Verify character profile binding format
     assert (
-        "- Role A - Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard"
+        "- Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard"
         in full_prompt
     )
     assert (
-        "- Role B - Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round wire-rim glasses"
+        "- Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round wire-rim glasses"
         in full_prompt
     )
     assert (
-        "- Role C - Dungeon Corridor <FIRST_FRAME>: Starting frame of stone dungeon corridor"
+        "- Dungeon Corridor <FIRST_FRAME>: Starting frame of stone dungeon corridor"
         in full_prompt
     )
 
@@ -1008,8 +1008,8 @@ def test_compile_storyboard_with_keyframe_seed_offsets_image_indexes():
     )
     assert "[# Sources <FIRST_FRAME>@Image1]" in compiled
     assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in compiled
-    assert "- Role A - Char1 <IMAGE_REF_0>:" in compiled
-    assert "- Role B - Char2 <IMAGE_REF_1>:" in compiled
+    assert "- Char1 <IMAGE_REF_0>:" in compiled
+    assert "- Char2 <IMAGE_REF_1>:" in compiled
 
 
 def test_compile_storyboard_multi_speaker_dialogue_tag_binding():

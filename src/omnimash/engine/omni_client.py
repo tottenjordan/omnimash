@@ -16,6 +16,7 @@ from omnimash.prompts.compiler import (
     CharacterRole,
     build_character_image_ref_tags,
     get_character_identifier,
+    replace_character_in_text_image_tags,
     sanitize_real_names,
 )
 from omnimash.storage.gcs import GcsStorageManager
@@ -1436,6 +1437,7 @@ class OmniFlashClient:
                     token_counter += 1
 
         character_roster_header = ""
+        name_to_img_tag: dict[str, str] = {}
         if char_objs:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in char_objs:
@@ -1443,6 +1445,18 @@ class OmniFlashClient:
                 if c.reference_url and c.reference_url.strip():
                     token = ref_url_to_token.get(c.reference_url, c.reference_url)
                     char_lines.append(f"- {char_id}: (Reference Image: {token})")
+                    name_to_img_tag[char_id] = token
+                    if c.name:
+                        name_to_img_tag[c.name] = token
+                        san_name = sanitize_real_names(c.name).strip()
+                        if san_name:
+                            name_to_img_tag[san_name] = token
+                        base_name = re.sub(r"\s*\(.*?\)", "", c.name).strip()
+                        if base_name:
+                            name_to_img_tag[base_name] = token
+                            san_base = sanitize_real_names(base_name).strip()
+                            if san_base:
+                                name_to_img_tag[san_base] = token
                 else:
                     wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
                     tag_str = (
@@ -1454,6 +1468,9 @@ class OmniFlashClient:
                         f"- {char_id}: {c.description}{wardrobe_str}{tag_str}"
                     )
             character_roster_header = "\n".join(char_lines) + "\n\n"
+
+        if name_to_img_tag and full_prompt:
+            full_prompt = replace_character_in_text_image_tags(full_prompt, name_to_img_tag)
 
         anchor_instruction = ""
         if anchor_keyframe_url:

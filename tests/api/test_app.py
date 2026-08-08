@@ -135,7 +135,7 @@ def test_api_generate_and_extend_scene_with_vocal_delivery_and_voice_style():
     gen_data = gen_res.json()
     assert gen_data["success"] is True
     assert (
-        "Voice Style (Role A - Spectacled Wizard Bruv): Melodic autotune trap flow"
+        "Voice Style (Spectacled Wizard Bruv): Melodic autotune trap flow"
         in gen_data["raw_compiled_prompt"]
     )
     assert (
@@ -1077,6 +1077,35 @@ def test_ui_html_contains_continuation_link_button():
     assert "Continue From Shot #" in UI_HTML
     assert "Inherit previous shot's keyframe image as starting frame anchor" in UI_HTML
 
+
+def test_journey3_clean_names_and_in_text_image_tag_replacement():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/journey3/generate-shot",
+        json={
+            "session_id": "test_j3_tags",
+            "shot_index": 1,
+            "action_directive": "Swagrid Tha Plug glides out of the forest",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Swagrid Tha Plug",
+                    "description": "Legendary supplier wizard",
+                    "reference_url": "https://storage.googleapis.com/test-bucket/swagrid.jpg",
+                }
+            ],
+            "included_character_ids": ["Role A"],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    compiled = data.get("raw_compiled_prompt", "")
+    assert "- Swagrid Tha Plug: (Reference Image: @Image1)" in compiled
+    assert "Role A - Swagrid Tha Plug" not in compiled
+    assert "Swagrid Tha Plug (@Image1) glides out of the forest" in compiled
 
 
 
