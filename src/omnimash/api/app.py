@@ -1052,8 +1052,12 @@ UI_HTML = r"""<!DOCTYPE html>
                         })
                     });
                     const data = await res.json();
+                    if (data && data.characters && Array.isArray(data.characters)) {
+                        setCharacters(data.characters);
+                        setJ3Characters(data.characters);
+                    }
                     if (data && data.shot_cards && data.shot_cards.length > 0) {
-                        const defaultCharIds = (j3Characters || []).map(c => c.role_id);
+                        const defaultCharIds = ((data.characters && Array.isArray(data.characters) ? data.characters : j3Characters) || []).map(c => c.role_id);
                         const processedCards = data.shot_cards.map(card => ({
                             ...card,
                             included_character_ids: (card.included_character_ids && card.included_character_ids.length > 0)
@@ -2225,6 +2229,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const handleResetStudio = () => {
                 setConcept("");
                 setCharacters([]);
+                setJ3Characters([]);
                 setAestheticTags([]);
                 setEnvironmentTag("");
                 setCameraLightingTag("");
@@ -2236,6 +2241,11 @@ UI_HTML = r"""<!DOCTYPE html>
                 setDeltaPrompt("");
                 setRawCompiledPrompt("");
                 setActiveAct(1);
+            };
+
+            const handleResetRoster = () => {
+                setCharacters([]);
+                setJ3Characters([]);
             };
 
             const handleConfirmCreateProject = async () => {
@@ -2254,6 +2264,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data && data.success) {
                         setProjectsList((prev) => (prev.includes(cleaned) ? prev : [...prev, cleaned]));
                         setActiveProject(cleaned);
+                        setCharacters([]);
+                        setJ3Characters([]);
                         setShowNewProjectModal(false);
                         setNewProjectInput("");
                     } else {
@@ -2293,8 +2305,17 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
+            const handleCreateProject = () => {
+                setNewProjectInput("");
+                setCharacters([]);
+                setJ3Characters([]);
+                setShowNewProjectModal(true);
+            };
+
             const handleCreateNewSession = () => {
                 setNewSessionInput("");
+                setCharacters([]);
+                setJ3Characters([]);
                 setShowNewSessionModal(true);
             };
 
@@ -2664,8 +2685,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         onChange={(e) => {
                                             const val = e.target.value;
                                             if (val === "__NEW_PROJECT__") {
-                                                setNewProjectInput("");
-                                                setShowNewProjectModal(true);
+                                                handleCreateProject();
                                             } else if (val) {
                                                 setActiveProject(val);
                                             }
@@ -2679,7 +2699,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                     </select>
                                     <button
                                         type="button"
-                                        onClick={() => { setNewProjectInput(""); setShowNewProjectModal(true); }}
+                                        onClick={handleCreateProject}
                                         className="bg-blue-900/60 hover:bg-blue-800 border border-blue-700 text-blue-200 text-xs font-semibold px-2 py-1 rounded transition"
                                     >
                                         + New Project
@@ -2696,8 +2716,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         onChange={(e) => {
                                             const val = e.target.value;
                                             if (val === "__NEW_SESSION__") {
-                                                setNewSessionInput("");
-                                                setShowNewSessionModal(true);
+                                                handleCreateNewSession();
                                             } else if (val) {
                                                 setSessionName(val);
                                                 handleLoadSessionRoster(val);
@@ -2713,7 +2732,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                     </select>
                                     <button
                                         type="button"
-                                        onClick={() => { setNewSessionInput(""); setShowNewSessionModal(true); }}
+                                        onClick={handleCreateNewSession}
                                         className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-semibold px-2 py-1 rounded transition"
                                     >
                                         + New Session
@@ -2983,6 +3002,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                             >
                                                 <span>📂</span>
                                                 <span>Restore Cast</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleResetRoster}
+                                                className="bg-red-950/60 hover:bg-red-900 text-red-300 hover:text-red-200 border border-red-800/80 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                title="Clear all characters from current roster"
+                                            >
+                                                <span>🧹</span>
+                                                <span>Reset Roster</span>
                                             </button>
                                             <button
                                                 type="button"
@@ -6438,6 +6466,15 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     </button>
                                                     <button
                                                         type="button"
+                                                        onClick={handleResetRoster}
+                                                        className="bg-red-950/60 hover:bg-red-900 text-red-300 hover:text-red-200 border border-red-800/80 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                        title="Clear all characters from current roster"
+                                                    >
+                                                        <span>🧹</span>
+                                                        <span>Reset Roster</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
                                                         onClick={addCharacterRole}
                                                         className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
                                                     >
@@ -8143,6 +8180,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             "manifest_url": manifest_url,
             "shot_cards": shot_cards,
             "shots": shot_cards,
+            "characters": req.characters or [],
         }
 
     @app.post("/api/journey3/keyframe")

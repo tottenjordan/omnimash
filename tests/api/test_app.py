@@ -1454,3 +1454,13 @@ def test_ui_html_saved_character_turnaround_sheets_and_quick_select() -> None:
     assert "➕ Apply to Character..." in UI_HTML
 
 
+def test_ui_html_reset_roster_button_and_cleanup_handlers() -> None:
+    """Verify UI_HTML contains the Reset Roster button and roster cleanup handlers."""
+    assert "Reset Roster" in UI_HTML
+    assert "handleResetRoster" in UI_HTML
+    assert "handleCreateProject" in UI_HTML
+    assert "handleCreateNewSession" in UI_HTML
+    assert "setJ3Characters([])" in UI_HTML
+    assert "setCharacters([])" in UI_HTML
+
+
