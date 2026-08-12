@@ -1445,3 +1445,12 @@ def test_ui_html_session_preset_and_character_restoration_hooks() -> None:
     assert "setJ3Characters(data.characters);" in UI_HTML
     assert "setCharacters(data.characters);" in UI_HTML
 
+
+def test_ui_html_saved_character_turnaround_sheets_and_quick_select() -> None:
+    """Verify UI_HTML contains turnaround sheet quick-select dropdown and vault gallery section."""
+    assert "savedVaultReferenceSheets" in UI_HTML
+    assert "Select from Saved Turnaround Sheets..." in UI_HTML
+    assert "Saved Character Turnaround Sheets" in UI_HTML
+    assert "➕ Apply to Character..." in UI_HTML
+
+

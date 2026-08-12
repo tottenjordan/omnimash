@@ -3034,6 +3034,63 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </span>
                                             )}
                                         </div>
+                                        {savedVaultReferenceSheets.length > 0 && (
+                                            <div className="pt-3 border-t border-purple-900/40 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-[11px] font-bold text-pink-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                        <span>🖼️</span>
+                                                        <span>Saved Character Turnaround Sheets</span>
+                                                    </label>
+                                                    <span className="text-[10px] text-gray-400 font-mono">
+                                                        {savedVaultReferenceSheets.length} Sheet(s)
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                                    {savedVaultReferenceSheets.map((sheet, sIdx) => (
+                                                        <div key={sIdx} className="bg-gray-900 border border-purple-900/60 rounded-lg p-2 flex flex-col gap-1.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <img
+                                                                    src={getDisplayableRefUrl(sheet.url)}
+                                                                    alt={sheet.name || sheet.filename}
+                                                                    onClick={() => setLightboxImageUrl(getDisplayableRefUrl(sheet.url))}
+                                                                    className="w-12 h-12 object-cover rounded border border-purple-500/50 cursor-pointer hover:opacity-80 transition"
+                                                                    title="Click to zoom preview"
+                                                                />
+                                                                <div className="min-w-0 flex-1">
+                                                                    <span className="text-xs font-bold text-purple-200 block truncate" title={sheet.name || sheet.filename}>
+                                                                        {sheet.name || sheet.filename}
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setLightboxImageUrl(getDisplayableRefUrl(sheet.url))}
+                                                                        className="text-[10px] text-amber-300 hover:text-amber-200 font-bold block"
+                                                                    >
+                                                                        🔍 Zoom
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <select
+                                                                onChange={(e) => {
+                                                                    if (e.target.value !== "") {
+                                                                        updateCharacter(parseInt(e.target.value, 10), "reference_url", sheet.url);
+                                                                        e.target.value = "";
+                                                                    }
+                                                                }}
+                                                                defaultValue=""
+                                                                className="w-full bg-gray-950 border border-purple-900/60 rounded p-1 text-[11px] text-purple-200 font-mono"
+                                                            >
+                                                                <option value="" disabled>➕ Apply to Character...</option>
+                                                                {characters.map((c, cIdx) => (
+                                                                    <option key={cIdx} value={cIdx}>
+                                                                        {c.name || c.role_id || `Character ${cIdx + 1}`}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3190,6 +3247,24 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         placeholder="https://example.com/character_reference.jpg"
                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                     />
+                                                    {savedVaultReferenceSheets.length > 0 && (
+                                                        <div className="mt-1.5">
+                                                            <select
+                                                                onChange={(e) => {
+                                                                    if (e.target.value) updateCharacter(idx, "reference_url", e.target.value);
+                                                                }}
+                                                                defaultValue=""
+                                                                className="w-full bg-gray-950 border border-purple-900/60 rounded-lg p-2 text-xs text-purple-200 font-mono"
+                                                            >
+                                                                <option value="" disabled>🖼️ Select from Saved Turnaround Sheets...</option>
+                                                                {savedVaultReferenceSheets.map((sheet, sIdx) => (
+                                                                    <option key={sIdx} value={sheet.url}>
+                                                                        {sheet.name || sheet.filename}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    )}
                                                     {char.reference_url && (
                                                         <div className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2 mt-2">
                                                             <img
@@ -4101,6 +4176,63 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             </span>
                                                         )}
                                                     </div>
+                                                    {savedVaultReferenceSheets.length > 0 && (
+                                                        <div className="pt-2 border-t border-purple-900/40 space-y-2">
+                                                            <div className="flex items-center justify-between">
+                                                                <label className="text-[11px] font-bold text-pink-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                                    <span>🖼️</span>
+                                                                    <span>Saved Character Turnaround Sheets</span>
+                                                                </label>
+                                                                <span className="text-[10px] text-gray-400 font-mono">
+                                                                    {savedVaultReferenceSheets.length} Sheet(s)
+                                                                </span>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                                                {savedVaultReferenceSheets.map((sheet, sIdx) => (
+                                                                    <div key={sIdx} className="bg-gray-900 border border-purple-900/60 rounded-lg p-2 flex flex-col gap-1.5">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <img
+                                                                                src={getDisplayableRefUrl(sheet.url)}
+                                                                                alt={sheet.name || sheet.filename}
+                                                                                onClick={() => setLightboxImageUrl(getDisplayableRefUrl(sheet.url))}
+                                                                                className="w-12 h-12 object-cover rounded border border-purple-500/50 cursor-pointer hover:opacity-80 transition"
+                                                                                title="Click to zoom preview"
+                                                                            />
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <span className="text-xs font-bold text-purple-200 block truncate" title={sheet.name || sheet.filename}>
+                                                                                    {sheet.name || sheet.filename}
+                                                                                </span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setLightboxImageUrl(getDisplayableRefUrl(sheet.url))}
+                                                                                    className="text-[10px] text-amber-300 hover:text-amber-200 font-bold block"
+                                                                                >
+                                                                                    🔍 Zoom
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                        <select
+                                                                            onChange={(e) => {
+                                                                                if (e.target.value !== "") {
+                                                                                    updateCharacter(parseInt(e.target.value, 10), "reference_url", sheet.url);
+                                                                                    e.target.value = "";
+                                                                                }
+                                                                            }}
+                                                                            defaultValue=""
+                                                                            className="w-full bg-gray-950 border border-purple-900/60 rounded p-1 text-[11px] text-purple-200 font-mono"
+                                                                        >
+                                                                            <option value="" disabled>➕ Apply to Character...</option>
+                                                                            {characters.map((c, cIdx2) => (
+                                                                                <option key={cIdx2} value={cIdx2}>
+                                                                                    {c.name || c.role_id || `Character ${cIdx2 + 1}`}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4257,6 +4389,24 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                         placeholder="https://example.com/character.jpg"
                                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white font-mono"
                                                                     />
+                                                                    {savedVaultReferenceSheets.length > 0 && (
+                                                                        <div className="mt-1.5">
+                                                                            <select
+                                                                                onChange={(e) => {
+                                                                                    if (e.target.value) updateCharacter(cIdx, "reference_url", e.target.value);
+                                                                                }}
+                                                                                defaultValue=""
+                                                                                className="w-full bg-gray-950 border border-purple-900/60 rounded-lg p-2 text-xs text-purple-200 font-mono"
+                                                                            >
+                                                                                <option value="" disabled>🖼️ Select from Saved Turnaround Sheets...</option>
+                                                                                {savedVaultReferenceSheets.map((sheet, sIdx) => (
+                                                                                    <option key={sIdx} value={sheet.url}>
+                                                                                        {sheet.name || sheet.filename}
+                                                                                    </option>
+                                                                                ))}
+                                                                            </select>
+                                                                        </div>
+                                                                    )}
                                                                     {char.reference_url && (
                                                                         <div className="flex items-center space-x-2 bg-purple-950/40 border border-purple-800/60 rounded-lg p-2 mt-2">
                                                                             <img
@@ -6331,6 +6481,63 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         );
                                                     })}
                                                 </div>
+                                                {savedVaultReferenceSheets.length > 0 && (
+                                                    <div className="pt-3 border-t border-purple-900/40 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <label className="text-[11px] font-bold text-pink-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                                <span>🖼️</span>
+                                                                <span>Saved Character Turnaround Sheets</span>
+                                                            </label>
+                                                            <span className="text-[10px] text-gray-400 font-mono">
+                                                                {savedVaultReferenceSheets.length} Sheet(s)
+                                                            </span>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                                            {savedVaultReferenceSheets.map((sheet, sIdx) => (
+                                                                <div key={sIdx} className="bg-gray-950 border border-purple-900/60 rounded-lg p-2 flex flex-col gap-1.5">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <img
+                                                                            src={getDisplayableRefUrl(sheet.url)}
+                                                                            alt={sheet.name || sheet.filename}
+                                                                            onClick={() => setLightboxImageUrl(getDisplayableRefUrl(sheet.url))}
+                                                                            className="w-12 h-12 object-cover rounded border border-purple-500/50 cursor-pointer hover:opacity-80 transition"
+                                                                            title="Click to zoom preview"
+                                                                        />
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <span className="text-xs font-bold text-purple-200 block truncate" title={sheet.name || sheet.filename}>
+                                                                                {sheet.name || sheet.filename}
+                                                                            </span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setLightboxImageUrl(getDisplayableRefUrl(sheet.url))}
+                                                                                className="text-[10px] text-amber-300 hover:text-amber-200 font-bold block"
+                                                                            >
+                                                                                🔍 Zoom
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <select
+                                                                        onChange={(e) => {
+                                                                            if (e.target.value !== "") {
+                                                                                updateCharacter(parseInt(e.target.value, 10), "reference_url", sheet.url);
+                                                                                e.target.value = "";
+                                                                            }
+                                                                        }}
+                                                                        defaultValue=""
+                                                                        className="w-full bg-gray-900 border border-purple-900/60 rounded p-1 text-[11px] text-purple-200 font-mono"
+                                                                    >
+                                                                        <option value="" disabled>➕ Apply to Character...</option>
+                                                                        {characters.map((c, cIdx) => (
+                                                                            <option key={cIdx} value={cIdx}>
+                                                                                {c.name || c.role_id || `Character ${cIdx + 1}`}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Dynamic Character Cards */}
@@ -6499,6 +6706,24 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                                     </button>
                                                                 )}
                                                             </div>
+                                                            {savedVaultReferenceSheets.length > 0 && (
+                                                                <div className="mt-1.5">
+                                                                    <select
+                                                                        onChange={(e) => {
+                                                                            if (e.target.value) updateCharacter(idx, "reference_url", e.target.value);
+                                                                        }}
+                                                                        defaultValue=""
+                                                                        className="w-full bg-gray-950 border border-purple-900/60 rounded-lg p-2 text-xs text-purple-200 font-mono"
+                                                                    >
+                                                                        <option value="" disabled>🖼️ Select from Saved Turnaround Sheets...</option>
+                                                                        {savedVaultReferenceSheets.map((sheet, sIdx) => (
+                                                                            <option key={sIdx} value={sheet.url}>
+                                                                                {sheet.name || sheet.filename}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            )}
                                                             {char.reference_url && (
                                                                 <div
                                                                     onClick={() => setLightboxImageUrl(getDisplayableRefUrl(char.reference_url))}
