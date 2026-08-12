@@ -1196,14 +1196,128 @@ def test_ui_html_journey3_character_selection_and_sync_patterns():
     assert "updatedRoleIds" in UI_HTML
 
 
+def test_project_and_session_management_api_endpoints():
+    import base64
+    from fastapi.testclient import TestClient
+    from omnimash.api.app import create_app
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    # 1. GET /api/projects
+    res = client.get("/api/projects")
+    assert res.status_code == 200
+    data = res.json()
+    assert "projects" in data
+    assert "default_project" in data["projects"]
+
+    # 2. POST /api/projects/create
+    res = client.post("/api/projects/create", json={"project_name": "alpha_project"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["project_name"] == "alpha_project"
+    assert "projects/alpha_project/.keep" in data["gcs_uri"]
+
+    # Verify project listing includes newly created project
+    res = client.get("/api/projects")
+    assert "alpha_project" in res.json()["projects"]
+
+    # 3. GET /api/projects/alpha_project/sessions
+    res = client.get("/api/projects/alpha_project/sessions")
+    assert res.status_code == 200
+    data = res.json()
+    assert "sessions" in data
+
+    # 4. POST /api/projects/alpha_project/sessions/create
+    res = client.post(
+        "/api/projects/alpha_project/sessions/create",
+        json={"session_name": "alpha_session_1"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["project_name"] == "alpha_project"
+    assert data["session_name"] == "alpha_session_1"
+    assert "projects/alpha_project/sessions/alpha_session_1/.keep" in data["gcs_uri"]
+
+    # Verify session listing for alpha_project
+    res = client.get("/api/projects/alpha_project/sessions")
+    assert "alpha_session_1" in res.json()["sessions"]
+
+    # 5. POST /api/characters/save with project_name & GET /api/projects/alpha_project/characters
+    char_payload = {
+        "project_name": "alpha_project",
+        "character": {
+            "role_id": "Role Alpha",
+            "name": "Alpha Wizard",
+            "description": "Powerful wizard in alpha project",
+        },
+        "is_library": False,
+    }
+    res = client.post("/api/characters/save", json=char_payload)
+    assert res.status_code == 200
+    assert res.json()["success"] is True
+    assert "projects/alpha_project" in res.json()["gcs_uri"]
+
+    res = client.get("/api/projects/alpha_project/characters")
+    assert res.status_code == 200
+    chars = res.json()["characters"]
+    assert len(chars) >= 1
+    assert any(c["name"] == "Alpha Wizard" for c in chars)
+
+    # 6. POST /api/characters/save-sheet with project_name & GET /api/projects/alpha_project/reference-sheets
+    dummy_img = base64.b64encode(b"fake_image_bytes").decode("utf-8")
+    sheet_payload = {
+        "project_name": "alpha_project",
+        "image_data": dummy_img,
+        "custom_name": "alpha_turnaround",
+    }
+    res = client.post("/api/characters/save-sheet", json=sheet_payload)
+    assert res.status_code == 200
+    assert res.json()["success"] is True
+    assert "projects/alpha_project" in res.json()["gcs_uri"]
+
+    res = client.get("/api/projects/alpha_project/reference-sheets")
+    assert res.status_code == 200
+    sheets = res.json()["reference_sheets"]
+    assert len(sheets) >= 1
+    assert any(s["name"] == "alpha_turnaround" for s in sheets)
+
+    # 7. Test /api/journey3/keyframe & /api/journey3/generate-shot with project_name
+    res = client.post(
+        "/api/journey3/keyframe",
+        json={
+            "project_name": "alpha_project",
+            "session_id": "alpha_session_1",
+            "shot_index": 1,
+            "image_prompt": "Wizard casting spell",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["success"] is True
+
+    res = client.post(
+        "/api/journey3/generate-shot",
+        json={
+            "project_name": "alpha_project",
+            "session_id": "alpha_session_1",
+            "shot_index": 1,
+            "action_directive": "Wizard casting lightning",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["success"] is True
 
 
-
-
-
-
-
-
-
-
-
+def test_ui_html_contains_project_and_session_tier_architecture() -> None:
+    """Verify UI_HTML contains 2-tier project & session controls and modal elements."""
+    assert "activeProject" in UI_HTML
+    assert "omnimash_active_project" in UI_HTML
+    assert "projectsList" in UI_HTML
+    assert "showNewProjectModal" in UI_HTML
+    assert "showNewSessionModal" in UI_HTML
+    assert "+ New Project" in UI_HTML
+    assert "+ New Session" in UI_HTML
+    assert "/api/projects" in UI_HTML
+    assert "/api/projects/create" in UI_HTML
