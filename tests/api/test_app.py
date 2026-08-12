@@ -978,8 +978,8 @@ def test_ui_html_journey3_comprehensive_enhancements():
     assert "compileJourney3ShotPromptPreview" in UI_HTML
     assert "lightboxImageUrl" in UI_HTML
     assert "Final Video Generation Prompt (Live 4-Block Compiler)" in UI_HTML
-    assert 'const [j3ProductRef, setJ3ProductRef] = useState("");' in UI_HTML
-    assert 'const [j3StyleRef, setJ3StyleRef] = useState("");' in UI_HTML
+    assert "j3ProductRef" in UI_HTML
+    assert "j3StyleRef" in UI_HTML
     assert "Storyboard Keyframe Visual Anchor" in UI_HTML
     assert "Click photo to enlarge" in UI_HTML
     assert "j3ImageModel" in UI_HTML
@@ -1371,3 +1371,63 @@ def test_ui_html_contains_project_and_session_tier_architecture() -> None:
     assert "+ New Session" in UI_HTML
     assert "/api/projects" in UI_HTML
     assert "/api/projects/create" in UI_HTML
+
+
+def test_journey3_setup_session_manifest_persistence() -> None:
+    """Verify /api/journey3/setup saves session manifest to GCS containing presets and characters."""
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    chars = [
+        {"role_id": "Role A", "name": "Neo", "reference_url": "https://example.com/neo.jpg"},
+        {"role_id": "Role B", "name": "Trinity", "reference_url": "https://example.com/trinity.jpg"},
+    ]
+    res = client.post(
+        "/api/journey3/setup",
+        json={
+            "project_id": "test_cyber_project",
+            "session_id": "test_cyber_session",
+            "master_description": "Cyberpunk wizard showdown in Tokyo alley",
+            "aspect_ratio": "16:9",
+            "style_preset": "Gritty 90s Cyberpunk",
+            "image_model": "gemini-3.1-flash-image",
+            "enable_safety_sanitization": True,
+            "characters": chars,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "manifest_url" in data
+    assert data["style_preset"] == "Gritty 90s Cyberpunk"
+    assert data["image_model"] == "gemini-3.1-flash-image"
+    assert data["enable_safety_sanitization"] is True
+
+    # Inspect stored manifest in mock storage
+    storage = app.state.agent.storage
+    manifest = storage.get_session_manifest("test_cyber_session", project_id="test_cyber_project")
+    assert manifest is not None
+    assert manifest["project_id"] == "test_cyber_project"
+    assert manifest["session_id"] == "test_cyber_session"
+    assert manifest["style_preset"] == "Gritty 90s Cyberpunk"
+    assert manifest["image_model"] == "gemini-3.1-flash-image"
+    assert manifest["aspect_ratio"] == "16:9"
+    assert manifest["enable_safety_sanitization"] is True
+    assert len(manifest["characters"]) == 2
+    assert manifest["characters"][0]["name"] == "Neo"
+
+
+def test_ui_html_session_preset_and_character_restoration_hooks() -> None:
+    """Verify UI_HTML contains localStorage preset hooks and character auto-restoration setters."""
+    assert "omnimash_j3_style_preset" in UI_HTML
+    assert "omnimash_aspect_ratio" in UI_HTML
+    assert "omnimash_j3_image_model" in UI_HTML
+    assert "omnimash_enable_safety_sanitization" in UI_HTML
+    assert "omnimash_j3_master_description" in UI_HTML
+    assert "omnimash_j3_product_ref" in UI_HTML
+    assert "omnimash_j3_style_ref" in UI_HTML
+
+    # Verify project character auto-restoration into Continuity Studio in activeProject useEffect
+    assert "setSavedVaultCharacters(data.characters);" in UI_HTML
+    assert "setJ3Characters(data.characters);" in UI_HTML
+    assert "setCharacters(data.characters);" in UI_HTML
+

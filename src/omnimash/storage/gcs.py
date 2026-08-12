@@ -76,6 +76,7 @@ class GcsStorageManager:
         self._client: Any = None
         self._bucket: Any = None
         self._mock_analyses: dict[str, dict[str, Any]] = {}
+        self._mock_session_manifests: dict[str, dict[str, Any]] = {}
         self._mock_characters: dict[str, dict[str, Any]] = {
             self._slugify(c["name"]): dict(c) for c in DEFAULT_CHARACTERS
         }
@@ -288,6 +289,39 @@ class GcsStorageManager:
         return self.upload_bytes(
             content.encode("utf-8"), blob_path, content_type="application/json"
         )
+
+    def save_session_manifest(
+        self,
+        session_id: str,
+        manifest_data: dict[str, Any],
+        project_id: str | None = None,
+    ) -> str:
+        """Persists session manifest to projects/{project_id}/sessions/{session_id}/prompts/session_manifest.json in GCS."""
+        pid = project_id or "default_project"
+        key = f"{pid}/{session_id}"
+        self._mock_session_manifests[key] = manifest_data
+        self._mock_session_manifests[session_id] = manifest_data
+
+        blob_path = self.build_session_blob_path(
+            session_id, "prompts", "session_manifest.json", project_id=project_id
+        )
+        content = json.dumps(manifest_data, indent=2)
+        return self.upload_bytes(
+            content.encode("utf-8"), blob_path, content_type="application/json"
+        )
+
+    def get_session_manifest(
+        self,
+        session_id: str,
+        project_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Retrieves session manifest metadata for a session."""
+        key = f"{project_id}/{session_id}" if project_id else session_id
+        if key in self._mock_session_manifests:
+            return self._mock_session_manifests[key]
+        if session_id in self._mock_session_manifests:
+            return self._mock_session_manifests[session_id]
+        return None
 
     def save_reference_analysis(
         self,
