@@ -520,6 +520,13 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
         r"\beat\s*through\s*the\s*cup\b": "sparkle inside the goblet",
         r"\bcube\s*blood\b": "ice cube",
         r"\btoo\s*volatile\b": "too potent for ordinary wizards",
+        # Street Slang, Band Trademarks & Tattoo Sanitization
+        r"\bstepped\s*on\b": "diluted",
+        r"\bwidespread\s*panic\b": "vintage band emblem",
+        r"\btear\s*drop\s*tattoos?\b": "facial ink accent",
+        r"\bface\s*tattoos?\b": "artistic facial ink",
+        r"\bface\s*tatted\b": "artistic facial ink",
+        r"\b1017\b": "gold",
     }
 
     for pattern, archetype in replacements.items():
