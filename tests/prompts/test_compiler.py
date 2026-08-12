@@ -879,6 +879,17 @@ def test_sanitize_real_names_pop_culture_keywords():
     )
 
 
+def test_sanitize_real_names_street_slang_trademarks_tattoos():
+    text = "Gucci with stepped on product wearing a Widespread Panic shirt, tear drop tattoo, face tattoos, and 1017 chain."
+    sanitized = sanitize_real_names(text)
+    assert "diluted" in sanitized
+    assert "vintage band emblem" in sanitized
+    assert "facial ink accent" in sanitized
+    assert "artistic facial ink" in sanitized
+    assert "gold" in sanitized
+
+
+
 def test_build_character_image_ref_tags_extracts_base_names_and_tokens():
     char1 = CharacterRole(
         role_id="Role 1",

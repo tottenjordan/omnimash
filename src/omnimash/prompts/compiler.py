@@ -59,6 +59,13 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bDonald Trump\b": "Charismatic Business Executive",
     r"\bJoe Biden\b": "Senior Statesman Leader",
     r"\bBarack Obama\b": "Eloquent Former Statesman",
+    # Street Slang, Band Trademarks & Tattoo Sanitization
+    r"\bstepped\s*on\b": "diluted",
+    r"\bwidespread\s*panic\b": "vintage band emblem",
+    r"\btear\s*drop\s*tattoos?\b": "facial ink accent",
+    r"\bface\s*tattoos?\b": "artistic facial ink",
+    r"\bface\s*tatted\b": "artistic facial ink",
+    r"\b1017\b": "gold",
 }
 
 

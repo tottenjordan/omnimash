@@ -965,6 +965,18 @@ def test_abstract_prompt_sanitizes_syrup_and_foam_cup_terms() -> None:
     assert "magical sparkling elixir" in extra_res
 
 
+def test_abstract_prompt_sanitizes_street_slang_trademarks_tattoos() -> None:
+    """Verify abstract prompt for responsible AI sanitizes street slang, band trademarks, and gang tattoo terms."""
+    prompt = "A guy with stepped on potion wearing a Widespread Panic tee, tear drop tattoo, face tattoos, face tatted, and 1017 chain."
+    res = _abstract_prompt_for_responsible_ai(prompt)
+    assert "diluted" in res
+    assert "vintage band emblem" in res
+    assert "facial ink accent" in res
+    assert "artistic facial ink" in res
+    assert "gold" in res
+
+
+
 def test_generate_keyframe_image_mock_mode() -> None:
     """Verify generate_keyframe_image returns a valid base64 SVG data URI in mock mode."""
     client = OmniFlashClient(mock_mode=True)
