@@ -654,7 +654,10 @@ UI_HTML = r"""<!DOCTYPE html>
             const compileJourney3ShotPromptPreview = (card, idx) => {
                 const charPool = (j3Characters && j3Characters.length > 0) ? j3Characters : (characters || []);
                 const includedIds = card ? card.included_character_ids : null;
-                const activeChars = charPool.filter(c => !includedIds || includedIds.includes(c.role_id));
+                const validIncludedChars = (includedIds && Array.isArray(includedIds) && includedIds.length > 0)
+                    ? charPool.filter(c => c && includedIds.includes(c.role_id))
+                    : [];
+                const activeChars = validIncludedChars.length > 0 ? validIncludedChars : charPool;
                 const rosterLines = activeChars.map((c, i) => {
                     const refStr = c.reference_url ? ` (@Image${i + 1})` : "";
                     const tags = (c.aesthetic_tags || []).length > 0 ? `, Wardrobe: ${c.aesthetic_tags.join(", ")}` : "";
@@ -751,7 +754,13 @@ UI_HTML = r"""<!DOCTYPE html>
                     wardrobe: "",
                     aesthetic_tags: []
                 };
-                setJ3Characters([...j3Characters, newRole]);
+                const updated = [...j3Characters, newRole];
+                setJ3Characters(updated);
+                const updatedRoleIds = updated.map(c => c.role_id);
+                setJ3ShotCards(prev => prev.map(card => ({
+                    ...card,
+                    included_character_ids: updatedRoleIds
+                })));
             };
 
             const removeJ3CharacterRole = (index) => {
@@ -761,6 +770,11 @@ UI_HTML = r"""<!DOCTYPE html>
                     role_id: `Role ${String.fromCharCode(65 + idx)}`
                 }));
                 setJ3Characters(updated);
+                const updatedRoleIds = updated.map(c => c.role_id);
+                setJ3ShotCards(prev => prev.map(card => ({
+                    ...card,
+                    included_character_ids: updatedRoleIds
+                })));
             };
 
             const updateJ3Character = (index, field, value) => {
@@ -781,7 +795,13 @@ UI_HTML = r"""<!DOCTYPE html>
                     wardrobe: c.wardrobe || "",
                     aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
                 };
-                setJ3Characters([...j3Characters, newRole]);
+                const updated = [...j3Characters, newRole];
+                setJ3Characters(updated);
+                const updatedRoleIds = updated.map(c => c.role_id);
+                setJ3ShotCards(prev => prev.map(card => ({
+                    ...card,
+                    included_character_ids: updatedRoleIds
+                })));
             };
 
             const handleAddJ3ShotCard = () => {
@@ -891,7 +911,12 @@ UI_HTML = r"""<!DOCTYPE html>
                 try {
                     const card = j3ShotCards.find(c => c.shot_index === shotIdx);
                     const charIds = includedCharacterIds || (card ? card.included_character_ids : undefined);
-                    const refUrls = (characters || [])
+                    const charPool = (j3Characters && j3Characters.length > 0) ? j3Characters : (characters || []);
+                    const validIncludedChars = (charIds && Array.isArray(charIds) && charIds.length > 0)
+                        ? charPool.filter(c => c && charIds.includes(c.role_id))
+                        : [];
+                    const activeChars = validIncludedChars.length > 0 ? validIncludedChars : charPool;
+                    const refUrls = activeChars
                         .map((c) => c && c.reference_url)
                         .filter((url) => url && typeof url === "string" && url.trim().length > 0);
                     if (j3ProductRef && typeof j3ProductRef === "string" && j3ProductRef.trim()) {
@@ -910,7 +935,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             image_prompt: promptText,
                             aspect_ratio: aspectRatio,
                             reference_image_urls: refUrls,
-                            characters: characters,
+                            characters: j3Characters,
                             style_preset: j3StylePreset,
                             image_model: j3ImageModel,
                             included_character_ids: charIds
@@ -7493,7 +7518,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         if req.characters:
             chars_to_use = req.characters
             if req.included_character_ids is not None:
-                chars_to_use = [
+                filtered_chars = [
                     c
                     for c in req.characters
                     if (
@@ -7503,6 +7528,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     )
                     in req.included_character_ids
                 ]
+                if filtered_chars:
+                    chars_to_use = filtered_chars
             for i, c in enumerate(chars_to_use):
                 if isinstance(c, dict):
                     char_objs.append(
@@ -7522,10 +7549,26 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 elif isinstance(c, CharacterRole):
                     char_objs.append(c)
 
+        ref_urls = req.reference_image_urls
+        if ref_urls and req.characters and char_objs:
+            included_ref_urls = {
+                (c.reference_url if hasattr(c, "reference_url") else c.get("reference_url"))
+                for c in char_objs
+                if (c.reference_url if hasattr(c, "reference_url") else c.get("reference_url"))
+            }
+            all_char_ref_urls = {
+                (c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None))
+                for c in req.characters
+                if (c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None))
+            }
+            excluded_char_ref_urls = all_char_ref_urls - included_ref_urls
+            if excluded_char_ref_urls:
+                ref_urls = [u for u in ref_urls if u not in excluded_char_ref_urls]
+
         image_url, compiled_prompt = agent.omni_client.generate_keyframe_image(
             req.image_prompt,
             style_tone=req.style_preset or "",
-            reference_image_urls=req.reference_image_urls,
+            reference_image_urls=ref_urls,
             characters=char_objs if char_objs else None,
             aspect_ratio=req.aspect_ratio,
             image_model=req.image_model or "gemini-3.1-flash-image",
@@ -7548,7 +7591,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         if req.characters:
             chars_to_use = req.characters
             if req.included_character_ids is not None:
-                chars_to_use = [
+                filtered_chars = [
                     c
                     for c in req.characters
                     if (
@@ -7558,6 +7601,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     )
                     in req.included_character_ids
                 ]
+                if filtered_chars:
+                    chars_to_use = filtered_chars
             for i, c in enumerate(chars_to_use):
                 if isinstance(c, dict):
                     char_objs.append(
@@ -7595,6 +7640,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 aspect_ratio=req.aspect_ratio,
                 timeline_dialogue=req.dialogue_text,
                 enable_sanitization=req.enable_safety_sanitization,
+                characters=char_objs if char_objs else None,
             )
 
         keyframe_url = req.keyframe_image_url
