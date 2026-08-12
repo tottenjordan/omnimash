@@ -343,11 +343,16 @@ class StitchMasterRequest(BaseModel):
 
 
 class Journey3SetupRequest(BaseModel):
+    project_id: str | None = None
+    project_name: str | None = None
+    session_id: str | None = None
     master_description: str
     aspect_ratio: str = "16:9"
     characters: list[dict[str, Any]] | None = None
     products: list[dict[str, Any]] | None = None
     style_presets: list[str] | None = None
+    style_preset: str | None = None
+    image_model: str | None = "gemini-3.1-flash-image"
     enable_safety_sanitization: bool = True
 
 
@@ -528,6 +533,10 @@ UI_HTML = r"""<!DOCTYPE html>
                     .then((data) => {
                         if (data && data.characters) {
                             setSavedVaultCharacters(data.characters);
+                            if (data.characters.length > 0) {
+                                setJ3Characters(data.characters);
+                                setCharacters(data.characters);
+                            }
                         }
                     })
                     .catch((err) => console.error("Failed to load project characters:", err));
@@ -613,8 +622,22 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             ]);
             const [copied, setCopied] = useState(false);
-            const [enableSafetySanitization, setEnableSafetySanitization] = useState(true);
-            const [aspectRatio, setAspectRatio] = useState("16:9");
+            const [enableSafetySanitization, setEnableSafetySanitization] = useState(() => {
+                const saved = localStorage.getItem("omnimash_enable_safety_sanitization");
+                return saved !== null ? saved === "true" : true;
+            });
+            useEffect(() => {
+                localStorage.setItem("omnimash_enable_safety_sanitization", String(enableSafetySanitization));
+            }, [enableSafetySanitization]);
+
+            const [aspectRatio, setAspectRatio] = useState(() => {
+                return localStorage.getItem("omnimash_aspect_ratio") || "16:9";
+            });
+            useEffect(() => {
+                if (aspectRatio) {
+                    localStorage.setItem("omnimash_aspect_ratio", aspectRatio);
+                }
+            }, [aspectRatio]);
 
             // Act 3: The Screening Room & Branching State
             const [currentVideo, setCurrentVideo] = useState("");
@@ -721,12 +744,54 @@ UI_HTML = r"""<!DOCTYPE html>
 
             // Tab 3: Journey 3 Multi-Shot Continuity Studio State
             const [activeTab, setActiveTab] = useState("journey3");
-            const [j3MasterDescription, setJ3MasterDescription] = useState("Cyberpunk wizard battle in Tokyo street");
+
+            const [j3MasterDescription, setJ3MasterDescription] = useState(() => {
+                return localStorage.getItem("omnimash_j3_master_description") || "Cyberpunk wizard battle in Tokyo street";
+            });
+            useEffect(() => {
+                if (j3MasterDescription !== undefined && j3MasterDescription !== null) {
+                    localStorage.setItem("omnimash_j3_master_description", j3MasterDescription);
+                }
+            }, [j3MasterDescription]);
+
             const [j3CharRef, setJ3CharRef] = useState("");
-            const [j3ProductRef, setJ3ProductRef] = useState("");
-            const [j3StyleRef, setJ3StyleRef] = useState("");
-            const [j3StylePreset, setJ3StylePreset] = useState("Gritty 90s Cyberpunk");
-            const [j3ImageModel, setJ3ImageModel] = useState("gemini-3.1-flash-image");
+
+            const [j3ProductRef, setJ3ProductRef] = useState(() => {
+                return localStorage.getItem("omnimash_j3_product_ref") || "";
+            });
+            useEffect(() => {
+                if (j3ProductRef !== undefined && j3ProductRef !== null) {
+                    localStorage.setItem("omnimash_j3_product_ref", j3ProductRef);
+                }
+            }, [j3ProductRef]);
+
+            const [j3StyleRef, setJ3StyleRef] = useState(() => {
+                return localStorage.getItem("omnimash_j3_style_ref") || "";
+            });
+            useEffect(() => {
+                if (j3StyleRef !== undefined && j3StyleRef !== null) {
+                    localStorage.setItem("omnimash_j3_style_ref", j3StyleRef);
+                }
+            }, [j3StyleRef]);
+
+            const [j3StylePreset, setJ3StylePreset] = useState(() => {
+                return localStorage.getItem("omnimash_j3_style_preset") || "Gritty 90s Cyberpunk";
+            });
+            useEffect(() => {
+                if (j3StylePreset !== undefined && j3StylePreset !== null) {
+                    localStorage.setItem("omnimash_j3_style_preset", j3StylePreset);
+                }
+            }, [j3StylePreset]);
+
+            const [j3ImageModel, setJ3ImageModel] = useState(() => {
+                return localStorage.getItem("omnimash_j3_image_model") || "gemini-3.1-flash-image";
+            });
+            useEffect(() => {
+                if (j3ImageModel) {
+                    localStorage.setItem("omnimash_j3_image_model", j3ImageModel);
+                }
+            }, [j3ImageModel]);
+
             const [lightboxImageUrl, setLightboxImageUrl] = useState(null);
 
             const compileJourney3ShotPromptPreview = (card, idx) => {
@@ -974,12 +1039,16 @@ UI_HTML = r"""<!DOCTYPE html>
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
+                            project_id: activeProject,
+                            session_id: sessionName,
                             master_description: j3MasterDescription,
                             aspect_ratio: aspectRatio,
                             enable_safety_sanitization: enableSafetySanitization,
                             characters: j3Characters.map(c => ({ role_id: c.role_id, name: c.name, reference_url: c.reference_url })),
                             products: [{ name: "Product 1", reference_url: j3ProductRef }],
-                            style_presets: [j3StylePreset]
+                            style_presets: [j3StylePreset],
+                            style_preset: j3StylePreset,
+                            image_model: j3ImageModel
                         })
                     });
                     const data = await res.json();
@@ -7101,6 +7170,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         else (os.environ.get("MOCK_MODE", "false").lower() in ("true", "1"))
     )
     agent = OmniMashAgent(mock_mode=is_mock)
+    app.state.agent = agent
 
     static_dir = os.path.join(os.getcwd(), "static")
     if os.path.exists(static_dir):
@@ -7810,10 +7880,42 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             }
             shot_cards.append(card)
 
+        project_id = req.project_id or req.project_name or "default_project"
+        session_id = req.session_id or "parody_session_1"
+        style_preset = req.style_preset or (
+            req.style_presets[0] if req.style_presets else "Gritty 90s Cyberpunk"
+        )
+        image_model = req.image_model or "gemini-3.1-flash-image"
+        aspect_ratio = req.aspect_ratio or "16:9"
+        enable_safety = req.enable_safety_sanitization
+
+        manifest_data = {
+            "project_id": project_id,
+            "session_id": session_id,
+            "master_description": req.master_description,
+            "style_preset": style_preset,
+            "aspect_ratio": aspect_ratio,
+            "image_model": image_model,
+            "enable_safety_sanitization": enable_safety,
+            "characters": req.characters or [],
+            "products": req.products or [],
+            "shot_cards": shot_cards,
+        }
+
+        manifest_url = agent.storage.save_session_manifest(
+            session_id=session_id,
+            manifest_data=manifest_data,
+            project_id=project_id,
+        )
+
         return {
             "success": True,
             "master_description": req.master_description,
-            "aspect_ratio": req.aspect_ratio,
+            "aspect_ratio": aspect_ratio,
+            "style_preset": style_preset,
+            "image_model": image_model,
+            "enable_safety_sanitization": enable_safety,
+            "manifest_url": manifest_url,
             "shot_cards": shot_cards,
             "shots": shot_cards,
         }
