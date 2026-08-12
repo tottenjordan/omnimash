@@ -834,6 +834,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 };
                 const updated = [...j3Characters, newRole];
                 setJ3Characters(updated);
+                setCharacters(updated);
                 const updatedRoleIds = updated.map(c => c.role_id);
                 setJ3ShotCards(prev => prev.map(card => ({
                     ...card,
@@ -843,11 +844,13 @@ UI_HTML = r"""<!DOCTYPE html>
 
             const removeJ3CharacterRole = (index) => {
                 if (j3Characters.length <= 1) return;
+                const removedRoleId = j3Characters[index].role_id;
                 const updated = j3Characters.filter((_, i) => i !== index).map((c, idx) => ({
                     ...c,
                     role_id: `Role ${String.fromCharCode(65 + idx)}`
                 }));
                 setJ3Characters(updated);
+                setCharacters(updated);
                 const updatedRoleIds = updated.map(c => c.role_id);
                 setJ3ShotCards(prev => prev.map(card => ({
                     ...card,
@@ -859,6 +862,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 const updated = [...j3Characters];
                 updated[index] = { ...updated[index], [field]: value };
                 setJ3Characters(updated);
+                setCharacters(updated);
             };
 
             const handleLoadJ3VaultCharacter = (c) => {
@@ -875,6 +879,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 };
                 const updated = [...j3Characters, newRole];
                 setJ3Characters(updated);
+                setCharacters(updated);
                 const updatedRoleIds = updated.map(c => c.role_id);
                 setJ3ShotCards(prev => prev.map(card => ({
                     ...card,
@@ -911,6 +916,20 @@ UI_HTML = r"""<!DOCTYPE html>
                         return {
                             ...card,
                             included_character_ids: updatedList,
+                            compiled_override: undefined
+                        };
+                    })
+                );
+            };
+
+            const selectAllCharactersInShot = (cardIdx) => {
+                const allRoleIds = (j3Characters || []).map(c => c.role_id);
+                setJ3ShotCards((prev) =>
+                    prev.map((card, idx) => {
+                        if (idx !== cardIdx) return card;
+                        return {
+                            ...card,
+                            included_character_ids: allRoleIds,
                             compiled_override: undefined
                         };
                     })
@@ -1557,7 +1576,14 @@ UI_HTML = r"""<!DOCTYPE html>
                     wardrobe: c.wardrobe || "",
                     aesthetic_tags: c.aesthetic_tags ? [...c.aesthetic_tags] : []
                 };
-                setCharacters([...characters, newRole]);
+                const updated = [...characters, newRole];
+                setCharacters(updated);
+                setJ3Characters(updated);
+                const updatedRoleIds = updated.map(ch => ch.role_id);
+                setJ3ShotCards(prev => prev.map(card => ({
+                    ...card,
+                    included_character_ids: updatedRoleIds
+                })));
             };
 
 
@@ -1597,6 +1623,12 @@ UI_HTML = r"""<!DOCTYPE html>
                             });
                         }
                         setCharacters(restored);
+                        setJ3Characters(restored);
+                        const restoredRoleIds = restored.map(ch => ch.role_id);
+                        setJ3ShotCards(prev => prev.map(card => ({
+                            ...card,
+                            included_character_ids: restoredRoleIds
+                        })));
                     }
                 } catch (err) {
                     console.error("Load session roster failed:", err);
@@ -1617,13 +1649,21 @@ UI_HTML = r"""<!DOCTYPE html>
                     voice_profile: "",
                     wardrobe: ""
                 };
-                setCharacters([...characters, newRole]);
+                const updated = [...characters, newRole];
+                setCharacters(updated);
+                setJ3Characters(updated);
+                const updatedRoleIds = updated.map(ch => ch.role_id);
+                setJ3ShotCards(prev => prev.map(card => ({
+                    ...card,
+                    included_character_ids: updatedRoleIds
+                })));
             };
 
             const updateCharacter = (index, field, value) => {
                 const updated = [...characters];
                 updated[index] = { ...updated[index], [field]: value };
                 setCharacters(updated);
+                setJ3Characters(updated);
             };
 
             const addCharAestheticTag = (charIndex) => {
@@ -1646,6 +1686,12 @@ UI_HTML = r"""<!DOCTYPE html>
                 const removedRoleId = characters[index].role_id;
                 const updated = characters.filter((_, i) => i !== index);
                 setCharacters(updated);
+                setJ3Characters(updated);
+                const updatedRoleIds = updated.map(ch => ch.role_id);
+                setJ3ShotCards(prev => prev.map(card => ({
+                    ...card,
+                    included_character_ids: (card.included_character_ids || updatedRoleIds).filter(id => id !== removedRoleId)
+                })));
                 setScenes(scenes.map(s => ({
                     ...s,
                     active_roles: (s.active_roles || []).filter(r => r !== removedRoleId)
@@ -6224,7 +6270,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     <div key={idx} className="bg-gray-900 border border-gray-800/90 rounded-xl p-4 space-y-3 relative group">
                                                         <div className="flex items-center justify-between">
                                                             <span className="text-xs font-bold font-mono bg-pink-950 text-pink-300 px-2.5 py-1 rounded border border-pink-800/80">
-                                                                {char.role_id}
+                                                                Character {idx + 1}: {char.name || char.role_id}
                                                             </span>
                                                             <div className="flex items-center space-x-2">
                                                                 <button
@@ -6712,14 +6758,22 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                 </div>
 
                                                 <div className="flex flex-wrap items-center gap-2 mb-3 bg-gray-950/80 p-2.5 rounded-xl border border-gray-800">
-                                                  <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">👥 Shot Cast & References:</span>
+                                                  <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">👥 Shot Cast &amp; References:</span>
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => selectAllCharactersInShot(cardIdx)}
+                                                      className="text-[10px] font-bold bg-purple-950/80 hover:bg-purple-900 text-purple-200 border border-purple-800/80 rounded px-2 py-0.5 transition shadow-sm"
+                                                      title="Select all active characters for this shot"
+                                                  >
+                                                      👥 Select All
+                                                  </button>
                                                   {j3Characters.map(char => {
-                                                    const isIncluded = (card.included_character_ids || []).includes(char.role_id);
+                                                    const isIncluded = (card.included_character_ids || (j3Characters || []).map(c => c.role_id)).includes(char.role_id);
                                                     return (
                                                       <label key={char.role_id} className={`cursor-pointer px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${isIncluded ? 'bg-purple-900/80 text-purple-200 border border-purple-600 shadow' : 'bg-gray-900 text-gray-500 border border-gray-800 opacity-60'}`}>
                                                         <input type="checkbox" checked={isIncluded} onChange={(e) => toggleCharacterInShot(cardIdx, char.role_id, e.target.checked)} className="hidden" />
                                                         <span>{isIncluded ? '☑' : '☐'}</span>
-                                                        <span>{char.role_id} ({char.name || 'Unnamed'})</span>
+                                                        <span>{char.name || char.role_id}</span>
                                                         {char.reference_url && <span className="text-[10px] text-amber-300" title="Reference Image Attached">🖼️</span>}
                                                       </label>
                                                     );
@@ -7752,7 +7806,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 "dialogue": getattr(s, "dialogue", ""),
                 "summary": getattr(s, "summary", ""),
                 "keyframe_image_url": getattr(s, "keyframe_image_url", ""),
-                "included_character_ids": matched_char_ids,
+                "included_character_ids": matched_char_ids if matched_char_ids else ([c.role_id for c in char_objs] if char_objs else []),
             }
             shot_cards.append(card)
 

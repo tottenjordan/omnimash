@@ -1188,12 +1188,62 @@ def test_journey3_keyframe_fallback_for_stale_included_character_ids():
     assert "Draco" in compiled or "Rival Wizard" in compiled
 
 
+def test_journey3_setup_defaults_included_characters_when_action_text_is_generic(monkeypatch):
+    from omnimash.prompts.storyboard_agent import StoryboardAgent, StoryboardShot
+
+    def mock_expand_vision(*args, **kwargs):
+        return [
+            StoryboardShot(
+                shot_index=1,
+                action="Generic cinematic landscape with misty mountains and rolling fog",
+                duration_seconds=5.0,
+                start_seconds=0.0,
+                end_seconds=5.0,
+                summary="Generic Landscape Shot",
+                location="Mist Mountains",
+                style_lighting="Cinematic 16:9",
+                framing_motion="Wide pan",
+                audio="Wind blowing",
+            )
+        ]
+
+    monkeypatch.setattr(StoryboardAgent, "expand_vision", mock_expand_vision)
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    chars = [
+        {"role_id": "Role X", "name": "Voldemort"},
+        {"role_id": "Role Y", "name": "Dumbledore"},
+    ]
+    res = client.post(
+        "/api/journey3/setup",
+        json={
+            "master_description": "Generic action without explicit names",
+            "aspect_ratio": "16:9",
+            "characters": chars,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    cards = data["shot_cards"]
+    assert len(cards) > 0
+    for card in cards:
+        assert "included_character_ids" in card
+        assert "Role X" in card["included_character_ids"]
+        assert "Role Y" in card["included_character_ids"]
+
+
 def test_ui_html_journey3_character_selection_and_sync_patterns():
     from omnimash.api.app import UI_HTML
 
     assert "validIncludedChars" in UI_HTML
     assert "characters: j3Characters" in UI_HTML
     assert "updatedRoleIds" in UI_HTML
+    assert "selectAllCharactersInShot" in UI_HTML
+    assert "Select All" in UI_HTML
+    assert "char.name || char.role_id" in UI_HTML
+    assert "Character {idx + 1}:" in UI_HTML
 
 
 def test_project_and_session_management_api_endpoints():
