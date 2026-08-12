@@ -81,6 +81,13 @@ class GcsStorageManager:
         }
         self._mock_rosters: dict[str, list[dict[str, Any]]] = {}
         self._mock_storyboards: dict[str, dict[str, Any]] = {}
+        self._mock_projects: list[str] = ["default_project"]
+        self._mock_project_sessions: dict[str, list[str]] = {
+            "default_project": ["parody_session_1", "session_8492", "dripwarts_battle"]
+        }
+        self._mock_project_characters: dict[str, list[dict[str, Any]]] = {}
+        self._mock_project_products: dict[str, list[dict[str, Any]]] = {}
+        self._mock_project_reference_sheets: dict[str, list[dict[str, Any]]] = {}
 
         if not self.mock_mode and storage:
             try:
@@ -121,11 +128,14 @@ class GcsStorageManager:
         session_id: str | None,
         category: str,
         filename: str,
+        project_id: str | None = None,
     ) -> str:
-        """Constructs a hierarchical session-scoped blob path: sessions/{session_id}/{category}/{filename}."""
+        """Constructs a hierarchical session-scoped or project/session-scoped blob path."""
         sid = session_id or "global"
         clean_cat = category.strip("/")
         clean_file = os.path.basename(filename)
+        if project_id:
+            return f"projects/{project_id}/sessions/{sid}/{clean_cat}/{clean_file}"
         return f"sessions/{sid}/{clean_cat}/{clean_file}"
 
     def upload_file(
@@ -135,14 +145,16 @@ class GcsStorageManager:
         session_id: str | None = None,
         category: str = "intermediate",
         content_type: str | None = None,
+        project_id: str | None = None,
     ) -> str:
-        """Uploads a local media artifact to GCS under its session subfolder."""
+        """Uploads a local media artifact to GCS under its session/project subfolder."""
         if not destination_blob_name:
             basename = os.path.basename(local_path)
             destination_blob_name = self.build_session_blob_path(
                 session_id=session_id,
                 category=category,
                 filename=basename,
+                project_id=project_id,
             )
 
         destination_blob_name = destination_blob_name.lstrip("/")
@@ -403,11 +415,17 @@ class GcsStorageManager:
         character: dict[str, Any],
         session_id: str | None = None,
         is_library: bool = True,
+        project_id: str | None = None,
     ) -> tuple[str, str]:
-        """Persists character definitions as JSON in GCS under library or session scope."""
+        """Persists character definitions as JSON in GCS under project, library, or session scope."""
         name = str(character.get("name", "character"))
         slug = self._slugify(name)
-        if is_library or session_id is None:
+        if project_id:
+            if session_id:
+                blob_path = f"projects/{project_id}/sessions/{session_id}/characters/{slug}.json"
+            else:
+                blob_path = f"projects/{project_id}/saved_characters/{slug}.json"
+        elif is_library or session_id is None:
             blob_path = f"library/characters/{slug}.json"
         else:
             blob_path = f"sessions/{session_id}/characters/{slug}.json"
@@ -419,6 +437,20 @@ class GcsStorageManager:
             content_type="application/json",
         )
         self._mock_characters[slug] = character
+
+        if project_id:
+            if project_id not in self._mock_projects:
+                self._mock_projects.append(project_id)
+            if project_id not in self._mock_project_characters:
+                self._mock_project_characters[project_id] = []
+            existing = [
+                c
+                for c in self._mock_project_characters[project_id]
+                if self._slugify(str(c.get("name", ""))) != slug
+            ]
+            existing.append(character)
+            self._mock_project_characters[project_id] = existing
+
         return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
 
     def save_character_sheet(
@@ -426,15 +458,25 @@ class GcsStorageManager:
         image_data: str | bytes,
         custom_name: str,
         session_id: str | None = None,
+        project_id: str | None = None,
     ) -> tuple[str, str]:
-        """Saves a character reference sheet image to GCS under character_sheets/ or sessions/{session_id}/character_sheets/."""
-        name_base = custom_name.removesuffix(".png") if isinstance(custom_name, str) else "character_sheet_v1"
+        """Saves a character reference sheet image to GCS under project or session scope."""
+        name_base = (
+            custom_name.removesuffix(".png")
+            if isinstance(custom_name, str)
+            else "character_sheet_v1"
+        )
         clean_name = self._slugify(name_base)
         if not clean_name:
             clean_name = "character_sheet_v1"
 
         filename = f"{clean_name}.png"
-        if session_id:
+        if project_id:
+            if session_id:
+                blob_path = f"projects/{project_id}/sessions/{session_id}/character_sheets/{filename}"
+            else:
+                blob_path = f"projects/{project_id}/saved_reference_sheets/{filename}"
+        elif session_id:
             blob_path = f"sessions/{session_id}/character_sheets/{filename}"
         else:
             blob_path = f"character_sheets/{filename}"
@@ -480,7 +522,353 @@ class GcsStorageManager:
             raw_bytes = b"mock_character_sheet_bytes"
 
         self.upload_bytes(raw_bytes, blob_path, content_type="image/png")
+        pub_url = self.get_public_url(blob_path)
+        gcs_uri = self.get_gcs_uri(blob_path)
+
+        if project_id:
+            if project_id not in self._mock_projects:
+                self._mock_projects.append(project_id)
+            if project_id not in self._mock_project_reference_sheets:
+                self._mock_project_reference_sheets[project_id] = []
+            sheet_meta = {
+                "name": clean_name,
+                "filename": filename,
+                "url": pub_url,
+                "gcs_uri": gcs_uri,
+            }
+            existing = [
+                s
+                for s in self._mock_project_reference_sheets[project_id]
+                if s.get("name") != clean_name
+            ]
+            existing.append(sheet_meta)
+            self._mock_project_reference_sheets[project_id] = existing
+
+        return pub_url, gcs_uri
+
+    def save_product(
+        self,
+        product: dict[str, Any],
+        project_id: str | None = None,
+        session_id: str | None = None,
+    ) -> tuple[str, str]:
+        """Persists product definition JSON in GCS under project, session, or library scope."""
+        name = str(product.get("name", "product"))
+        slug = self._slugify(name)
+        if project_id:
+            if session_id:
+                blob_path = f"projects/{project_id}/sessions/{session_id}/products/{slug}.json"
+            else:
+                blob_path = f"projects/{project_id}/saved_products/{slug}.json"
+        elif session_id:
+            blob_path = f"sessions/{session_id}/products/{slug}.json"
+        else:
+            blob_path = f"library/products/{slug}.json"
+
+        content = json.dumps(product, indent=2)
+        self.upload_bytes(
+            content.encode("utf-8"),
+            blob_path,
+            content_type="application/json",
+        )
+        if project_id:
+            if project_id not in self._mock_projects:
+                self._mock_projects.append(project_id)
+            if project_id not in self._mock_project_products:
+                self._mock_project_products[project_id] = []
+            existing = [
+                p
+                for p in self._mock_project_products[project_id]
+                if self._slugify(str(p.get("name", ""))) != slug
+            ]
+            existing.append(product)
+            self._mock_project_products[project_id] = existing
+
         return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+
+    def save_video_clip(
+        self,
+        video_data_or_path: str | bytes,
+        filename: str | None = None,
+        project_id: str | None = None,
+        session_id: str | None = None,
+        category: str = "clips",
+    ) -> tuple[str, str]:
+        """Saves a video clip artifact to GCS under project and/or session path."""
+        fname = filename or f"clip_{int(datetime.now(timezone.utc).timestamp())}.mp4"
+        if not fname.endswith(".mp4"):
+            fname = f"{fname}.mp4"
+
+        blob_path = self.build_session_blob_path(
+            session_id=session_id,
+            category=category,
+            filename=fname,
+            project_id=project_id,
+        )
+
+        if isinstance(video_data_or_path, str) and os.path.exists(video_data_or_path):
+            self.upload_file(
+                local_path=video_data_or_path,
+                destination_blob_name=blob_path,
+                content_type="video/mp4",
+            )
+        elif isinstance(video_data_or_path, bytes):
+            self.upload_bytes(
+                data=video_data_or_path,
+                destination_blob_name=blob_path,
+                content_type="video/mp4",
+            )
+        elif isinstance(video_data_or_path, str):
+            raw_bytes, _ = self.load_bytes(video_data_or_path)
+            if not raw_bytes and self.mock_mode:
+                raw_bytes = b"mock_video_bytes"
+            self.upload_bytes(
+                data=raw_bytes,
+                destination_blob_name=blob_path,
+                content_type="video/mp4",
+            )
+        else:
+            if self.mock_mode:
+                self.upload_bytes(
+                    data=b"mock_video_bytes",
+                    destination_blob_name=blob_path,
+                    content_type="video/mp4",
+                )
+
+        if project_id:
+            if project_id not in self._mock_projects:
+                self._mock_projects.append(project_id)
+            if session_id:
+                if project_id not in self._mock_project_sessions:
+                    self._mock_project_sessions[project_id] = []
+                if session_id not in self._mock_project_sessions[project_id]:
+                    self._mock_project_sessions[project_id].append(session_id)
+
+        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+
+    def save_keyframe_image(
+        self,
+        image_data: str | bytes,
+        filename: str | None = None,
+        project_id: str | None = None,
+        session_id: str | None = None,
+    ) -> tuple[str, str]:
+        """Saves a keyframe image artifact to GCS under project and/or session path."""
+        fname = filename or f"keyframe_{int(datetime.now(timezone.utc).timestamp())}.png"
+        if not (fname.endswith(".png") or fname.endswith(".jpg") or fname.endswith(".jpeg")):
+            fname = f"{fname}.png"
+
+        blob_path = self.build_session_blob_path(
+            session_id=session_id,
+            category="keyframes",
+            filename=fname,
+            project_id=project_id,
+        )
+
+        raw_bytes = b""
+        if isinstance(image_data, bytes):
+            raw_bytes = image_data
+        elif isinstance(image_data, str) and os.path.exists(image_data):
+            raw_bytes, _ = self.load_bytes(image_data)
+        elif isinstance(image_data, str):
+            if image_data.startswith("data:"):
+                try:
+                    _hdr, enc = image_data.split(",", 1)
+                    raw_bytes = base64.b64decode(enc)
+                except Exception:
+                    pass
+            elif image_data.startswith("gs://") or image_data.startswith("http"):
+                raw_bytes, _ = self.download_blob_bytes(image_data)
+            else:
+                try:
+                    raw_bytes = base64.b64decode(image_data)
+                except Exception:
+                    pass
+
+        if not raw_bytes and self.mock_mode:
+            raw_bytes = b"mock_keyframe_bytes"
+
+        content_type = (
+            "image/jpeg"
+            if (fname.endswith(".jpg") or fname.endswith(".jpeg"))
+            else "image/png"
+        )
+        self.upload_bytes(raw_bytes, blob_path, content_type=content_type)
+
+        if project_id:
+            if project_id not in self._mock_projects:
+                self._mock_projects.append(project_id)
+            if session_id:
+                if project_id not in self._mock_project_sessions:
+                    self._mock_project_sessions[project_id] = []
+                if session_id not in self._mock_project_sessions[project_id]:
+                    self._mock_project_sessions[project_id].append(session_id)
+
+        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+
+    def list_projects(self) -> list[str]:
+        """Lists subfolders under projects/ in GCS."""
+        projects: set[str] = set(self._mock_projects)
+        if "default_project" not in projects:
+            projects.add("default_project")
+
+        if not self.mock_mode and self._client and self.bucket_name:
+            try:
+                blobs = self._client.list_blobs(
+                    self.bucket_name, prefix="projects/", delimiter="/"
+                )
+                for page in blobs.pages:
+                    for prefix in page.prefixes:
+                        parts = prefix.rstrip("/").split("/")
+                        if len(parts) >= 2 and parts[-1]:
+                            projects.add(parts[-1])
+            except Exception:
+                pass
+
+        return sorted(list(projects))
+
+    def create_project(self, project_id: str) -> str:
+        """Creates a new project directory structure in GCS."""
+        if project_id and project_id not in self._mock_projects:
+            self._mock_projects.append(project_id)
+        if project_id and project_id not in self._mock_project_sessions:
+            self._mock_project_sessions[project_id] = []
+        blob_path = f"projects/{project_id}/.keep"
+        self.upload_bytes(b"", blob_path, content_type="text/plain")
+        return self.get_gcs_uri(blob_path)
+
+    def list_sessions(self, project_id: str = "default_project") -> list[str]:
+        """Lists subfolders under projects/{project_id}/sessions/ in GCS."""
+        sessions: set[str] = set(self._mock_project_sessions.get(project_id, []))
+        if project_id == "default_project" and not sessions:
+            sessions.update(["parody_session_1", "session_8492", "dripwarts_battle"])
+
+        if not self.mock_mode and self._client and self.bucket_name:
+            try:
+                prefix = f"projects/{project_id}/sessions/"
+                blobs = self._client.list_blobs(
+                    self.bucket_name, prefix=prefix, delimiter="/"
+                )
+                for page in blobs.pages:
+                    for pfix in page.prefixes:
+                        parts = pfix.rstrip("/").split("/")
+                        if parts and parts[-1]:
+                            sessions.add(parts[-1])
+            except Exception:
+                pass
+
+        return sorted(list(sessions))
+
+    def create_session(
+        self, session_id: str, project_id: str = "default_project"
+    ) -> str:
+        """Creates a new session directory under a project in GCS."""
+        if project_id not in self._mock_projects:
+            self._mock_projects.append(project_id)
+        if project_id not in self._mock_project_sessions:
+            self._mock_project_sessions[project_id] = []
+        if session_id not in self._mock_project_sessions[project_id]:
+            self._mock_project_sessions[project_id].append(session_id)
+        blob_path = f"projects/{project_id}/sessions/{session_id}/.keep"
+        self.upload_bytes(b"", blob_path, content_type="text/plain")
+        return self.get_gcs_uri(blob_path)
+
+    def list_project_characters(
+        self, project_id: str = "default_project"
+    ) -> list[dict[str, Any]]:
+        """Lists character dicts from projects/{project_id}/saved_characters/."""
+        characters: list[dict[str, Any]] = []
+        seen_slugs: set[str] = set()
+
+        if not self.mock_mode and self._bucket:
+            try:
+                prefix = f"projects/{project_id}/saved_characters/"
+                blobs = self._bucket.list_blobs(prefix=prefix)
+                for blob in blobs:
+                    if blob.name.endswith(".json"):
+                        try:
+                            data = json.loads(blob.download_as_text())
+                            if isinstance(data, dict):
+                                slug = self._slugify(str(data.get("name", "")))
+                                if slug not in seen_slugs:
+                                    seen_slugs.add(slug)
+                                    characters.append(data)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        if characters:
+            return characters
+
+        if project_id in self._mock_project_characters:
+            return self._mock_project_characters[project_id]
+
+        if project_id == "default_project":
+            return list(self._mock_characters.values())
+
+        return []
+
+    def list_project_products(
+        self, project_id: str = "default_project"
+    ) -> list[dict[str, Any]]:
+        """Lists product dicts from projects/{project_id}/saved_products/."""
+        products: list[dict[str, Any]] = []
+        seen_slugs: set[str] = set()
+
+        if not self.mock_mode and self._bucket:
+            try:
+                prefix = f"projects/{project_id}/saved_products/"
+                blobs = self._bucket.list_blobs(prefix=prefix)
+                for blob in blobs:
+                    if blob.name.endswith(".json"):
+                        try:
+                            data = json.loads(blob.download_as_text())
+                            if isinstance(data, dict):
+                                slug = self._slugify(str(data.get("name", "")))
+                                if slug not in seen_slugs:
+                                    seen_slugs.add(slug)
+                                    products.append(data)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        if products:
+            return products
+
+        return self._mock_project_products.get(project_id, [])
+
+    def list_project_reference_sheets(
+        self, project_id: str = "default_project"
+    ) -> list[dict[str, Any]]:
+        """Lists turnaround/reference sheet dicts from projects/{project_id}/saved_reference_sheets/."""
+        sheets: list[dict[str, Any]] = []
+        seen_names: set[str] = set()
+
+        if not self.mock_mode and self._bucket:
+            try:
+                prefix = f"projects/{project_id}/saved_reference_sheets/"
+                blobs = self._bucket.list_blobs(prefix=prefix)
+                for blob in blobs:
+                    name = os.path.basename(blob.name)
+                    if name and name not in seen_names:
+                        seen_names.add(name)
+                        sheets.append(
+                            {
+                                "name": name.removesuffix(".png").removesuffix(".jpg"),
+                                "filename": name,
+                                "url": self.get_public_url(blob.name),
+                                "gcs_uri": self.get_gcs_uri(blob.name),
+                            }
+                        )
+            except Exception:
+                pass
+
+        if sheets:
+            return sheets
+
+        return self._mock_project_reference_sheets.get(project_id, [])
 
     def list_characters(
         self,

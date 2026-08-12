@@ -1723,6 +1723,113 @@ def test_clean_character_names_and_in_text_image_tag_replacement() -> None:
     assert "Swagrid Tha Plug (@Image1) walks into the room" in compiled_prompt
 
 
+def test_gcs_storage_project_and_session_scoped_paths() -> None:
+    """Verify GcsStorageManager methods support project-scoped and session-scoped paths."""
+    from omnimash.storage.gcs import GcsStorageManager
+
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+
+    # 1. build_session_blob_path with project_id
+    blob_path = gcs.build_session_blob_path(
+        session_id="sess_100",
+        category="clips",
+        filename="clip_1.mp4",
+        project_id="project_alpha",
+    )
+    assert blob_path == "projects/project_alpha/sessions/sess_100/clips/clip_1.mp4"
+
+    # 2. save_character with project_id
+    char_data = {
+        "name": "Gucci Wizard",
+        "role_id": "Role A",
+        "description": "Wizard with Gucci drip",
+    }
+    pub_url, gcs_uri = gcs.save_character(
+        char_data, project_id="project_alpha", session_id="sess_100"
+    )
+    assert "projects/project_alpha/sessions/sess_100/characters/gucci_wizard.json" in gcs_uri
+
+    pub_url_p, gcs_uri_p = gcs.save_character(
+        char_data, project_id="project_alpha", session_id=None
+    )
+    assert "projects/project_alpha/saved_characters/gucci_wizard.json" in gcs_uri_p
+
+    # 3. save_character_sheet with project_id
+    pub_url_cs, gcs_uri_cs = gcs.save_character_sheet(
+        image_data=b"fake_sheet_bytes",
+        custom_name="turnaround_v1",
+        project_id="project_alpha",
+        session_id=None,
+    )
+    assert "projects/project_alpha/saved_reference_sheets/turnaround_v1.png" in gcs_uri_cs
+
+    # 4. save_product with project_id
+    product_data = {"name": "Magic Potion", "price": 100}
+    pub_url_prod, gcs_uri_prod = gcs.save_product(
+        product_data, project_id="project_alpha"
+    )
+    assert "projects/project_alpha/saved_products/magic_potion.json" in gcs_uri_prod
+
+    # 5. save_video_clip with project_id and session_id
+    pub_url_clip, gcs_uri_clip = gcs.save_video_clip(
+        video_data_or_path=b"fake_mp4_bytes",
+        filename="scene1.mp4",
+        project_id="project_alpha",
+        session_id="sess_100",
+    )
+    assert "projects/project_alpha/sessions/sess_100/clips/scene1.mp4" in gcs_uri_clip
+
+    # 6. save_keyframe_image with project_id and session_id
+    pub_url_kf, gcs_uri_kf = gcs.save_keyframe_image(
+        image_data=b"fake_keyframe_bytes",
+        filename="keyframe_shot1.png",
+        project_id="project_alpha",
+        session_id="sess_100",
+    )
+    assert "projects/project_alpha/sessions/sess_100/keyframes/keyframe_shot1.png" in gcs_uri_kf
+
+
+def test_gcs_storage_project_and_session_listing_methods() -> None:
+    """Verify list_projects, list_sessions, list_project_characters, list_project_products, list_project_reference_sheets."""
+    from omnimash.storage.gcs import GcsStorageManager
+
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+
+    # Initially list_projects returns default_project
+    projects = gcs.list_projects()
+    assert "default_project" in projects
+
+    # Save artifacts into project_beta
+    gcs.save_character({"name": "Beta Char"}, project_id="project_beta")
+    gcs.save_product({"name": "Beta Wand"}, project_id="project_beta")
+    gcs.save_character_sheet(b"bytes", custom_name="sheet_beta", project_id="project_beta")
+    gcs.save_video_clip(b"clip", filename="clip.mp4", project_id="project_beta", session_id="beta_sess_1")
+
+    # Verify project listing
+    projects_updated = gcs.list_projects()
+    assert "project_beta" in projects_updated
+
+    # Verify session listing for project_beta
+    sessions = gcs.list_sessions(project_id="project_beta")
+    assert "beta_sess_1" in sessions
+
+    # Verify character listing
+    chars = gcs.list_project_characters(project_id="project_beta")
+    assert len(chars) == 1
+    assert chars[0]["name"] == "Beta Char"
+
+    # Verify product listing
+    prods = gcs.list_project_products(project_id="project_beta")
+    assert len(prods) == 1
+    assert prods[0]["name"] == "Beta Wand"
+
+    # Verify reference sheet listing
+    sheets = gcs.list_project_reference_sheets(project_id="project_beta")
+    assert len(sheets) == 1
+    assert sheets[0]["name"] == "sheet_beta"
+
+
+
 
 
 
