@@ -349,3 +349,59 @@ def test_storyboard_list():
 def test_storyboard_delete():
     test_delete_storyboard()
 
+
+def test_save_character_project_level():
+    storage = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    char_data = {
+        "role_id": "Role A",
+        "name": "Project Hero",
+        "description": "Hero character",
+    }
+    pub_url, gcs_uri = storage.save_character(
+        char_data, session_id="session_123", project_id="my_project", is_library=False
+    )
+    assert "projects/my_project/saved_characters/project_hero.json" in gcs_uri
+    assert "sessions/session_123" not in gcs_uri
+
+
+def test_list_project_characters_with_legacy_fallback():
+    import json
+    from unittest.mock import MagicMock
+
+    storage = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=False)
+    mock_bucket = MagicMock()
+    storage._bucket = mock_bucket
+
+    blob_saved = MagicMock()
+    blob_saved.name = "projects/p1/saved_characters/hero.json"
+    blob_saved.download_as_text.return_value = json.dumps(
+        {"name": "Hero", "role_id": "Role A"}
+    )
+
+    blob_legacy_dup = MagicMock()
+    blob_legacy_dup.name = "projects/p1/sessions/s1/characters/hero.json"
+    blob_legacy_dup.download_as_text.return_value = json.dumps(
+        {"name": "Hero", "role_id": "Role A Old"}
+    )
+
+    blob_legacy_new = MagicMock()
+    blob_legacy_new.name = "projects/p1/sessions/s1/characters/villain.json"
+    blob_legacy_new.download_as_text.return_value = json.dumps(
+        {"name": "Villain", "role_id": "Role B"}
+    )
+
+    def mock_list_blobs(prefix=""):
+        if prefix == "projects/p1/saved_characters/":
+            return [blob_saved]
+        elif prefix == "projects/p1/sessions/":
+            return [blob_legacy_dup, blob_legacy_new]
+        return []
+
+    mock_bucket.list_blobs.side_effect = mock_list_blobs
+
+    chars = storage.list_project_characters("p1")
+    assert len(chars) == 2
+    names = [c["name"] for c in chars]
+    assert "Hero" in names
+    assert "Villain" in names
+
