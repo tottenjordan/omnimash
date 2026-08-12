@@ -455,10 +455,7 @@ class GcsStorageManager:
         name = str(character.get("name", "character"))
         slug = self._slugify(name)
         if project_id:
-            if session_id:
-                blob_path = f"projects/{project_id}/sessions/{session_id}/characters/{slug}.json"
-            else:
-                blob_path = f"projects/{project_id}/saved_characters/{slug}.json"
+            blob_path = f"projects/{project_id}/saved_characters/{slug}.json"
         elif is_library or session_id is None:
             blob_path = f"library/characters/{slug}.json"
         else:
@@ -810,7 +807,7 @@ class GcsStorageManager:
     def list_project_characters(
         self, project_id: str = "default_project"
     ) -> list[dict[str, Any]]:
-        """Lists character dicts from projects/{project_id}/saved_characters/."""
+        """Lists character dicts from projects/{project_id}/saved_characters/ and legacy session subfolders."""
         characters: list[dict[str, Any]] = []
         seen_slugs: set[str] = set()
 
@@ -820,6 +817,23 @@ class GcsStorageManager:
                 blobs = self._bucket.list_blobs(prefix=prefix)
                 for blob in blobs:
                     if blob.name.endswith(".json"):
+                        try:
+                            data = json.loads(blob.download_as_text())
+                            if isinstance(data, dict):
+                                slug = self._slugify(str(data.get("name", "")))
+                                if slug not in seen_slugs:
+                                    seen_slugs.add(slug)
+                                    characters.append(data)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            try:
+                prefix_sessions = f"projects/{project_id}/sessions/"
+                blobs = self._bucket.list_blobs(prefix=prefix_sessions)
+                for blob in blobs:
+                    if "/characters/" in blob.name and blob.name.endswith(".json"):
                         try:
                             data = json.loads(blob.download_as_text())
                             if isinstance(data, dict):

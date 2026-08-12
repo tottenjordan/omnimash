@@ -1308,13 +1308,27 @@ def test_project_and_session_management_api_endpoints():
     res = client.post("/api/characters/save", json=char_payload)
     assert res.status_code == 200
     assert res.json()["success"] is True
-    assert "projects/alpha_project" in res.json()["gcs_uri"]
+    assert "projects/alpha_project/saved_characters/alpha_wizard.json" in res.json()["gcs_uri"]
 
     res = client.get("/api/projects/alpha_project/characters")
     assert res.status_code == 200
     chars = res.json()["characters"]
     assert len(chars) >= 1
     assert any(c["name"] == "Alpha Wizard" for c in chars)
+
+    # Test POST /api/characters/save without project_name defaults to default_project
+    char_default_payload = {
+        "character": {
+            "role_id": "Role Default",
+            "name": "Default Hero",
+            "description": "Hero in default project",
+        },
+        "is_library": False,
+    }
+    res_def = client.post("/api/characters/save", json=char_default_payload)
+    assert res_def.status_code == 200
+    assert res_def.json()["success"] is True
+    assert "projects/default_project/saved_characters/default_hero.json" in res_def.json()["gcs_uri"]
 
     # 6. POST /api/characters/save-sheet with project_name & GET /api/projects/alpha_project/reference-sheets
     dummy_img = base64.b64encode(b"fake_image_bytes").decode("utf-8")

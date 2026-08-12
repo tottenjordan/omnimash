@@ -8153,7 +8153,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         _pub_url, gcs_uri = agent.storage.save_character(
             req.character.model_dump(),
             session_id=req.session_name,
-            project_id=req.project_name,
+            project_id=req.project_name or "default_project",
             is_library=req.is_library,
         )
         return SaveCharacterResponse(

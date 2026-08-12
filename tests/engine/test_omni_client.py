@@ -1747,7 +1747,9 @@ def test_gcs_storage_project_and_session_scoped_paths() -> None:
     pub_url, gcs_uri = gcs.save_character(
         char_data, project_id="project_alpha", session_id="sess_100"
     )
-    assert "projects/project_alpha/sessions/sess_100/characters/gucci_wizard.json" in gcs_uri
+    assert (
+        "projects/project_alpha/saved_characters/gucci_wizard.json" in gcs_uri
+    )
 
     pub_url_p, gcs_uri_p = gcs.save_character(
         char_data, project_id="project_alpha", session_id=None
