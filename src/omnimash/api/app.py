@@ -481,8 +481,10 @@ UI_HTML = r"""<!DOCTYPE html>
             // Modal Dialog State for + New Project and + New Session
             const [showNewProjectModal, setShowNewProjectModal] = useState(false);
             const [newProjectInput, setNewProjectInput] = useState("");
+            const [isCreatingProject, setIsCreatingProject] = useState(false);
             const [showNewSessionModal, setShowNewSessionModal] = useState(false);
             const [newSessionInput, setNewSessionInput] = useState("");
+            const [isCreatingSession, setIsCreatingSession] = useState(false);
 
             // Act 1: Character Vault & Saved Cast State
             const [savedVaultCharacters, setSavedVaultCharacters] = useState([]);
@@ -2254,6 +2256,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     alert("Please enter a valid project name.");
                     return;
                 }
+                setIsCreatingProject(true);
                 try {
                     const res = await fetch("/api/projects/create", {
                         method: "POST",
@@ -2274,6 +2277,8 @@ UI_HTML = r"""<!DOCTYPE html>
                 } catch (err) {
                     console.error("Create project failed:", err);
                     alert("Error creating project: " + err.message);
+                } finally {
+                    setIsCreatingProject(false);
                 }
             };
 
@@ -2283,6 +2288,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     alert("Please enter a valid session name.");
                     return;
                 }
+                setIsCreatingSession(true);
                 try {
                     const res = await fetch(`/api/projects/${encodeURIComponent(activeProject)}/sessions/create`, {
                         method: "POST",
@@ -2302,6 +2308,8 @@ UI_HTML = r"""<!DOCTYPE html>
                 } catch (err) {
                     console.error("Create session failed:", err);
                     alert("Error creating session: " + err.message);
+                } finally {
+                    setIsCreatingSession(false);
                 }
             };
 
@@ -2355,16 +2363,18 @@ UI_HTML = r"""<!DOCTYPE html>
                                     <button
                                         type="button"
                                         onClick={() => setShowNewProjectModal(false)}
-                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white"
+                                        disabled={isCreatingProject}
+                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white disabled:opacity-50"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         type="button"
                                         onClick={handleConfirmCreateProject}
-                                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2"
+                                        disabled={isCreatingProject}
+                                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        <span>✨ Create Project</span>
+                                        <span>{isCreatingProject ? "⏳ Creating Project..." : "✨ Create Project"}</span>
                                     </button>
                                 </div>
                             </div>
@@ -2402,16 +2412,18 @@ UI_HTML = r"""<!DOCTYPE html>
                                     <button
                                         type="button"
                                         onClick={() => setShowNewSessionModal(false)}
-                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white"
+                                        disabled={isCreatingSession}
+                                        className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white disabled:opacity-50"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         type="button"
                                         onClick={handleConfirmCreateSession}
-                                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2"
+                                        disabled={isCreatingSession}
+                                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        <span>🚀 Create Session</span>
+                                        <span>{isCreatingSession ? "⏳ Creating Session..." : "🚀 Create Session"}</span>
                                     </button>
                                 </div>
                             </div>
