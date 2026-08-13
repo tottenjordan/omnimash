@@ -773,6 +773,61 @@ def test_generate_keyframe_image_with_character_roster() -> None:
     assert f"- {get_character_identifier(char)}: (Reference Image: @Image1)" in prompt_str
 
 
+def test_generate_keyframe_image_generic_prompt_retains_roster_references() -> None:
+    """Verify generate_keyframe_image retains roster reference images when prompt is generic with no character names."""
+    import base64
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+    mock_candidate = MagicMock(
+        content=MagicMock(
+            parts=[
+                MagicMock(
+                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
+                )
+            ]
+        )
+    )
+    mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
+    mock_genai_client.models = mock_models
+    client.storage = MagicMock()
+    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/keyframe_test.png"
+
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Young spectacled wizard",
+        reference_url="gs://test-bucket/harry_ref.png",
+    )
+    char2 = CharacterRole(
+        role_id="Role B",
+        name="Snape",
+        description="Potion master",
+        reference_url="gs://test-bucket/snape_ref.png",
+    )
+
+    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
+        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    ):
+        res_url = client.generate_keyframe_image(
+            prompt="Everyone is just chillin'",
+            style_tone="Cinematic",
+            characters=[char1, char2],
+        )
+
+    assert "keyframe" in res_url
+    assert mock_models.generate_content.called
+    call_kwargs = mock_models.generate_content.call_args.kwargs
+    contents = call_kwargs["contents"]
+    assert len(contents) == 3  # 2 reference image parts + 1 prompt text
+    prompt_str = contents[2]
+    assert "# Character Roster & Visual Directives:" in prompt_str
+    assert "@Image1" in prompt_str
+    assert "@Image2" in prompt_str
+
+
 def test_generate_keyframe_image_with_anchor_seed() -> None:
     """Verify generate_keyframe_image attaches anchor_keyframe_url as @Image1 and prepends consistency instructions."""
     import base64

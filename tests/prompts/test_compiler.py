@@ -890,6 +890,15 @@ def test_sanitize_real_names_street_slang_trademarks_tattoos():
     assert "gold" in sanitized
 
 
+def test_sanitize_real_names_trademarked_item_abstractions():
+    text = "Catching the Golden Snitch while playing Quidditch with a Lightsaber inside the Batmobile."
+    sanitized = sanitize_real_names(text)
+    assert "glowing golden flying orb" in sanitized
+    assert "aerial magical sport" in sanitized
+    assert "laser sword" in sanitized
+    assert "armored tactical vehicle" in sanitized
+
+
 
 def test_build_character_image_ref_tags_extracts_base_names_and_tokens():
     char1 = CharacterRole(
