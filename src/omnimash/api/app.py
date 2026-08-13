@@ -1767,6 +1767,10 @@ UI_HTML = r"""<!DOCTYPE html>
                 setJ3Characters(updated);
             };
 
+            const handleDetachReferenceUrl = (idx) => {
+                updateCharacter(idx, "reference_url", "");
+            };
+
             const addCharAestheticTag = (charIndex) => {
                 const inputVal = (charTagInputs[charIndex] || "").trim();
                 if (!inputVal) return;
@@ -2272,8 +2276,8 @@ UI_HTML = r"""<!DOCTYPE html>
             };
 
             const handleResetRoster = () => {
-                setCharacters([]);
-                setJ3Characters([]);
+                setCharacters(prev => (prev || []).map(c => ({ ...c, reference_url: "" })));
+                setJ3Characters(prev => (prev || []).map(c => ({ ...c, reference_url: "" })));
             };
 
             const handleConfirmCreateProject = async () => {
@@ -2348,8 +2352,8 @@ UI_HTML = r"""<!DOCTYPE html>
 
             const handleCreateNewSession = () => {
                 setNewSessionInput("");
-                setCharacters([]);
-                setJ3Characters([]);
+                setCharacters(prev => (prev || []).map(c => ({ ...c, reference_url: "" })));
+                setJ3Characters(prev => (prev || []).map(c => ({ ...c, reference_url: "" })));
                 setShowNewSessionModal(true);
             };
 
@@ -3306,13 +3310,25 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     <label className="block text-[11px] text-gray-400 mb-1">
                                                         🖼️ Reference Image URL <span className="text-purple-400 text-[10px]">(Gemini Omni Image Role)</span>
                                                     </label>
-                                                    <input
-                                                        type="text"
-                                                        value={char.reference_url || ""}
-                                                        onChange={(e) => updateCharacter(idx, "reference_url", e.target.value)}
-                                                        placeholder="https://example.com/character_reference.jpg"
-                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
-                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={char.reference_url || ""}
+                                                            onChange={(e) => updateCharacter(idx, "reference_url", e.target.value)}
+                                                            placeholder="https://example.com/character_reference.jpg"
+                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                        />
+                                                        {char.reference_url && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDetachReferenceUrl(idx)}
+                                                                className="bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 font-bold text-xs px-2.5 py-2 rounded-lg transition whitespace-nowrap"
+                                                                title="Detach Reference Image"
+                                                            >
+                                                                ❌ Detach Reference Image
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     {savedVaultReferenceSheets.length > 0 && (
                                                         <div className="mt-1.5">
                                                             <select
@@ -4448,13 +4464,25 @@ UI_HTML = r"""<!DOCTYPE html>
 
                                                                 <div>
                                                                     <label className="block text-[11px] text-gray-400 mb-1">🖼️ Reference Image URL (Gemini Omni Image Role)</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={char.reference_url || ""}
-                                                                        onChange={(e) => updateCharacter(cIdx, "reference_url", e.target.value)}
-                                                                        placeholder="https://example.com/character.jpg"
-                                                                        className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white font-mono"
-                                                                    />
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={char.reference_url || ""}
+                                                                            onChange={(e) => updateCharacter(cIdx, "reference_url", e.target.value)}
+                                                                            placeholder="https://example.com/character.jpg"
+                                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white font-mono"
+                                                                        />
+                                                                        {char.reference_url && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleDetachReferenceUrl(cIdx)}
+                                                                                className="bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 font-bold text-xs px-2.5 py-2 rounded-lg transition whitespace-nowrap"
+                                                                                title="Detach Reference Image"
+                                                                            >
+                                                                                ❌ Detach Reference Image
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
                                                                     {savedVaultReferenceSheets.length > 0 && (
                                                                         <div className="mt-1.5">
                                                                             <select
@@ -4916,6 +4944,30 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                      </div>
                                                                  </div>
                                                             </div>
+
+                                                            {/* Visual Reference Anchor Badge when attached reference sheets are present */}
+                                                            {characters && characters.some(c => c.reference_url) && (
+                                                                <div className="space-y-1 bg-purple-950/40 border border-purple-800/70 rounded-xl p-2.5 mb-3">
+                                                                    {characters.filter(c => c.reference_url).map((c) => {
+                                                                        const charIdx = characters.indexOf(c);
+                                                                        const filename = c.reference_url.split('/').pop() || c.reference_url;
+                                                                        return (
+                                                                            <div key={c.role_id || charIdx} className="flex items-center justify-between gap-2 text-xs font-mono text-purple-200">
+                                                                                <span className="truncate">
+                                                                                    🖼️ Attached Reference Anchor: <span className="font-bold text-amber-300">{filename}</span> <span className="text-[10px] text-gray-400">(Click ❌ Detach to clear for fresh visuals)</span>
+                                                                                </span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleDetachReferenceUrl(charIdx)}
+                                                                                    className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 rounded px-2 py-0.5 text-[10px] font-bold transition whitespace-nowrap"
+                                                                                >
+                                                                                    ❌ Detach
+                                                                                </button>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
 
                                                             {/* 16:9 Large Keyframe Preview Container */}
                                                             <div className={`${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group shadow-inner`}>
@@ -6773,11 +6825,11 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                                 {char.reference_url && (
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => updateCharacter(idx, "reference_url", "")}
-                                                                        className="text-gray-400 hover:text-red-400 font-bold text-xs px-2"
-                                                                        title="Clear Reference URL"
+                                                                        onClick={() => handleDetachReferenceUrl(idx)}
+                                                                        className="bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 font-bold text-xs px-2.5 py-2 rounded-lg transition whitespace-nowrap"
+                                                                        title="Detach Reference Image"
                                                                     >
-                                                                        ✕
+                                                                        ❌ Detach Reference Image
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -7172,6 +7224,30 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     );
                                                   })}
                                                 </div>
+
+                                                {/* Visual Reference Anchor Badge when attached reference sheets are present */}
+                                                {j3Characters && j3Characters.some(c => c.reference_url) && (
+                                                    <div className="space-y-1 bg-purple-950/40 border border-purple-800/70 rounded-xl p-2.5 mb-3">
+                                                        {j3Characters.filter(c => c.reference_url).map((c) => {
+                                                            const charIdx = j3Characters.indexOf(c);
+                                                            const filename = c.reference_url.split('/').pop() || c.reference_url;
+                                                            return (
+                                                                <div key={c.role_id || charIdx} className="flex items-center justify-between gap-2 text-xs font-mono text-purple-200">
+                                                                    <span className="truncate">
+                                                                        🖼️ Attached Reference Anchor: <span className="font-bold text-amber-300">{filename}</span> <span className="text-[10px] text-gray-400">(Click ❌ Detach to clear for fresh visuals)</span>
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDetachReferenceUrl(charIdx)}
+                                                                        className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 rounded px-2 py-0.5 text-[10px] font-bold transition whitespace-nowrap"
+                                                                    >
+                                                                        ❌ Detach
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
 
                                                 {/* Storyboard Keyframe Photo Card (Prominent & Click to Enlarge) */}
                                                 <div className="space-y-1.5">
