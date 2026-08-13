@@ -2391,9 +2391,15 @@ def compile_journey3_shot_prompt(
                 if not isinstance(char, dict)
                 else char.get("reference_url")
             )
+            wardrobe = (
+                getattr(char, "wardrobe", None)
+                if not isinstance(char, dict)
+                else char.get("wardrobe")
+            )
+            wardrobe_str = f" [Wardrobe: {wardrobe}]" if wardrobe else ""
             if ref_url and isinstance(ref_url, str) and ref_url.strip():
                 char_lines.append(
-                    f"- {char_id}: (Reference Image: @Image{ref_idx} - extract character facial likeness and wardrobe, ignore old background environment)"
+                    f"- {char_id}: (Reference Image: @Image{ref_idx} - extract character facial likeness and wardrobe, ignore old background environment){wardrobe_str}"
                 )
                 ref_idx += 1
             else:
@@ -2404,7 +2410,8 @@ def compile_journey3_shot_prompt(
                 ) or ""
                 if enable_sanitization and desc:
                     desc = sanitize_real_names(desc)
-                char_lines.append(f"- {char_id}: {desc}")
+                line_content = f"{desc}{wardrobe_str}".strip()
+                char_lines.append(f"- {char_id}: {line_content}")
         if char_lines:
             character_roster = "\n".join(char_lines)
 

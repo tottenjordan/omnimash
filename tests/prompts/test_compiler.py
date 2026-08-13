@@ -1351,6 +1351,35 @@ def test_compile_journey3_dual_layer_audio():
     assert "120 BPM Boom Bap Beat" not in prompt_silent
 
 
+def test_compile_journey3_shot_prompt_includes_character_wardrobe_in_block1():
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Snape",
+            description="Gaunt potion master",
+            wardrobe="Black Velvet Trench Coat",
+            reference_url="gs://bucket/snape.jpg",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Harry",
+            description="Young spectacled wizard",
+            wardrobe="Oversized Gucci Tracksuit",
+        ),
+    ]
+
+    prompt = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="Snape and Harry in potion duel",
+        characters=chars,
+    )
+
+    assert "### INPUT ROLES & REFERENCES" in prompt
+    assert "[Wardrobe: Black Velvet Trench Coat]" in prompt
+    assert "[Wardrobe: Oversized Gucci Tracksuit]" in prompt
+
+
+
 
 
 
