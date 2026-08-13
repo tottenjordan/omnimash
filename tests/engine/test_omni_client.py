@@ -1898,6 +1898,54 @@ def test_gcs_storage_project_and_session_listing_methods() -> None:
     assert sheets[0]["name"] == "sheet_beta"
 
 
+def test_generate_keyframe_image_retains_wardrobe_and_description_with_ref_url() -> None:
+    """Verify generate_keyframe_image retains character description, wardrobe, and aesthetic tags when reference_url is present."""
+    import base64
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+    mock_candidate = MagicMock(
+        content=MagicMock(
+            parts=[
+                MagicMock(
+                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
+                )
+            ]
+        )
+    )
+    mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
+    mock_genai_client.models = mock_models
+    client.storage = MagicMock()
+    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/keyframe_wardrobe_test.png"
+
+    char = CharacterRole(
+        role_id="Role A",
+        name="Snape",
+        description="Gaunt cynical potion master",
+        wardrobe="Black Tailored Velvet Trench",
+        reference_url="gs://test-bucket/snape_ref.png",
+        aesthetic_tags=["Gothic", "High-Contrast"],
+    )
+
+    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
+        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    ):
+        res_url, compiled_prompt = client.generate_keyframe_image(
+            prompt="Snape brewing potion",
+            characters=[char],
+            return_compiled_prompt=True,
+        )
+
+    assert "# Character Roster & Visual Directives:" in compiled_prompt
+    assert "(Reference Image: @Image1)" in compiled_prompt
+    assert "Gaunt cynical potion master" in compiled_prompt
+    assert "[Wardrobe: Black Tailored Velvet Trench]" in compiled_prompt
+    assert "[Style: Gothic, High-Contrast]" in compiled_prompt
+
+
+
 
 
 

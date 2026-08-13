@@ -1451,9 +1451,14 @@ class OmniFlashClient:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in char_objs:
                 char_id = get_character_identifier(c)
+                wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
+                tag_str = (
+                    f" [Style: {', '.join(c.aesthetic_tags)}]"
+                    if c.aesthetic_tags
+                    else ""
+                )
                 if c.reference_url and c.reference_url.strip():
                     token = ref_url_to_token.get(c.reference_url, c.reference_url)
-                    char_lines.append(f"- {char_id}: (Reference Image: {token})")
                     name_to_img_tag[char_id] = token
                     if c.name:
                         name_to_img_tag[c.name] = token
@@ -1466,16 +1471,14 @@ class OmniFlashClient:
                             san_base = sanitize_real_names(base_name).strip()
                             if san_base:
                                 name_to_img_tag[san_base] = token
-                else:
-                    wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
-                    tag_str = (
-                        f" [Style: {', '.join(c.aesthetic_tags)}]"
-                        if c.aesthetic_tags
-                        else ""
-                    )
+                    desc_part = f" {c.description}" if c.description else ""
                     char_lines.append(
-                        f"- {char_id}: {c.description}{wardrobe_str}{tag_str}"
+                        f"- {char_id}: (Reference Image: {token}){desc_part}{wardrobe_str}{tag_str}"
                     )
+                else:
+                    desc_part = f"{c.description}" if c.description else ""
+                    line_body = f"{desc_part}{wardrobe_str}{tag_str}".strip()
+                    char_lines.append(f"- {char_id}: {line_body}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         if name_to_img_tag and full_prompt:
