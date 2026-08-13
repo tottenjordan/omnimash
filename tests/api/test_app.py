@@ -1481,4 +1481,15 @@ def test_ui_html_dual_layer_audio_controls() -> None:
     assert "audioAmbience" in UI_HTML
 
 
+def test_ui_html_contains_detach_reference_image_and_anchor_badge() -> None:
+    """Verify UI_HTML contains ❌ Detach Reference Image button, handleDetachReferenceUrl, and reference anchor badge."""
+    from omnimash.api.app import UI_HTML
+
+    assert "handleDetachReferenceUrl" in UI_HTML
+    assert "❌ Detach Reference Image" in UI_HTML
+    assert "🖼️ Attached Reference Anchor:" in UI_HTML
+    assert "(Click ❌ Detach to clear for fresh visuals)" in UI_HTML
+
+
+
 
