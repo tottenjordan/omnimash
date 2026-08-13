@@ -899,6 +899,13 @@ def test_sanitize_real_names_trademarked_item_abstractions():
     assert "armored tactical vehicle" in sanitized
 
 
+def test_sanitize_real_names_totti():
+    assert sanitize_real_names("John Totti on the court") == "a tatted wizard on the court"
+    assert sanitize_real_names("Yo Totti") == "a tatted wizard"
+    assert sanitize_real_names("Francesco Totti") == "a tatted wizard"
+    assert sanitize_real_names("Totti") == "a tatted wizard"
+
+
 
 def test_build_character_image_ref_tags_extracts_base_names_and_tokens():
     char1 = CharacterRole(
@@ -1097,7 +1104,7 @@ def test_compile_storyboard_screenplay_script_injects_character_tags():
         scenes=[scene],
     )
     assert "### TIMELINE" in compiled
-    assert 'Role A - Yo Totti <IMAGE_REF_0> says: "let’s see..."' in compiled
+    assert 'Role A - a tatted wizard <IMAGE_REF_0> says: "let’s see..."' in compiled
 
 
 def test_compile_storyboard_with_conversational_edit_directive():
