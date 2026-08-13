@@ -1381,6 +1381,12 @@ def test_ui_html_contains_project_and_session_tier_architecture() -> None:
     assert "projectsList" in UI_HTML
     assert "showNewProjectModal" in UI_HTML
     assert "showNewSessionModal" in UI_HTML
+    assert "isCreatingProject" in UI_HTML
+    assert "isCreatingSession" in UI_HTML
+    assert "⏳ Creating Project..." in UI_HTML
+    assert "⏳ Creating Session..." in UI_HTML
+    assert "disabled={isCreatingProject}" in UI_HTML
+    assert "disabled={isCreatingSession}" in UI_HTML
     assert "+ New Project" in UI_HTML
     assert "+ New Session" in UI_HTML
     assert "/api/projects" in UI_HTML
