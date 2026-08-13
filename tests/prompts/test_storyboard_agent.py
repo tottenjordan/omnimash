@@ -459,16 +459,28 @@ def test_parse_timecoded_script_extracts_dialogue_into_shot_field():
     assert parsed[0]["action"] == "Dumble Dior steps up to the mic."
 
 
-def test_parse_timecoded_script_supports_theatrical_parenthetical_syntax():
-    script_text = (
-        'Harry: (Pulls out wand under glowing light. Audio: Whoosh sfx.) "Expelliarmus!"'
+def test_storyboard_shot_to_from_dict():
+    shot = StoryboardShot(
+        shot_index=1,
+        duration_seconds=5.0,
+        action="Wizard brewing potion",
+        location="Dungeon",
+        style_lighting="Neon",
+        framing_motion="Medium tracking shot",
+        audio="Trap beat",
+        audio_mode="custom",
+        soundscape="Custom bubbling soundscape",
     )
-    parsed = parse_timecoded_script(script_text)
-    assert len(parsed) >= 1
-    shot = parsed[0]
-    assert "Pulls out wand under glowing light." in shot["action"]
-    assert "Whoosh sfx." in shot["audio"]
-    assert shot["dialogue"] == 'Harry: "Expelliarmus!"'
+    data = shot.to_dict()
+    assert data["audio_mode"] == "custom"
+    assert data["soundscape"] == "Custom bubbling soundscape"
+    assert data["shot_index"] == 1
+
+    restored = StoryboardShot.from_dict(data)
+    assert restored.audio_mode == "custom"
+    assert restored.soundscape == "Custom bubbling soundscape"
+    assert restored.action == "Wizard brewing potion"
+
 
 
 

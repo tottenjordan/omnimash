@@ -2357,6 +2357,12 @@ def compile_journey3_shot_prompt(
     timeline_dialogue: str = "",
     enable_sanitization: bool = True,
     characters: list[CharacterRole] | list[dict[str, Any]] | None = None,
+    audio_mode: str = "global",
+    audio_stem: str | None = None,
+    global_audio_beat: str | None = None,
+    audio_track: str | None = None,
+    soundscape: str | None = None,
+    is_silent: bool = False,
 ) -> str:
     """Compiles lean 4-block prompt for Journey 3 shot generation.
 
@@ -2450,9 +2456,48 @@ def compile_journey3_shot_prompt(
     if name_to_tag and action_str:
         action_str = replace_character_in_text_image_tags(action_str, name_to_tag)
 
-    dialogue_str = timeline_dialogue.strip() if timeline_dialogue else "None."
-    if enable_sanitization and dialogue_str != "None.":
+    custom_stem = audio_stem or soundscape
+    global_beat = global_audio_beat or audio_track
+
+    if audio_mode == "silent" or is_silent:
+        resolved_audio = "Silent video. No background music, no audio."
+    elif audio_mode == "custom" and custom_stem:
+        resolved_audio = custom_stem.strip()
+    elif global_beat:
+        resolved_audio = global_beat.strip()
+    elif custom_stem:
+        resolved_audio = custom_stem.strip()
+    else:
+        resolved_audio = ""
+
+    if enable_sanitization and resolved_audio:
+        resolved_audio = sanitize_real_names(resolved_audio)
+
+    dialogue_str = timeline_dialogue.strip() if timeline_dialogue else ""
+    if dialogue_str and characters:
+        enriched_dialogue, _ = enrich_timeline_dialogue_speakers(
+            dialogue_str, characters, name_to_tag
+        )
+        dialogue_str = enriched_dialogue.strip()
+
+    if enable_sanitization and dialogue_str:
         dialogue_str = sanitize_real_names(dialogue_str)
+
+    timeline_items: list[str] = []
+    if dialogue_str:
+        timeline_items.append(dialogue_str)
+    if resolved_audio:
+        if resolved_audio.startswith("Silent video") or resolved_audio.startswith("Audio:"):
+            timeline_items.append(
+                resolved_audio if resolved_audio.startswith("Audio:") else f"Audio: {resolved_audio}"
+            )
+        else:
+            timeline_items.append(f"Audio: {resolved_audio}")
+
+    if timeline_items:
+        timeline_content = "\n".join(timeline_items)
+    else:
+        timeline_content = "None."
 
     block1 = f"### INPUT ROLES & REFERENCES\n{roster_str}"
     block2 = f"### CUMULATIVE SHOT STATE\n{state_str}"
@@ -2462,7 +2507,7 @@ def compile_journey3_shot_prompt(
         f"- Action Directive: {action_str}\n"
         f"- Aspect Ratio: {aspect_ratio}"
     )
-    block4 = f"### TIMELINE & DIALOGUE\n{dialogue_str}"
+    block4 = f"### TIMELINE & DIALOGUE\n{timeline_content}"
 
     return f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
 

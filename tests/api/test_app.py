@@ -1470,3 +1470,15 @@ def test_ui_html_reset_roster_button_and_cleanup_handlers() -> None:
     assert "setCharacters([])" in UI_HTML
 
 
+def test_ui_html_dual_layer_audio_controls() -> None:
+    """Verify UI_HTML contains dual-layer audio controls."""
+    from omnimash.api.app import UI_HTML
+
+    assert "audio_mode" in UI_HTML
+    assert "🌐 Inherit Global" in UI_HTML
+    assert "🎵 Custom Shot Beat" in UI_HTML
+    assert "🔇 Silent Shot" in UI_HTML
+    assert "audioAmbience" in UI_HTML
+
+
+
