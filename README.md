@@ -18,17 +18,18 @@
 
 </div>
 
-> AI Parody & Mashup Video Studio inspired by viral sensations like **[Dripwarts](https://www.youtube.com/@Onirostudios)** (*DumbleDior*, *Snape Dawg*, *Harry Potter*). Powered by **`gemini-omni-flash-preview`** (unified multimodal video, native synced audio, and conversational diffs in 720p), **Gemini Omni Image Roles** ([Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles)), and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
+> AI Parody & Mashup Video Studio inspired by viral sensations like **[Dripwarts](https://www.youtube.com/@Onirostudios)** (*DumbleDior*, *Snape Dawg*, *Harry Potter*). Powered by **`gemini-omni-flash-preview`** (unified multimodal video, native synced audio, and conversational diffs in 720p), **Gemini Omni Image Roles** ([Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles)), **Google ADK (Agent Development Kit)** multi-agent orchestration, and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
 
-**OmniMash** runs a flexible multimodal generation and conversational diff pipeline: it ingests open-ended visual concepts, deconstructs them via NLP into editable `MetaPromptTags`, binds dynamic Character Roles (`Role A`, `Role B`) to reference images via **Gemini Omni Image Roles**, compiles multi-scene storyboards into structured prompt blocks (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`), generates 10-second 720p clips with native audio via **Gemini Omni Flash**, branches edits non-linearly across a **Session Version Tree DAG**, and flushes context decay via **Commit & Branch Checkpointing**.
+**OmniMash** runs a flexible multimodal generation and conversational diff pipeline: it ingests open-ended visual concepts, deconstructs them via NLP into editable `MetaPromptTags`, binds dynamic Character Roles (`Role A`, `Role B`) to reference images via **Gemini Omni Image Roles**, compiles multi-scene storyboards into structured prompt blocks (`### INPUT ROLES & REFERENCES`, `### CUMULATIVE SHOT STATE`, `### VISUAL ACTION & CAMERA`, and `### TIMELINE & DIALOGUE`), manages **Dual-Layer Audio Specifications** (Global Session Audio vs Per-Shot Audio overrides), orchestrates parallel shot rendering via **ADK Multi-Agent Pipelines**, generates 10-second 720p clips with native audio via **Gemini Omni Flash**, branches edits non-linearly across a **Session Version Tree DAG**, and flushes context decay via **Commit & Branch Checkpointing**.
 
 | Stage | Module | What it does |
 | :--- | :--- | :--- |
-| 1 | 🛡️ **`omnimash.security`** | **Model Armor Gateway:** Pre-gates prompts for RAI violations (hate speech, dangerous content) and prompt injection/jailbreak attempts. |
-| 2 | 🪄 **`omnimash.prompts`** | **Prompt Compiler & Deconstruction Engine:** Parses open-ended concepts (`POST /api/deconstruct-concept`), defines dynamic `CharacterRole` bindings (`Role A`, `Role B`) with attached reference images, and compiles multi-scene storyboards into `[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`. |
-| 3 | 🌳 **`omnimash.state`** | **Version Tree DAG & Checkpoints:** Manages non-linear clip branching (`TurnNode`, `ProjectSession`) and tracks thread edit depth ($\ge 3$) to signal `COMMIT_RECOMMENDED`. |
-| 4 | 🎬 **`omnimash.engine`** | **Gemini Omni Flash Client:** Drives the `Interactions API` with SynthID/C2PA watermarking, multi-character image role references, and base video re-anchoring on thread commits. |
-| 5 | 🎞️ **`omnimash.stitching` & `omnimash.api`** | **FFmpeg Concatenation & FastAPI UI:** Assembles 10s clips into 30–60s master videos and serves the interactive Next.js/React 3-Act Digital Director's Studio dashboard. |
+| 1 | 🛡️ **`omnimash.security`** | **Model Armor Gateway:** Pre-gates prompts for RAI violations (hate speech, dangerous content, prompt injections) and abstracts pop-culture/celebrity names, street slang, and tattoo signifiers. |
+| 2 | 🪄 **`omnimash.prompts`** | **Prompt Compiler & Deconstruction Engine:** Parses concepts into dynamic `CharacterRole` bindings, manages dual-layer audio specifications, and compiles 4-block structured prompts (`### INPUT ROLES & REFERENCES`, `### CUMULATIVE SHOT STATE`, `### VISUAL ACTION & CAMERA`, `### TIMELINE & DIALOGUE`). |
+| 3 | 🤖 **`omnimash.agent`** | **Google ADK Multi-Agent Pipeline:** Orchestrates story deconstruction (`ScriptDeconstructorAgent`), storyboard compilation (`StoryboardCompilerAgent`), parallel shot rendering (`ParallelAgent` worker pool), and final cut stitching (`FinalCutStitcherAgent` / `RootProductionOrchestrator`). |
+| 4 | 🌳 **`omnimash.state`** | **Version Tree DAG & Checkpoints:** Manages non-linear clip branching (`TurnNode`, `ProjectSession`) and tracks thread edit depth ($\ge 3$) to signal `COMMIT_RECOMMENDED`. |
+| 5 | 🎬 **`omnimash.engine`** | **Gemini Omni Flash Client:** Drives the `Interactions API` with SynthID/C2PA watermarking, multi-character image role references, and base video re-anchoring on thread commits. |
+| 6 | 🎞️ **`omnimash.stitching` & `omnimash.api`** | **FFmpeg Concatenation & FastAPI UI:** Assembles 10s clips into 30–60s master videos and serves the interactive Continuity Studio dashboard with project-level Character Vaults and 1-click reference sheet quick-selection. |
 
 <details>
   <summary>blending realities — how the pipeline flows</summary>
@@ -38,14 +39,15 @@
 OmniMash works like an AI music video mixing studio:
 
 1. **Concept Input & Ingest** — Users enter open-ended parody concepts (e.g., *"Gordon Ramsay vs Julia Child in a cyberpunk iron chef battle"* or *"Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"*).
-2. **NLP Deconstruction** — `PromptCompiler.deconstruct_concept()` parses raw shorthand into structured `MetaPromptTags` with dynamic Character Roles (`Role A`, `Role B`), aesthetic tags, environment settings, and audio beats.
-3. **Gemini Omni Image Roles Binding** — Attach high-resolution reference image URLs to character roles ([Gemini Omni Image Roles](https://ai.google.dev/gemini-api/docs/omni#set-image-roles)) to anchor visual likeness across scenes.
-4. **Storyboard Sequencing** — Direct multi-scene storyboards with active role selectors (`["Role A"]`, `["Role B"]`), action directives, and turn-by-turn dialogue.
-5. **Model Armor Gate** — `ModelArmorGuardrail` validates prompt content against Google Cloud RAI safety and jailbreak filters.
-6. **Multimodal Generation** — `OmniFlashClient` invokes `gemini-omni-flash-preview` via the Interactions API to render a 720p 10-second video with native synced audio and multi-character consistency.
-7. **Conversational Diff Branching** — When users ask to modify a scene ("Swap microphone for glowing wand"), the system branches a new `TurnNode` from the parent turn, preserving facial identity and lighting anchors.
-8. **Commit & Branch Checkpointing** — At edit depth $\ge 3$, the user commits the turn. The engine extracts the committed 720p video and spawns a fresh Interactions API thread, eliminating conversational token clutter.
-9. **Stitch & Export** — `VideoStitcher` concatenates active timeline segments via FFmpeg into a master parody video.
+2. **NLP Deconstruction & Roster Reset** — `PromptCompiler.deconstruct_concept()` parses raw shorthand into structured `MetaPromptTags` with dynamic Character Roles (`Role A`, `Role B`), aesthetic tags, environment settings, and audio beats, automatically isolating rosters across sessions.
+3. **Gemini Omni Image Roles & Turnaround Sheets** — Attach high-resolution reference image URLs or 1-click generated character turnaround sheets ([Gemini Omni Image Roles](https://ai.google.dev/gemini-api/docs/omni#set-image-roles)) from the Project-Level Character Vault to anchor visual likeness across scenes.
+4. **Dual-Layer Audio Control** — Specify background beats globally at the session level (Place 1) or customize audio modes per shot card (`🌐 Inherit Global`, `🎵 Custom Shot Beat`, `🔇 Silent Shot` in Place 2).
+5. **ADK Multi-Agent Pipeline** — `RootProductionOrchestrator` (`SequentialAgent`) invokes `ScriptDeconstructorAgent`, `StoryboardCompilerAgent`, `ParallelAgent` shot execution workers, and `FinalCutStitcherAgent` for parallel rendering and stitching.
+6. **Model Armor Gate & Safety Abstractor** — `ModelArmorGuardrail` validates content against Cloud RAI policies and abstract real names, street slang (`stepped on` $\rightarrow$ `diluted`), band trademarks (`Widespread Panic` $\rightarrow$ `vintage band emblem`), and tattoo signifiers (`tear drop tattoo` $\rightarrow$ `facial ink accent`).
+7. **Multimodal Generation** — `OmniFlashClient` invokes `gemini-omni-flash-preview` via the Interactions API to render 720p 10-second video clips with native synced audio.
+8. **Conversational Diff Branching** — When users ask to modify a scene ("Swap microphone for glowing wand"), the system branches a new `TurnNode` from the parent turn, preserving facial identity and lighting anchors.
+9. **Commit & Branch Checkpointing** — At edit depth $\ge 3$, the user commits the turn. The engine extracts the committed 720p video and spawns a fresh Interactions API thread, eliminating conversational token clutter.
+10. **Stitch & Export** — `VideoStitcher` concatenates active timeline segments via FFmpeg into a master parody video saved to GCS.
 
 </details>
 
@@ -53,8 +55,11 @@ OmniMash works like an AI music video mixing studio:
 
 ## Table of Contents
 - [Architecture](#architecture)
+  - [Google ADK Multi-Agent Pipeline Architecture](#-google-adk-multi-agent-pipeline-architecture)
+  - [Dual-Layer Audio Specification & Prompt Compiler Architecture](#-dual-layer-audio-specification--prompt-compiler-architecture)
   - [Multi-Scene 30–60s Master Video Assembly Architecture](#-multi-scene-3060s-master-video-assembly-architecture)
 - [Storyboard & Multi-Shot Production User Journey](#-storyboard--multi-shot-production-user-journey-act-2)
+- [Project-Level Character Vault & Turnaround Sheets](#-project-level-character-vault--turnaround-sheets)
 - [Diagrams & Reference Architectures](#diagrams--reference-architectures)
 - [Getting Started & User Journey](#-getting-started--user-journey)
 - [Quickstart](#quickstart)
@@ -73,6 +78,67 @@ OmniMash is built on Google's **ADK (Agent Development Kit)** and the **Gemini E
 <div align="center">
   <img src="docs/diagrams/omnimash_master_architecture.png" alt="OmniMash Master Architecture & Pipeline Diagram (PaperBanana Style)" width="100%" />
 </div>
+
+---
+
+### 🤖 Google ADK Multi-Agent Pipeline Architecture
+
+OmniMash utilizes a hybrid multi-agent orchestration architecture built with Google's **Agent Development Kit (`google-adk>=2.5.0`)**, combining `SequentialAgent` for linear production steps and `ParallelAgent` for concurrent shot execution:
+
+```mermaid
+graph TD
+    Root["RootProductionOrchestrator (SequentialAgent)"] --> Deconstruct["1. ScriptDeconstructorAgent (Agent)"]
+    Deconstruct --> Storyboard["2. StoryboardCompilerAgent (Agent)"]
+    Storyboard --> ParallelExec["3. ShotExecutionPipeline (ParallelAgent)"]
+    ParallelExec --> Worker1["Shot 1 Execution Worker"]
+    ParallelExec --> Worker2["Shot 2 Execution Worker"]
+    ParallelExec --> WorkerN["Shot N Execution Worker"]
+    ParallelExec --> Stitcher["4. FinalCutStitcherAgent (Agent)"]
+```
+
+#### 🏛️ Agent Roles & Hierarchy
+
+1. **`RootProductionOrchestrator` (`SequentialAgent`)**: Top-level production container that orchestrates the linear lifecycle: Concept Deconstruction $\rightarrow$ Storyboard Compilation $\rightarrow$ Parallel Shot Execution $\rightarrow$ Master Video Stitching.
+2. **`ScriptDeconstructorAgent` (`Agent`)**: Parses open-ended story concepts and screenplays, extracting character profiles, aesthetic signifiers, environment settings, and voice styles.
+3. **`StoryboardCompilerAgent` (`Agent`)**: Splits screenplays into timecoded 10-second shot directives (`expand_vision`) and builds structured 4-block Omni Flash prompts.
+4. **`ShotExecutionPipeline` (`ParallelAgent`)**: Fan-out execution pool triggering concurrent video generation API calls (`gemini-omni-flash-preview`) across independent shots, reducing batch generation latency by up to 70%.
+5. **`FinalCutStitcherAgent` (`Agent`)**: Aggregates rendered 10-second MP4 clips and calls `VideoStitcher` (FFmpeg) to produce stitched master video exports.
+
+---
+
+### 🎧 Dual-Layer Audio Specification & Prompt Compiler Architecture
+
+OmniMash implements a dual-layer audio capture system that provides both session-wide convenience and granular per-shot override flexibility:
+
+```mermaid
+graph TD
+    Place1["Place 1: Global Session Audio Control (audioBeat, audioAmbience)"] --> Inherit["Audio Inheritance Resolver"]
+    Place2["Place 2: Per-Shot Card Audio Studio (Audio Mode Selector)"] --> Inherit
+    Inherit --> Compiler["PromptCompiler (compile_journey3_shot_prompt)"]
+    Compiler --> Block4["Block 4: ### TIMELINE & DIALOGUE (Audio, Soundscape, Lip-Sync Pacing)"]
+```
+
+#### 📍 Dual Input Places
+
+* **Place 1: Global Session Audio Control Box (Session Level)**
+  - Position: Continuity Studio header control panel.
+  - Fields: `Global Background Beat / Instrumental` (e.g., `140 BPM Heavy 808 Trap`) and `Global Environmental Soundscape` (e.g., `Thunder rumbling, rain pattering`).
+  - Purpose: Sets a single audio baseline once for the entire project/session.
+
+* **Place 2: Dedicated Per-Shot Card Audio Studio (Shot Level)**
+  - Position: Integrated onto every individual Shot Card in Continuity Studio.
+  - Audio Mode Dropdown Selector:
+    - **`🌐 Inherit Global`** (Default — automatically inherits session audio with zero extra typing)
+    - **`🎵 Custom Shot Beat`** (Opens custom text fields for shot-specific sound design/music overrides)
+    - **`🔇 Silent Shot`** (Instantly mutes background audio for dramatic effect)
+  - Fields: Custom per-shot soundscape text input, spoken dialogue text input, and active character voice delivery badges (`🎙️ Harry: Aggressive 2000s rap delivery`).
+
+#### ⚙️ Compiler Resolution (`Block 4: ### TIMELINE & DIALOGUE`)
+
+The prompt compiler resolves active audio modes and merges character voice styles directly into dialogue pacing:
+> `[0-10s] Action: ... Audio: Spoken dialogue is dominant. Background beat (instrumental 140 BPM Heavy 808 Trap) is subtly ducked. Dialogue: Draco (Vocal Delivery: Aggressive 2000s rap) says: "..."`
+
+---
 
 ### 🎬 Multi-Scene 30–60s Master Video Assembly Architecture
 
@@ -93,18 +159,25 @@ To overcome the **10-second per-clip single-turn limit** of Gemini Omni Flash an
    - Triggered via `POST /api/save-final` to stitch sequential 10s MP4 clips and continuous 140 BPM audio stems into a unified 30–60s master video MP4.
    - Saves master exports directly to GCS using explicit GCS session name preservation (`session_name` / `session_id`) at `sessions/{session_name}/final_masters/{master_title}.mp4` using `VideoStitcher` / `MediaStitcher` with `aresample=async=1:first_pts=0` and presentation timestamp (PTS) frame locking.
 
-#### 🗂️ Session-Scoped GCS Storage Hierarchy & Session Name Preservation
+#### 🗂️ Project & Session Storage Hierarchy in Google Cloud Storage
 
-OmniMash maintains a structured, session-scoped folder hierarchy in Google Cloud Storage (`gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}/`), preserving user-specified `session_name` parameters explicitly across all generation, commit, and export operations:
+OmniMash maintains a structured, project and session-scoped folder hierarchy in Google Cloud Storage (`gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}/`):
 
-```
+```text
 gs://omnimash-media-${GOOGLE_CLOUD_PROJECT}/
-└── sessions/{session_name}/
-    ├── intermediate/   # Per-turn 10s MP4 video clips & audio stems (thread_..._turnX.mp4)
-    ├── finalized/      # Multi-clip concatenated timeline video renders
-    ├── final_masters/  # Exported 30–60s master parody video MP4 files
-    ├── prompts/        # Turn log history & compiled storyboard prompt text files
-    └── references/     # Session character cast rosters & reference analysis metadata
+├── 🏛️ projects/{project_id}/
+│   ├── saved_characters/              <-- PROJECT-LEVEL CHARACTER VAULT
+│   │   ├── harry_potter.json          - Shared character JSON definitions across sessions
+│   │   ├── draco_malfoy.json
+│   │   └── waka_flocka.json
+│   ├── saved_reference_sheets/        <-- PROJECT-LEVEL TURNAROUND SHEETS
+│   │   ├── harry_sheet_v1.png         - Visual turnaround reference sheets
+│   │   └── draco_sheet_v1.png
+│   └── sessions/{session_id}/         <-- SESSION WORKSPACES
+│       ├── prompts/
+│       │   └── session_manifest.json  - Roster, presets, aspect ratio, image model
+│       ├── intermediate/              - 10s turn MP4 video renders
+│       └── final_masters/             - Concatenated master parody videos
 ```
 
 ---
@@ -583,23 +656,21 @@ curl -X POST http://localhost:8000/api/stitch-clips \
 
 ## Web UI Dashboard
 
-The built-in single-page web dashboard (React 18 + Tailwind CSS) implements the **3-Act Digital Director's Studio**:
+The built-in single-page web dashboard (React 18 + Tailwind CSS) implements Continuity Studio:
 
-- **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), 🏛️ **Character Vault & Saved Library** toolbar with 1-click preset quick-load chips rendering miniature avatar image thumbnails, 💾 **Save to Vault** character card buttons, 💾 **Save Cast Roster / 📂 Restore Cast** session controls, dynamic Character Roles manager (`Role A`, `Role B`) with character reference image preview rendering (`Linked Image Role` thumbnail containers) and attached Gemini Omni Image Role reference image URLs, dedicated **🎙️ Voice Style & Accent** inputs per character card, character-specific style signifiers, and the **🎙️ Vocal Delivery / Voiceover Style** global control.
-- **Act 2: Fine-Tune & Storyboard Directing:** Multi-scene storyboard sequence editor, active role selectors (`["Role A"]`, `["Role B"]`), action directives, turn-by-turn dialogue, and real-time live compiled storyboard prompt preview (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, `[AUDIO & VOCAL DIRECTION]`, and `[STORYBOARD SEQUENCE]`).
-- **Act 3: The Screening Room & Branching:** 720p native video player with non-autoplay playback controls and SynthID C2PA provenance indicators, Generation Status pill badge (`🟢 Live Gemini Omni Flash` vs `🟠 Procedural Fallback Animation`), Active Error Mitigation banner, live Final Generation Prompt inspection pane (`rawCompiledPrompt` with structured `[AUDIO & VOCAL DIRECTION]`), "Stitch & Combine Selected Clips" modal (`POST /api/stitch-clips`) for custom clip selection & concatenation, "Stitch & Save Master (30–60s) to GCS" export modal (`POST /api/save-final`), "Extend Video / Next Scene" storyboard continuation (`POST /api/extend-scene`), interactive Version Tree DAG explorer, conversational delta prompting, and depth $\ge 3$ commit & re-anchor modal.
+- **Act 1: The Concept & Cast Manager:** Open-ended parody prompt input, 1-click NLP concept deconstruction (`POST /api/deconstruct-concept`), project-level **Character Vault & Saved Library** toolbar with turnaround sheet gallery grid (`🖼️ Saved Character Turnaround Sheets`) and Quick-Select dropdowns (`🖼️ Quick-Select Saved Reference Sheet`), `🧹 Reset Roster` button, modal loading spinners (`⏳ Creating...`), and dedicated **🎙️ Voice Style & Accent** inputs.
+- **Act 2: Fine-Tune & Storyboard Directing:** Multi-scene storyboard sequence editor, dual-layer audio controls (`🌐 Inherit Global`, `🎵 Custom Shot Beat`, `🔇 Silent Shot`), character voice badges, and real-time live compiled 4-block prompt preview (`### INPUT ROLES & REFERENCES`, `### CUMULATIVE SHOT STATE`, `### VISUAL ACTION & CAMERA`, `### TIMELINE & DIALOGUE`).
+- **Act 3: The Screening Room & Branching:** 720p native video player with non-autoplay playback controls, SynthID C2PA indicators, final generation prompt inspector (`rawCompiledPrompt`), custom clip stitching (`POST /api/stitch-clips`), and master GCS export (`POST /api/save-final`).
 
 ---
 
 ## 🛡️ Gemini Omni Flash Zero-Veo Policy, Relaxed Safety & Error Mitigation
 
-- **Zero-Veo Policy:** OmniMash exclusively targets `gemini-omni-flash-preview` for native joint video and audio synthesis and conversational editing. Legacy Veo fallback models have been completely eliminated.
+- **Zero-Veo Policy:** OmniMash exclusively targets `gemini-omni-flash-preview` for native joint video and audio synthesis and conversational editing. Legacy Veo fallback models are strictly prohibited.
 - **Relaxed Safety Filters (`BLOCK_NONE`):** `OmniFlashClient` passes `google.genai.types.SafetySetting` configured with `BLOCK_NONE` across all harm categories (`HARM_CATEGORY_HARASSMENT`, `HARM_CATEGORY_HATE_SPEECH`, `HARM_CATEGORY_SEXUALLY_EXPLICIT`, `HARM_CATEGORY_DANGEROUS_CONTENT`, `HARM_CATEGORY_CIVIC_INTEGRITY`) to eliminate false-positive policy blocks on creative parodies.
-- **Expanded Pop-Culture Prompt Abstraction:** `_abstract_prompt_for_responsible_ai` automatically converts restricted pop-culture names (Harry Potter, Star Wars, Marvel/DC Superheroes, Lord of the Rings, Gaming/Anime icons, and Celebrities) into rich visual archetypes, ensuring 100% compliant generation while preserving exact character likenesses.
+- **Expanded Safety Sanitization Rules:** Automatically converts street slang (`stepped on` $\rightarrow$ `diluted`), band trademarks (`Widespread Panic` $\rightarrow$ `vintage band emblem`), and tattoo signifiers (`tear drop tattoo` $\rightarrow$ `facial ink accent`, `face tattoos` $\rightarrow$ `artistic facial ink`, `1017` $\rightarrow$ `gold`) in addition to celebrity name abstractions.
 - **Dual-Strategy Client Authentication:** Automatically initializes Google AI Studio Developer API (`GOOGLE_API_KEY`) and Vertex AI ADC (`GOOGLE_CLOUD_PROJECT`, `GEMINI_LOCATION`) clients.
-- **Active Error Mitigation (401 UNAUTHENTICATED):** When Vertex AI returns a `401 UNAUTHENTICATED` (e.g. API keys not supported on Vertex endpoints), `OmniFlashClient` logs the mitigation event, seamlessly invokes `switch_to_developer_api()`, and retries generation using the Developer API client.
 - **3-Attempt Exponential Backoff:** Automatically retries transient errors (`429 Rate Limit`, `404 Endpoint Mismatch`, `ResourceExhausted`) with exponential backoff delays.
-- **Full Error & Mode Surfacing:** All generation errors and execution modes (`LIVE_OMNI_FLASH` vs `LOCAL_PROCEDURAL_ANIMATION`) are surfaced directly through API responses and rendered in the React dashboard.
 
 ---
 
@@ -613,7 +684,7 @@ Deploy the complete FastAPI app, React Web UI dashboard, and FFmpeg video stitch
 ./scripts/deploy_cloud_run.sh
 ```
 
-**Live Production URL:** [https://omnimash-934903580331.us-central1.run.app](https://omnimash-934903580331.us-central1.run.app)
+**Live Production URL:** [https://omnimash-api-934903580331.us-central1.run.app](https://omnimash-api-934903580331.us-central1.run.app)
 
 ### 2. Vertex AI Agent Engine
 
@@ -645,7 +716,7 @@ uv run ty check .
 
 ## Repo Structure
 
-```
+```text
 .
 ├── CODE_STANDARDS.md          # Mandatory tooling rules (uv, ruff, ty, pytest)
 ├── Dockerfile                 # Production Cloud Run container image
@@ -664,7 +735,8 @@ uv run ty check .
 │   └── deploy_cloud_run.sh    # Cloud Run automated deploy script
 ├── src
 │   └── omnimash
-│       ├── agent              # Google ADK agent orchestration loop
+│       ├── agent              # Google ADK agent orchestration loop & multi-agent pipeline
+│       │   ├── adk_pipeline.py# ADK SequentialAgent & ParallelAgent pipeline
 │       │   ├── agent.py
 │       │   └── orchestrator.py
 │       ├── api                # FastAPI async endpoints & Web UI dashboard
@@ -674,14 +746,20 @@ uv run ty check .
 │       ├── ingestion          # Reference asset & YouTube media extraction
 │       │   └── media_extractor.py
 │       ├── prompts            # Concept deconstruction, Image Roles & storyboard compiler
+│       │   ├── character_roles.py
 │       │   ├── compiler.py
+│       │   ├── storyboard_agent.py
 │       │   └── taxonomy.py
 │       ├── security           # Model Armor guardrail & safety gateway
 │       │   └── guardrail.py
-│       └── state              # Version Tree DAG & thread depth manager
-│           └── session_manager.py
+│       ├── state              # Version Tree DAG & thread depth manager
+│       │   └── session_manager.py
+│       ├── stitching          # FFmpeg video & audio stitching engine
+│       │   └── stitcher.py
+│       └── storage            # GCS project & session artifact manager
+│           └── gcs.py
 └── tests
-    ├── agent/                 # Agent orchestrator unit tests
+    ├── agent/                 # Agent orchestrator & ADK pipeline unit tests
     ├── api/                   # FastAPI route & UI endpoint tests
     ├── engine/                # Omni Flash & exponential retry tests
     ├── ingestion/             # Reference media extractor tests
@@ -689,5 +767,5 @@ uv run ty check .
     ├── security/              # Model Armor guardrail tests
     ├── state/                 # Version Tree DAG & session tests
     ├── stitching/             # FFmpeg video stitcher tests
-    └── storage/               # GCS session artifact storage tests
+    └── storage/               # GCS project & session artifact storage tests
 ```
