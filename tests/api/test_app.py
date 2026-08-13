@@ -1103,7 +1103,7 @@ def test_journey3_clean_names_and_in_text_image_tag_replacement():
     data = res.json()
     assert data["success"] is True
     compiled = data.get("raw_compiled_prompt", "")
-    assert "- Swagrid Tha Plug: (Reference Image: @Image1)" in compiled
+    assert "- Swagrid Tha Plug: (Reference Image: @Image1" in compiled
     assert "Role A - Swagrid Tha Plug" not in compiled
     assert "Swagrid Tha Plug (@Image1) glides out of the forest" in compiled
 

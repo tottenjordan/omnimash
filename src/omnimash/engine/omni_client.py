@@ -1393,6 +1393,8 @@ class OmniFlashClient:
 
         if all_char_objs:
             char_objs = [c for c in all_char_objs if _is_char_in_prompt(c, prompt, sanitized_prompt)]
+            if not char_objs:
+                char_objs = list(all_char_objs)
         else:
             char_objs = []
 

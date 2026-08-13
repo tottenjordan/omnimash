@@ -66,7 +66,16 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bface\s*tattoos?\b": "artistic facial ink",
     r"\bface\s*tatted\b": "artistic facial ink",
     r"\b1017\b": "gold",
+    # Trademarked Item Abstractions
+    r"\bGolden Snitch\b": "glowing golden flying orb",
+    r"\bSnitch\b": "golden flying orb",
+    r"\bQuidditch\b": "aerial magical sport",
+    r"\bLightsaber\b": "laser sword",
+    r"\bLight Saber\b": "laser sword",
+    r"\bBatmobile\b": "armored tactical vehicle",
 }
+
+REAL_NAME_MAPPINGS = REAL_NAME_PARODY_MAP
 
 
 def sanitize_real_names(text: str) -> str:
@@ -2383,7 +2392,9 @@ def compile_journey3_shot_prompt(
                 else char.get("reference_url")
             )
             if ref_url and isinstance(ref_url, str) and ref_url.strip():
-                char_lines.append(f"- {char_id}: (Reference Image: @Image{ref_idx})")
+                char_lines.append(
+                    f"- {char_id}: (Reference Image: @Image{ref_idx} - extract character facial likeness and wardrobe, ignore old background environment)"
+                )
                 ref_idx += 1
             else:
                 desc = (
@@ -2444,7 +2455,7 @@ def compile_journey3_shot_prompt(
 
     if roster_str != "None.":
         for line in roster_str.splitlines():
-            m = re.search(r"-\s*([^:\n]+):\s*\(Reference Image:\s*(@Image\d+)\)", line)
+            m = re.search(r"-\s*([^:\n]+):\s*\(Reference Image:\s*(@Image\d+)", line)
             if m:
                 c_name = m.group(1).strip()
                 c_tag = m.group(2).strip()
