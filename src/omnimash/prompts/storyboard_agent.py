@@ -421,6 +421,56 @@ class StoryboardShot:
     preceding_context: str = ""
     camera_transition: str = "Continuous match cut"
     character_continuity: str = "Maintain subject outfit, posture, and facial expression from preceding shot"
+    audio_mode: str = "global"
+    soundscape: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "shot_index": self.shot_index,
+            "duration_seconds": self.duration_seconds,
+            "action": self.action,
+            "location": self.location,
+            "style_lighting": self.style_lighting,
+            "framing_motion": self.framing_motion,
+            "audio": self.audio,
+            "summary": self.summary,
+            "dialogue": self.dialogue,
+            "start_seconds": self.start_seconds,
+            "end_seconds": self.end_seconds,
+            "narrative_stage": self.narrative_stage,
+            "preceding_context": self.preceding_context,
+            "camera_transition": self.camera_transition,
+            "character_continuity": self.character_continuity,
+            "audio_mode": self.audio_mode,
+            "soundscape": self.soundscape,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> StoryboardShot:
+        return cls(
+            shot_index=int(data.get("shot_index", 1)),
+            duration_seconds=float(data.get("duration_seconds", 10.0)),
+            action=str(data.get("action", "")),
+            location=str(data.get("location", "")),
+            style_lighting=str(data.get("style_lighting", "")),
+            framing_motion=str(data.get("framing_motion", "")),
+            audio=str(data.get("audio", "")),
+            summary=str(data.get("summary", "")),
+            dialogue=str(data.get("dialogue", "")),
+            start_seconds=float(data.get("start_seconds", 0.0)),
+            end_seconds=float(data.get("end_seconds")) if data.get("end_seconds") is not None else None,
+            narrative_stage=str(data.get("narrative_stage", "Rising Action")),
+            preceding_context=str(data.get("preceding_context", "")),
+            camera_transition=str(data.get("camera_transition", "Continuous match cut")),
+            character_continuity=str(
+                data.get(
+                    "character_continuity",
+                    "Maintain subject outfit, posture, and facial expression from preceding shot",
+                )
+            ),
+            audio_mode=str(data.get("audio_mode", "global")),
+            soundscape=data.get("soundscape") if data.get("soundscape") is not None else None,
+        )
 
     def to_omni_flash_prompt(self, role_mappings: str = "") -> str:
         prompt_parts: list[str] = []
@@ -836,6 +886,8 @@ class StoryboardAgent:
                             preceding_context=sanitize_real_names(str(item.get("preceding_context", ""))),
                             camera_transition=sanitize_real_names(str(item.get("camera_transition", "Continuous match cut"))),
                             character_continuity=sanitize_real_names(str(item.get("character_continuity", "Maintain subject outfit, posture, and facial expression from preceding shot"))),
+                            audio_mode=str(item.get("audio_mode", "global")),
+                            soundscape=str(item.get("soundscape")) if item.get("soundscape") else None,
                         )
                     )
                 for shot in shots:

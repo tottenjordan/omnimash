@@ -5,6 +5,7 @@ from omnimash.prompts.compiler import (
     PromptCompiler,
     SceneDirective,
     build_character_image_ref_tags,
+    compile_journey3_shot_prompt,
     get_character_identifier,
     parse_screenplay_script,
     parse_timecoded_script,
@@ -1289,6 +1290,57 @@ def test_compile_storyboard_with_aspect_ratio():
         )
         assert "### SCENE INSTRUCTIONS" in compiled
         assert f"- Aspect Ratio: {ratio}" in compiled
+
+
+def test_compile_journey3_dual_layer_audio():
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Snape",
+            description="Gaunt potion master",
+            voice_style="Pompous British drawl",
+        )
+    ]
+
+    # 1. Global Audio Mode
+    prompt_global = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="Snape stirring potion",
+        characters=chars,
+        timeline_dialogue='Snape: "Silence, Potter!"',
+        audio_mode="global",
+        global_audio_beat="120 BPM Boom Bap Beat",
+        audio_stem="Ignored Custom Stem",
+    )
+    assert "120 BPM Boom Bap Beat" in prompt_global
+    assert "Ignored Custom Stem" not in prompt_global
+    assert "Pompous British drawl" in prompt_global
+
+    # 2. Custom Audio Mode
+    prompt_custom = compile_journey3_shot_prompt(
+        shot_number=2,
+        action_directive="Snape casting spell",
+        characters=chars,
+        timeline_dialogue='Snape: "Observe!"',
+        audio_mode="custom",
+        audio_stem="Heavy Synthwave Bassline",
+        global_audio_beat="120 BPM Boom Bap Beat",
+    )
+    assert "Heavy Synthwave Bassline" in prompt_custom
+    assert "120 BPM Boom Bap Beat" not in prompt_custom
+    assert "Pompous British drawl" in prompt_custom
+
+    # 3. Silent Audio Mode
+    prompt_silent = compile_journey3_shot_prompt(
+        shot_number=3,
+        action_directive="Snape staring silently",
+        characters=chars,
+        audio_mode="silent",
+        global_audio_beat="120 BPM Boom Bap Beat",
+    )
+    assert "Silent video. No background music, no audio." in prompt_silent
+    assert "120 BPM Boom Bap Beat" not in prompt_silent
+
 
 
 

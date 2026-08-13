@@ -381,6 +381,10 @@ class Journey3ShotGenerateRequest(BaseModel):
     compiled_override: str | None = None
     characters: list[dict[str, Any]] | None = None
     included_character_ids: list[str] | None = None
+    audio_mode: str = "global"
+    audio_stem: str | None = None
+    global_audio_beat: str | None = None
+
 
 
 class Journey3StitchMasterRequest(BaseModel):
@@ -602,6 +606,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [environmentTag, setEnvironmentTag] = useState("Gothic Hogwarts courtyard lit by neon stage lights and smoky haze");
             const [cameraLightingTag, setCameraLightingTag] = useState("Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights");
             const [audioBeat, setAudioBeat] = useState("140 BPM Heavy 808 Trap");
+            const [audioAmbience, setAudioAmbience] = useState("Rainy cyberpunk street noise with neon hum");
             const [vocalDelivery, setVocalDelivery] = useState("High-energy back-and-forth rap battle delivery with synchronized lip-sync");
 
             // Act 2: Fine-Tune & Storyboard Directing State
@@ -831,7 +836,19 @@ UI_HTML = r"""<!DOCTYPE html>
 
                 const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
                 const block3 = `### VISUAL ACTION & CAMERA\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
-                const block4 = `### TIMELINE & DIALOGUE\n- ${dialogueStr}`;
+                let resolvedAudio = "";
+                const mode = card ? (card.audio_mode || "global") : "global";
+                if (mode === "silent") {
+                    resolvedAudio = "Silent video. No background music, no audio.";
+                } else if (mode === "custom" && card && card.audio_stem) {
+                    resolvedAudio = card.audio_stem;
+                } else if (audioBeat) {
+                    resolvedAudio = audioBeat;
+                } else if (card && card.audio_stem) {
+                    resolvedAudio = card.audio_stem;
+                }
+                const audioLine = resolvedAudio ? `\n- Audio & Beat: ${resolvedAudio}` : "";
+                const block4 = `### TIMELINE & DIALOGUE\n- ${dialogueStr}${audioLine}`;
 
                 return `${block1}${block1_keyframe}\n\n${block2}\n\n${block3}\n\n${block4}`;
             };
@@ -842,6 +859,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     image_prompt: "Gaunt wizard stirring cauldrons in neon dungeon",
                     action_directive: "Gaunt wizard puts on a golden velvet blindfold",
                     dialogue_text: "I see all.",
+                    audio_mode: "global",
+                    audio_stem: "",
                     keyframe_image_url: "",
                     keyframe_role: "Strict First Frame",
                     video_url: "",
@@ -853,6 +872,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     image_prompt: "Gaunt wizard walking through foggy street",
                     action_directive: "Gaunt wizard raises staff slowly while blindfolded",
                     dialogue_text: "Taste the magic.",
+                    audio_mode: "global",
+                    audio_stem: "",
                     keyframe_image_url: "",
                     keyframe_role: "Strict First Frame",
                     video_url: "",
@@ -962,6 +983,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     image_prompt: `Gaunt wizard action sequence for Shot #${nextIdx}`,
                     action_directive: `Gaunt wizard action directive for Shot #${nextIdx}`,
                     dialogue_text: "",
+                    audio_mode: "global",
+                    audio_stem: "",
                     keyframe_image_url: "",
                     keyframe_role: "Strict First Frame",
                     video_url: "",
@@ -1147,6 +1170,9 @@ UI_HTML = r"""<!DOCTYPE html>
                             shot_index: shotIdx,
                             action_directive: card.action_directive || "",
                             dialogue_text: card.dialogue_text || "",
+                            audio_mode: card.audio_mode || "global",
+                            audio_stem: card.audio_stem || null,
+                            global_audio_beat: audioBeat || null,
                             keyframe_image_url: card.keyframe_image_url || null,
                             aspect_ratio: aspectRatio,
                             enable_safety_sanitization: enableSafetySanitization,
@@ -7040,6 +7066,30 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     </select>
                                                 </div>
 
+                                                {/* Place 1: Global Session Audio Control Box */}
+                                                <div className="col-span-1 md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-950/90 border border-purple-900/50 p-4 rounded-xl">
+                                                    <div>
+                                                        <label className="text-xs font-bold text-purple-300 block mb-1">🎵 Global Audio Beat / Background Music (audioBeat):</label>
+                                                        <input
+                                                            type="text"
+                                                            value={audioBeat}
+                                                            onChange={(e) => setAudioBeat(e.target.value)}
+                                                            placeholder="e.g. 140 BPM Heavy 808 Trap"
+                                                            className="w-full bg-gray-900 border border-gray-800 rounded-xl p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-bold text-purple-300 block mb-1">🔊 Global Audio Ambience / Soundscape (audioAmbience):</label>
+                                                        <input
+                                                            type="text"
+                                                            value={audioAmbience}
+                                                            onChange={(e) => setAudioAmbience(e.target.value)}
+                                                            placeholder="e.g. Rainy cyberpunk street noise with neon hum"
+                                                            className="w-full bg-gray-900 border border-gray-800 rounded-xl p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
+                                                        />
+                                                    </div>
+                                                </div>
+
                                                 <div className="flex items-center gap-2 mt-5 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl">
                                                     <span className="text-xs font-bold text-gray-300">Safety Sanitization Toggle:</span>
                                                     <input
@@ -7232,20 +7282,87 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         />
                                                     </div>
 
-                                                    <div>
-                                                        <label className="text-[11px] font-bold text-gray-300 block">Timeline & Audio Intent (w/ or w/o dialogue):</label>
-                                                        <input
-                                                            type="text"
-                                                            value={card.dialogue_text || ""}
-                                                            onChange={(e) => {
-                                                                const val = e.target.value;
-                                                                setJ3ShotCards((prev) =>
-                                                                    prev.map((c) => (c.shot_index === card.shot_index ? { ...c, dialogue_text: val, compiled_override: undefined } : c))
-                                                                );
-                                                            }}
-                                                            placeholder="Spoken dialogue..."
-                                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white"
-                                                        />
+                                                    {/* Place 2: Per-Shot Card Audio Studio */}
+                                                    <div className="bg-gray-900/90 border border-purple-900/40 rounded-xl p-3 space-y-2.5">
+                                                        <label className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                            <span>🎵</span>
+                                                            <span>Audio &amp; Soundscape Studio</span>
+                                                        </label>
+
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="text-[11px] font-bold text-gray-300 block mb-1">Audio Mode Selector:</label>
+                                                                <select
+                                                                    value={card.audio_mode || "global"}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setJ3ShotCards((prev) =>
+                                                                            prev.map((c) => (c.shot_index === card.shot_index ? { ...c, audio_mode: val, compiled_override: undefined } : c))
+                                                                        );
+                                                                    }}
+                                                                    className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs font-bold text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
+                                                                >
+                                                                    <option value="global">🌐 Inherit Global</option>
+                                                                    <option value="custom">🎵 Custom Shot Beat</option>
+                                                                    <option value="silent">🔇 Silent Shot</option>
+                                                                </select>
+                                                            </div>
+
+                                                            {card.audio_mode === "custom" && (
+                                                                <div>
+                                                                    <label className="text-[11px] font-bold text-purple-300 block mb-1">Custom Audio / Soundscape Text Input:</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={card.audio_stem || ""}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value;
+                                                                            setJ3ShotCards((prev) =>
+                                                                                prev.map((c) => (c.shot_index === card.shot_index ? { ...c, audio_stem: val, compiled_override: undefined } : c))
+                                                                            );
+                                                                        }}
+                                                                        placeholder="Custom shot audio beat or soundscape..."
+                                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-[11px] font-bold text-gray-300 block mb-1">Spoken Dialogue Text Input:</label>
+                                                            <input
+                                                                type="text"
+                                                                value={card.dialogue_text || ""}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setJ3ShotCards((prev) =>
+                                                                        prev.map((c) => (c.shot_index === card.shot_index ? { ...c, dialogue_text: val, compiled_override: undefined } : c))
+                                                                    );
+                                                                }}
+                                                                placeholder="Spoken dialogue..."
+                                                                className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white font-mono"
+                                                            />
+                                                        </div>
+
+                                                        {/* 🎙️ Active Character Voice Delivery Badges */}
+                                                        {(() => {
+                                                            const charPool = (j3Characters && j3Characters.length > 0) ? j3Characters : (characters || []);
+                                                            const includedIds = card.included_character_ids || charPool.map(c => c.role_id);
+                                                            const activeChars = charPool.filter(c => c && includedIds.includes(c.role_id));
+                                                            return activeChars.length > 0 ? (
+                                                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                                                    <span className="text-[10px] font-bold text-purple-300 uppercase">🎙️ Voice Delivery Badges:</span>
+                                                                    {activeChars.map(c => {
+                                                                        const styleVal = c.voice_style || c.voice_profile || "Standard Delivery";
+                                                                        return (
+                                                                            <span key={c.role_id} className="bg-purple-950/80 text-purple-200 border border-purple-800 text-[10px] font-mono px-2 py-0.5 rounded-lg flex items-center gap-1">
+                                                                                <span className="font-bold">{c.name || c.role_id}:</span>
+                                                                                <span>{styleVal}</span>
+                                                                            </span>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            ) : null;
+                                                        })()}
                                                     </div>
                                                 </div>
 
