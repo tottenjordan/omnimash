@@ -865,6 +865,9 @@ class OmniFlashClient:
         output_data: dict[str, Any],
         error_code: str | None = None,
         guardrail_type: str | None = None,
+        characters: list[Any] | None = None,
+        keyframe_image_url: str | None = None,
+        reference_image_uris: list[str] | None = None,
     ) -> None:
         """Logs multimodal prompt JSONL exports and OpenTelemetry GenAI inference spans to Cloud Storage and Cloud Trace.
 
@@ -875,6 +878,9 @@ class OmniFlashClient:
             output_data: Dictionary containing output metadata (media_url, gcs_uri, generation_mode, error_message).
             error_code: Optional error code.
             guardrail_type: Optional guardrail safety type.
+            characters: Optional character roles list.
+            keyframe_image_url: Optional starting keyframe seed image URI.
+            reference_image_uris: Optional explicit list of reference image URIs.
         """
         sid = session_id or "global"
         tname = turn_name or "inference"
@@ -883,9 +889,42 @@ class OmniFlashClient:
         prompt_text = ""
         ref_image_uris: list[str] = []
 
+        if reference_image_uris:
+            ref_image_uris.extend([str(u) for u in reference_image_uris if u])
+
+        if keyframe_image_url and isinstance(keyframe_image_url, str) and keyframe_image_url.strip():
+            ref_image_uris.append(keyframe_image_url.strip())
+
+        if characters:
+            for c in characters:
+                if isinstance(c, dict):
+                    for uri_key in (
+                        "reference_url",
+                        "reference_image_url",
+                        "turnaround_url",
+                        "turnaround_sheet_url",
+                        "uri",
+                        "url",
+                    ):
+                        val = c.get(uri_key)
+                        if val and isinstance(val, str) and val.strip():
+                            ref_image_uris.append(val.strip())
+                else:
+                    for uri_key in (
+                        "reference_url",
+                        "reference_image_url",
+                        "turnaround_url",
+                        "turnaround_sheet_url",
+                        "uri",
+                        "url",
+                    ):
+                        val = getattr(c, uri_key, None)
+                        if val and isinstance(val, str) and val.strip():
+                            ref_image_uris.append(val.strip())
+
         if isinstance(input_prompt, str):
             prompt_text = input_prompt
-            found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]]+", input_prompt)
+            found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]>\"']+", input_prompt)
             if found_uris:
                 ref_image_uris.extend(found_uris)
         elif isinstance(input_prompt, dict):
@@ -896,33 +935,76 @@ class OmniFlashClient:
                 ref_image_uris.extend([str(u) for u in input_prompt["reference_image_uris"] if u])
             elif "reference_urls" in input_prompt and isinstance(input_prompt["reference_urls"], list):
                 ref_image_uris.extend([str(u) for u in input_prompt["reference_urls"] if u])
+            if "keyframe_image_url" in input_prompt and input_prompt["keyframe_image_url"]:
+                ref_image_uris.append(str(input_prompt["keyframe_image_url"]))
+            if "characters" in input_prompt and isinstance(input_prompt["characters"], list):
+                for c in input_prompt["characters"]:
+                    if isinstance(c, dict):
+                        for uri_key in (
+                            "reference_url",
+                            "reference_image_url",
+                            "turnaround_url",
+                            "turnaround_sheet_url",
+                            "uri",
+                            "url",
+                        ):
+                            val = c.get(uri_key)
+                            if val and isinstance(val, str) and val.strip():
+                                ref_image_uris.append(val.strip())
+                    else:
+                        for uri_key in (
+                            "reference_url",
+                            "reference_image_url",
+                            "turnaround_url",
+                            "turnaround_sheet_url",
+                            "uri",
+                            "url",
+                        ):
+                            val = getattr(c, uri_key, None)
+                            if val and isinstance(val, str) and val.strip():
+                                ref_image_uris.append(val.strip())
         elif isinstance(input_prompt, list):
             texts = []
             for item in input_prompt:
                 if isinstance(item, str):
                     texts.append(item)
-                    found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]]+", item)
+                    found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]>\"']+", item)
                     if found_uris:
                         ref_image_uris.extend(found_uris)
                 elif isinstance(item, dict):
                     if item.get("type") == "text":
-                        texts.append(str(item.get("text", "")))
+                        t = str(item.get("text", ""))
+                        texts.append(t)
+                        found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]>\"']+", t)
+                        if found_uris:
+                            ref_image_uris.extend(found_uris)
                     elif item.get("type") == "image":
-                        for uri_key in ("uri", "url", "gcs_uri"):
+                        for uri_key in ("uri", "url", "gcs_uri", "reference_url"):
                             if uri_key in item and item[uri_key]:
                                 ref_image_uris.append(str(item[uri_key]))
-                    elif "content" in item and isinstance(item["content"], list):
+                    elif item.get("type") == "user_input" and "content" in item and isinstance(item["content"], list):
                         for sub in item["content"]:
-                            if isinstance(sub, dict) and sub.get("type") == "text":
-                                texts.append(str(sub.get("text", "")))
+                            if isinstance(sub, dict):
+                                if sub.get("type") == "text":
+                                    t = str(sub.get("text", ""))
+                                    texts.append(t)
+                                    found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]>\"']+", t)
+                                    if found_uris:
+                                        ref_image_uris.extend(found_uris)
+                                elif sub.get("type") == "image":
+                                    for uri_key in ("uri", "url", "gcs_uri", "reference_url"):
+                                        if uri_key in sub and sub[uri_key]:
+                                            ref_image_uris.append(str(sub[uri_key]))
             prompt_text = "\n".join(texts)
         else:
             prompt_text = str(input_prompt or "")
 
+        cleaned_uris = sorted(list({u for u in ref_image_uris if u and isinstance(u, str)}))
+
         input_record = {
             "system_instructions": system_instructions,
             "prompt_text": prompt_text,
-            "reference_image_uris": sorted(list(set(ref_image_uris))),
+            "reference_image_uris": cleaned_uris,
         }
         input_jsonl = json.dumps(input_record) + "\n"
 
@@ -1080,7 +1162,7 @@ class OmniFlashClient:
                 )
 
         has_kf_seed = bool(keyframe_image_parts)
-        start_ref_idx = 2 if has_kf_seed else 1
+        start_ref_idx = 1
         ref_image_parts, char_img_map = self._load_reference_images_as_input(
             session_id, characters, starting_index=start_ref_idx
         )
@@ -1200,6 +1282,8 @@ class OmniFlashClient:
                     "generation_mode": "LIVE_OMNI_FLASH",
                     "error_message": None,
                 },
+                characters=characters,
+                keyframe_image_url=keyframe_image_url,
             )
             return True, previous_interaction_id, None
 
@@ -1217,6 +1301,8 @@ class OmniFlashClient:
                     "error_message": msg,
                 },
                 error_code="500",
+                characters=characters,
+                keyframe_image_url=keyframe_image_url,
             )
             return False, None, msg
 
@@ -1293,6 +1379,8 @@ class OmniFlashClient:
                                 "generation_mode": "LIVE_OMNI_FLASH",
                                 "error_message": None,
                             },
+                            characters=characters,
+                            keyframe_image_url=keyframe_image_url,
                         )
                         return True, inter_id, None
 
@@ -1433,6 +1521,8 @@ class OmniFlashClient:
             },
             error_code=last_error,
             guardrail_type=guardrail_type,
+            characters=characters,
+            keyframe_image_url=keyframe_image_url,
         )
         return False, None, last_error
 
@@ -1801,11 +1891,10 @@ class OmniFlashClient:
         global_wardrobe_header = f"# Wardrobe Directives:\n{wardrobe}\n\n" if wardrobe else ""
 
         ref_url_to_token: dict[str, str] = {}
-        token_counter = 1
         if anchor_keyframe_url:
-            ref_url_to_token[anchor_keyframe_url] = f"@Image{token_counter}"
-            token_counter += 1
+            ref_url_to_token[anchor_keyframe_url] = "@KeyframeSeed"
 
+        token_counter = 1
         if reference_image_urls:
             for ref_url in reference_image_urls:
                 if anchor_keyframe_url and ref_url == anchor_keyframe_url:
@@ -1860,7 +1949,7 @@ class OmniFlashClient:
 
         anchor_instruction = ""
         if anchor_keyframe_url:
-            anchor_instruction = "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@Image1 while rendering the new action/angle.\n\n"
+            anchor_instruction = "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@KeyframeSeed while rendering the new action/angle.\n\n"
 
         prompt_text = (
             f"{anchor_instruction}"
@@ -1943,6 +2032,8 @@ class OmniFlashClient:
                     "generation_mode": "KEYFRAME_IMAGE",
                     "error_message": None,
                 },
+                characters=char_objs,
+                keyframe_image_url=anchor_keyframe_url,
             )
             if return_compiled_prompt:
                 return url, prompt_text

@@ -898,7 +898,49 @@ def test_generate_keyframe_image_with_anchor_seed() -> None:
     contents = call_kwargs["contents"]
     assert len(contents) == 3
     prompt_str = contents[2]
-    assert "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@Image1 while rendering the new action/angle." in prompt_str
+    assert "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@KeyframeSeed while rendering the new action/angle." in prompt_str
+
+
+def test_generate_keyframe_image_keyframe_seed_indexing() -> None:
+    """Verify generate_keyframe_image assigns @KeyframeSeed to starting keyframe seed anchors and preserves @Image1, @Image2 for character references."""
+    from omnimash.prompts.compiler import CharacterRole
+
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+    mock_genai_client.models = mock_models
+    mock_models.generate_content.return_value = MagicMock(text="https://storage.googleapis.com/test-bucket/keyframe_res.png")
+
+    client = OmniFlashClient(mock_mode=False)
+
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Young spectacled wizard",
+        reference_url="gs://test-bucket/harry_ref.png",
+    )
+    char2 = CharacterRole(
+        role_id="Role B",
+        name="Snape",
+        description="Gothic potion master",
+        reference_url="gs://test-bucket/snape_ref.png",
+    )
+
+    def mock_fetch_bytes(url: str):
+        return (b"fake_bytes", "image/png")
+
+    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
+        client, "_fetch_image_bytes", side_effect=mock_fetch_bytes
+    ):
+        res_url, prompt_str = client.generate_keyframe_image(
+            prompt="Harry and Snape in potion class",
+            characters=[char1, char2],
+            anchor_keyframe_url="gs://test-bucket/anchor_shot1.png",
+            return_compiled_prompt=True,
+        )
+
+    assert "<FIRST_FRAME>@KeyframeSeed" in prompt_str
+    assert "(Reference Image: @Image1)" in prompt_str
+    assert "(Reference Image: @Image2)" in prompt_str
 
 
 def test_load_reference_images_logs_diagnostics(
@@ -1514,8 +1556,8 @@ def test_four_block_official_image_ref_tags() -> None:
     text_val = payload[0]["content"][-1]["text"]
 
     assert "### INPUT ROLES" in text_val
-    assert "[# Sources <FIRST_FRAME>@Image1]" in text_val
-    assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in text_val
+    assert "[# Sources <FIRST_FRAME>@KeyframeSeed]" in text_val
+    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in text_val
     assert "- Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in text_val
     assert "- Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round glasses" in text_val
 
@@ -1999,7 +2041,10 @@ def test_parse_guardrail_error_guidance_returns_actionable_suggestions() -> None
 
 
 def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
-    """Verify that OmniFlashClient stores JSONL prompt/response objects in GCS and emits telemetry spans during keyframe and video generation."""
+    """Verify that OmniFlashClient stores JSONL prompt/response objects in GCS and emits telemetry spans during keyframe and video generation with reference_image_uris."""
+    import json
+    from omnimash.prompts.compiler import CharacterRole
+
     client = OmniFlashClient(mock_mode=True, bucket_name="test-telemetry-bucket")
 
     mock_span = MagicMock()
@@ -2009,11 +2054,20 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
         client.storage, "upload_bytes", wraps=client.storage.upload_bytes
     ) as mock_upload_bytes:
 
+        char1 = CharacterRole(
+            role_id="Role A",
+            name="Harry",
+            description="Spectacled wizard",
+            reference_url="gs://test-bucket/harry_ref.png",
+        )
+
         # 1. Test keyframe generation telemetry
         keyframe_url = client.generate_keyframe_image(
             prompt="Harry in potion class",
             style_tone="Gothic Trap",
             session_id="sess_telemetry_test",
+            characters=[char1],
+            anchor_keyframe_url="gs://test-bucket/keyframe_seed.png",
         )
 
         assert keyframe_url is not None
@@ -2021,6 +2075,17 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
         span_call_args = mock_start_span.call_args.kwargs
         assert "sess_telemetry_test_keyframe" in span_call_args.get("session_id", "")
         assert mock_span.end.called
+
+        kf_input_calls = [
+            call for call in mock_upload_bytes.call_args_list
+            if "telemetry/sess_telemetry_test_keyframe_input.jsonl" in str(call)
+        ]
+        assert len(kf_input_calls) == 1
+        kf_input_bytes = kf_input_calls[0].args[0] if kf_input_calls[0].args else kf_input_calls[0].kwargs.get("content")
+        kf_record = json.loads(kf_input_bytes.decode("utf-8"))
+        assert "reference_image_uris" in kf_record
+        assert "gs://test-bucket/harry_ref.png" in kf_record["reference_image_uris"]
+        assert "gs://test-bucket/keyframe_seed.png" in kf_record["reference_image_uris"]
 
         uploaded_blobs = [
             call.args[1] if len(call.args) > 1 else call.kwargs.get("destination_blob_name")
@@ -2034,10 +2099,19 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
         mock_upload_bytes.reset_mock()
 
         # 2. Test video clip generation telemetry
+        char2 = CharacterRole(
+            role_id="Role A",
+            name="Harry",
+            description="Spectacled wizard",
+            reference_url="gs://test-bucket/harry_turnaround.png",
+        )
+
         clip_res = client.generate_clip(
             prompt="Wizard duel with 808s",
             session_id="sess_telemetry_test",
             turn_index=0,
+            characters=[char2],
+            keyframe_image_url="gs://test-bucket/starting_seed.png",
         )
 
         assert clip_res.video_url.endswith(".mp4")
@@ -2045,6 +2119,17 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
         span_call_args = mock_start_span.call_args.kwargs
         assert "sess_telemetry_test_video_clip" in span_call_args.get("session_id", "")
         assert mock_span.end.called
+
+        clip_input_calls = [
+            call for call in mock_upload_bytes.call_args_list
+            if "telemetry/sess_telemetry_test_video_clip_input.jsonl" in str(call)
+        ]
+        assert len(clip_input_calls) == 1
+        clip_input_bytes = clip_input_calls[0].args[0] if clip_input_calls[0].args else clip_input_calls[0].kwargs.get("content")
+        clip_record = json.loads(clip_input_bytes.decode("utf-8"))
+        assert "reference_image_uris" in clip_record
+        assert "gs://test-bucket/harry_turnaround.png" in clip_record["reference_image_uris"]
+        assert "gs://test-bucket/starting_seed.png" in clip_record["reference_image_uris"]
 
         uploaded_blobs = [
             call.args[1] if len(call.args) > 1 else call.kwargs.get("destination_blob_name")

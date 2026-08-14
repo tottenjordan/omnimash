@@ -605,8 +605,8 @@ def test_generate_shot_keyframe_seed_offsets_prompt_indexes():
     data = res.json()
     assert data["success"] is True
     compiled = data.get("raw_compiled_prompt", "")
-    assert "<FIRST_FRAME>@Image1" in compiled
-    assert "<IMAGE_REF_0>@Image2" in compiled
+    assert "<FIRST_FRAME>@KeyframeSeed" in compiled
+    assert "<IMAGE_REF_0>@Image1" in compiled
 
 
 def test_ui_html_contains_storyboard_library_controls():
