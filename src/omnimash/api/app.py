@@ -12,6 +12,7 @@ from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
     ReferenceAnalysisReport,
 )
+from omnimash.engine.omni_client import parse_guardrail_error_guidance
 from omnimash.prompts.compiler import (
     CharacterRole,
     SceneDirective,
@@ -654,8 +655,120 @@ UI_HTML = r"""<!DOCTYPE html>
             const [status, setStatus] = useState("COMPLETED");
             const [generationMode, setGenerationMode] = useState("LIVE_OMNI_FLASH");
             const [lastError, setLastError] = useState(null);
+            const [guardrailGuidance, setGuardrailGuidance] = useState(null);
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
+
+            const REAL_NAME_MAP = [
+                [/\bGordon Ramsay\b/gi, "Fiery Chef Blood"],
+                [/\bJulia Child\b/gi, "Classic Chef Fam"],
+                [/\bYoung Jeezy\b/gi, "Trap Legend Fam"],
+                [/\bDrake\b/gi, "Drizzy Bruv (6ix Melodic Star)"],
+                [/\bKanye West\b/gi, "Ye Fam (Avant-Garde Producer)"],
+                [/\bTravis Scott\b/gi, "Rodeo Trap Bruv"],
+                [/\bTaylor Swift\b/gi, "Pop Star Fam"],
+                [/\bSeverus Snape\b/gi, "Gothic Potion Master Fam"],
+                [/\bSnape\b/gi, "Potion Master"],
+                [/\bHarry Potter\b/gi, "Spectacled Wizard Bruv"],
+                [/\bDraco Malfoy\b/gi, "Platinum Rival Blood"],
+                [/\bDraco\b/gi, "Rival Wizard"],
+                [/\bHermione Granger\b/gi, "Retainer Academic Fam"],
+                [/\bRon Weasley\b/gi, "Redhair Wizard Blood"],
+                [/\bSlytherin\b/gi, "Emerald Snake Guild"],
+                [/\bDumbledore\b/gi, "Venerable High Wizard Bruv"],
+                [/\bVoldemort\b/gi, "Dark Sorcerer"],
+                [/\bSnoop Dogg\b/gi, "West Coast Drip (Rap Legend)"],
+                [/\bEminem\b/gi, "Shady Fam (Detroit Speed Rapper)"],
+                [/\bBeyonce\b/gi, "Pop Queen Fam"],
+                [/\bBeyoncé\b/gi, "Pop Queen Fam"],
+                [/\bJay-Z\b/gi, "Hov Fam (NY Rap Mogul)"],
+                [/\bRihanna\b/gi, "Riri Fam (Caribbean Pop Icon)"],
+                [/\bKendrick Lamar\b/gi, "Lyrical West Coast Bruv"],
+                [/\bElon Musk\b/gi, "Tech Entrepreneur Executive"],
+                [/\bDonald Trump\b/gi, "Charismatic Business Executive"],
+                [/\bJoe Biden\b/gi, "Senior Statesman Leader"],
+                [/\bBarack Obama\b/gi, "Eloquent Former Statesman"],
+                [/\bJordan Totten\b/gi, "Wizard Developer"],
+            ];
+
+            const sanitizeRealNamesText = (text) => {
+                if (!text || typeof text !== "string") return text;
+                let res = text;
+                for (const [pattern, replacement] of REAL_NAME_MAP) {
+                    res = res.replace(pattern, replacement);
+                }
+                return res;
+            };
+
+            const handleAutoAbstractRealNames = () => {
+                setJ3Characters((prev) =>
+                    (prev || []).map((c) => ({
+                        ...c,
+                        name: c.name ? sanitizeRealNamesText(c.name) : c.name,
+                        description: c.description ? sanitizeRealNamesText(c.description) : c.description,
+                        wardrobe: c.wardrobe ? sanitizeRealNamesText(c.wardrobe) : c.wardrobe,
+                    }))
+                );
+                setCharacters((prev) =>
+                    (prev || []).map((c) => ({
+                        ...c,
+                        name: c.name ? sanitizeRealNamesText(c.name) : c.name,
+                        description: c.description ? sanitizeRealNamesText(c.description) : c.description,
+                        wardrobe: c.wardrobe ? sanitizeRealNamesText(c.wardrobe) : c.wardrobe,
+                    }))
+                );
+                setJ3ShotCards((prev) =>
+                    (prev || []).map((card) => ({
+                        ...card,
+                        image_prompt: card.image_prompt ? sanitizeRealNamesText(card.image_prompt) : card.image_prompt,
+                        action_directive: card.action_directive ? sanitizeRealNamesText(card.action_directive) : card.action_directive,
+                        dialogue_text: card.dialogue_text ? sanitizeRealNamesText(card.dialogue_text) : card.dialogue_text,
+                        summary: card.summary ? sanitizeRealNamesText(card.summary) : card.summary,
+                    }))
+                );
+                if (j3MasterDescription) {
+                    setJ3MasterDescription(sanitizeRealNamesText(j3MasterDescription));
+                }
+                if (concept) {
+                    setConcept(sanitizeRealNamesText(concept));
+                }
+                setScenes((prev) =>
+                    (prev || []).map((s) => ({
+                        ...s,
+                        action: s.action ? sanitizeRealNamesText(s.action) : s.action,
+                        dialogue: s.dialogue ? sanitizeRealNamesText(s.dialogue) : s.dialogue,
+                    }))
+                );
+                setStageShots((prev) =>
+                    (prev || []).map((s) => ({
+                        ...s,
+                        action: s.action ? sanitizeRealNamesText(s.action) : s.action,
+                        dialogue: s.dialogue ? sanitizeRealNamesText(s.dialogue) : s.dialogue,
+                        summary: s.summary ? sanitizeRealNamesText(s.summary) : s.summary,
+                        location: s.location ? sanitizeRealNamesText(s.location) : s.location,
+                    }))
+                );
+                setGuardrailGuidance(null);
+            };
+
+            const handleDetachReferencePhoto = () => {
+                setJ3Characters((prev) =>
+                    (prev || []).map((c) => ({
+                        ...c,
+                        reference_url: null,
+                    }))
+                );
+                setCharacters((prev) =>
+                    (prev || []).map((c) => ({
+                        ...c,
+                        reference_url: null,
+                    }))
+                );
+                setJ3ProductRef("");
+                setJ3StyleRef("");
+                setGuardrailGuidance(null);
+            };
+
 
             const initialRawPrompt = `[ROLE DEFINITIONS]\n- Role A (Harry): Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead [Style: Red Gucci Tracksuit, Cartier Glasses] (Ref: https://example.com/harry.jpg)\n- Role B (Draco): Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes [Style: Platinum Slicked Hair, Diamond Iced-Out Chain] (Ref: https://example.com/draco.jpg)\n\n[AESTHETIC INJECTION]\nConcept: Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style\nAesthetic Tags: 2000s Atlanta Trap Disstrack, Diamond Lightning Bolt Chain, Heavy 808 Bass Lighting, Vintage Streetwear\nEnvironment: Gothic Hogwarts courtyard lit by neon stage lights and smoky haze\nCamera/Lighting: Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights\n\n[AUDIO & VOCAL DIRECTION]\nBackground Beat: 140 BPM Heavy 808 Trap (subtly ducked in the background beneath dialogue)\nVoice Style (Role A): Fast-paced confident Atlanta rap flow with autotune\nVoice Style (Role B): Pompous, cynical British drawl with aggressive rap cadence\nVocal Delivery: High-energy back-and-forth rap battle delivery with synchronized lip-sync\n\n[STORYBOARD SEQUENCE]\n- Scene 1 [Role A]: Arriving at foggy Hogwarts courtyard rapping into microphone wand | Dialogue: "I been cooking potions since first year. Burrr!"\n- Scene 2 [Role B]: Stepping from shadows in high-gloss neon lighting with ice chain | Dialogue: "This is Trap or Die, Potter! Let's get it!"`;
 
@@ -1077,6 +1190,9 @@ UI_HTML = r"""<!DOCTYPE html>
                         })
                     });
                     const data = await res.json();
+                    if (res.status === 400 || (data && data.guardrail_guidance)) {
+                        setGuardrailGuidance(data.guardrail_guidance || null);
+                    }
                     if (data && data.characters && Array.isArray(data.characters)) {
                         setCharacters(data.characters);
                         setJ3Characters(data.characters);
@@ -1138,7 +1254,11 @@ UI_HTML = r"""<!DOCTYPE html>
                         })
                     });
                     const data = await res.json();
+                    if (res.status === 400 || (data && data.guardrail_guidance)) {
+                        setGuardrailGuidance(data.guardrail_guidance || null);
+                    }
                     if (data && data.keyframe_image_url) {
+                        setGuardrailGuidance(null);
                         setJ3ShotCards((prev) =>
                             prev.map((card) =>
                                 card.shot_index === shotIdx
@@ -1181,7 +1301,11 @@ UI_HTML = r"""<!DOCTYPE html>
                         })
                     });
                     const data = await res.json();
+                    if (res.status === 400 || (data && data.guardrail_guidance)) {
+                        setGuardrailGuidance(data.guardrail_guidance || null);
+                    }
                     if (data && data.video_url) {
+                        setGuardrailGuidance(null);
                         setJ3ShotCards((prev) =>
                             prev.map((c) =>
                                 c.shot_index === shotIdx
@@ -1992,6 +2116,9 @@ UI_HTML = r"""<!DOCTYPE html>
                         body: JSON.stringify(payload)
                     });
                     const data = await res.json();
+                    if (res.status === 400 || (data && data.guardrail_guidance)) {
+                        setGuardrailGuidance(data.guardrail_guidance || null);
+                    }
                     if (data.generation_mode) setGenerationMode(data.generation_mode);
                     setLastError(data.error || null);
                     if (data.success) {
@@ -2888,6 +3015,51 @@ UI_HTML = r"""<!DOCTYPE html>
 
                     {/* Main Stage Studio Container */}
                     <main className="flex-1 max-w-7xl w-full mx-auto p-6 overflow-y-auto custom-scrollbar space-y-6">
+
+                        {/* 🚨 Policy Guardrail Alert Banner */}
+                        {guardrailGuidance && (
+                            <div className="bg-amber-950/80 border-2 border-amber-500 rounded-2xl p-5 shadow-2xl text-amber-100 space-y-3 animate-fade-in">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 font-bold text-amber-300 text-sm">
+                                        <span className="text-xl">🚨</span>
+                                        <span className="font-extrabold text-amber-200 uppercase tracking-wider">Policy Guardrail Alert Banner</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setGuardrailGuidance(null)}
+                                        className="text-xs text-amber-400 hover:text-amber-200 font-bold bg-amber-900/50 hover:bg-amber-800/80 px-2.5 py-1 rounded-lg border border-amber-700 transition"
+                                    >
+                                        Dismiss ❌
+                                    </button>
+                                </div>
+                                <p className="text-xs text-amber-200/90 leading-relaxed font-medium">
+                                    {guardrailGuidance.user_guidance || "Safety policy guardrail triggered. Please adjust your inputs or use the quick fixes below."}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-3 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleAutoAbstractRealNames}
+                                        className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs py-2 px-4 rounded-xl shadow-md transition flex items-center gap-1.5"
+                                    >
+                                        <span>⚡ Auto-Abstract Real Names</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleDetachReferencePhoto}
+                                        className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md transition flex items-center gap-1.5"
+                                    >
+                                        <span>❌ Detach Reference Photo</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setGuardrailGuidance(null)}
+                                        className="bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-xs py-2 px-4 rounded-xl border border-gray-700 transition"
+                                    >
+                                        <span>Dismiss ❌</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Global Prominent Error Alert Banner */}
                         {lastError && (
@@ -8441,23 +8613,38 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             if excluded_char_ref_urls:
                 ref_urls = [u for u in ref_urls if u not in excluded_char_ref_urls]
 
-        image_url, compiled_prompt = agent.omni_client.generate_keyframe_image(
-            req.image_prompt,
-            style_tone=req.style_preset or "",
-            reference_image_urls=ref_urls,
-            characters=char_objs if char_objs else None,
-            aspect_ratio=req.aspect_ratio,
-            image_model=req.image_model or "gemini-3.1-flash-image",
-            return_compiled_prompt=True,
-        )
-        return {
-            "success": True,
-            "session_id": req.session_id,
-            "shot_index": req.shot_index,
-            "image_prompt": req.image_prompt,
-            "keyframe_image_url": image_url,
-            "raw_compiled_prompt": compiled_prompt,
-        }
+        try:
+            image_url, compiled_prompt = agent.omni_client.generate_keyframe_image(
+                req.image_prompt,
+                style_tone=req.style_preset or "",
+                reference_image_urls=ref_urls,
+                characters=char_objs if char_objs else None,
+                aspect_ratio=req.aspect_ratio,
+                image_model=req.image_model or "gemini-3.1-flash-image",
+                return_compiled_prompt=True,
+            )
+            return {
+                "success": True,
+                "session_id": req.session_id,
+                "shot_index": req.shot_index,
+                "image_prompt": req.image_prompt,
+                "keyframe_image_url": image_url,
+                "raw_compiled_prompt": compiled_prompt,
+            }
+        except Exception as exc:
+            err_str = str(exc)
+            logger.error("Error generating keyframe in journey3_keyframe: %s", exc)
+            guardrail_guidance = parse_guardrail_error_guidance(
+                err_str, char_objs, req.image_prompt or ""
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": err_str,
+                    "error": err_str,
+                    "guardrail_guidance": guardrail_guidance,
+                },
+            )
 
     @app.post("/api/journey3/generate-shot")
     def journey3_generate_shot(req: Journey3ShotGenerateRequest) -> dict[str, Any]:
@@ -8533,18 +8720,51 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     exc,
                 )
 
-        agent_turn = agent.process_user_turn(
-            user_id="usr_default",
-            project_id=req.project_name or "prj_default",
-            prompt=req.action_directive,
-            compiled_override=compiled_prompt,
-            clip_index=req.shot_index,
-            session_name=session_id,
-            keyframe_image_url=keyframe_url,
-            voiceover=req.dialogue_text if req.dialogue_text else None,
-            enable_sanitization=req.enable_safety_sanitization,
-            aspect_ratio=req.aspect_ratio,
-        )
+        try:
+            agent_turn = agent.process_user_turn(
+                user_id="usr_default",
+                project_id=req.project_name or "prj_default",
+                prompt=req.action_directive,
+                compiled_override=compiled_prompt,
+                clip_index=req.shot_index,
+                session_name=session_id,
+                keyframe_image_url=keyframe_url,
+                voiceover=req.dialogue_text if req.dialogue_text else None,
+                enable_sanitization=req.enable_safety_sanitization,
+                aspect_ratio=req.aspect_ratio,
+            )
+        except Exception as exc:
+            err_str = str(exc)
+            logger.error("Error generating shot in journey3_generate_shot: %s", exc)
+            guardrail_guidance = parse_guardrail_error_guidance(
+                err_str, char_objs, compiled_prompt or req.action_directive or ""
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": err_str,
+                    "error": err_str,
+                    "guardrail_guidance": guardrail_guidance,
+                    "session_id": session_id,
+                    "shot_index": req.shot_index,
+                },
+            )
+
+        if not agent_turn.success:
+            err_str = agent_turn.error_message or "Shot generation failed"
+            guardrail_guidance = parse_guardrail_error_guidance(
+                err_str, char_objs, compiled_prompt or req.action_directive or ""
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": err_str,
+                    "error": err_str,
+                    "guardrail_guidance": guardrail_guidance,
+                    "session_id": session_id,
+                    "shot_index": req.shot_index,
+                },
+            )
 
         return {
             "success": agent_turn.success,

@@ -542,6 +542,203 @@ def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
     return abstracted
 
 
+def parse_guardrail_error_guidance(
+    error_msg: str, char_objs: list | None = None, prompt_text: str = ""
+) -> dict[str, Any]:
+    """Inspects 400 policy error message, character objects, and prompt inputs to identify specific guardrail triggers and generate actionable guidance and suggested actions.
+
+    Identifies triggers:
+      - 'real_people_likeness': Real-world names (First+Last, e.g. 'Jordan Totten') or celebrity names (e.g. 'Totti', 'Yo Gotti', 'Gordon Ramsay').
+      - 'real_people_photo': Attached reference_url / reference images.
+      - 'third_party_content': Trademarked pop-culture items ('Golden Snitch', 'Lightsaber', 'Batmobile').
+    """
+    trigger_set: set[str] = set()
+    err_lower = (error_msg or "").lower()
+    prompt_lower = (prompt_text or "").lower()
+
+    char_names: list[str] = []
+    char_descs: list[str] = []
+    has_ref_photo = False
+
+    if char_objs:
+        for c in char_objs:
+            if isinstance(c, dict):
+                name = str(c.get("name", "") or "")
+                desc = str(c.get("description", "") or "")
+                ref_url = c.get("reference_url")
+            else:
+                name = str(getattr(c, "name", "") or "")
+                desc = str(getattr(c, "description", "") or "")
+                ref_url = getattr(c, "reference_url", None)
+
+            if name:
+                char_names.append(name)
+            if desc:
+                char_descs.append(desc)
+            if ref_url:
+                has_ref_photo = True
+
+    # 1. Check real_people_photo trigger
+    if (
+        has_ref_photo
+        or "<image_ref" in prompt_lower
+        or "reference_url" in err_lower
+        or "reference_image" in err_lower
+        or "reference image" in err_lower
+        or "attached photo" in err_lower
+        or "real_people_photo" in err_lower
+    ):
+        trigger_set.add("real_people_photo")
+
+    # 2. Check third_party_content trigger
+    trademarks = [
+        "golden snitch",
+        "snitch",
+        "lightsaber",
+        "light saber",
+        "batmobile",
+        "quidditch",
+        "harry potter",
+        "star wars",
+        "darth vader",
+        "slytherin",
+        "dark mark",
+        "azkaban",
+        "hogwarts",
+        "burberry",
+        "jordans",
+        "cartier",
+    ]
+    all_text_to_check = (
+        prompt_lower
+        + " "
+        + err_lower
+        + " "
+        + " ".join(char_names).lower()
+        + " "
+        + " ".join(char_descs).lower()
+    )
+    if (
+        any(tm in all_text_to_check for tm in trademarks)
+        or "third_party" in err_lower
+        or "trademark" in err_lower
+        or "third_party_content" in err_lower
+    ):
+        trigger_set.add("third_party_content")
+
+    # 3. Check real_people_likeness trigger
+    known_celebrities = [
+        "totti",
+        "francesco totti",
+        "yo gotti",
+        "gordon ramsay",
+        "drake",
+        "kanye",
+        "kanye west",
+        "taylor swift",
+        "julia child",
+        "young jeezy",
+        "travis scott",
+        "snoop dogg",
+        "eminem",
+        "beyonce",
+        "beyoncé",
+        "jay-z",
+        "rihanna",
+        "kendrick lamar",
+        "50 cent",
+        "ice cube",
+        "gucci mane",
+        "cardi b",
+        "nicki minaj",
+        "lil wayne",
+        "elon musk",
+        "donald trump",
+        "joe biden",
+        "barack obama",
+    ]
+    full_name_pattern = re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b")
+
+    has_celebrity = any(celeb in all_text_to_check for celeb in known_celebrities)
+    has_full_name = False
+
+    for name in char_names:
+        if full_name_pattern.search(name):
+            has_full_name = True
+            break
+    if not has_full_name and prompt_text:
+        clean_p = re.sub(r"\[#\s*(?:References|Sources)[^\]]*\]", "", prompt_text)
+        clean_p = re.sub(r"Role\s+[A-Za-z0-9]+\s*-\s*", "", clean_p)
+        if full_name_pattern.search(clean_p):
+            has_full_name = True
+
+    if (
+        has_celebrity
+        or has_full_name
+        or "celebrity" in err_lower
+        or "real_people_likeness" in err_lower
+        or "real people" in err_lower
+        or "likeness" in err_lower
+        or "person" in err_lower
+    ):
+        trigger_set.add("real_people_likeness")
+
+    if not trigger_set and error_msg:
+        trigger_set.add("real_people_likeness")
+
+    triggers = sorted(list(trigger_set))
+    guidance_parts: list[str] = []
+    suggested_actions: list[dict[str, str]] = []
+
+    if "real_people_likeness" in trigger_set:
+        guidance_parts.append(
+            "Safety guardrail triggered due to potential real-person likeness or celebrity reference. Avoid using full real-world names or celebrity names."
+        )
+        suggested_actions.append(
+            {
+                "action": "sanitize_real_names",
+                "label": "Sanitize Character Names",
+                "description": "Replace real person names with descriptive visual archetypes or parody identifiers.",
+            }
+        )
+
+    if "real_people_photo" in trigger_set:
+        guidance_parts.append(
+            "Reference image or photo attached may depict real individuals. Remove reference photos of real people or replace with stylized character descriptions."
+        )
+        suggested_actions.append(
+            {
+                "action": "remove_reference_photo",
+                "label": "Remove Reference Photo",
+                "description": "Remove attached reference image URLs or photo references.",
+            }
+        )
+
+    if "third_party_content" in trigger_set:
+        guidance_parts.append(
+            "Prompt contains trademarked or copyrighted pop-culture items. Abstract specific brand or item names into generic visual descriptions."
+        )
+        suggested_actions.append(
+            {
+                "action": "abstract_trademarks",
+                "label": "Abstract Trademarked Items",
+                "description": "Replace trademarked terms (e.g. 'Lightsaber', 'Golden Snitch', 'Batmobile') with generic visual descriptions (e.g. 'laser sword', 'golden flying orb', 'armored tactical vehicle').",
+            }
+        )
+
+    user_guidance = (
+        " ".join(guidance_parts)
+        if guidance_parts
+        else "Review prompt and character settings to comply with safety guardrails."
+    )
+
+    return {
+        "triggers": triggers,
+        "user_guidance": user_guidance,
+        "suggested_actions": suggested_actions,
+    }
+
+
 def _get_relaxed_safety_settings() -> list[Any] | None:
     """Configures relaxed BLOCK_NONE safety thresholds across all harm categories for unrestricted Gemini Omni Flash video generation."""
     if genai and hasattr(genai, "types"):

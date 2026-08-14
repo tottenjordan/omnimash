@@ -671,6 +671,8 @@ The built-in single-page web dashboard (React 18 + Tailwind CSS) implements Cont
 - **Expanded Safety Sanitization Rules:** Automatically converts street slang (`stepped on` $\rightarrow$ `diluted`), band trademarks (`Widespread Panic` $\rightarrow$ `vintage band emblem`), and tattoo signifiers (`tear drop tattoo` $\rightarrow$ `facial ink accent`, `face tattoos` $\rightarrow$ `artistic facial ink`, `1017` $\rightarrow$ `gold`) in addition to celebrity name abstractions. See [Gemini Omni Flash Safety Guardrails & Real-Person Likeness Policy Note](docs/notes/gemini_omni_flash_safety_guardrails.md) for full details on 400 error mitigation, trigger conditions, character handles, and turnaround sheets.
 - **Dual-Strategy Client Authentication:** Automatically initializes Google AI Studio Developer API (`GOOGLE_API_KEY`) and Vertex AI ADC (`GOOGLE_CLOUD_PROJECT`, `GEMINI_LOCATION`) clients.
 - **3-Attempt Exponential Backoff:** Automatically retries transient errors (`429 Rate Limit`, `404 Endpoint Mismatch`, `ResourceExhausted`) with exponential backoff delays.
+- **OpenTelemetry GenAI Telemetry & Observability:** Configures OpenTelemetry GenAI semantic conventions v1.37.0+, structured span labels (`gen_ai.system`, `event.name`, `gen_ai.input.messages_ref`, `gen_ai.output.messages_ref`, `gen_ai.error.code`, `gen_ai.safety.guardrail_type`), and JSONL message exports to GCS. See [Gemini Enterprise Telemetry & Guardrail Guidance Note](docs/notes/gemini_enterprise_telemetry_and_guardrail_guidance.md) for full architecture details.
+
 
 ---
 
