@@ -1034,8 +1034,8 @@ def test_compile_storyboard_with_keyframe_seed_offsets_image_indexes():
         scenes=scenes,
         has_keyframe_seed=True,
     )
-    assert "[# Sources <FIRST_FRAME>@Image1]" in compiled
-    assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in compiled
+    assert "[# Sources <FIRST_FRAME>@KeyframeSeed]" in compiled
+    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in compiled
     assert "- Char1 <IMAGE_REF_0>:" in compiled
     assert "- Char2 <IMAGE_REF_1>:" in compiled
 
@@ -1384,6 +1384,67 @@ def test_compile_journey3_shot_prompt_includes_character_wardrobe_in_block1():
     assert "### INPUT ROLES & REFERENCES" in prompt
     assert "[Wardrobe: Black Velvet Trench Coat]" in prompt
     assert "[Wardrobe: Oversized Gucci Tracksuit]" in prompt
+
+
+def test_compile_journey3_shot_prompt_character_wardrobe_in_block2():
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Snape",
+            description="Gaunt potion master",
+            wardrobe="Black Velvet Trench Coat",
+            aesthetic_tags=["Gothic", "Dark"],
+            voice_style="Pompous British drawl",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Harry",
+            description="Young spectacled wizard",
+            wardrobe="Oversized Gucci Tracksuit",
+            voice_style="Fast-paced rap flow",
+        ),
+    ]
+
+    prompt = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="Snape and Harry in potion duel",
+        characters=chars,
+    )
+
+    assert "### CHARACTER PROFILES" in prompt
+    assert "[Wardrobe: Black Velvet Trench Coat]" in prompt
+    assert "[Style: Gothic, Dark]" in prompt
+    assert "[Voice Style: Pompous British drawl]" in prompt
+    assert "[Wardrobe: Oversized Gucci Tracksuit]" in prompt
+    assert "[Voice Style: Fast-paced rap flow]" in prompt
+
+
+def test_compile_journey3_shot_prompt_timeline_separates_dialogue_and_visual_action():
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Snape",
+            description="Gaunt potion master",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="Harry Potter",
+            description="Young wizard",
+        ),
+    ]
+
+    prompt = compile_journey3_shot_prompt(
+        shot_number=2,
+        action_directive="Snape reaches carefully for the beaker",
+        characters=chars,
+        timeline_dialogue='Snape: "Silence, Harry Potter!" / Harry Potter: "Never!"',
+    )
+
+    assert "### TIMELINE" in prompt
+    assert "- Visual Action: Potion Master reaches carefully for the beaker" in prompt
+    assert '- Spoken Dialogue (Potion Master): "Silence, Spectacled Wizard Bruv!"' in prompt
+    assert '- Spoken Dialogue (Spectacled Wizard Bruv): "Never!"' in prompt
+
 
 
 

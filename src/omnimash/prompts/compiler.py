@@ -132,7 +132,7 @@ def build_character_image_ref_tags(
     char_tag_map: dict[str, str] = {}
 
     if has_keyframe_seed:
-        sources_items.append("<FIRST_FRAME>@Image1")
+        sources_items.append("<FIRST_FRAME>@KeyframeSeed")
 
     if not characters:
         return sources_items, references_items, char_tag_map
@@ -1587,7 +1587,7 @@ class PromptCompiler:
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
     ) -> str:
-        start_idx = 2 if (has_keyframe_seed or keyframe_image_url) else 1
+        start_idx = 1
         sources_items, references_items, char_tag_map = build_character_image_ref_tags(
             characters=characters,
             starting_index=start_idx,
@@ -1964,7 +1964,7 @@ class PromptCompiler:
             clean_instruction = edit_instruction.strip()
             directive_block = (
                 "### CONVERSATIONAL EDIT DIRECTIVE\n"
-                "- Original Scene Baseline: You must retain 95% of the visual character likeness, setting, camera angle, lighting, dialogue, and soundscape from <FIRST_FRAME>@Image1.\n"
+                "- Original Scene Baseline: You must retain 95% of the visual character likeness, setting, camera angle, lighting, dialogue, and soundscape from <FIRST_FRAME>@KeyframeSeed.\n"
                 f'- Required Change: Modify only the following aspect: "{clean_instruction}". Keep all other elements identical.'
             )
             return f"{base_prompt}\n\n{directive_block}"
@@ -2377,13 +2377,14 @@ def compile_journey3_shot_prompt(
     soundscape: str | None = None,
     is_silent: bool = False,
 ) -> str:
-    """Compiles lean 4-block prompt for Journey 3 shot generation.
+    """Compiles lean 5-block prompt for Journey 3 shot generation.
 
     Blocks:
     1. ### INPUT ROLES & REFERENCES
-    2. ### CUMULATIVE SHOT STATE
-    3. ### VISUAL ACTION & CAMERA
-    4. ### TIMELINE & DIALOGUE
+    2. ### CHARACTER PROFILES
+    3. ### CUMULATIVE SHOT STATE
+    4. ### VISUAL ACTION & CAMERA
+    5. ### TIMELINE & DIALOGUE
     """
     if characters and not character_roster:
         char_lines: list[str] = []
@@ -2400,10 +2401,42 @@ def compile_journey3_shot_prompt(
                 if not isinstance(char, dict)
                 else char.get("wardrobe")
             )
-            wardrobe_str = f" [Wardrobe: {wardrobe}]" if wardrobe else ""
+            aesthetic_tags = (
+                getattr(char, "aesthetic_tags", None)
+                if not isinstance(char, dict)
+                else char.get("aesthetic_tags")
+            )
+            voice_style = (
+                getattr(char, "voice_style", None)
+                if not isinstance(char, dict)
+                else char.get("voice_style")
+            )
+
+            wardrobe_str = (
+                f" [Wardrobe: {str(wardrobe).strip()}]"
+                if wardrobe and str(wardrobe).strip()
+                else ""
+            )
+
+            style_val = ""
+            if aesthetic_tags:
+                if isinstance(aesthetic_tags, list):
+                    style_val = ", ".join(
+                        str(t).strip() for t in aesthetic_tags if str(t).strip()
+                    )
+                else:
+                    style_val = str(aesthetic_tags).strip()
+            style_str = f" [Style: {style_val}]" if style_val else ""
+
+            voice_str = (
+                f" [Voice Style: {str(voice_style).strip()}]"
+                if voice_style and str(voice_style).strip()
+                else ""
+            )
+
             if ref_url and isinstance(ref_url, str) and ref_url.strip():
                 char_lines.append(
-                    f"- {char_id}: (Reference Image: @Image{ref_idx} - extract character facial likeness and wardrobe, ignore old background environment){wardrobe_str}"
+                    f"- {char_id}: (Reference Image: @Image{ref_idx} - extract character facial likeness and wardrobe, ignore old background environment){wardrobe_str}{style_str}{voice_str}"
                 )
                 ref_idx += 1
             else:
@@ -2414,7 +2447,7 @@ def compile_journey3_shot_prompt(
                 ) or ""
                 if enable_sanitization and desc:
                     desc = sanitize_real_names(desc)
-                line_content = f"{desc}{wardrobe_str}".strip()
+                line_content = f"{desc}{wardrobe_str}{style_str}{voice_str}".strip()
                 char_lines.append(f"- {char_id}: {line_content}")
         if char_lines:
             character_roster = "\n".join(char_lines)
@@ -2496,18 +2529,74 @@ def compile_journey3_shot_prompt(
         resolved_audio = sanitize_real_names(resolved_audio)
 
     dialogue_str = timeline_dialogue.strip() if timeline_dialogue else ""
-    if dialogue_str and characters:
-        enriched_dialogue, _ = enrich_timeline_dialogue_speakers(
-            dialogue_str, characters, name_to_tag
-        )
-        dialogue_str = enriched_dialogue.strip()
-
-    if enable_sanitization and dialogue_str:
-        dialogue_str = sanitize_real_names(dialogue_str)
 
     timeline_items: list[str] = []
+    if action_str:
+        timeline_items.append(f"- Visual Action: {action_str}")
+
     if dialogue_str:
-        timeline_items.append(dialogue_str)
+        diag_chunks = [c.strip() for c in re.split(r"[\n/|]", dialogue_str) if c.strip()]
+        for chunk in diag_chunks:
+            sd_match = re.match(r"^-\s*Spoken Dialogue\s*\((.*?)\):\s*[\"“]?(.*?)[\"”]?$", chunk)
+            if sd_match:
+                spk = sd_match.group(1).strip()
+                txt = sd_match.group(2).strip()
+                txt_clean = txt.strip('"').strip("'").strip('“').strip('”')
+                if enable_sanitization:
+                    spk = sanitize_real_names(spk)
+                    txt_clean = sanitize_real_names(txt_clean)
+                timeline_items.append(f'- Spoken Dialogue ({spk}): "{txt_clean}"')
+                continue
+
+            match = re.match(r"^(?:-\s*)?([^:]+):\s*[\"“]?(.*?)[\"”]?$", chunk)
+            if match:
+                spk = match.group(1).strip()
+                txt = match.group(2).strip()
+                spk = re.sub(r"\s+says$", "", spk, flags=re.IGNORECASE).strip()
+                txt_clean = txt.strip('"').strip("'").strip('“').strip('”')
+
+                matched_char_id: str | None = None
+                if characters:
+                    spk_lower = spk.lower()
+                    for c in characters:
+                        c_id = get_character_identifier(c, enable_sanitization=False)
+                        c_name = str(
+                            getattr(c, "name", "")
+                            if not isinstance(c, dict)
+                            else c.get("name", "") or ""
+                        ).strip()
+                        c_role = str(
+                            getattr(c, "role_id", "")
+                            if not isinstance(c, dict)
+                            else c.get("role_id", "") or ""
+                        ).strip()
+                        if (
+                            spk_lower in (c_id.lower(), c_name.lower(), c_role.lower())
+                            or (c_name and c_name.lower() in spk_lower)
+                            or (c_role and c_role.lower() in spk_lower)
+                        ):
+                            matched_char_id = get_character_identifier(
+                                c, enable_sanitization=enable_sanitization
+                            )
+                            break
+
+                if not matched_char_id:
+                    matched_char_id = sanitize_real_names(spk) if enable_sanitization else spk
+
+                if enable_sanitization and txt_clean:
+                    txt_clean = sanitize_real_names(txt_clean)
+
+                timeline_items.append(f'- Spoken Dialogue ({matched_char_id}): "{txt_clean}"')
+            else:
+                txt_clean = chunk.strip('"').strip("'").strip('“').strip('”')
+                if characters and len(characters) == 1:
+                    spk_id = get_character_identifier(characters[0], enable_sanitization=enable_sanitization)
+                else:
+                    spk_id = "Speaker"
+                if enable_sanitization and txt_clean:
+                    txt_clean = sanitize_real_names(txt_clean)
+                timeline_items.append(f'- Spoken Dialogue ({spk_id}): "{txt_clean}"')
+
     if resolved_audio:
         if resolved_audio.startswith("Silent video") or resolved_audio.startswith("Audio:"):
             timeline_items.append(
@@ -2522,14 +2611,16 @@ def compile_journey3_shot_prompt(
         timeline_content = "None."
 
     block1 = f"### INPUT ROLES & REFERENCES\n{roster_str}"
-    block2 = f"### CUMULATIVE SHOT STATE\n{state_str}"
-    block3 = (
+    block2 = f"### CHARACTER PROFILES\n{roster_str}"
+    block3 = f"### CUMULATIVE SHOT STATE\n{state_str}"
+    block4 = (
         f"### VISUAL ACTION & CAMERA\n"
         f"- Shot Number: {shot_number}\n"
         f"- Action Directive: {action_str}\n"
         f"- Aspect Ratio: {aspect_ratio}"
     )
-    block4 = f"### TIMELINE & DIALOGUE\n{timeline_content}"
+    block5 = f"### TIMELINE & DIALOGUE\n{timeline_content}"
 
-    return f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
+    return f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}\n\n{block5}"
+
 
