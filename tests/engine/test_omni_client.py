@@ -587,6 +587,23 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
     }
 
 
+def test_fetch_image_bytes_handles_gcs_https_urls() -> None:
+    """Verify _fetch_image_bytes converts https://storage.googleapis.com URLs to gs:// URIs and uses authenticated GCS download."""
+    client = OmniFlashClient(mock_mode=True)
+    https_url = "https://storage.googleapis.com/omnimash-media-hybrid-vertex/projects/trapwarts/sessions/courtside_hype_v6/character_sheets/yo_totti_sheet_v1.png"
+
+    with patch.object(
+        client.storage,
+        "download_blob_bytes",
+        return_value=(b"fake_yo_totti_png_bytes", "image/png"),
+    ) as mock_download:
+        bytes_out, mime_out = client._fetch_image_bytes(https_url)
+
+    assert bytes_out == b"fake_yo_totti_png_bytes"
+    assert mime_out == "image/png"
+    mock_download.assert_called_once_with("gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/courtside_hype_v6/character_sheets/yo_totti_sheet_v1.png")
+
+
 def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
     """Verify _generate_live_omni_flash_video calls interactions.create with multimodal input array containing image and text objects."""
     import base64
