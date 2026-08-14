@@ -1,3 +1,5 @@
+from typing import Any
+import pytest
 from fastapi.testclient import TestClient
 from omnimash.api.app import (
     UI_HTML,
@@ -1489,6 +1491,58 @@ def test_ui_html_contains_detach_reference_image_and_anchor_badge() -> None:
     assert "❌ Detach Reference Image" in UI_HTML
     assert "🖼️ Attached Reference Anchor:" in UI_HTML
     assert "(Click ❌ Detach to clear for fresh visuals)" in UI_HTML
+
+
+def test_journey3_keyframe_error_returns_guardrail_guidance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify /api/journey3/keyframe returns HTTP 400 and guardrail_guidance dictionary when 400 occurs."""
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    def mock_generate_keyframe_failing(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError("400 Policy violation: Input prompt or reference image violated real_people_likeness safety guidelines.")
+
+    monkeypatch.setattr(app.state.agent.omni_client, "generate_keyframe_image", mock_generate_keyframe_failing)
+
+    res = client.post(
+        "/api/journey3/keyframe",
+        json={
+            "shot_index": 0,
+            "image_prompt": "Jordan Totten with a Lightsaber",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Jordan Totten",
+                    "reference_url": "https://example.com/jordan.jpg",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 400
+    data = res.json()
+    assert "guardrail_guidance" in data
+    guidance = data["guardrail_guidance"]
+    assert isinstance(guidance, dict)
+    assert "triggers" in guidance
+    assert "user_guidance" in guidance
+    assert "suggested_actions" in guidance
+    assert "real_people_likeness" in guidance["triggers"]
+
+
+def test_ui_html_contains_guardrail_guidance_state_and_alert_banner() -> None:
+    """Verify UI_HTML contains guardrailGuidance state hook, policy alert banner, and quick-fix buttons."""
+    from omnimash.api.app import UI_HTML
+
+    assert "guardrailGuidance" in UI_HTML
+    assert "setGuardrailGuidance" in UI_HTML
+    assert "Policy Guardrail Alert Banner" in UI_HTML
+    assert "user_guidance" in UI_HTML
+    assert "⚡ Auto-Abstract Real Names" in UI_HTML
+    assert "❌ Detach Reference Photo" in UI_HTML
+    assert "Dismiss ❌" in UI_HTML
+    assert "handleAutoAbstractRealNames" in UI_HTML
+    assert "handleDetachReferencePhoto" in UI_HTML
+
+
 
 
 

@@ -43,3 +43,5 @@ This directory documents non-obvious knowledge, session notes, and operational q
 | Request Lifecycle & State | [request_lifecycle.md](request_lifecycle.md) | Blueprint for state management, Model Armor gating, and Interactions API lifecycle |
 | Storyboard UI Screenshots Plan | [storyboard_workflow_ui_documentation.md](storyboard_workflow_ui_documentation.md) | Plan for capturing and updating README.md with 4-Stage Storyboard Journey UI screenshots |
 | Safety Guardrails & Real-Person Likeness | [gemini_omni_flash_safety_guardrails.md](gemini_omni_flash_safety_guardrails.md) | Google Gemini Omni Flash 400 Safety Guardrails, real-person likeness policies, trademark abstractions, and `REAL_NAME_MAPPINGS` |
+| Gemini Enterprise Telemetry & Guardrail Guidance | [gemini_enterprise_telemetry_and_guardrail_guidance.md](gemini_enterprise_telemetry_and_guardrail_guidance.md) | OpenTelemetry GenAI semantic conventions v1.37.0+, Cloud Trace span formatting, GCS telemetry JSONL exports, and UI guardrail error guidance architecture |
+

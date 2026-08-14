@@ -12,6 +12,7 @@ from omnimash.engine.omni_client import (
     _generate_dynamic_audio_wav,
     _get_relaxed_safety_settings,
     ensure_rendered_video,
+    parse_guardrail_error_guidance,
 )
 from omnimash.prompts.compiler import CharacterRole, get_character_identifier
 import omnimash.engine.omni_client as omni_module
@@ -1943,6 +1944,41 @@ def test_generate_keyframe_image_retains_wardrobe_and_description_with_ref_url()
     assert "Gaunt cynical potion master" in compiled_prompt
     assert "[Wardrobe: Black Tailored Velvet Trench]" in compiled_prompt
     assert "[Style: Gothic, High-Contrast]" in compiled_prompt
+
+
+def test_parse_guardrail_error_guidance_returns_actionable_suggestions() -> None:
+    """Verify parse_guardrail_error_guidance returns actionable suggestions for real people likeness and photos."""
+    char = CharacterRole(
+        role_id="Role A",
+        name="Jordan Totten",
+        description="Software engineer",
+        reference_url="https://example.com/jordan_photo.jpg",
+    )
+    error_msg = "400 Policy violation: Prompt or input image violated real_people_likeness safety policy."
+    prompt_text = "Jordan Totten standing with a Lightsaber"
+
+    guidance = parse_guardrail_error_guidance(
+        error_msg=error_msg,
+        char_objs=[char],
+        prompt_text=prompt_text,
+    )
+
+    assert isinstance(guidance, dict)
+    assert "triggers" in guidance
+    assert "user_guidance" in guidance
+    assert "suggested_actions" in guidance
+
+    triggers = guidance["triggers"]
+    assert "real_people_likeness" in triggers
+    assert "real_people_photo" in triggers
+    assert "third_party_content" in triggers
+
+    assert "real-person likeness" in guidance["user_guidance"].lower() or "avoid" in guidance["user_guidance"].lower()
+
+    actions = [a["action"] for a in guidance["suggested_actions"]]
+    assert "sanitize_real_names" in actions
+    assert "remove_reference_photo" in actions
+    assert "abstract_trademarks" in actions
 
 
 
