@@ -1633,6 +1633,12 @@ class OmniFlashClient:
             return raster_png_fallback, "image/png"
         if ref_url.startswith("gs://"):
             return self.storage.download_blob_bytes(ref_url)
+        if ref_url.startswith("https://storage.googleapis.com/"):
+            try:
+                gcs_path = ref_url.replace("https://storage.googleapis.com/", "")
+                return self.storage.download_blob_bytes(f"gs://{gcs_path}")
+            except Exception as e:
+                logger.warning("Failed to fetch authenticated GCS HTTPS image %s: %s", ref_url, e)
         if "/api/media-proxy?uri=" in ref_url:
             try:
                 parsed = urlparse(ref_url)
