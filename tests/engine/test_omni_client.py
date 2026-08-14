@@ -1981,6 +1981,63 @@ def test_parse_guardrail_error_guidance_returns_actionable_suggestions() -> None
     assert "abstract_trademarks" in actions
 
 
+def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
+    """Verify that OmniFlashClient stores JSONL prompt/response objects in GCS and emits telemetry spans during keyframe and video generation."""
+    client = OmniFlashClient(mock_mode=True, bucket_name="test-telemetry-bucket")
+
+    mock_span = MagicMock()
+    with patch.object(
+        client.telemetry, "start_inference_span", return_value=mock_span
+    ) as mock_start_span, patch.object(
+        client.storage, "upload_bytes", wraps=client.storage.upload_bytes
+    ) as mock_upload_bytes:
+
+        # 1. Test keyframe generation telemetry
+        keyframe_url = client.generate_keyframe_image(
+            prompt="Harry in potion class",
+            style_tone="Gothic Trap",
+            session_id="sess_telemetry_test",
+        )
+
+        assert keyframe_url is not None
+        assert mock_start_span.called
+        span_call_args = mock_start_span.call_args.kwargs
+        assert "sess_telemetry_test_keyframe" in span_call_args.get("session_id", "")
+        assert mock_span.end.called
+
+        uploaded_blobs = [
+            call.args[1] if len(call.args) > 1 else call.kwargs.get("destination_blob_name")
+            for call in mock_upload_bytes.call_args_list
+        ]
+        assert any("telemetry/sess_telemetry_test_keyframe_input.jsonl" in str(b) for b in uploaded_blobs)
+        assert any("telemetry/sess_telemetry_test_keyframe_output.jsonl" in str(b) for b in uploaded_blobs)
+
+        mock_start_span.reset_mock()
+        mock_span.reset_mock()
+        mock_upload_bytes.reset_mock()
+
+        # 2. Test video clip generation telemetry
+        clip_res = client.generate_clip(
+            prompt="Wizard duel with 808s",
+            session_id="sess_telemetry_test",
+            turn_index=0,
+        )
+
+        assert clip_res.video_url.endswith(".mp4")
+        assert mock_start_span.called
+        span_call_args = mock_start_span.call_args.kwargs
+        assert "sess_telemetry_test_video_clip" in span_call_args.get("session_id", "")
+        assert mock_span.end.called
+
+        uploaded_blobs = [
+            call.args[1] if len(call.args) > 1 else call.kwargs.get("destination_blob_name")
+            for call in mock_upload_bytes.call_args_list
+        ]
+        assert any("telemetry/sess_telemetry_test_video_clip_input.jsonl" in str(b) for b in uploaded_blobs)
+        assert any("telemetry/sess_telemetry_test_video_clip_output.jsonl" in str(b) for b in uploaded_blobs)
+
+
+
 
 
 

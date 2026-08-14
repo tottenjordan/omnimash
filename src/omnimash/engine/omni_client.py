@@ -1,4 +1,5 @@
 import base64
+import json
 import logging
 import math
 import os
@@ -12,6 +13,7 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import parse_qs, quote, urlparse
 from omnimash.config import settings
+from omnimash.engine.telemetry import setup_opentelemetry_genai_logging
 from omnimash.prompts.compiler import (
     CharacterRole,
     build_character_image_ref_tags,
@@ -800,6 +802,9 @@ class OmniFlashClient:
             project_id=self.project,
             mock_mode=self.mock_mode,
         )
+        self.telemetry = setup_opentelemetry_genai_logging(
+            bucket_name=self.storage.bucket_name
+        )
 
         effective_key = (
             self.api_key
@@ -851,6 +856,112 @@ class OmniFlashClient:
             self._genai_client = self._dev_client
             return True
         return False
+
+    def _log_multimodal_inference(
+        self,
+        session_id: str,
+        turn_name: str,
+        input_prompt: Any,
+        output_data: dict[str, Any],
+        error_code: str | None = None,
+        guardrail_type: str | None = None,
+    ) -> None:
+        """Logs multimodal prompt JSONL exports and OpenTelemetry GenAI inference spans to Cloud Storage and Cloud Trace.
+
+        Args:
+            session_id: Unique session identifier for input/output GCS references.
+            turn_name: Identifier for turn/action (e.g. 'keyframe', 'video_clip', 'turnaround').
+            input_prompt: Input prompt text, payload dict, or list of content objects.
+            output_data: Dictionary containing output metadata (media_url, gcs_uri, generation_mode, error_message).
+            error_code: Optional error code.
+            guardrail_type: Optional guardrail safety type.
+        """
+        sid = session_id or "global"
+        tname = turn_name or "inference"
+
+        system_instructions = "Omnimash Engine Multimodal Generation"
+        prompt_text = ""
+        ref_image_uris: list[str] = []
+
+        if isinstance(input_prompt, str):
+            prompt_text = input_prompt
+            found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]]+", input_prompt)
+            if found_uris:
+                ref_image_uris.extend(found_uris)
+        elif isinstance(input_prompt, dict):
+            prompt_text = str(input_prompt.get("prompt", input_prompt.get("text", str(input_prompt))))
+            if "system_instructions" in input_prompt:
+                system_instructions = str(input_prompt["system_instructions"])
+            if "reference_image_uris" in input_prompt and isinstance(input_prompt["reference_image_uris"], list):
+                ref_image_uris.extend([str(u) for u in input_prompt["reference_image_uris"] if u])
+            elif "reference_urls" in input_prompt and isinstance(input_prompt["reference_urls"], list):
+                ref_image_uris.extend([str(u) for u in input_prompt["reference_urls"] if u])
+        elif isinstance(input_prompt, list):
+            texts = []
+            for item in input_prompt:
+                if isinstance(item, str):
+                    texts.append(item)
+                    found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]]+", item)
+                    if found_uris:
+                        ref_image_uris.extend(found_uris)
+                elif isinstance(item, dict):
+                    if item.get("type") == "text":
+                        texts.append(str(item.get("text", "")))
+                    elif item.get("type") == "image":
+                        for uri_key in ("uri", "url", "gcs_uri"):
+                            if uri_key in item and item[uri_key]:
+                                ref_image_uris.append(str(item[uri_key]))
+                    elif "content" in item and isinstance(item["content"], list):
+                        for sub in item["content"]:
+                            if isinstance(sub, dict) and sub.get("type") == "text":
+                                texts.append(str(sub.get("text", "")))
+            prompt_text = "\n".join(texts)
+        else:
+            prompt_text = str(input_prompt or "")
+
+        input_record = {
+            "system_instructions": system_instructions,
+            "prompt_text": prompt_text,
+            "reference_image_uris": sorted(list(set(ref_image_uris))),
+        }
+        input_jsonl = json.dumps(input_record) + "\n"
+
+        output_record = {
+            "media_url": output_data.get("media_url") or output_data.get("video_url"),
+            "gcs_uri": output_data.get("gcs_uri"),
+            "generation_mode": output_data.get("generation_mode", "LIVE_OMNI_FLASH"),
+            "error_message": output_data.get("error_message") or error_code,
+        }
+        output_jsonl = json.dumps(output_record) + "\n"
+
+        input_blob_name = f"telemetry/{sid}_{tname}_input.jsonl"
+        output_blob_name = f"telemetry/{sid}_{tname}_output.jsonl"
+
+        try:
+            self.storage.upload_bytes(
+                input_jsonl.encode("utf-8"),
+                input_blob_name,
+                content_type="application/x-ndjson",
+            )
+            self.storage.upload_bytes(
+                output_jsonl.encode("utf-8"),
+                output_blob_name,
+                content_type="application/x-ndjson",
+            )
+        except Exception as exc:
+            logger.warning("Failed to upload telemetry JSONL logs to GCS: %s", exc)
+
+        session_key = f"{sid}_{tname}"
+        try:
+            span = self.telemetry.start_inference_span(
+                session_id=session_key,
+                error_code=error_code,
+                guardrail_type=guardrail_type,
+            )
+            if span:
+                span.end()
+        except Exception as exc:
+            logger.warning("Failed to emit OpenTelemetry span: %s", exc)
 
     def _load_reference_images_as_input(
         self,
@@ -1079,11 +1190,34 @@ class OmniFlashClient:
         """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
             ensure_rendered_video(target_rel_path, prompt=prompt)
+            self._log_multimodal_inference(
+                session_id=session_id or "global",
+                turn_name="video_clip",
+                input_prompt=prompt,
+                output_data={
+                    "media_url": target_rel_path,
+                    "gcs_uri": self.storage.get_gcs_uri(target_rel_path),
+                    "generation_mode": "LIVE_OMNI_FLASH",
+                    "error_message": None,
+                },
+            )
             return True, previous_interaction_id, None
 
         if not self._genai_client or not hasattr(self._genai_client, "interactions"):
             msg = "Gemini client or interactions API not available"
             logger.warning("Generation aborted: %s", msg)
+            self._log_multimodal_inference(
+                session_id=session_id or "global",
+                turn_name="video_clip",
+                input_prompt=prompt,
+                output_data={
+                    "media_url": None,
+                    "gcs_uri": None,
+                    "generation_mode": "LIVE_OMNI_FLASH",
+                    "error_message": msg,
+                },
+                error_code="500",
+            )
             return False, None, msg
 
         max_attempts = 3
@@ -1148,6 +1282,17 @@ class OmniFlashClient:
                             "Successfully generated native Gemini Omni Flash MP4 to %s (size: %d bytes)",
                             target_rel_path,
                             len(video_bytes),
+                        )
+                        self._log_multimodal_inference(
+                            session_id=session_id or "global",
+                            turn_name="video_clip",
+                            input_prompt=prompt,
+                            output_data={
+                                "media_url": target_rel_path,
+                                "gcs_uri": self.storage.get_gcs_uri(target_rel_path),
+                                "generation_mode": "LIVE_OMNI_FLASH",
+                                "error_message": None,
+                            },
                         )
                         return True, inter_id, None
 
@@ -1264,6 +1409,31 @@ class OmniFlashClient:
                         time.sleep(delay)
                     delay *= 2
 
+        guardrail_info = (
+            parse_guardrail_error_guidance(
+                last_error or "", char_objs=characters, prompt_text=prompt
+            )
+            if last_error
+            else {}
+        )
+        guardrail_type = (
+            guardrail_info.get("triggers", [None])[0]
+            if guardrail_info.get("triggers")
+            else None
+        )
+        self._log_multimodal_inference(
+            session_id=session_id or "global",
+            turn_name="video_clip",
+            input_prompt=prompt,
+            output_data={
+                "media_url": None,
+                "gcs_uri": None,
+                "generation_mode": "LIVE_OMNI_FLASH",
+                "error_message": last_error,
+            },
+            error_code=last_error,
+            guardrail_type=guardrail_type,
+        )
         return False, None, last_error
 
     def generate_clip(
@@ -1517,6 +1687,7 @@ class OmniFlashClient:
         aspect_ratio: str = "16:9",
         image_model: str = "gemini-3.1-flash-image",
         return_compiled_prompt: bool = False,
+        session_id: str | None = None,
     ) -> Any:
         """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
 
@@ -1755,6 +1926,18 @@ class OmniFlashClient:
             return f"data:image/svg+xml;base64,{b64_svg}"
 
         def _return(url: str) -> Any:
+            url_str = url if isinstance(url, str) else (url[0] if isinstance(url, (list, tuple)) else str(url))
+            self._log_multimodal_inference(
+                session_id=session_id or "global",
+                turn_name="keyframe",
+                input_prompt={"prompt": prompt_text, "reference_image_uris": list(ref_url_to_token.keys())},
+                output_data={
+                    "media_url": url_str,
+                    "gcs_uri": self.storage.get_gcs_uri(url_str),
+                    "generation_mode": "KEYFRAME_IMAGE",
+                    "error_message": None,
+                },
+            )
             if return_compiled_prompt:
                 return url, prompt_text
             return url
@@ -1849,6 +2032,7 @@ class OmniFlashClient:
         image_model: str = "gemini-3.1-flash-image",
         aspect_ratio: str = "16:9",
         return_compiled_prompt: bool = False,
+        session_id: str | None = None,
     ) -> Any:
         """Generates a multi-panel character reference sheet image using Gemini Flash Image."""
         tags_str = ", ".join(aesthetic_tags) if aesthetic_tags else ""
@@ -1906,6 +2090,18 @@ class OmniFlashClient:
             return f"data:image/svg+xml;base64,{b64_svg}"
 
         def _return(url: str) -> Any:
+            url_str = url if isinstance(url, str) else (url[0] if isinstance(url, (list, tuple)) else str(url))
+            self._log_multimodal_inference(
+                session_id=session_id or "global",
+                turn_name="turnaround",
+                input_prompt={"prompt": prompt_text, "reference_image_uris": [source_image_url] if source_image_url else []},
+                output_data={
+                    "media_url": url_str,
+                    "gcs_uri": self.storage.get_gcs_uri(url_str),
+                    "generation_mode": "TURNAROUND_SHEET",
+                    "error_message": None,
+                },
+            )
             if return_compiled_prompt:
                 return url, prompt_text
             return url
@@ -1977,7 +2173,34 @@ class OmniFlashClient:
             )
             return _return(_get_mock_ref_sheet())
 
+    def generate_turnaround_sheet(
+        self,
+        source_image_url: str | None = None,
+        character_name: str = "",
+        description: str = "",
+        aesthetic_tags: list[str] | None = None,
+        custom_prompt_override: str | None = None,
+        image_model: str = "gemini-3.1-flash-image",
+        aspect_ratio: str = "16:9",
+        return_compiled_prompt: bool = False,
+        session_id: str | None = None,
+    ) -> Any:
+        """Generates a multi-panel character turnaround reference sheet image using Gemini Flash Image."""
+        return self.generate_character_reference_sheet(
+            source_image_url=source_image_url,
+            character_name=character_name,
+            description=description,
+            aesthetic_tags=aesthetic_tags,
+            custom_prompt_override=custom_prompt_override,
+            image_model=image_model,
+            aspect_ratio=aspect_ratio,
+            return_compiled_prompt=return_compiled_prompt,
+            session_id=session_id,
+        )
+
 
 OmniClient = OmniFlashClient
+OmniEngineClient = OmniFlashClient
+
 
 
