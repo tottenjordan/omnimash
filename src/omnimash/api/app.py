@@ -5285,10 +5285,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                             type="button"
                                             disabled={expandLoading || !concept.trim()}
                                             onClick={handleReSyncStoryboardDefaults}
-                                            className="bg-gradient-to-r from-purple-600 to-amber-600 hover:from-purple-500 hover:to-amber-500 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow flex items-center gap-1.5 transition disabled:opacity-50"
+                                            className="bg-gradient-to-r from-purple-600 to-amber-600 hover:from-purple-500 hover:to-amber-500 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow flex items-center gap-1.5 transition disabled:opacity-50 whitespace-nowrap"
                                         >
                                             <span>⚡</span>
-                                            <span>{expandLoading ? "Re-Syncing..." : "⚡ Re-Sync Storyboard Defaults from Vision Prompt"}</span>
+                                            <span>{expandLoading ? "Re-Syncing..." : "Re-Sync Storyboard Defaults"}</span>
                                         </button>
                                         <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
                                             <span className="text-gray-300">📐 Aspect Ratio</span>
@@ -7791,40 +7791,46 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
 
                                 {/* STEP 2: SHOT CARD WORKSTATION */}
                                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
-                                    <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-                                        <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                                            <span>📋</span>
-                                            <span>Step 2: Shot Card Workstation</span>
-                                        </h3>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-3.5">
+                                        <div className="flex items-center gap-2.5">
+                                            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                                <span>📋</span>
+                                                <span>Step 2: Shot Card Workstation</span>
+                                            </h3>
+                                            <span className="bg-purple-950/80 text-purple-300 border border-purple-800/80 font-mono text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-sm">
+                                                {j3ShotCards.length} {j3ShotCards.length === 1 ? "Shot" : "Shots"}
+                                            </span>
+                                        </div>
                                         <div className="flex flex-wrap items-center gap-2">
                                             <button
                                                 type="button"
-                                                disabled={isBatchRenderingShots}
-                                                onClick={handleRenderAllShots}
-                                                className="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white text-xs font-extrabold px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-lg disabled:opacity-50"
-                                            >
-                                                <span>🎬</span>
-                                                <span>
-                                                    {isBatchRenderingShots
-                                                        ? `⏳ Batch Rendering Shot ${batchShotProgress.current} of ${batchShotProgress.total}...`
-                                                        : "🎬 Render All Shots (Batch Execution)"}
-                                                </span>
-                                            </button>
-                                            <button
-                                                type="button"
                                                 onClick={handleLoadMovieTrailerTemplate}
-                                                className="bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-600/70 text-xs font-extrabold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition shadow"
+                                                className="bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-600/70 text-xs font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 transition shadow whitespace-nowrap"
                                                 title="Load 10s Movie Trailer Storyboard Template with Narrator and Title Cards"
                                             >
                                                 <span>🍿</span>
-                                                <span>🎬 Load 10s Movie Trailer Template</span>
+                                                <span>10s Movie Trailer Preset</span>
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={handleAddJ3ShotCard}
-                                                className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 transition shadow"
+                                                className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 transition shadow whitespace-nowrap"
                                             >
-                                                <span>➕ Add Shot</span>
+                                                <span>➕</span>
+                                                <span>Add Shot</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={isBatchRenderingShots}
+                                                onClick={handleRenderAllShots}
+                                                className="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white text-xs font-extrabold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-lg disabled:opacity-50 whitespace-nowrap"
+                                            >
+                                                <span>🎬</span>
+                                                <span>
+                                                    {isBatchRenderingShots
+                                                        ? `⏳ Rendering ${batchShotProgress.current}/${batchShotProgress.total}...`
+                                                        : "Render All Shots (Batch)"}
+                                                </span>
                                             </button>
                                         </div>
                                     </div>
