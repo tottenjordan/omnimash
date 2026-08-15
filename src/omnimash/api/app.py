@@ -2907,42 +2907,71 @@ UI_HTML = r"""<!DOCTYPE html>
 
                         {/* Studio Mode Switcher Toggle */}
                         <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
-                            <button
-                                type="button"
-                                onClick={() => { setStudioMode("acts"); setActiveTab("acts"); }}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                                    studioMode === "acts" && activeTab !== "journey3"
-                                        ? "bg-purple-600 text-white shadow shadow-purple-900/50"
-                                        : "text-gray-400 hover:text-gray-200"
-                                }`}
-                            >
-                                <span>🎭</span>
-                                <span>Act-Based Director Mode</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setStudioMode("stages"); setActiveTab("stages"); }}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                                    studioMode === "stages" && activeTab !== "journey3"
-                                        ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow shadow-amber-900/50 font-extrabold"
-                                        : "text-gray-400 hover:text-gray-200"
-                                }`}
-                            >
-                                <span>🎬</span>
-                                <span>4-Stage Storyboard Journey</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setActiveTab("journey3"); setStudioMode("journey3"); }}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                                    activeTab === "journey3" || studioMode === "journey3"
-                                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow shadow-blue-900/50 font-extrabold"
-                                        : "text-gray-400 hover:text-gray-200"
-                                }`}
-                            >
-                                <span>🚀</span>
-                                <span>Tab 3: 🚀 Journey 3 - Multi-Shot Continuity Studio</span>
-                            </button>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 w-full">
+                                <button
+                                    type="button"
+                                    onClick={() => { setStudioMode("stages"); setActiveTab("stages"); }}
+                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between gap-2 ${
+                                        (studioMode === "stages" && activeTab !== "journey3")
+                                            ? "bg-amber-500 text-black shadow shadow-amber-900/50 font-extrabold"
+                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-1.5">
+                                        <span>⚡</span>
+                                        <span>⚡ Mode 1: Guided Fine-Tune</span>
+                                    </span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold ${
+                                        (studioMode === "stages" && activeTab !== "journey3")
+                                            ? "bg-amber-950/40 text-amber-950 border border-amber-900/40"
+                                            : "bg-gray-900 text-gray-400 border border-gray-800"
+                                    }`}>
+                                        🎯 Single Video Target
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setStudioMode("acts"); setActiveTab("acts"); }}
+                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between gap-2 ${
+                                        (studioMode === "acts" && activeTab !== "journey3")
+                                            ? "bg-purple-600 text-white shadow shadow-purple-900/50"
+                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-1.5">
+                                        <span>🎬</span>
+                                        <span>🎬 Mode 2: Screenplay Storyboard</span>
+                                    </span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold ${
+                                        (studioMode === "acts" && activeTab !== "journey3")
+                                            ? "bg-purple-950/60 text-purple-200 border border-purple-800/60"
+                                            : "bg-gray-900 text-gray-400 border border-gray-800"
+                                    }`}>
+                                        🎬 Multi-Scene Master Target
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setActiveTab("journey3"); setStudioMode("journey3"); }}
+                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between gap-2 ${
+                                        (activeTab === "journey3" || studioMode === "journey3")
+                                            ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow shadow-blue-900/50 font-extrabold"
+                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-1.5">
+                                        <span>🚀</span>
+                                        <span>🚀 Mode 3: Continuity Studio</span>
+                                    </span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold ${
+                                        (activeTab === "journey3" || studioMode === "journey3")
+                                            ? "bg-blue-950/60 text-blue-200 border border-blue-800/60"
+                                            : "bg-gray-900 text-gray-400 border border-gray-800"
+                                    }`}>
+                                        🔄 Conversational Diff Target
+                                    </span>
+                                </button>
+                            </div>
                         </div>
 
                         {/* GCS Session Name & Reset Studio */}
@@ -3034,7 +3063,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                 onClick={() => { setActiveTab("journey3"); setStudioMode("journey3"); }}
                                 className="flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition bg-blue-600/30 text-blue-300 border border-blue-500 shadow-lg shadow-blue-900/20"
                             >
-                                <span>Tab 3: 🚀 Journey 3 - Multi-Shot Continuity Studio</span>
+                                <span>🚀 Mode 3: Continuity Studio</span>
                             </button>
                         </div>
                     ) : studioMode === "acts" ? (
@@ -3209,9 +3238,54 @@ UI_HTML = r"""<!DOCTYPE html>
                         )}
 
                         {/* ========================================================= */}
-                        {/* 🎭 ACT 1: THE CONCEPT & CAST MANAGER                      */}
+                        {/* 🎭 MODE 2: SCREENPLAY STORYBOARD STUDIO                   */}
                         {/* ========================================================= */}
-                        {studioMode === "acts" && activeAct === 1 && (
+                        {studioMode === "acts" && (
+                            <div className="space-y-6">
+                                {/* Mode 2 Standardized Mode Header Card */}
+                                <div className="bg-gradient-to-r from-purple-950/40 via-gray-900 to-purple-950/40 border border-purple-800/50 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+                                        <div>
+                                            <div className="flex items-center gap-3">
+                                                <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                                                    <span>🎬</span>
+                                                    <span>🎬 Mode 2: Screenplay Storyboard</span>
+                                                </h2>
+                                                <span className="bg-purple-950/80 text-purple-300 border border-purple-800/60 px-2.5 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-1 shadow-sm">
+                                                    <span>🎬 Multi-Scene Master Target</span>
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-300 mt-1.5 max-w-3xl">
+                                                Multi-scene screenplay director for crafting structured multi-shot storyboards with concatenated master video output.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-purple-500/20 text-purple-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-purple-500/30 shrink-0">1</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 1: Global Production Context</span>
+                                                <span className="text-[11px] text-gray-400">Set character likeness, outfits &amp; shared scene parameters</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-purple-500/20 text-purple-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-purple-500/30 shrink-0">2</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 2: Multi-Scene Storyboard Directing</span>
+                                                <span className="text-[11px] text-gray-400">Auto-expand screenplay into shot cards &amp; render batch clips</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-purple-500/20 text-purple-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-purple-500/30 shrink-0">3</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 3: Concatenate Master Screening Room</span>
+                                                <span className="text-[11px] text-gray-400">Preview, arrange &amp; concatenate clips into seamless master video</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {activeAct === 1 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-purple-950/40 to-pink-950/40 border border-purple-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
                                     <div>
@@ -3250,9 +3324,9 @@ UI_HTML = r"""<!DOCTYPE html>
                                 </div>
 
                                 {/* 1. Visual Concept / Parody Prompt & Example Chips */}
-                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                <div className="border-gray-800 bg-gray-900/80 backdrop-blur p-5 rounded-2xl shadow-xl space-y-4">
                                     <div className="flex items-center justify-between">
-                                        <label className="text-xs font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
+                                        <label className="text-xs font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
                                             <span>💡</span>
                                             <span>Visual Concept / Parody Prompt</span>
                                         </label>
@@ -3293,7 +3367,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                             type="button"
                                             disabled={deconstructLoading || !concept.trim()}
                                             onClick={() => handleDeconstructConcept()}
-                                            className="bg-gradient-to-r from-pink-600 via-purple-600 to-amber-500 hover:opacity-90 text-white font-bold text-xs py-2.5 px-6 rounded-xl shadow-lg flex items-center gap-2 transition disabled:opacity-50"
+                                            className="bg-gradient-to-r from-blue-600 to-indigo-600 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition disabled:opacity-50"
                                         >
                                             <span>✨</span>
                                             <span>{deconstructLoading ? "Deconstructing Concept..." : "✨ Deconstruct Concept"}</span>
@@ -3302,10 +3376,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                 </div>
 
                                 {/* 2. Dynamic Character Roles Manager */}
-                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                <div className="border-gray-800 bg-gray-900/80 backdrop-blur p-5 rounded-2xl shadow-xl space-y-4">
                                     <div className="flex flex-wrap items-center justify-between gap-3">
                                         <div>
-                                            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
                                                 <span>👥</span>
                                                 <span>Character Roles (Gemini Omni Image Roles Reference)</span>
                                             </h3>
@@ -3317,7 +3391,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <button
                                                 type="button"
                                                 onClick={handleSaveSessionRoster}
-                                                className="bg-gray-950 hover:bg-gray-800 text-purple-300 hover:text-purple-200 border border-purple-900/60 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                                 title="Save current cast roster to session"
                                             >
                                                 <span>💾</span>
@@ -3326,7 +3400,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <button
                                                 type="button"
                                                 onClick={handleLoadSessionRoster}
-                                                className="bg-gray-950 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                                 title="Restore saved cast roster for this session"
                                             >
                                                 <span>📂</span>
@@ -3335,7 +3409,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <button
                                                 type="button"
                                                 onClick={handleResetRoster}
-                                                className="bg-red-950/60 hover:bg-red-900 text-red-300 hover:text-red-200 border border-red-800/80 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                                 title="Clear all characters from current roster"
                                             >
                                                 <span>🧹</span>
@@ -3344,7 +3418,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <button
                                                 type="button"
                                                 onClick={addCharacterRole}
-                                                className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                                className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                             >
                                                 <span>+ Add Character Role</span>
                                             </button>
@@ -3794,11 +3868,11 @@ UI_HTML = r"""<!DOCTYPE html>
                                 </div>
 
                                 {/* 3. Editable Meta-Prompt Tags, Environment & Audio Beat */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     {/* Aesthetic Tags & Audio Beat */}
-                                    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div className="border-gray-800 bg-gray-900/80 backdrop-blur p-5 rounded-2xl shadow-xl space-y-4">
                                         <div className="pb-3 border-b border-gray-800">
-                                            <label className="text-xs font-bold text-amber-400 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+                                            <label className="text-xs font-bold text-amber-400 uppercase tracking-wider block mb-2 flex items-center gap-1.5 border-l-4 border-indigo-500 pl-3">
                                                 <span>🎨</span>
                                                 <span>Cartoon &amp; Art Style Presets:</span>
                                             </label>
@@ -3836,7 +3910,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                             </div>
                                         </div>
                                         <div>
-                                            <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                            <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-2 flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
                                                 <span>🎨</span>
                                                 <span>Aesthetic Tags &amp; Style Signifiers</span>
                                             </h3>
@@ -3902,9 +3976,9 @@ UI_HTML = r"""<!DOCTYPE html>
                                     </div>
 
                                     {/* Environment & Camera/Lighting */}
-                                    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div className="border-gray-800 bg-gray-900/80 backdrop-blur p-5 rounded-2xl shadow-xl space-y-4">
                                         <div>
-                                            <label className="block text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">
+                                            <label className="block text-xs font-bold text-amber-400 uppercase tracking-wider mb-1 border-l-4 border-indigo-500 pl-3">
                                                 🌍 Environment &amp; Background Setting
                                             </label>
                                             <textarea
@@ -3917,7 +3991,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </div>
 
                                         <div>
-                                            <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">
+                                            <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-1 border-l-4 border-indigo-500 pl-3">
                                                 🎥 Camera &amp; Lighting Styling
                                             </label>
                                             <textarea
@@ -3948,7 +4022,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         {/* ========================================================= */}
                         {/* 🎛️ ACT 2: STORYBOARD & SHOT DIRECTOR (10-SECOND VIDEO CLIPS) */}
                         {/* ========================================================= */}
-                        {studioMode === "acts" && activeAct === 2 && (
+                        {activeAct === 2 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-pink-950/40 to-amber-950/40 border border-pink-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
                                     <div>
@@ -4235,6 +4309,49 @@ UI_HTML = r"""<!DOCTYPE html>
                         {/* ========================================================= */}
                         {studioMode === "stages" && (
                             <div className="space-y-6">
+                                {/* Mode 1 Standardized Mode Header Card */}
+                                <div className="bg-gradient-to-r from-amber-950/30 via-gray-900 to-amber-950/30 border border-amber-800/50 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+                                        <div>
+                                            <div className="flex items-center gap-3">
+                                                <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                                                    <span>⚡</span>
+                                                    <span>⚡ Mode 1: Guided Fine-Tune</span>
+                                                </h2>
+                                                <span className="bg-amber-950/80 text-amber-300 border border-amber-800/60 px-2.5 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-1 shadow-sm">
+                                                    <span>🎯 Single Video Target</span>
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-300 mt-1.5 max-w-3xl">
+                                                Step-by-step guided workflow for creating individual video clips with precise prompt fine-tuning and visual control.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-amber-500/30 shrink-0">1</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 1: Set Visual Concept &amp; Cast</span>
+                                                <span className="text-[11px] text-gray-400">Define single video concept, style tags &amp; character roster</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-amber-500/30 shrink-0">2</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 2: Fine-Tune Audio &amp; Beat</span>
+                                                <span className="text-[11px] text-gray-400">Select vocal delivery, trap beat &amp; background ambience</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-amber-500/30 shrink-0">3</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 3: Render &amp; Refine Single Video</span>
+                                                <span className="text-[11px] text-gray-400">Generate, re-anchor prompt diffs &amp; export single video</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* STAGE 1: VISION & STYLE SETUP */}
                                 {activeStage === 1 && (
                                     <div className="space-y-6">
@@ -4317,9 +4434,9 @@ UI_HTML = r"""<!DOCTYPE html>
                                             </div>
                                         )}
 
-                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                        <div className="border-gray-800 bg-gray-900/80 backdrop-blur p-5 rounded-2xl shadow-xl space-y-4">
                                             <div className="flex items-center justify-between">
-                                                <label className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                                                <label className="text-xs font-bold text-amber-400 uppercase tracking-wider border-l-4 border-indigo-500 pl-3">
                                                     Visual Concept / Parody Idea (30–60s)
                                                 </label>
                                                 <div className="flex items-center gap-2">
@@ -5993,7 +6110,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                         {/* ========================================================= */}
                         {/* 🎬 ACT 3: THE SCREENING ROOM & BRANCHING                  */}
                         {/* ========================================================= */}
-                        {studioMode === "acts" && activeAct === 3 && (
+                        {activeAct === 3 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-amber-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
                                     <div>
@@ -6798,25 +6915,56 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                             </div>
                         )}
                         {/* ========================================================= */}
-                        {/* 🚀 TAB 3: JOURNEY 3 - MULTI-SHOT CONTINUITY STUDIO       */}
+                        {/* 🚀 MODE 3: CONTINUITY STUDIO (JOURNEY 3)                  */}
                         {/* ========================================================= */}
                         {(activeTab === "journey3" || studioMode === "journey3") && (
                             <div className="space-y-6">
-                                <div className="bg-gradient-to-r from-blue-950/50 via-indigo-950/50 to-purple-950/50 border border-blue-800/50 rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
-                                    <div>
-                                        <h2 className="text-lg font-extrabold text-blue-200 flex items-center gap-2">
-                                            <span>🚀</span>
-                                            <span>Tab 3: 🚀 Journey 3 - Multi-Shot Continuity Studio</span>
-                                        </h2>
-                                        <p className="text-xs text-gray-300 mt-1">
-                                            Multi-shot AI continuous scene generation with visual reference uploaders, keyframe prompt editing, and cumulative state tracking across sequential shots.
-                                        </p>
+                                {/* Mode 3 Standardized Mode Header Card */}
+                                <div className="bg-gradient-to-r from-blue-950/50 via-gray-900 to-indigo-950/50 border border-blue-800/50 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+                                        <div>
+                                            <div className="flex items-center gap-3">
+                                                <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                                                    <span>🚀</span>
+                                                    <span>🚀 Mode 3: Continuity Studio (Journey 3 - Multi-Shot Continuity Studio)</span>
+                                                </h2>
+                                                <span className="bg-blue-950/80 text-blue-300 border border-blue-800/60 px-2.5 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-1 shadow-sm">
+                                                    <span>🔄 Conversational Diff Target</span>
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-300 mt-1.5 max-w-3xl">
+                                                Multi-shot conversational continuity studio using frame anchors and turn history for iterative video editing.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-blue-500/20 text-blue-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-blue-500/30 shrink-0">1</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 1: Master Setup &amp; Roster</span>
+                                                <span className="text-[11px] text-gray-400">Describe continuous concept &amp; configure character references</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-blue-500/20 text-blue-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-blue-500/30 shrink-0">2</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 2: Sequential Shot Generation &amp; Keyframe Anchors</span>
+                                                <span className="text-[11px] text-gray-400">Generate keyframes, lock visual continuity &amp; render shot sequence</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                            <span className="bg-blue-500/20 text-blue-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-blue-500/30 shrink-0">3</span>
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-200 block">Step 3: Turn History &amp; Conversational Diffing</span>
+                                                <span className="text-[11px] text-gray-400">Inspect cumulative state, branch iterations &amp; diff prompt turns</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* STEP 1: CONCEPT & REFERENCE UPLOADERS */}
-                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
-                                    <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                                <div className="border-gray-800 bg-gray-900/80 backdrop-blur p-5 rounded-2xl shadow-xl space-y-4">
+                                    <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
                                         <span>💡</span>
                                         <span>Step 1: Master Concept &amp; Character Roles Manager</span>
                                     </h3>
@@ -6837,7 +6985,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                         <div className="bg-gray-950/90 border border-purple-900/50 rounded-xl p-4 space-y-4">
                                             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-3">
                                                 <div>
-                                                    <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                                    <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
                                                         <span>👥</span>
                                                         <span>Character Roles &amp; Character Vault (Gemini Omni Image Roles)</span>
                                                     </h3>
@@ -6849,7 +6997,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     <button
                                                         type="button"
                                                         onClick={handleSaveSessionRoster}
-                                                        className="bg-gray-900 hover:bg-gray-800 text-purple-300 hover:text-purple-200 border border-purple-900/60 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                        className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                                         title="Save current cast roster to session"
                                                     >
                                                         <span>💾</span>
@@ -6858,7 +7006,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     <button
                                                         type="button"
                                                         onClick={handleLoadSessionRoster}
-                                                        className="bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                        className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                                         title="Restore saved cast roster for this session"
                                                     >
                                                         <span>📂</span>
@@ -6867,7 +7015,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     <button
                                                         type="button"
                                                         onClick={handleResetRoster}
-                                                        className="bg-red-950/60 hover:bg-red-900 text-red-300 hover:text-red-200 border border-red-800/80 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                        className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                                         title="Clear all characters from current roster"
                                                     >
                                                         <span>🧹</span>
@@ -6876,7 +7024,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     <button
                                                         type="button"
                                                         onClick={addCharacterRole}
-                                                        className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
+                                                        className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                                     >
                                                         <span>+ Add Character Role</span>
                                                     </button>
