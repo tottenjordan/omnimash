@@ -559,6 +559,21 @@ UI_HTML = r"""<!DOCTYPE html>
             }, [activeProject]);
 
             // Act 1: The Concept & Cast Manager State
+            const QUICK_PRESET_TEMPLATES = [
+                {
+                    name: "🪄 Hip-Hop Wand Shop",
+                    concept: "Mr. Ice-Vander’s luxury Boutique. Blinding golden glass cases on black velvet..."
+                },
+                {
+                    name: "⚡ Neon Cyberpunk Rap Battle",
+                    concept: "Neon-lit alleyway in Neo-Tokyo. Holographic soundwaves pulsing in rainy puddles..."
+                },
+                {
+                    name: "🧙♂️ Dark Academia Library Heist",
+                    concept: "Ancient Gothic library under moonlight. Floating spellbooks and glowing blue embers..."
+                }
+            ];
+
             const [concept, setConcept] = useState("Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style");
             const [deconstructLoading, setDeconstructLoading] = useState(false);
 
@@ -997,7 +1012,19 @@ UI_HTML = r"""<!DOCTYPE html>
             const [j3KeyframeLoadingMap, setJ3KeyframeLoadingMap] = useState({});
             const [j3ShotGeneratingMap, setJ3ShotGeneratingMap] = useState({});
             const [j3StitchLoading, setJ3StitchLoading] = useState(false);
+            const [isBatchRenderingShots, setIsBatchRenderingShots] = useState(false);
+            const [batchShotProgress, setBatchShotProgress] = useState({ current: 0, total: 0 });
             const [j3MasterVideoUrl, setJ3MasterVideoUrl] = useState("");
+            const [j3TurnHistory, setJ3TurnHistory] = useState([
+                { turnId: "turn_00", turnNumber: 0, prompt: "Turn 0 Baseline Shot", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: "KeyframeSeed" },
+                { turnId: "turn_01", turnNumber: 1, prompt: "Turn 1 Lighting Shift", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: "KeyframeSeed" },
+                { turnId: "turn_02", turnNumber: 2, prompt: "Turn 2 Action Progression", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: "KeyframeSeed" }
+            ]);
+            const [activeBranchTurnId, setActiveBranchTurnId] = useState("turn_00");
+            const [isVisualContinuityLocked, setIsVisualContinuityLocked] = useState(true);
+            const [keyframeSeedAnchor, setKeyframeSeedAnchor] = useState("KeyframeSeed");
+            const [j3DiffPrompt, setJ3DiffPrompt] = useState("");
+            const [j3DiffLoading, setJ3DiffLoading] = useState(false);
 
             // Tab 3 Character Roles & Vault State
             const [j3Characters, setJ3Characters] = useState([
@@ -1317,6 +1344,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                     : c
                             )
                         );
+                        return data.video_url;
                     } else if (data && data.error) {
                         setLastError(data.error);
                     }
@@ -1325,13 +1353,60 @@ UI_HTML = r"""<!DOCTYPE html>
                 } finally {
                     setJ3ShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: false }));
                 }
+                return null;
             };
 
-            const handleJourney3Stitch = async () => {
+            const handleJ3DiffSubmit = async () => {
+                if (!j3DiffPrompt.trim()) return;
+                setJ3DiffLoading(true);
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/diff", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: "user_j3",
+                            project_id: activeProject,
+                            prompt: j3DiffPrompt.trim(),
+                            parent_turn_id: activeBranchTurnId || null,
+                            session_name: sessionName,
+                            enable_safety_sanitization: enableSafetySanitization,
+                            aspect_ratio: aspectRatio,
+                            keyframe_seed: isVisualContinuityLocked ? keyframeSeedAnchor : null
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.video_url) {
+                        const newTurnNum = j3TurnHistory.length;
+                        const newTurnId = data.turn_id || `turn_0${newTurnNum}`;
+                        const newTurn = {
+                            turnId: newTurnId,
+                            turnNumber: newTurnNum,
+                            prompt: j3DiffPrompt.trim(),
+                            videoUrl: data.video_url,
+                            keyframeSeed: isVisualContinuityLocked ? keyframeSeedAnchor : "fresh_seed"
+                        };
+                        setJ3TurnHistory((prev) => [...prev, newTurn]);
+                        setActiveBranchTurnId(newTurnId);
+                        setJ3DiffPrompt("");
+                    } else if (data && data.error) {
+                        setLastError(data.error);
+                    }
+                } catch (err) {
+                    console.error("J3 diff error:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setJ3DiffLoading(false);
+                }
+            };
+
+            const handleJourney3Stitch = async (clipsOverride = null) => {
                 setJ3StitchLoading(true);
                 setLastError(null);
                 try {
-                    const clips = j3ShotCards.map((c) => c.video_url).filter(Boolean);
+                    const clips = (clipsOverride && Array.isArray(clipsOverride) && clipsOverride.length > 0)
+                        ? clipsOverride
+                        : j3ShotCards.map((c) => c.video_url).filter(Boolean);
                     const res = await fetch("/api/journey3/stitch", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -1352,6 +1427,46 @@ UI_HTML = r"""<!DOCTYPE html>
                 } finally {
                     setJ3StitchLoading(false);
                 }
+            };
+
+            const handleRenderAllShots = async () => {
+                if (!j3ShotCards || j3ShotCards.length === 0) return;
+                setIsBatchRenderingShots(true);
+                setBatchShotProgress({ current: 0, total: j3ShotCards.length });
+                const renderedClips = [];
+                try {
+                    for (let i = 0; i < j3ShotCards.length; i++) {
+                        const card = j3ShotCards[i];
+                        setBatchShotProgress({ current: i + 1, total: j3ShotCards.length });
+                        const clipUrl = await handleJourney3GenerateShot(card);
+                        if (clipUrl) {
+                            renderedClips.push(clipUrl);
+                        }
+                    }
+                    await handleJourney3Stitch(renderedClips.length > 0 ? renderedClips : null);
+                } catch (err) {
+                    console.error("Batch rendering all shots failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setIsBatchRenderingShots(false);
+                }
+            };
+
+            const handleDuplicateJ3ShotCard = (cardIdx) => {
+                const targetCard = j3ShotCards[cardIdx];
+                if (!targetCard) return;
+                const duplicatedCard = {
+                    ...targetCard,
+                    video_url: "",
+                    cumulative_state: Array.isArray(targetCard.cumulative_state) ? [...targetCard.cumulative_state] : []
+                };
+                const updatedCards = [...j3ShotCards];
+                updatedCards.splice(cardIdx + 1, 0, duplicatedCard);
+                const reindexed = updatedCards.map((c, i) => ({
+                    ...c,
+                    shot_index: i + 1
+                }));
+                setJ3ShotCards(reindexed);
             };
 
             const fetchSavedStoryboards = async () => {
@@ -4227,6 +4342,29 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 placeholder="Describe your 60s parody video concept in detail..."
                                                 className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
                                             />
+
+                                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                                <span className="text-[11px] text-gray-400 font-medium">Quick Concept Presets:</span>
+                                                {QUICK_PRESET_TEMPLATES.map((item, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        type="button"
+                                                        onClick={() => setConcept(item.concept)}
+                                                        className="bg-amber-950/60 border border-amber-800/80 hover:border-amber-500 text-amber-200 text-[11px] px-2.5 py-1 rounded-lg transition"
+                                                    >
+                                                        {item.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <details className="preview-box bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs mt-3">
+                                                <summary className="cursor-pointer font-bold text-amber-400 select-none">
+                                                    👁️ Live Compiled Prompt Preview (4-Block Meta-Prompt)
+                                                </summary>
+                                                <pre className="mt-2 text-[11px] text-gray-300 font-mono whitespace-pre-wrap max-h-[300px] overflow-y-auto leading-relaxed bg-gray-900 border border-gray-800 rounded-lg p-3">
+                                                    {compileStoryboardPreview()}
+                                                </pre>
+                                            </details>
 
                                             <div>
                                                 <div className="flex items-center justify-between mb-1">
@@ -7345,14 +7483,28 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                             <span>📋</span>
                                             <span>Step 2: Shot Card Workstation</span>
                                         </h3>
-                                        <button
-                                            type="button"
-                                            onClick={handleAddJ3ShotCard}
-                                            className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-extrabold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition shadow"
-                                        >
-                                            <span>➕</span>
-                                            <span>+ Add Shot Card</span>
-                                        </button>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                disabled={isBatchRenderingShots}
+                                                onClick={handleRenderAllShots}
+                                                className="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white text-xs font-extrabold px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-lg disabled:opacity-50"
+                                            >
+                                                <span>🎬</span>
+                                                <span>
+                                                    {isBatchRenderingShots
+                                                        ? `⏳ Batch Rendering Shot ${batchShotProgress.current} of ${batchShotProgress.total}...`
+                                                        : "🎬 Render All Shots (Batch Execution)"}
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleAddJ3ShotCard}
+                                                className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 transition shadow"
+                                            >
+                                                <span>➕ Add Shot</span>
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -7362,13 +7514,22 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     <span className="text-xs font-bold text-blue-300">Shot Card #{card.shot_index} (Max 10s)</span>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-[10px] font-mono text-gray-400">Sequence Index: {card.shot_index}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDuplicateJ3ShotCard(cardIdx)}
+                                                            className="text-blue-400 hover:text-blue-300 bg-blue-950/60 hover:bg-blue-900/80 border border-blue-800/60 rounded px-2 py-0.5 text-[10px] font-bold transition flex items-center gap-1"
+                                                            title="Duplicate Shot Card"
+                                                        >
+                                                            <span>📋 Duplicate</span>
+                                                        </button>
                                                         {j3ShotCards.length > 1 && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveJ3ShotCard(card.shot_index)}
-                                                                className="text-red-400 hover:text-red-300 bg-red-950/60 hover:bg-red-900/80 border border-red-800/60 rounded px-2 py-0.5 text-[10px] font-bold transition"
+                                                                className="text-red-400 hover:text-red-300 bg-red-950/60 hover:bg-red-900/80 border border-red-800/60 rounded px-2 py-0.5 text-[10px] font-bold transition flex items-center gap-1"
+                                                                title="Delete Shot Card"
                                                             >
-                                                                🗑️ Remove Shot
+                                                                <span>🗑️ Delete</span>
                                                             </button>
                                                         )}
                                                     </div>
@@ -7676,6 +7837,129 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                 </div>
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+
+                                {/* MODE 3 TURN HISTORY CAROUSEL & POST /api/diff CONTINUITY CONTROLS */}
+                                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+                                    <div className="flex flex-wrap items-center justify-between border-b border-gray-800 pb-3 gap-2">
+                                        <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                                            <span>🔄</span>
+                                            <span>TurnHistoryCarousel — Mode 3 Turn History &amp; Branching</span>
+                                        </h3>
+                                        <span className="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-800 font-mono">
+                                            Turn History
+                                        </span>
+                                    </div>
+
+                                    {/* TurnHistoryCarousel Horizontal Scroll / Grid */}
+                                    <div className="TurnHistoryCarousel space-y-2">
+                                        <label className="text-xs font-bold text-gray-300 block">Turn History Visual Carousel:</label>
+                                        <div className="flex items-center gap-4 overflow-x-auto pb-3 custom-scrollbar">
+                                            {j3TurnHistory.map((turn, tIdx) => (
+                                                <div
+                                                    key={turn.turnId || tIdx}
+                                                    className={`min-w-[220px] max-w-[240px] bg-gray-950 border rounded-xl p-3 flex flex-col justify-between space-y-2 transition ${
+                                                        activeBranchTurnId === turn.turnId ? "border-amber-500 bg-amber-950/20 shadow-lg" : "border-gray-800 hover:border-gray-700"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between text-[11px] font-mono">
+                                                        <span className="font-bold text-amber-300">Turn {turn.turnNumber !== undefined ? turn.turnNumber : tIdx}</span>
+                                                        <span className="text-gray-400 text-[10px]">{turn.turnId}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-300 line-clamp-2">{turn.prompt || `Turn ${tIdx} scene diff`}</p>
+                                                    <div className="aspect-video bg-black rounded-lg overflow-hidden border border-gray-800 relative">
+                                                        {turn.videoUrl ? (
+                                                            <video src={getDisplayableRefUrl(turn.videoUrl)} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500 font-mono">No Video Preview</div>
+                                                        )}
+                                                        <a
+                                                            href={getDisplayableRefUrl(turn.videoUrl || "#")}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="absolute bottom-1 right-1 bg-black/80 hover:bg-black text-amber-300 text-[9px] font-mono px-1.5 py-0.5 rounded border border-amber-800/60"
+                                                        >
+                                                            Thumbnail Preview Link
+                                                        </a>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActiveBranchTurnId(turn.turnId)}
+                                                        className={`w-full text-xs font-bold py-1.5 px-2 rounded-lg border transition flex items-center justify-center gap-1 ${
+                                                            activeBranchTurnId === turn.turnId
+                                                                ? "bg-amber-600 text-white border-amber-500 shadow"
+                                                                : "bg-gray-900 hover:bg-gray-800 text-amber-300 border-amber-900/60"
+                                                        }`}
+                                                    >
+                                                        <span>⏪</span>
+                                                        <span>⏪ Branch from Turn {turn.turnNumber !== undefined ? turn.turnNumber : tIdx}</span>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* POST /api/diff Controls & Keyframe Seed Lock Status Badge */}
+                                    <div className="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-2">
+                                            <span className="text-xs font-bold text-purple-300">POST /api/diff Controls &amp; Visual Continuity Lock</span>
+                                            
+                                            {/* Status Badge showing active keyframe seed anchor */}
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-bold px-2.5 py-1 rounded-lg border bg-purple-950/80 text-purple-200 border-purple-800 font-mono flex items-center gap-1.5">
+                                                    <span>🔒</span>
+                                                    <span>🔒 Anchored to Keyframe Seed:</span>
+                                                    <span className="text-amber-300 font-extrabold">{"<FIRST_FRAME>@" + keyframeSeedAnchor}</span>
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsVisualContinuityLocked(!isVisualContinuityLocked)}
+                                                    className={`text-xs font-extrabold px-3 py-1 rounded-lg border transition flex items-center gap-1 ${
+                                                        isVisualContinuityLocked
+                                                            ? "bg-purple-900 hover:bg-purple-800 text-purple-200 border-purple-600 shadow"
+                                                            : "bg-gray-900 hover:bg-gray-800 text-gray-400 border-gray-700"
+                                                    }`}
+                                                >
+                                                    {isVisualContinuityLocked ? (
+                                                        <>
+                                                            <span>🔒</span>
+                                                            <span>🔒 Lock Visual Continuity</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span>🔓</span>
+                                                            <span>🔓 Fresh Keyframe</span>
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-300 block">Diff Modification Prompt (POST /api/diff):</label>
+                                            <div className="flex flex-col sm:flex-row gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={j3DiffPrompt}
+                                                    onChange={(e) => setJ3DiffPrompt(e.target.value)}
+                                                    placeholder="Describe scene modification diff from selected turn..."
+                                                    className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    disabled={j3DiffLoading || !j3DiffPrompt.trim()}
+                                                    onClick={handleJ3DiffSubmit}
+                                                    className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow transition disabled:opacity-50 whitespace-nowrap flex items-center justify-center gap-1.5"
+                                                >
+                                                    <span>🎯</span>
+                                                    <span>{j3DiffLoading ? "Applying Diff..." : "Apply Diff (POST /api/diff)"}</span>
+                                                </button>
+                                            </div>
+                                            <p className="text-[10px] text-gray-400">
+                                                Active Branch Parent Turn: <span className="font-mono text-amber-300">{activeBranchTurnId || "turn_00"}</span> | Active Keyframe Seed Anchor: <span className="font-mono text-purple-300">{"<FIRST_FRAME>@" + keyframeSeedAnchor}</span>
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
 
