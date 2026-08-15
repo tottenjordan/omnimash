@@ -1023,7 +1023,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [activeBranchTurnId, setActiveBranchTurnId] = useState("turn_00");
             const [isVisualContinuityLocked, setIsVisualContinuityLocked] = useState(true);
             const [keyframeSeedAnchor, setKeyframeSeedAnchor] = useState("KeyframeSeed");
-            const [j3DiffPrompt, setJ3DiffPrompt] = useState("");
+            const [j3DiffPrompt, setJ3DiffPrompt] = useState("Make background darker with glowing blue neon, Add heavy 808 bass drop audio cue");
             const [j3DiffLoading, setJ3DiffLoading] = useState(false);
 
             // Tab 3 Character Roles & Vault State
@@ -1549,6 +1549,54 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
+            const handleReSyncStoryboardDefaults = async () => {
+                setExpandLoading(true);
+                setLastError(null);
+                try {
+                    if (concept && concept.trim()) {
+                        await handleDeconstructConcept(concept);
+                    }
+                    const res = await fetch("/api/storyboard/expand", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            concept: concept || "Parody music video clash",
+                            style_tone: stageStyleTone || cameraLightingTag || "Gritty 90s Cyberpunk",
+                            target_duration: parseFloat(stageTargetDuration) || 30.0,
+                            characters: characters,
+                            screenplay_script: screenplayScript,
+                            aspect_ratio: aspectRatio
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.shots && data.shots.length > 0) {
+                        const updatedShots = data.shots.map((s, idx) => ({
+                            ...s,
+                            action: s.action || `[0-3s] Action: ${concept} shot ${idx + 1}. Audio: ${audioBeat || "Heavy 808 beat"}. Dialogue: ${vocalDelivery || "Energetic"}`,
+                            framing_motion: s.framing_motion || cameraLightingTag || "Static medium shot with subtle drift",
+                            style_lighting: s.style_lighting || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : "🎨 90s Cel-Shaded Anime, vibrant flat colors"),
+                            audio: s.audio || audioBeat || "[0-3s] Heavy 808 Trap Beat Drop | [3-10s] Sub-Bass and Snares"
+                        }));
+                        setStageShots(updatedShots);
+                        setActiveShotIdx(0);
+                        setActiveStage(2);
+                    } else if (stageShots && stageShots.length > 0) {
+                        const syncedShots = stageShots.map(s => ({
+                            ...s,
+                            framing_motion: cameraLightingTag || s.framing_motion || "Static medium shot with subtle drift",
+                            style_lighting: (aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : (s.style_lighting || "🎨 90s Cel-Shaded Anime"),
+                            audio: audioBeat ? `[0-3s] ${audioBeat} | [3-10s] Sub-Bass` : s.audio
+                        }));
+                        setStageShots(syncedShots);
+                    }
+                } catch (err) {
+                    console.error("Storyboard re-sync failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setExpandLoading(false);
+                }
+            };
+
             const handleGenerateKeyframeImage = async (idx, shot) => {
                 if (!shot) return null;
                 const shotIdx = shot.shot_index || (idx + 1);
@@ -1871,6 +1919,11 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data.camera_lighting_tag) setCameraLightingTag(data.camera_lighting_tag);
                     if (data.audio_beat) setAudioBeat(data.audio_beat);
                     if (data.vocal_delivery) setVocalDelivery(data.vocal_delivery);
+                    if (data.camera_lighting_tag || data.audio_beat) {
+                        setJ3DiffPrompt(`Make background ${data.camera_lighting_tag || "darker with glowing blue neon"}. Add ${data.audio_beat || "heavy 808 bass drop audio cue"}.`);
+                    } else {
+                        setJ3DiffPrompt("Make background darker with glowing blue neon, Add heavy 808 bass drop audio cue");
+                    }
                 } catch (err) {
                     console.error("Deconstruction failed:", err);
                 } finally {
@@ -3362,7 +3415,16 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-end pt-1">
+                                    <div className="flex justify-end pt-1 gap-2">
+                                        <button
+                                            type="button"
+                                            disabled={deconstructLoading || !concept.trim()}
+                                            onClick={() => handleDeconstructConcept(concept)}
+                                            className="bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition disabled:opacity-50 text-white"
+                                        >
+                                            <span>⚡</span>
+                                            <span>{deconstructLoading ? "Syncing Defaults..." : "⚡ Sync Intuitive Defaults from Vision Prompt"}</span>
+                                        </button>
                                         <button
                                             type="button"
                                             disabled={deconstructLoading || !concept.trim()}
@@ -4092,6 +4154,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         type="button"
+                                                        disabled={expandLoading || !concept.trim()}
+                                                        onClick={handleReSyncStoryboardDefaults}
+                                                        className="bg-gradient-to-r from-purple-600 to-amber-600 hover:from-purple-500 hover:to-amber-500 text-white font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1 transition disabled:opacity-50"
+                                                    >
+                                                        <span>⚡</span>
+                                                        <span>{expandLoading ? "Re-Syncing..." : "⚡ Re-Sync Storyboard Defaults from Vision Prompt"}</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
                                                         onClick={() => setShowSaveStoryboardModal(true)}
                                                         className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1"
                                                     >
@@ -4466,12 +4537,26 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     <button
                                                         key={idx}
                                                         type="button"
-                                                        onClick={() => setConcept(item.concept)}
+                                                        onClick={() => {
+                                                            setConcept(item.concept);
+                                                            handleDeconstructConcept(item.concept);
+                                                        }}
                                                         className="bg-amber-950/60 border border-amber-800/80 hover:border-amber-500 text-amber-200 text-[11px] px-2.5 py-1 rounded-lg transition"
                                                     >
                                                         {item.name}
                                                     </button>
                                                 ))}
+                                            </div>
+                                            <div className="flex justify-end pt-1">
+                                                <button
+                                                    type="button"
+                                                    disabled={deconstructLoading || !concept.trim()}
+                                                    onClick={() => handleDeconstructConcept(concept)}
+                                                    className="bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition disabled:opacity-50 text-white"
+                                                >
+                                                    <span>⚡</span>
+                                                    <span>{deconstructLoading ? "Syncing..." : "⚡ Sync Intuitive Defaults from Vision Prompt"}</span>
+                                                </button>
                                             </div>
 
                                             <details className="preview-box bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs mt-3">
@@ -5125,6 +5210,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            disabled={expandLoading || !concept.trim()}
+                                            onClick={handleReSyncStoryboardDefaults}
+                                            className="bg-gradient-to-r from-purple-600 to-amber-600 hover:from-purple-500 hover:to-amber-500 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow flex items-center gap-1.5 transition disabled:opacity-50"
+                                        >
+                                            <span>⚡</span>
+                                            <span>{expandLoading ? "Re-Syncing..." : "⚡ Re-Sync Storyboard Defaults from Vision Prompt"}</span>
+                                        </button>
                                         <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
                                             <span className="text-gray-300">📐 Aspect Ratio</span>
                                             <select
@@ -8103,6 +8197,24 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     <span>🎯</span>
                                                     <span>{j3DiffLoading ? "Applying Diff..." : "Apply Diff (POST /api/diff)"}</span>
                                                 </button>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                                <span className="text-[11px] text-gray-400 font-medium">⚡ Vision Prompt Diff Suggestions:</span>
+                                                {[
+                                                    "Make background darker with glowing blue neon",
+                                                    "Add heavy 808 bass drop audio cue",
+                                                    "Zoom camera in on character face with dramatic lighting",
+                                                    "Add fog particles and purple rim lights"
+                                                ].map((diffText, dIdx) => (
+                                                    <button
+                                                        key={dIdx}
+                                                        type="button"
+                                                        onClick={() => setJ3DiffPrompt(diffText)}
+                                                        className="bg-blue-950/60 border border-blue-800/80 hover:border-blue-500 text-blue-200 text-[10px] px-2 py-0.5 rounded-md transition"
+                                                    >
+                                                        {diffText}
+                                                    </button>
+                                                ))}
                                             </div>
                                             <p className="text-[10px] text-gray-400">
                                                 Active Branch Parent Turn: <span className="font-mono text-amber-300">{activeBranchTurnId || "turn_00"}</span> | Active Keyframe Seed Anchor: <span className="font-mono text-purple-300">{"<FIRST_FRAME>@" + keyframeSeedAnchor}</span>

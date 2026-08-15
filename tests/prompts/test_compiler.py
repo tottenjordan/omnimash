@@ -1446,9 +1446,54 @@ def test_compile_journey3_shot_prompt_timeline_separates_dialogue_and_visual_act
     assert '- Spoken Dialogue (Spectacled Wizard Bruv): "Never!"' in prompt
 
 
+def test_deconstruct_concept_extracts_intuitive_vision_defaults():
+    compiler = PromptCompiler(mock_mode=True)
 
+    # 1. Gothic / Dark Fantasy Concept
+    gothic_tags = compiler.deconstruct_concept(
+        "Gothic wizard preparing a dark ritual in an ancient stone castle"
+    )
+    assert gothic_tags.characters, "Characters list must be populated"
+    for char in gothic_tags.characters:
+        assert char.aesthetic_tags, "Character wardrobe/aesthetic tags must be populated"
+        assert char.voice_style, "Character voice style must be populated"
+    assert gothic_tags.aesthetic_tags, "Global aesthetic tags must be populated"
+    assert gothic_tags.environment_tag, "Environment set location & lighting must be populated"
+    assert (
+        "stone" in gothic_tags.environment_tag.lower()
+        or "castle" in gothic_tags.environment_tag.lower()
+        or "candlelight" in gothic_tags.environment_tag.lower()
+    )
+    assert gothic_tags.camera_lighting_tag, "Camera motion, aspect ratio, & lighting must be populated"
+    assert (
+        "16:9" in gothic_tags.camera_lighting_tag
+        or "widescreen" in gothic_tags.camera_lighting_tag
+        or "tracking" in gothic_lighting_tag if (gothic_lighting_tag := gothic_tags.camera_lighting_tag.lower()) else True
+    )
+    assert gothic_tags.audio_beat, "Audio beat & soundscape must be populated"
+    assert "bpm" in gothic_tags.audio_beat.lower()
+    assert gothic_tags.vocal_delivery, "Vocal delivery must be populated"
 
+    # 2. Trap / Rap Concept
+    trap_tags = compiler.deconstruct_concept("Gordon Ramsay in a trap music video")
+    assert trap_tags.characters, "Trap characters must be populated"
+    for char in trap_tags.characters:
+        assert char.aesthetic_tags, "Trap character wardrobe tags must be populated"
+        assert char.voice_style, "Trap character voice style must be populated"
+    assert trap_tags.aesthetic_tags, "Trap aesthetic tags must be populated"
+    assert trap_tags.environment_tag, "Trap environment tag must be populated"
+    assert trap_tags.camera_lighting_tag, "Trap camera/lighting tag must be populated"
+    assert trap_tags.audio_beat, "Trap audio beat must be populated"
+    assert trap_tags.vocal_delivery, "Trap vocal delivery must be populated"
 
-
-
-
+    # 3. Generic Open-Ended Concept
+    generic_tags = compiler.deconstruct_concept("A mysterious stranger walks into town")
+    assert generic_tags.characters, "Generic characters must be populated"
+    for char in generic_tags.characters:
+        assert char.aesthetic_tags, "Generic character wardrobe tags must be populated"
+        assert char.voice_style, "Generic character voice style must be populated"
+    assert generic_tags.aesthetic_tags, "Generic aesthetic tags must be populated"
+    assert generic_tags.environment_tag, "Generic environment tag must be populated"
+    assert generic_tags.camera_lighting_tag, "Generic camera/lighting tag must be populated"
+    assert generic_tags.audio_beat, "Generic audio beat must be populated"
+    assert generic_tags.vocal_delivery, "Generic vocal delivery must be populated"

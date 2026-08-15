@@ -1619,6 +1619,24 @@ def test_ui_html_contains_symmetric_card_grids_and_controls() -> None:
     assert "bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5" in UI_HTML
 
 
+def test_ui_html_contains_vision_prompt_sync_controls_across_modes() -> None:
+    """Verify UI_HTML contains vision prompt sync buttons, handlers, and diff defaults across Modes 1, 2, and 3."""
+    from omnimash.api.app import UI_HTML
+
+    # Mode 1 Guided Mode Sync Button & Handler
+    assert "⚡ Sync Intuitive Defaults from Vision Prompt" in UI_HTML
+    assert "handleDeconstructConcept" in UI_HTML
+
+    # Mode 2 Storyboard Sync Button & Handler
+    assert "⚡ Re-Sync Storyboard Defaults" in UI_HTML
+    assert "handleReSyncStoryboardDefaults" in UI_HTML
+
+    # Mode 3 Continuity Studio Diff Defaults
+    assert "Make background darker with glowing blue neon" in UI_HTML
+    assert "Add heavy 808 bass drop audio cue" in UI_HTML
+
+
+
 
 
 
