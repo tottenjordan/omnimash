@@ -4372,8 +4372,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                        </div>
                         )}
+                    </div>
+                    )}
 
                         {/* ========================================================= */}
                         {/* 🎬 DEDICATED 4-STAGE STORYBOARD JOURNEY WORKFLOW          */}
