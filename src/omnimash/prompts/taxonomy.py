@@ -24,6 +24,7 @@ class StylePreset(str, Enum):
     TRAP_DISSTRACK = "trap_disstrack"
     CYBERPUNK_DRIFT = "cyberpunk_drift"
     VHS_ANIME = "vhs_anime"
+    BLOCKBUSTER_MOVIE_TRAILER = "blockbuster_movie_trailer"
 
 
 class PromptTaxonomyEngine:

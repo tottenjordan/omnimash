@@ -429,6 +429,12 @@ AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
         "motion": "classic limited-frame anime speech animation and dynamic wind blowing through hair for 10 seconds",
         "audio": "Retro 80s city pop brass samples, lo-fi cassette tape hiss, and upbeat Japanese synth melody",
     },
+    "blockbuster_movie_trailer": {
+        "wardrobe": "dramatic cinematic costume with heavy atmospheric weathering, metallic armor accents, or dark velvet cape",
+        "camera": "In a single continuous shot. High-contrast anamorphic widescreen 2.39:1, dramatic volumetric rim lighting, lens flares, and epic slow-motion tracking shot",
+        "motion": "epic slow-motion heroic stance with dynamic embers and smoke particles floating in the air for 10 seconds",
+        "audio": "Deep cinematic trailer braam horn, rising orchestral risers, thunderous sub-bass drop, and epic theatrical soundscape",
+    },
 }
 
 SCREENPLAY_AUDIO_KEYWORDS: set[str] = {
@@ -2515,6 +2521,10 @@ def compile_journey3_shot_prompt(
     audio_track: str | None = None,
     soundscape: str | None = None,
     is_silent: bool = False,
+    title_card_text: str | None = None,
+    title_card_subtitle: str | None = None,
+    narrator_text: str | None = None,
+    narrator_voice: str | None = None,
 ) -> str:
     """Compiles lean 5-block prompt for Journey 3 shot generation.
 
@@ -2670,6 +2680,21 @@ def compile_journey3_shot_prompt(
     dialogue_str = timeline_dialogue.strip() if timeline_dialogue else ""
 
     timeline_items: list[str] = []
+    if title_card_text and title_card_text.strip():
+        tc_val = title_card_text.strip()
+        if enable_sanitization:
+            tc_val = sanitize_real_names(tc_val)
+        sub_str = f' (Subtitle: "{sanitize_real_names(title_card_subtitle.strip()) if enable_sanitization else title_card_subtitle.strip()}")' if title_card_subtitle and title_card_subtitle.strip() else ""
+        timeline_items.append(f'- On-Screen Displayed Text / Title Card: "{tc_val}"{sub_str}')
+
+    if narrator_text and narrator_text.strip():
+        n_val = narrator_text.strip()
+        v_val = narrator_voice.strip() if narrator_voice and narrator_voice.strip() else "Deep Cinematic Voice"
+        if enable_sanitization:
+            n_val = sanitize_real_names(n_val)
+            v_val = sanitize_real_names(v_val)
+        timeline_items.append(f'- Offscreen Narrator ({v_val}): "{n_val}"')
+
     if action_str:
         timeline_items.append(f"- Visual Action: {action_str}")
 

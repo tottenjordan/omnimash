@@ -385,6 +385,10 @@ class Journey3ShotGenerateRequest(BaseModel):
     audio_mode: str = "global"
     audio_stem: str | None = None
     global_audio_beat: str | None = None
+    title_card_text: str | None = None
+    title_card_subtitle: str | None = None
+    narrator_text: str | None = None
+    narrator_voice: str | None = None
 
 
 
@@ -1171,6 +1175,64 @@ UI_HTML = r"""<!DOCTYPE html>
                         };
                     })
                 );
+            };
+
+            const handleLoadMovieTrailerTemplate = () => {
+                setStylePreset("blockbuster_movie_trailer");
+                const firstCharId = (j3Characters && j3Characters.length > 0) ? [j3Characters[0].role_id] : ["Role A"];
+                setJ3ShotCards([
+                    {
+                        shot_index: 1,
+                        image_prompt: "High-contrast cinematic title card floating over foggy neon ruins, volumetric beam lighting, 2.39:1 anamorphic lens",
+                        action_directive: "Dramatic camera slow push-in over ominous foggy skyline with embers floating",
+                        dialogue_text: "",
+                        title_card_text: "IN A WORLD OF SHADOWS...",
+                        title_card_subtitle: "AN ALL-NEW CINEMATIC EXPERIENCE",
+                        narrator_text: "In a world where ancient magic meets high-tech cybernetics...",
+                        narrator_voice: "Deep Cinematic Announcer",
+                        audio_mode: "custom",
+                        audio_stem: "Deep cinematic trailer braam horn riser and thunderous sub-bass drop",
+                        keyframe_image_url: "",
+                        keyframe_role: "Strict First Frame",
+                        video_url: "",
+                        cumulative_state: [],
+                        included_character_ids: firstCharId
+                    },
+                    {
+                        shot_index: 2,
+                        image_prompt: "Spectacled Wizard Bruv raising glowing energy wand in rainy cyberpunk alley, reflections, anamorphic widescreen",
+                        action_directive: "Spectacled Wizard Bruv draws glowing energy wand in rainy cyberpunk alley, slow-motion heroic stance",
+                        dialogue_text: "Spectacled Wizard Bruv: \"I see through your darkness.\"",
+                        title_card_text: "",
+                        title_card_subtitle: "",
+                        narrator_text: "One sorcerer stood alone against the darkness.",
+                        narrator_voice: "Deep Cinematic Announcer",
+                        audio_mode: "custom",
+                        audio_stem: "Heavy brass horns, rising string staccato, and rhythmic trailer percussion",
+                        keyframe_image_url: "",
+                        keyframe_role: "Strict First Frame",
+                        video_url: "",
+                        cumulative_state: [],
+                        included_character_ids: firstCharId
+                    },
+                    {
+                        shot_index: 3,
+                        image_prompt: "Massive golden energy explosion shattering dark wizard tower, epic cinematic finale, 2.39:1 anamorphic bloom",
+                        action_directive: "Spectacled Wizard Bruv unleashes massive golden energy blast across ruined courtyard, embers and sparks flying",
+                        dialogue_text: "",
+                        title_card_text: "THE FINAL DUEL",
+                        title_card_subtitle: "IN THEATERS THIS SUMMER",
+                        narrator_text: "The battle for humanity begins now.",
+                        narrator_voice: "Deep Cinematic Announcer",
+                        audio_mode: "custom",
+                        audio_stem: "Epic orchestral brass climax, electronic synth drop, and decaying tail reverb",
+                        keyframe_image_url: "",
+                        keyframe_role: "Strict First Frame",
+                        video_url: "",
+                        cumulative_state: [],
+                        included_character_ids: firstCharId
+                    }
+                ]);
             };
 
             const handleRemoveJ3ShotCard = (targetShotIdx) => {
@@ -7750,6 +7812,15 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                             </button>
                                             <button
                                                 type="button"
+                                                onClick={handleLoadMovieTrailerTemplate}
+                                                className="bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-600/70 text-xs font-extrabold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition shadow"
+                                                title="Load 10s Movie Trailer Storyboard Template with Narrator and Title Cards"
+                                            >
+                                                <span>🍿</span>
+                                                <span>🎬 Load 10s Movie Trailer Template</span>
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={handleAddJ3ShotCard}
                                                 className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 transition shadow"
                                             >
@@ -7993,6 +8064,74 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                                     />
                                                                 </div>
                                                             )}
+                                                        </div>
+
+                                                        {/* 📺 On-Screen Displayed Text / Title Card Overlay */}
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-950/80 p-2.5 rounded-xl border border-amber-900/40">
+                                                            <div>
+                                                                <label className="text-[11px] font-bold text-amber-300 block mb-0.5">📺 Title Card Text:</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={card.title_card_text || ""}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setJ3ShotCards((prev) =>
+                                                                            prev.map((c) => (c.shot_index === card.shot_index ? { ...c, title_card_text: val, compiled_override: undefined } : c))
+                                                                        );
+                                                                    }}
+                                                                    placeholder='e.g. "IN A WORLD OF SHADOWS..."'
+                                                                    className="w-full bg-black border border-amber-800/60 rounded-lg p-1.5 text-xs text-amber-200 font-mono"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[11px] font-bold text-amber-400 block mb-0.5">🏷️ Title Subtitle / Tagline:</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={card.title_card_subtitle || ""}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setJ3ShotCards((prev) =>
+                                                                            prev.map((c) => (c.shot_index === card.shot_index ? { ...c, title_card_subtitle: val, compiled_override: undefined } : c))
+                                                                        );
+                                                                    }}
+                                                                    placeholder='e.g. "COMING THIS SUMMER"'
+                                                                    className="w-full bg-black border border-amber-800/60 rounded-lg p-1.5 text-xs text-amber-300 font-mono"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* 🎙️ Offscreen Narrator Voiceover & Style */}
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-purple-950/30 p-2.5 rounded-xl border border-purple-800/40">
+                                                            <div className="sm:col-span-2">
+                                                                <label className="text-[11px] font-bold text-purple-300 block mb-0.5">🎙️ Offscreen Narrator Text:</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={card.narrator_text || ""}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setJ3ShotCards((prev) =>
+                                                                            prev.map((c) => (c.shot_index === card.shot_index ? { ...c, narrator_text: val, compiled_override: undefined } : c))
+                                                                        );
+                                                                    }}
+                                                                    placeholder='e.g. "In a world where magic meets tech..."'
+                                                                    className="w-full bg-black border border-purple-900/60 rounded-lg p-1.5 text-xs text-purple-100 font-mono"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[11px] font-bold text-purple-400 block mb-0.5">🗣️ Voice Style:</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={card.narrator_voice || ""}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setJ3ShotCards((prev) =>
+                                                                            prev.map((c) => (c.shot_index === card.shot_index ? { ...c, narrator_voice: val, compiled_override: undefined } : c))
+                                                                        );
+                                                                    }}
+                                                                    placeholder='e.g. "Deep Cinematic Voice"'
+                                                                    className="w-full bg-black border border-purple-900/60 rounded-lg p-1.5 text-xs text-purple-200 font-mono"
+                                                                />
+                                                            </div>
                                                         </div>
 
                                                         <div>
@@ -9280,6 +9419,10 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 timeline_dialogue=req.dialogue_text,
                 enable_sanitization=req.enable_safety_sanitization,
                 characters=char_objs if char_objs else None,
+                title_card_text=req.title_card_text,
+                title_card_subtitle=req.title_card_subtitle,
+                narrator_text=req.narrator_text,
+                narrator_voice=req.narrator_voice,
             )
 
         keyframe_url = req.keyframe_image_url

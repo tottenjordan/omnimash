@@ -1497,3 +1497,19 @@ def test_deconstruct_concept_extracts_intuitive_vision_defaults():
     assert generic_tags.camera_lighting_tag, "Generic camera/lighting tag must be populated"
     assert generic_tags.audio_beat, "Generic audio beat must be populated"
     assert generic_tags.vocal_delivery, "Generic vocal delivery must be populated"
+
+
+def test_compile_journey3_shot_prompt_formatting_title_cards_and_narrator():
+    prompt = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="Dramatic camera slow push-in over ominous foggy skyline",
+        title_card_text="IN A WORLD OF SHADOWS...",
+        title_card_subtitle="AN ALL-NEW CINEMATIC EXPERIENCE",
+        narrator_text="In a world where ancient magic meets high-tech cybernetics...",
+        narrator_voice="Deep Cinematic Announcer",
+        audio_stem="Deep cinematic trailer braam horn riser",
+    )
+    assert '- On-Screen Displayed Text / Title Card: "IN A WORLD OF SHADOWS..." (Subtitle: "AN ALL-NEW CINEMATIC EXPERIENCE")' in prompt
+    assert '- Offscreen Narrator (Deep Cinematic Announcer): "In a world where ancient magic meets high-tech cybernetics..."' in prompt
+    assert "- Visual Action: Dramatic camera slow push-in over ominous foggy skyline" in prompt
+    assert "Audio: Deep cinematic trailer braam horn riser" in prompt
