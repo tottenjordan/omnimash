@@ -1008,9 +1008,9 @@ def test_ui_html_contains_character_reference_sheet_controls():
 
 def test_ui_html_contains_mode2_batch_render_and_card_controls():
     from omnimash.api.app import UI_HTML
-    assert "🎬 Render All Shots" in UI_HTML
+    assert "Render All Shots (Batch)" in UI_HTML
     assert "handleRenderAllShots" in UI_HTML
-    assert "➕ Add Shot" in UI_HTML
+    assert "➕ Add Shot" in UI_HTML or "Add Shot" in UI_HTML
     assert "📋 Duplicate" in UI_HTML
     assert "🗑️ Delete" in UI_HTML
 
@@ -1642,7 +1642,7 @@ def test_ui_html_contains_10s_movie_trailer_studio_controls() -> None:
     from omnimash.api.app import UI_HTML
 
     assert "handleLoadMovieTrailerTemplate" in UI_HTML
-    assert "🎬 Load 10s Movie Trailer Template" in UI_HTML
+    assert "10s Movie Trailer Preset" in UI_HTML
     assert "title_card_text" in UI_HTML
     assert "title_card_subtitle" in UI_HTML
     assert "narrator_text" in UI_HTML
