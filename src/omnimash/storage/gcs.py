@@ -201,11 +201,27 @@ class GcsStorageManager:
             return self.get_public_url(destination_blob_name)
 
     def download_blob_bytes(self, gs_uri: str) -> tuple[bytes, str]:
-        """Downloads binary bytes and infers content_type from a GCS URI (gs://bucket/blob_path)."""
-        if not isinstance(gs_uri, str) or not gs_uri.startswith("gs://"):
+        """Downloads binary bytes and infers content_type from a GCS URI (gs://bucket/blob_path) or HTTPS storage URL."""
+        if not isinstance(gs_uri, str) or not gs_uri.strip():
             return (b"", "image/jpeg")
 
-        path = gs_uri[5:]
+        raw_uri = gs_uri.strip()
+        if "/api/media-proxy" in raw_uri and "uri=" in raw_uri:
+            try:
+                parsed = urlparse(raw_uri)
+                qs = parse_qs(parsed.query)
+                if "uri" in qs and qs["uri"]:
+                    raw_uri = qs["uri"][0]
+            except Exception:
+                pass
+
+        if raw_uri.startswith("https://storage.googleapis.com/"):
+            raw_uri = "gs://" + raw_uri.replace("https://storage.googleapis.com/", "")
+
+        if not raw_uri.startswith("gs://"):
+            return (b"", "image/jpeg")
+
+        path = raw_uri[5:]
         parts = path.split("/", 1)
         if len(parts) != 2 or not parts[0] or not parts[1]:
             return (b"", "image/jpeg")
