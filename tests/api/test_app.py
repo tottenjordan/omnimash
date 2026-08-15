@@ -1251,7 +1251,8 @@ def test_journey3_setup_defaults_included_characters_when_action_text_is_generic
     for card in cards:
         assert "included_character_ids" in card
         assert "Role X" in card["included_character_ids"]
-        assert "Role Y" in card["included_character_ids"]
+        assert "Role Y" not in card["included_character_ids"]
+        assert len(card["included_character_ids"]) <= 1
 
 
 def test_ui_html_journey3_character_selection_and_sync_patterns():
