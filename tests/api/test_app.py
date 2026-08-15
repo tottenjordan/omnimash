@@ -1573,6 +1573,54 @@ def test_ui_html_contains_mode1_presets_and_compiled_prompt_preview() -> None:
     assert "Live Compiled Prompt Preview (4-Block Meta-Prompt)" in UI_HTML
 
 
+def test_ui_html_contains_unified_3mode_switcher_and_headers() -> None:
+    """Verify UI_HTML contains unified 3-Mode Studio Switcher tabs and standardized Mode Header Card banners."""
+    from omnimash.api.app import UI_HTML
+
+    # Switcher tabs & target output badges
+    assert "Mode 1: Guided Fine-Tune" in UI_HTML
+    assert "Single Video Target" in UI_HTML
+    assert "Mode 2: Screenplay Storyboard" in UI_HTML
+    assert "Multi-Scene Master Target" in UI_HTML
+    assert "Mode 3: Continuity Studio" in UI_HTML
+    assert "Conversational Diff Target" in UI_HTML
+
+    # Mode 1 Header Banner
+    assert "Step 1: Set Visual Concept &amp; Cast" in UI_HTML or "Step 1: Set Visual Concept & Cast" in UI_HTML
+    assert "Step 2: Fine-Tune Audio &amp; Beat" in UI_HTML or "Step 2: Fine-Tune Audio & Beat" in UI_HTML
+    assert "Step 3: Render &amp; Refine Single Video" in UI_HTML or "Step 3: Render & Refine Single Video" in UI_HTML
+
+    # Mode 2 Header Banner
+    assert "Step 1: Global Production Context" in UI_HTML
+    assert "Step 2: Multi-Scene Storyboard Directing" in UI_HTML
+    assert "Step 3: Concatenate Master Screening Room" in UI_HTML
+
+    # Mode 3 Header Banner
+    assert "Step 1: Master Setup &amp; Roster" in UI_HTML or "Step 1: Master Setup & Roster" in UI_HTML
+    assert "Step 2: Sequential Shot Generation &amp; Keyframe Anchors" in UI_HTML or "Step 2: Sequential Shot Generation & Keyframe Anchors" in UI_HTML
+    assert "Step 3: Turn History &amp; Conversational Diffing" in UI_HTML or "Step 3: Turn History & Conversational Diffing" in UI_HTML
+
+
+def test_ui_html_contains_symmetric_card_grids_and_controls() -> None:
+    """Verify UI_HTML contains balanced 2/3-column card grids, standardized card containers, section headers, and unified button styling."""
+    from omnimash.api.app import UI_HTML
+
+    # Balanced Grid Containers across modes
+    assert "grid grid-cols-1 md:grid-cols-2 gap-6" in UI_HTML
+    assert "grid grid-cols-1 lg:grid-cols-3 gap-4" in UI_HTML
+
+    # Standardized Card Containers & Section Headers
+    assert "border-gray-800 bg-gray-900/80 backdrop-blur" in UI_HTML
+    assert "p-5 rounded-2xl" in UI_HTML
+    assert "border-l-4 border-indigo-500 pl-3" in UI_HTML
+
+    # Unified Button Styling (Primary & Secondary)
+    assert "bg-gradient-to-r from-blue-600 to-indigo-600 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2" in UI_HTML
+    assert "bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5" in UI_HTML
+
+
+
+
 
 
 
