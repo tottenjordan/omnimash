@@ -1137,20 +1137,21 @@ class PromptCompiler:
         prompt_text = (
             f"Deconstruct the following video parody concept into structured prompt tags:\n"
             f'Concept: "{concept}"\n\n'
+            f"Provide intuitive vision defaults for wardrobe, voice style, environment lighting, camera motion, aspect ratio, audio beat, and vocal delivery.\n"
             f"Return ONLY a valid JSON object matching this exact schema:\n"
             f"{{\n"
             f'  "characters": [\n'
             f"    {{\n"
             f'      "role_id": "Role A",\n'
             f'      "name": "Character Name",\n'
-            f'      "description": "Visual description of character",\n'
-            f'      "aesthetic_tags": ["tag1", "tag2"],\n'
+            f'      "description": "Visual description of character including wardrobe and aesthetic tags",\n'
+            f'      "aesthetic_tags": ["wardrobe tag 1", "aesthetic tag 2"],\n'
             f'      "voice_style": "Voice style description"\n'
             f"    }}\n"
             f"  ],\n"
-            f'  "aesthetic_tags": ["tag1", "tag2"],\n'
-            f'  "environment_tag": "Environment description",\n'
-            f'  "camera_lighting_tag": "Camera & lighting description",\n'
+            f'  "aesthetic_tags": ["overall aesthetic tag 1", "tag 2"],\n'
+            f'  "environment_tag": "Detailed set location and environment lighting description",\n'
+            f'  "camera_lighting_tag": "Camera motion, framing, aspect ratio (e.g. 16:9 or widescreen), and lighting style",\n'
             f'  "audio_beat": "Audio beat description",\n'
             f'  "vocal_delivery": "Vocal delivery description"\n'
             f"}}\n"
@@ -1188,26 +1189,72 @@ class PromptCompiler:
 
                 data = json.loads(clean_text)
 
+                fallback_tags = self._deconstruct_fallback(concept)
+
                 chars: list[CharacterRole] = []
-                for c_data in data.get("characters", []):
-                    chars.append(
-                        CharacterRole(
-                            role_id=c_data.get("role_id", "Role A"),
-                            name=c_data.get("name", ""),
-                            description=c_data.get("description", ""),
-                            reference_url=c_data.get("reference_url"),
-                            aesthetic_tags=c_data.get("aesthetic_tags", []),
-                            voice_style=c_data.get("voice_style", ""),
+                raw_chars = data.get("characters", [])
+                if not raw_chars:
+                    chars = fallback_tags.characters
+                else:
+                    for idx, c_data in enumerate(raw_chars):
+                        fb_char = (
+                            fallback_tags.characters[idx]
+                            if idx < len(fallback_tags.characters)
+                            else None
                         )
-                    )
+                        c_aesthetic = c_data.get("aesthetic_tags", [])
+                        if not c_aesthetic and fb_char:
+                            c_aesthetic = fb_char.aesthetic_tags
+                        if not c_aesthetic:
+                            c_aesthetic = ["Stylized Wardrobe", "Cinematic Attire"]
+
+                        c_voice = c_data.get("voice_style", "")
+                        if not c_voice and fb_char:
+                            c_voice = fb_char.voice_style
+                        if not c_voice:
+                            c_voice = "Cinematic theatrical voice with distinct expressive delivery"
+
+                        chars.append(
+                            CharacterRole(
+                                role_id=c_data.get("role_id", f"Role {chr(65+idx)}"),
+                                name=c_data.get(
+                                    "name",
+                                    fb_char.name if fb_char else "Lead Subject",
+                                ),
+                                description=c_data.get(
+                                    "description",
+                                    fb_char.description
+                                    if fb_char
+                                    else "A distinct cinematic character",
+                                ),
+                                reference_url=c_data.get("reference_url"),
+                                aesthetic_tags=c_aesthetic,
+                                voice_style=c_voice,
+                            )
+                        )
+
+                aesthetic_tags = (
+                    data.get("aesthetic_tags") or fallback_tags.aesthetic_tags
+                )
+                env_tag = (
+                    data.get("environment_tag") or fallback_tags.environment_tag
+                )
+                cam_tag = (
+                    data.get("camera_lighting_tag")
+                    or fallback_tags.camera_lighting_tag
+                )
+                audio_beat = data.get("audio_beat") or fallback_tags.audio_beat
+                vocal_delivery = (
+                    data.get("vocal_delivery") or fallback_tags.vocal_delivery
+                )
 
                 return MetaPromptTags(
                     characters=chars,
-                    aesthetic_tags=data.get("aesthetic_tags", []),
-                    environment_tag=data.get("environment_tag", ""),
-                    camera_lighting_tag=data.get("camera_lighting_tag", ""),
-                    audio_beat=data.get("audio_beat", ""),
-                    vocal_delivery=data.get("vocal_delivery", ""),
+                    aesthetic_tags=aesthetic_tags,
+                    environment_tag=env_tag,
+                    camera_lighting_tag=cam_tag,
+                    audio_beat=audio_beat,
+                    vocal_delivery=vocal_delivery,
                 )
             except Exception as exc:
                 logger.warning(
@@ -2058,6 +2105,39 @@ class PromptCompiler:
                     "ninja": ["Cel-Shaded Ninja Garb", "Stealth Visor"],
                 }
                 return tag_map.get(k, ["Cel-Shaded Styling", "Retro Headband"])
+            elif any(
+                t in lower
+                for t in (
+                    "gothic",
+                    "horror",
+                    "vampire",
+                    "dark fantasy",
+                    "ritual",
+                    "witch",
+                )
+            ):
+                tag_map = {
+                    "harry": ["Embroidered Velvet Robes", "Silver Wire-Rim Glasses"],
+                    "draco": ["High-Collar Aristocratic Cloak", "Platinum Hair"],
+                    "snape": ["Flowing Gothic Trench Cloak", "Severe Dark Attire"],
+                    "dumbledore": ["Ornate Runed Robes", "Half-Moon Spectacles"],
+                    "voldemort": ["Dark Ritual Robes", "Serpentine Crest"],
+                }
+                return tag_map.get(k, ["Flowing Dark Cloak", "Victorian Velvet Attire"])
+            elif any(t in lower for t in ("western", "cowboy", "outlaw", "saloon")):
+                tag_map = {
+                    "harry": ["Worn Leather Stetson", "Round Wire Glasses"],
+                    "draco": ["Tailored Outlaw Vest", "Silver Spurs"],
+                    "snape": ["Black Leather Duster", "Broad Brim Hat"],
+                }
+                return tag_map.get(k, ["Worn Leather Stetson", "Dusty Duster Coat"])
+            elif any(t in lower for t in ("noir", "detective", "mystery")):
+                tag_map = {
+                    "harry": ["Vintage Trench Coat", "Round Glasses"],
+                    "draco": ["Tailored Double-Breasted Suit", "Silk Tie"],
+                    "snape": ["High-Collar Dark Trench Coat", "Fedora"],
+                }
+                return tag_map.get(k, ["Vintage Trench Coat", "Custom Fedora Hat"])
             else:
                 tag_map = {
                     "harry": ["Red Gucci Tracksuit", "Cartier Glasses"],
@@ -2129,6 +2209,22 @@ class PromptCompiler:
                 return voice_map.get(
                     k, "Expressive retro anime dub voice with dramatic flair"
                 )
+            elif any(
+                t in lower
+                for t in (
+                    "gothic",
+                    "horror",
+                    "vampire",
+                    "dark fantasy",
+                    "ritual",
+                    "witch",
+                )
+            ):
+                return "Deep resonant vocal tone with deliberate theatrical emphasis"
+            elif any(t in lower for t in ("western", "cowboy", "outlaw", "saloon")):
+                return "Low raspy western drawl with measured calm tone"
+            elif any(t in lower for t in ("noir", "detective", "mystery")):
+                return "Hard-boiled low baritone voiceover with dry sardonic tone"
             else:
                 voice_map = {
                     "harry": "Youthful British accent with determined heroic cadence",
@@ -2304,6 +2400,49 @@ class PromptCompiler:
             cam_tag = (
                 "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
             )
+        elif any(
+            t in lower
+            for t in (
+                "gothic",
+                "horror",
+                "vampire",
+                "dark fantasy",
+                "ritual",
+                "witch",
+            )
+        ):
+            aesthetic_tags = [
+                "Gothic Dark Fantasy",
+                "Victorian Velvet Attire",
+                "Moody Candlelight",
+                "Atmospheric Haze",
+            ]
+            audio_beat = "90 BPM Dark Atmospheric Ambient Synth"
+            vocal_delivery = "Low brooding resonant delivery with solemn theatrical pauses and dark echo"
+            env_tag = "Ancient stone castle chamber illuminated by flickering candlelight and moonlit fog"
+            cam_tag = "Cinematic 16:9 slow push-in tracking shot with high-contrast shadows and moody rim lighting"
+        elif any(t in lower for t in ("western", "cowboy", "outlaw", "saloon")):
+            aesthetic_tags = [
+                "Gritty 19th-Century Western",
+                "Dusty Leather Duster",
+                "Sun-Drenched Color Grading",
+                "Vintage Sepia Tone",
+            ]
+            audio_beat = "100 BPM Spaghetti Western Guitar & Whistle"
+            vocal_delivery = "Grit-textured drawl with quiet intense projection and slow cadence"
+            env_tag = "Sun-scorched frontier desert town with dusty wooden storefronts and harsh sunlight"
+            cam_tag = "Widescreen 2.39:1 low-angle tracking shot with intense sun flares and heat shimmer"
+        elif any(t in lower for t in ("noir", "detective", "mystery")):
+            aesthetic_tags = [
+                "1940s Classic Film Noir",
+                "Vintage Trench Coat & Fedora",
+                "Chiaroscuro High-Contrast",
+                "Venetian Blind Shadows",
+            ]
+            audio_beat = "75 BPM Smoky Jazz Saxophone & Slow Drums"
+            vocal_delivery = "Cynical hard-boiled voiceover monologue with weary rhythmic pacing"
+            env_tag = "Rain-slicked urban street at midnight lit by flickering neon signage and streetlamps"
+            cam_tag = "Dutch-angle 16:9 tracking shot with deep shadow contrast and moody rain reflections"
         else:
             aesthetic_tags = [
                 "High-Contrast Cinematic Parody",
