@@ -993,7 +993,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     keyframe_role: "Strict First Frame",
                     video_url: "",
                     cumulative_state: [],
-                    included_character_ids: ["Role A", "Role B"]
+                    included_character_ids: ["Role A"]
                 },
                 {
                     shot_index: 2,
@@ -1006,7 +1006,7 @@ UI_HTML = r"""<!DOCTYPE html>
                     keyframe_role: "Strict First Frame",
                     video_url: "",
                     cumulative_state: [],
-                    included_character_ids: ["Role A", "Role B"]
+                    included_character_ids: ["Role A"]
                 }
             ]);
             const [j3KeyframeLoadingMap, setJ3KeyframeLoadingMap] = useState({});
@@ -1108,16 +1108,11 @@ UI_HTML = r"""<!DOCTYPE html>
                 const updated = [...j3Characters, newRole];
                 setJ3Characters(updated);
                 setCharacters(updated);
-                const updatedRoleIds = updated.map(c => c.role_id);
-                setJ3ShotCards(prev => prev.map(card => ({
-                    ...card,
-                    included_character_ids: updatedRoleIds
-                })));
             };
 
             const handleAddJ3ShotCard = () => {
                 const nextIdx = j3ShotCards.length + 1;
-                const defaultCharIds = (j3Characters || []).map(c => c.role_id);
+                const defaultCharIds = (j3Characters && j3Characters.length > 0) ? [j3Characters[0].role_id] : [];
                 const newCard = {
                     shot_index: nextIdx,
                     image_prompt: `Gaunt wizard action sequence for Shot #${nextIdx}`,
@@ -1135,11 +1130,10 @@ UI_HTML = r"""<!DOCTYPE html>
             };
 
             const toggleCharacterInShot = (cardIdx, roleId, isChecked) => {
-                const defaultCharIds = (j3Characters || []).map(c => c.role_id);
                 setJ3ShotCards((prev) =>
                     prev.map((card, idx) => {
                         if (idx !== cardIdx) return card;
-                        const currentList = card.included_character_ids || defaultCharIds;
+                        const currentList = Array.isArray(card.included_character_ids) ? card.included_character_ids : ((j3Characters && j3Characters.length > 0) ? [j3Characters[0].role_id] : []);
                         const updatedList = isChecked
                             ? Array.from(new Set([...currentList, roleId]))
                             : currentList.filter((id) => id !== roleId);
@@ -1160,6 +1154,19 @@ UI_HTML = r"""<!DOCTYPE html>
                         return {
                             ...card,
                             included_character_ids: allRoleIds,
+                            compiled_override: undefined
+                        };
+                    })
+                );
+            };
+
+            const deselectAllCharactersInShot = (cardIdx) => {
+                setJ3ShotCards((prev) =>
+                    prev.map((card, idx) => {
+                        if (idx !== cardIdx) return card;
+                        return {
+                            ...card,
+                            included_character_ids: [],
                             compiled_override: undefined
                         };
                     })
@@ -7789,8 +7796,16 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                   >
                                                       👥 Select All
                                                   </button>
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => deselectAllCharactersInShot(cardIdx)}
+                                                      className="text-[10px] font-bold bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-0.5 transition shadow-sm"
+                                                      title="Clear all attached characters for this shot"
+                                                  >
+                                                      🧹 Clear All
+                                                  </button>
                                                   {j3Characters.map(char => {
-                                                    const isIncluded = (card.included_character_ids || (j3Characters || []).map(c => c.role_id)).includes(char.role_id);
+                                                    const isIncluded = (Array.isArray(card.included_character_ids) ? card.included_character_ids : [j3Characters[0]?.role_id]).includes(char.role_id);
                                                     return (
                                                       <label key={char.role_id} className={`cursor-pointer px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${isIncluded ? 'bg-purple-900/80 text-purple-200 border border-purple-600 shadow' : 'bg-gray-900 text-gray-500 border border-gray-800 opacity-60'}`}>
                                                         <input type="checkbox" checked={isIncluded} onChange={(e) => toggleCharacterInShot(cardIdx, char.role_id, e.target.checked)} className="hidden" />
@@ -7802,16 +7817,16 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                   })}
                                                 </div>
 
-                                                {/* Visual Reference Anchor Badge when attached reference sheets are present */}
-                                                {j3Characters && j3Characters.some(c => c.reference_url) && (
+                                                {/* Visual Reference Anchor Badge when attached reference sheets are present for THIS SHOT */}
+                                                {j3Characters && j3Characters.filter(c => c.reference_url && (Array.isArray(card.included_character_ids) ? card.included_character_ids : [j3Characters[0]?.role_id]).includes(c.role_id)).length > 0 && (
                                                     <div className="space-y-1 bg-purple-950/40 border border-purple-800/70 rounded-xl p-2.5 mb-3">
-                                                        {j3Characters.filter(c => c.reference_url).map((c) => {
+                                                        {j3Characters.filter(c => c.reference_url && (Array.isArray(card.included_character_ids) ? card.included_character_ids : [j3Characters[0]?.role_id]).includes(c.role_id)).map((c) => {
                                                             const charIdx = j3Characters.indexOf(c);
                                                             const filename = c.reference_url.split('/').pop() || c.reference_url;
                                                             return (
                                                                 <div key={c.role_id || charIdx} className="flex items-center justify-between gap-2 text-xs font-mono text-purple-200">
                                                                     <span className="truncate">
-                                                                        🖼️ Attached Reference Anchor: <span className="font-bold text-amber-300">{filename}</span> <span className="text-[10px] text-gray-400">(Click ❌ Detach to clear for fresh visuals)</span>
+                                                                        🖼️ Attached Reference Anchor ({c.name || c.role_id}): <span className="font-bold text-amber-300">{filename}</span> <span className="text-[10px] text-gray-400">(Click ❌ Detach to clear for fresh visuals)</span>
                                                                     </span>
                                                                     <button
                                                                         type="button"
@@ -9019,18 +9034,33 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             characters=char_objs if char_objs else None,
         )
 
+        def _is_char_in_text(c: CharacterRole, text: str) -> bool:
+            if not text or not text.strip():
+                return False
+            t_lower = text.lower()
+            role = (c.role_id or "").strip().lower()
+            if role and role in t_lower:
+                return True
+            name = (c.name or "").strip().lower()
+            if name:
+                if name in t_lower:
+                    return True
+                stop_words = {"the", "and", "fam", "bruv", "chef", "blood", "star", "queen", "king", "master"}
+                words = [w for w in re.split(r"\W+", name) if len(w) >= 3 and w not in stop_words]
+                for w in words:
+                    if w in t_lower:
+                        return True
+            return False
+
         shot_cards = []
         for s in shots:
             enriched_image_prompt = s.action
             matched_char_ids: list[str] = []
             if char_objs:
                 matched_style_strings: list[str] = []
+                combined_shot_text = f"{s.action} {getattr(s, 'dialogue', '')} {getattr(s, 'summary', '')}"
                 for c in char_objs:
-                    name = c.name.lower() if c.name else ""
-                    role = c.role_id.lower() if c.role_id else ""
-                    action_lower = s.action.lower()
-
-                    if (name and name in action_lower) or (role and role in action_lower):
+                    if _is_char_in_text(c, combined_shot_text):
                         matched_char_ids.append(c.role_id)
                         if not c.reference_url or not c.reference_url.strip():
                             tags = []
@@ -9061,7 +9091,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 "dialogue": getattr(s, "dialogue", ""),
                 "summary": getattr(s, "summary", ""),
                 "keyframe_image_url": getattr(s, "keyframe_image_url", ""),
-                "included_character_ids": matched_char_ids if matched_char_ids else ([c.role_id for c in char_objs] if char_objs else []),
+                "included_character_ids": matched_char_ids if matched_char_ids else ([char_objs[0].role_id] if char_objs else []),
             }
             shot_cards.append(card)
 
