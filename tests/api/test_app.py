@@ -918,6 +918,15 @@ def test_ui_html_contains_journey3_components():
     assert "Cumulative State Inspector" in UI_HTML or "Cumulative Scene State" in UI_HTML
 
 
+def test_ui_html_contains_mode3_turn_history_carousel_and_keyframe_lock():
+    assert "TurnHistoryCarousel" in UI_HTML
+    assert "Turn History" in UI_HTML
+    assert "⏪ Branch" in UI_HTML
+    assert "🔒 Lock Visual Continuity" in UI_HTML
+    assert "Keyframe Seed" in UI_HTML
+    assert "/api/diff" in UI_HTML
+
+
 def test_ui_html_syntax_and_tag_balance():
     import re
     match = re.search(r'<script type="text/babel">(.*?)</script>', UI_HTML, re.DOTALL)
@@ -995,6 +1004,15 @@ def test_ui_html_contains_character_reference_sheet_controls():
     assert "/api/characters/save-sheet" in UI_HTML
     assert "Save & Set as Active Character Reference" in UI_HTML
     assert "Character Turnaround Reference Sheet Studio" in UI_HTML
+
+
+def test_ui_html_contains_mode2_batch_render_and_card_controls():
+    from omnimash.api.app import UI_HTML
+    assert "🎬 Render All Shots" in UI_HTML
+    assert "handleRenderAllShots" in UI_HTML
+    assert "➕ Add Shot" in UI_HTML
+    assert "📋 Duplicate" in UI_HTML
+    assert "🗑️ Delete" in UI_HTML
 
 
 def test_journey3_keyframe_api_accepts_model_style_and_reference_urls():
@@ -1541,6 +1559,19 @@ def test_ui_html_contains_guardrail_guidance_state_and_alert_banner() -> None:
     assert "Dismiss ❌" in UI_HTML
     assert "handleAutoAbstractRealNames" in UI_HTML
     assert "handleDetachReferencePhoto" in UI_HTML
+
+
+def test_ui_html_contains_mode1_presets_and_compiled_prompt_preview() -> None:
+    """Verify UI_HTML contains QUICK_PRESET_TEMPLATES and live compiled prompt preview box."""
+    from omnimash.api.app import UI_HTML
+
+    assert "QUICK_PRESET_TEMPLATES" in UI_HTML
+    assert "Quick Concept Presets:" in UI_HTML
+    assert "🪄 Hip-Hop Wand Shop" in UI_HTML
+    assert "⚡ Neon Cyberpunk Rap Battle" in UI_HTML
+    assert "preview-box" in UI_HTML
+    assert "Live Compiled Prompt Preview (4-Block Meta-Prompt)" in UI_HTML
+
 
 
 
