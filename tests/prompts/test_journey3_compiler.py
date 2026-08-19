@@ -16,7 +16,7 @@ def test_cumulative_state_tracking_in_journey3_prompt():
         aspect_ratio="9:16",
     )
 
-    assert "### CUMULATIVE SHOT STATE" in prompt
+    assert "Cumulative Shot State:" in prompt
     assert "Snape: blindfolded with black cloth" in prompt
     assert "- Aspect Ratio: 9:16" in prompt
 
@@ -56,11 +56,10 @@ def test_compile_journey3_shot_prompt_full():
     )
 
     assert "### INPUT ROLES & REFERENCES" in prompt
-    assert "### CUMULATIVE SHOT STATE" in prompt
-    assert "### VISUAL ACTION & CAMERA" in prompt
-    assert "### TIMELINE & DIALOGUE" in prompt
+    assert "### CHARACTER PROFILES" in prompt
+    assert "### SCENE INSTRUCTIONS" in prompt
+    assert "### TIMELINE" in prompt
 
     assert "Spectacled Wizard Bruv" in prompt  # Sanitized Harry Potter
     assert "- Shot Number: 1" in prompt
     assert "- Aspect Ratio: 16:9" in prompt
-    assert "None." in prompt  # Cumulative state block should be "None." when not provided

@@ -2553,14 +2553,13 @@ def compile_journey3_shot_prompt(
     narrator_text: str | None = None,
     narrator_voice: str | None = None,
 ) -> str:
-    """Compiles lean 5-block prompt for Journey 3 shot generation.
+    """Compiles 4-block prompt for Journey 3 shot generation adhering to GEMINI_OMNI_FLASH_INSTR.
 
     Blocks:
     1. ### INPUT ROLES & REFERENCES
     2. ### CHARACTER PROFILES
-    3. ### CUMULATIVE SHOT STATE
-    4. ### VISUAL ACTION & CAMERA
-    5. ### TIMELINE & DIALOGUE
+    3. ### SCENE INSTRUCTIONS
+    4. ### TIMELINE
     """
     if characters and not character_roster:
         char_lines: list[str] = []
@@ -2801,17 +2800,22 @@ def compile_journey3_shot_prompt(
     else:
         timeline_content = "None."
 
+    scene_inst_items = [
+        f"- Shot Number: {shot_number}",
+        f"- Action Directive: {action_str}",
+        f"- Aspect Ratio: {aspect_ratio}",
+    ]
+    if cumulative_state:
+        st_block = cumulative_state.format_cumulative_state_block().strip()
+        if st_block and st_block != "None.":
+            scene_inst_items.append(f"Cumulative Shot State:\n{st_block}")
+    scene_inst_str = "\n".join(scene_inst_items)
+
     block1 = f"### INPUT ROLES & REFERENCES\n{roster_str}"
     block2 = f"### CHARACTER PROFILES\n{roster_str}"
-    block3 = f"### CUMULATIVE SHOT STATE\n{state_str}"
-    block4 = (
-        f"### VISUAL ACTION & CAMERA\n"
-        f"- Shot Number: {shot_number}\n"
-        f"- Action Directive: {action_str}\n"
-        f"- Aspect Ratio: {aspect_ratio}"
-    )
-    block5 = f"### TIMELINE & DIALOGUE\n{timeline_content}"
+    block3 = f"### SCENE INSTRUCTIONS\n{scene_inst_str}"
+    block4 = f"### TIMELINE\n{timeline_content}"
 
-    return f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}\n\n{block5}"
+    return f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
 
 

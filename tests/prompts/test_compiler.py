@@ -1525,3 +1525,28 @@ def test_gemini_omni_flash_instruction_constant_exists():
     assert "@KeyframeSeed" in GEMINI_OMNI_FLASH_INSTR
     assert "- On-Screen Displayed Text / Title Card:" in GEMINI_OMNI_FLASH_INSTR
 
+
+def test_compile_journey3_shot_prompt_enforces_gemini_omni_flash_structure():
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="Snape",
+            description="Gaunt potion master wizard",
+            wardrobe="Black Velvet Trench Coat",
+            reference_url="gs://bucket/snape.jpg",
+        )
+    ]
+    prompt = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="Dramatic camera push-in over potion table",
+        characters=chars,
+        title_card_text="TITLE",
+        title_card_subtitle="SUBTITLE",
+    )
+    assert "### INPUT ROLES & REFERENCES" in prompt
+    assert "### CHARACTER PROFILES" in prompt
+    assert "### SCENE INSTRUCTIONS" in prompt
+    assert "### TIMELINE" in prompt
+    assert '- On-Screen Displayed Text / Title Card: "TITLE" (Subtitle: "SUBTITLE")' in prompt
+
+
