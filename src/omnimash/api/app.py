@@ -5270,147 +5270,163 @@ UI_HTML = r"""<!DOCTYPE html>
                         {activeStage === 2 && (
                             <div className="space-y-6">
                                 {/* Top Header & Master Controls */}
-                                <div className="bg-gradient-to-r from-purple-950/50 via-pink-950/50 to-amber-950/50 border border-purple-800/50 rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
-                                    <div>
-                                        <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
-                                            <span>📋</span>
-                                            <span>Step 2: Shot Card Workstation ({stageShots.length} Shots)</span>
-                                        </h2>
-                                        <p className="text-xs text-gray-400 mt-1">
-                                            Structured cards with 4 widgets: 🎬 Action &amp; Camera, 💬 Spoken Dialogue &amp; Voice Style, 📺 Title Screen Overlay, 🎙️ Narrator Voiceover.
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <button
-                                            type="button"
-                                            disabled={expandLoading || !concept.trim()}
-                                            onClick={handleReSyncStoryboardDefaults}
-                                            className="bg-gradient-to-r from-purple-600 to-amber-600 hover:from-purple-500 hover:to-amber-500 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow flex items-center gap-1.5 transition disabled:opacity-50 whitespace-nowrap"
-                                        >
-                                            <span>⚡</span>
-                                            <span>{expandLoading ? "Re-Syncing..." : "Re-Sync Storyboard Defaults"}</span>
-                                        </button>
-                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
-                                            <span className="text-gray-300">📐 Aspect Ratio</span>
-                                            <select
-                                                value={aspectRatio}
-                                                onChange={(e) => setAspectRatio(e.target.value)}
-                                                className="bg-gray-900 text-purple-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-purple-500 cursor-pointer"
-                                            >
-                                                <option value="16:9">16:9 Widescreen</option>
-                                                <option value="9:16">9:16 Portrait / Shorts</option>
-                                                <option value="1:1">1:1 Square / Instagram</option>
-                                                <option value="21:9">21:9 Ultrawide</option>
-                                            </select>
+                                <div className="bg-gradient-to-r from-purple-950/50 via-pink-950/50 to-amber-950/50 border border-purple-800/50 rounded-2xl p-5 shadow-xl space-y-4">
+                                    {/* Row 1: Header Title & Main Action Controls */}
+                                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-purple-800/40 pb-4">
+                                        <div>
+                                            <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
+                                                <span>📋</span>
+                                                <span>Step 2: Shot Card Workstation ({stageShots.length} Shots)</span>
+                                            </h2>
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                Structured cards with 4 widgets: 🎬 Action &amp; Camera, 💬 Spoken Dialogue &amp; Voice Style, 📺 Title Screen Overlay, 🎙️ Narrator Voiceover.
+                                            </p>
                                         </div>
-                                        <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
-                                            <span>🛡️ Safety Sanitization</span>
-                                            <input
-                                                type="checkbox"
-                                                checked={enableSafetySanitization}
-                                                onChange={(e) => setEnableSafetySanitization(e.target.checked)}
-                                                className="w-4 h-4 accent-purple-500 rounded cursor-pointer"
-                                            />
-                                        </label>
-                                        <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    setStoryboardPath("path1");
-                                                    setActiveStage(1);
-                                                }}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
-                                                storyboardPath === "path1"
-                                                    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black font-extrabold shadow"
-                                                    : "text-gray-400 hover:text-white"
-                                            }`}
-                                        >
-                                            <span>📜</span>
-                                            <span>Path 1: Single Master Script</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setStoryboardPath("path2")}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
-                                                storyboardPath === "path2"
-                                                    ? "bg-purple-600 text-white font-extrabold shadow"
-                                                    : "text-gray-400 hover:text-white"
-                                            }`}
-                                        >
-                                            <span>📋</span>
-                                            <span>Path 2: Per-Shot Workstation</span>
-                                        </button>
-                                    </div>
-                                            <div className="flex items-center space-x-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowSaveStoryboardModal(true)}
-                                                    className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
-                                                >
-                                                    <span>💾 Save Storyboard</span>
-                                                </button>
+                                                onClick={addStageShot}
+                                                className="bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs py-2 px-3.5 rounded-xl shadow-md transition flex items-center gap-1.5"
+                                            >
+                                                <span>➕</span>
+                                                <span>Add Shot Card</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={expandLoading || !concept.trim()}
+                                                onClick={handleReSyncStoryboardDefaults}
+                                                className="bg-gradient-to-r from-purple-600 to-amber-600 hover:from-purple-500 hover:to-amber-500 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow flex items-center gap-1.5 transition disabled:opacity-50"
+                                            >
+                                                <span>⚡</span>
+                                                <span>{expandLoading ? "Re-Syncing..." : "Re-Sync Storyboard Defaults"}</span>
+                                            </button>
+                                            <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        fetchSavedStoryboards();
-                                                        setShowStoryboardLibraryModal(true);
+                                                        setStoryboardPath("path1");
+                                                        setActiveStage(1);
                                                     }}
-                                                    className="bg-blue-900/60 hover:bg-blue-800 border border-blue-700 text-blue-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
-                                                >
-                                                    <span>📂 Storyboard Library</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowStoryboardGuideModal(true)}
-                                                    className="bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
-                                                >
-                                                    <span>❓ Workflow Guide</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowScreenplayModal(true)}
-                                                    className="bg-amber-950/80 hover:bg-amber-900 border border-amber-700 text-amber-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow"
+                                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                                                        storyboardPath === "path1"
+                                                            ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black font-extrabold shadow"
+                                                            : "text-gray-400 hover:text-white"
+                                                    }`}
                                                 >
                                                     <span>📜</span>
-                                                    <span>View Master Screenplay &amp; Notes</span>
+                                                    <span>Single Script</span>
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleGenerateAllKeyframes()}
-                                                    className="bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5"
-                                                    title="Generate keyframe images for all shot cards concurrently"
+                                                    onClick={() => setStoryboardPath("path2")}
+                                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                                                        storyboardPath === "path2"
+                                                            ? "bg-purple-600 text-white font-extrabold shadow"
+                                                            : "text-gray-400 hover:text-white"
+                                                    }`}
                                                 >
-                                                    <span>🖼️</span>
-                                                    <span>Generate All Keyframes</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={isBatchGeneratingVideos}
-                                                    onClick={() => handleGenerateAllShotVideosSequentially(false)}
-                                                    className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
-                                                >
-                                                    <span>🎬</span>
-                                                    <span>Batch Render All Shots (1 ➔ N)</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={stitchMasterLoading}
-                                                    onClick={handleStitchMaster}
-                                                    className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
-                                                >
-                                                    <span>🎬</span>
-                                                    <span>{stitchMasterLoading ? "Stitching..." : "🎬 Stitch Master 30–60s Video (With Title Cards & Voiceover)"}</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={addStageShot}
-                                                    className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-2 rounded-xl transition"
-                                                >
-                                                    + Add Shot Card
+                                                    <span>📋</span>
+                                                    <span>Per-Shot Workstation</span>
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Row 2: Settings Controls & Tool Bar */}
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        {/* Left: Aspect Ratio & Guardrails */}
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
+                                                <span className="text-gray-300">📐 Aspect Ratio</span>
+                                                <select
+                                                    value={aspectRatio}
+                                                    onChange={(e) => setAspectRatio(e.target.value)}
+                                                    className="bg-gray-900 text-purple-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-purple-500 cursor-pointer"
+                                                >
+                                                    <option value="16:9">16:9 Widescreen</option>
+                                                    <option value="9:16">9:16 Portrait / Shorts</option>
+                                                    <option value="1:1">1:1 Square / Instagram</option>
+                                                    <option value="21:9">21:9 Ultrawide</option>
+                                                </select>
+                                            </div>
+                                            <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
+                                                <span>🛡️ Safety Sanitization</span>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={enableSafetySanitization}
+                                                    onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                                    className="w-4 h-4 accent-purple-500 rounded cursor-pointer"
+                                                />
+                                            </label>
+                                        </div>
+
+                                        {/* Right: Modals & Library Controls */}
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowSaveStoryboardModal(true)}
+                                                className="bg-purple-900/60 hover:bg-purple-800 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow"
+                                            >
+                                                <span>💾 Save</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    fetchSavedStoryboards();
+                                                    setShowStoryboardLibraryModal(true);
+                                                }}
+                                                className="bg-blue-900/60 hover:bg-blue-800 border border-blue-700 text-blue-200 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow"
+                                            >
+                                                <span>📂 Library</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowStoryboardGuideModal(true)}
+                                                className="bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow"
+                                            >
+                                                <span>❓ Guide</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowScreenplayModal(true)}
+                                                className="bg-amber-950/80 hover:bg-amber-900 border border-amber-700 text-amber-200 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow"
+                                            >
+                                                <span>📜 Screenplay</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Row 3: High-Priority Batch Generation & Master Video Synthesis Bar */}
+                                    <div className="bg-black/40 border border-purple-900/40 rounded-xl p-3 flex flex-wrap items-center justify-end gap-2.5 shadow-inner">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleGenerateAllKeyframes()}
+                                            className="bg-purple-950/80 hover:bg-purple-900 border border-purple-700 text-purple-200 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5"
+                                            title="Generate keyframe images for all shot cards concurrently"
+                                        >
+                                            <span>🖼️</span>
+                                            <span>Generate All Keyframes</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={isBatchGeneratingVideos}
+                                            onClick={() => handleGenerateAllShotVideosSequentially(false)}
+                                            className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                                        >
+                                            <span>🎬</span>
+                                            <span>Batch Render All Shots (1 ➔ N)</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={stitchMasterLoading}
+                                            onClick={handleStitchMaster}
+                                            className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-extrabold py-2 px-4 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                                        >
+                                            <span>🎬</span>
+                                            <span>{stitchMasterLoading ? "Stitching..." : "Stitch Master Video (30–60s)"}</span>
+                                        </button>
+                                    </div>
+                                </div>
 
                                         {/* Shot Stepper Tabs Header */}
                                         <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
