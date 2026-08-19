@@ -1,6 +1,9 @@
 """ADK Multi-Agent Pipeline for OmniMash Scene Breakdown and Storyboard Compilation."""
 
 from google.adk.agents import Agent, ParallelAgent, SequentialAgent
+from google.adk.tools import AgentTool
+
+from omnimash.prompts.compiler import GEMINI_OMNI_FLASH_INSTR
 
 DECONSTRUCTOR_DEFAULT_INSTRUCTION = (
     "You are the Script Deconstructor Agent for OmniMash. "
@@ -14,7 +17,8 @@ STORYBOARD_COMPILER_DEFAULT_INSTRUCTION = (
     "Your responsibility is to take deconstructed scene directives, character specifications, "
     "and style presets to compile precise 6-part video generation prompts formatted as: "
     "[SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION] + [AUDIO TRACK] "
-    "optimized for Gemini Omni Flash (gemini-omni-flash-preview)."
+    "optimized for Gemini Omni Flash (gemini-omni-flash-preview).\n\n"
+    f"{GEMINI_OMNI_FLASH_INSTR}"
 )
 
 
@@ -124,10 +128,22 @@ def build_production_orchestrator(num_shots: int = 3) -> SequentialAgent:
     )
 
 
+def create_adk_agent_tool_pipeline() -> list[AgentTool]:
+    """Creates ADK AgentTool wrappers for script_deconstructor and storyboard_compiler agents."""
+    deconstructor = create_script_deconstructor_agent()
+    storyboard_compiler = create_storyboard_compiler_agent()
+    return [
+        AgentTool(agent=deconstructor),
+        AgentTool(agent=storyboard_compiler),
+    ]
+
+
 __all__ = [
     "create_script_deconstructor_agent",
     "create_storyboard_compiler_agent",
     "create_shot_execution_worker",
     "create_final_cut_stitcher_agent",
     "build_production_orchestrator",
+    "create_adk_agent_tool_pipeline",
 ]
+

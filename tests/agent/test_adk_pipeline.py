@@ -63,3 +63,19 @@ def test_build_production_orchestrator():
 
     assert orchestrator.sub_agents[3].name == "final_cut_stitcher"
 
+
+def test_adk_pipeline_instructions_include_omni_flash_guidance_and_agent_tools():
+    from google.adk.tools import AgentTool
+    from omnimash.agent.adk_pipeline import (
+        STORYBOARD_COMPILER_DEFAULT_INSTRUCTION,
+        create_adk_agent_tool_pipeline,
+    )
+    from omnimash.prompts.compiler import GEMINI_OMNI_FLASH_INSTR
+
+    assert GEMINI_OMNI_FLASH_INSTR in STORYBOARD_COMPILER_DEFAULT_INSTRUCTION
+    tools = create_adk_agent_tool_pipeline()
+    assert isinstance(tools, list)
+    assert len(tools) >= 2
+    assert all(isinstance(t, AgentTool) for t in tools)
+
+
