@@ -1513,3 +1513,15 @@ def test_compile_journey3_shot_prompt_formatting_title_cards_and_narrator():
     assert '- Offscreen Narrator (Deep Cinematic Announcer): "In a world where ancient magic meets high-tech cybernetics..."' in prompt
     assert "- Visual Action: Dramatic camera slow push-in over ominous foggy skyline" in prompt
     assert "Audio: Deep cinematic trailer braam horn riser" in prompt
+
+
+def test_gemini_omni_flash_instruction_constant_exists():
+    from omnimash.prompts.compiler import GEMINI_OMNI_FLASH_INSTR
+
+    assert isinstance(GEMINI_OMNI_FLASH_INSTR, str)
+    assert "4-Block Meta-Prompt" in GEMINI_OMNI_FLASH_INSTR or "4-Block Anchor & Inject" in GEMINI_OMNI_FLASH_INSTR
+    assert "### INPUT ROLES & REFERENCES" in GEMINI_OMNI_FLASH_INSTR
+    assert "@Image1" in GEMINI_OMNI_FLASH_INSTR
+    assert "@KeyframeSeed" in GEMINI_OMNI_FLASH_INSTR
+    assert "- On-Screen Displayed Text / Title Card:" in GEMINI_OMNI_FLASH_INSTR
+

@@ -81,6 +81,33 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
 
 REAL_NAME_MAPPINGS = REAL_NAME_PARODY_MAP
 
+GEMINI_OMNI_FLASH_INSTR: str = """\
+GEMINI OMNI FLASH PROMPT BEST PRACTICES & COMPILER SPECIFICATION
+
+Gemini Omni Flash (gemini-omni-flash-preview) is the sole video+audio generation engine across all scenes, initial clips, and conversational interaction diffs in Omnimash.
+
+1. 4-Block Meta-Prompt Architecture (4-Block Anchor & Inject):
+   - Block 1: ### INPUT ROLES & REFERENCES
+     Declares all image, character, product, and style inputs using strict positional tags (<IMAGE_REF_0>@Image1, <IMAGE_REF_1>@Image2, <FIRST_FRAME>@KeyframeSeed, etc.).
+   - Block 2: ### CHARACTER PROFILES
+     Defines detailed visual features, aesthetic wardrobe tags, and vocal style parameters mapped symmetrically to each input role identifier.
+   - Block 3: ### SCENE INSTRUCTIONS
+     Establishes overall visual environment, camera motion/lighting directives, title card overlays, and dual-layer audio ducking rules.
+     - Dual-Layer Audio Ducking: Background beat tracks MUST use an 'instrumental' prefix (e.g. 'instrumental 140 BPM Heavy 808 Trap') and explicitly state that background music is subtly ducked beneath spoken dialogue stems.
+     - On-Screen Displayed Text / Title Card: Explicitly formats diegetic or non-diegetic text overlays as:
+       - On-Screen Displayed Text / Title Card: "TITLE_TEXT" (Subtitle: "SUBTITLE_TEXT")
+   - Block 4: ### TIMELINE
+     Chronological time-coded directives ([0-3s], [3-6s], [6-10s]) enforcing a single continuous shot without jump cuts, integrating spoken dialogue and audio cues directly into temporal sequence blocks.
+
+2. Multimodal Reference Anchors:
+   - Reference image inputs use clean ordinal anchors such as @Image1, @Image2, @Image3, and keyframe image anchors like @KeyframeSeed.
+   - Never embed direct file paths, cloud storage URLs (gs://), or raw HTTP URLs within the prompt string itself; map them via input role reference headers.
+
+3. Safety Sanitization & Parody Abstraction:
+   - Real public figure and celebrity names are automatically sanitized into descriptive visual parody role identifiers.
+   - Trademarked items and brand names are abstracted into generic visual descriptions to ensure policy compliance while preserving stylistic aesthetics.
+"""
+
 
 def sanitize_real_names(text: str) -> str:
     """Sanitizes real celebrity and public figure full names into safe visual parody role descriptors to adhere to Gemini Omni Flash safety guidelines."""
