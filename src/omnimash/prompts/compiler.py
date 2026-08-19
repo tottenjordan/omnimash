@@ -2631,10 +2631,6 @@ def compile_journey3_shot_prompt(
     if enable_sanitization and roster_str != "None.":
         roster_str = sanitize_real_names(roster_str)
 
-    if cumulative_state:
-        state_str = cumulative_state.format_cumulative_state_block().strip()
-    else:
-        state_str = "None."
 
     action_str = action_directive.strip()
     if enable_sanitization and action_str:
