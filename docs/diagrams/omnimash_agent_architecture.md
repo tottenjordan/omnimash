@@ -1,6 +1,6 @@
 # Agent Orchestration Architecture
 
-This document describes the orchestration loop, concept deconstruction engine, safety gateways, and prompt compiler subsystems powering the **OmniMash Agent** (`src/omnimash/agent/orchestrator.py`).
+This document describes the orchestration loop, concept deconstruction engine, Google ADK subagent tools, safety gateways, OpenTelemetry telemetry logger, and `GEMINI_OMNI_FLASH_INSTR` 4-block prompt compiler powering the **OmniMash Agent** (`src/omnimash/agent/orchestrator.py` & `src/omnimash/agent/adk_pipeline.py`).
 
 ---
 
@@ -15,58 +15,56 @@ This document describes the orchestration loop, concept deconstruction engine, s
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as "User / Frontend UI (3-Act Studio)"
-    participant API as "FastAPI App (/api/deconstruct-concept, /api/generate)"
-    participant Agent as "OmniMashAgent Orchestrator"
-    participant Guard as "ModelArmorGuardrail"
-    participant Compiler as "PromptCompiler (Anchor, Deconstruct & Storyboard)"
+    actor User as "User / AI Director"
+    participant API as "FastAPI Gateway / ADK Web"
+    participant Orchestrator as "ADK Production Orchestrator"
+    participant ADKTools as "ADK AgentTools Pipeline"
+    participant Guard as "Model Armor & Guardrail Parser"
+    participant Compiler as "PromptCompiler (GEMINI_OMNI_FLASH_INSTR)"
     participant Session as "SessionManager (DAG & Depth Tracker)"
     participant Omni as "OmniFlashClient (Gemini Omni Flash)"
+    participant Telemetry as "OpenTelemetry Logger (GCS JSONL)"
 
-    %% 1. Act 1: Concept Deconstruction Flow
-    Note over User,Omni: 🎭 Act 1: Concept Deconstruction & Character Casting
-    User->>API: POST /api/deconstruct-concept (concept shorthand)
-    API->>Compiler: deconstruct_concept(concept)
-    Compiler-->>API: MetaPromptTags (Role A, Role B, Aesthetic, Environment, Audio)
-    API-->>User: HTTP 200 / JSON (Editable Meta-Prompt Tags & Character Roles)
+    %% 1. Act 1: Script Deconstruction & Character Casting
+    Note over User,Telemetry: 🎭 Act 1: Concept Deconstruction & Character Casting
+    User->>API: POST /api/journey3/setup (concept shorthand)
+    API->>ADKTools: script_deconstructor.run() / deconstruct_concept()
+    ADKTools->>Compiler: deconstruct_concept(concept)
+    Compiler-->>API: MetaPromptTags (Roles, Wardrobe, Voice Style, Lighting, Audio Beat)
+    API-->>User: HTTP 200 / JSON (Editable Meta-Prompt Tags & Character Profiles)
 
-    %% 2. Act 2/3: Multi-Character Storyboard Video Generation
-    Note over User,Omni: 🎬 Act 2 & 3: Storyboard Compilation & Video Synthesis
-    User->>API: POST /api/generate (concept, characters + Image Role URLs, scenes, tags)
-    API->>Agent: process_user_turn()
+    %% 2. Act 2/3: Multi-Character Storyboard & Video Synthesis
+    Note over User,Telemetry: 🎬 Act 2 & 3: Storyboard Compilation & Video Synthesis
+    User->>API: POST /api/journey3/generate-shot (shot directive, characters + ref URLs)
+    API->>Orchestrator: process_user_turn()
     
-    Agent->>Guard: validate_prompt(concept/delta)
-    alt RAI Policy Violation / Prompt Injection
-        Guard-->>Agent: GuardrailResult(is_approved=False, reason="...")
-        Agent-->>API: AgentTurnResponse(success=False, status="GUARDRAIL_BLOCKED")
-        API-->>User: HTTP 200 / JSON (error="Policy violation...")
+    Orchestrator->>Guard: validate_prompt(concept/directive)
+    alt Policy Violation / Celebrity Likeness Block
+        Guard-->>Orchestrator: GuardrailResult(is_approved=False, error_msg)
+        Orchestrator->>Guard: parse_guardrail_error_guidance(error_msg)
+        Guard-->>API: HTTP 400 + Guardrail Guidance JSON (user_guidance, suggested_actions)
+        API-->>User: Render Interactive Guardrail Alert Banner (Auto-Abstract / Detach Photo)
     else Approved Content
-        Guard-->>Agent: GuardrailResult(is_approved=True, sanitized_prompt)
-        Agent->>Session: get_or_create_session(user_id, project_id)
+        Guard-->>Orchestrator: GuardrailResult(is_approved=True, sanitized_prompt)
+        Orchestrator->>Session: get_or_create_session(user_id, project_id)
         
         alt Multi-Scene Storyboard Generation
-            Agent->>Compiler: compile_storyboard(concept, characters, scenes, aesthetic_tags, ...)
-            Compiler-->>Agent: Timecoded Omni Flash Prompt ([CONTINUOUS SHOT HEADER] + [CHARACTER ROSTER] + [TIMECODED SEQUENCE [0-3s]])
-            Agent->>Omni: generate_clip(compiled_storyboard_prompt, character_role_image_urls)
-        else Conversational Delta Diff (parent_turn_id provided)
-            Agent->>Compiler: compile_delta(delta_instruction, custom_lock)
-            Compiler-->>Agent: Delta Prompt ([PRESERVATION LOCK] + [ISOLATED DIFF])
-            Agent->>Omni: apply_interaction_diff(interaction_thread_id, formatted_delta_prompt)
-        else Single-Clip Baseline
-            Agent->>Compiler: compile(raw_prompt, style_preset, ...)
-            Compiler-->>Agent: 5-Part Compiled Prompt ([SUBJECT ANCHOR] + ...)
-            Agent->>Omni: generate_clip(formatted_initial_prompt)
+            Orchestrator->>ADKTools: storyboard_compiler.run()
+            ADKTools->>Compiler: compile_journey3_shot_prompt(shot_number, directive, characters, ...)
+            Compiler-->>Orchestrator: 4-Block Meta-Prompt (ROLES & REFS + PROFILES + SCENE + TIMELINE)
+            Orchestrator->>Omni: generate_keyframe_image / generate_live_omni_flash_video
+        else Conversational Delta Diff (Mode 3)
+            Orchestrator->>Compiler: compile_delta(delta_instruction, keyframe_lock)
+            Compiler-->>Orchestrator: Delta Prompt (<FIRST_FRAME>@KeyframeSeed + ISOLATED DIFF)
+            Orchestrator->>Omni: apply_interaction_diff(interaction_thread_id, formatted_delta_prompt)
         end
         
-        Omni-->>Agent: GenerationResult(thread_id, video_url, duration=10s, watermark="SYNTHID")
-        Agent->>Session: add_turn(clip_index, prompt, thread_id, video_url, parent_turn_id)
-        Session-->>Agent: TurnNode(turn_id, edit_depth_in_thread, ...)
+        Omni->>Telemetry: _log_multimodal_inference(session_id, input_jsonl, output_jsonl)
+        Telemetry-->>Omni: Exported telemetry JSONL logs & Cloud Trace spans
         
-        alt Thread Depth >= 3
-            Agent-->>API: AgentTurnResponse(success=True, status="COMMIT_RECOMMENDED", depth=3)
-        else Normal Turn
-            Agent-->>API: AgentTurnResponse(success=True, status="COMPLETED", depth)
-        end
+        Omni-->>Orchestrator: GenerationResult(thread_id, video_url, duration=10s, watermark="SYNTHID")
+        Orchestrator->>Session: add_turn(clip_index, prompt, thread_id, video_url, parent_turn_id)
+        Session-->>Orchestrator: TurnNode(turn_id, edit_depth_in_thread, ...)
         
         API-->>User: HTTP 200 / JSON {success: true, video_url, turn_id, status, depth}
     end
@@ -76,21 +74,24 @@ sequenceDiagram
 
 ## 🧩 Core Subsystem Responsibilities
 
-1. **Model Armor Guardrail Gateway (`omnimash.security.guardrail`):**
-   - Pre-gates all incoming prompts before executing expensive multimodal generation calls.
-   - Screens for RAI violations (hate speech, sexual, harassment, dangerous content) and prompt injection/jailbreak attempts.
+1. **Google ADK Pipeline & Subagent Tools (`omnimash.agent.adk_pipeline`):**
+   - **`script_deconstructor` (`Agent`)**: Analyzes scripts and concepts into structured scenes, active character roles, actions, dialogue beats, and audio cues.
+   - **`storyboard_compiler` (`Agent`)**: Compiles deconstructed directives into `GEMINI_OMNI_FLASH_INSTR` 4-block meta-prompts.
+   - **`create_adk_agent_tool_pipeline()`**: Wraps `script_deconstructor` and `storyboard_compiler` into ADK `AgentTool` instances, allowing autonomous AI director agents to converse, critique, draft, and execute workflows.
+   - **`ParallelAgent` (`shot_execution_pipeline`)**: Executes concurrent shot execution worker rendering.
 
-2. **Concept Deconstruction & Storyboard Prompt Compiler (`omnimash.prompts.compiler`):**
-   - **NLP Concept Deconstruction (`deconstruct_concept`)**: Parses open-ended parody shorthand into structured `MetaPromptTags`, extracting character entities, aesthetic tags, environment settings, and audio beat tempo.
-   - **Gemini Omni Image Roles Specification**: Defines `CharacterRole` bindings (`Role A`, `Role B`) with rich visual descriptions and attached reference image URLs ([Gemini Omni Image Roles API](https://ai.google.dev/gemini-api/docs/omni#set-image-roles)).
-   - **Storyboard Sequence Compiler (`compile_storyboard`)**: Compiles multi-scene storyboards into three structured prompt blocks (`[ROLE DEFINITIONS]`, `[AESTHETIC INJECTION]`, and `[STORYBOARD SEQUENCE]`).
-   - **Single-Clip & Delta Compilation**: Implements 5-part Anchor & Inject (`compile`) and 2-part Lock & Isolate (`compile_delta`).
+2. **`GEMINI_OMNI_FLASH_INSTR` 4-Block Prompt Compiler (`omnimash.prompts.compiler`):**
+   - Enforces the 4-Block Anchor & Inject hierarchy:
+     - **Block 1: `### INPUT ROLES & REFERENCES`**: Maps positional tags (`<IMAGE_REF_0>@Image1`, `<FIRST_FRAME>@KeyframeSeed`).
+     - **Block 2: `### CHARACTER PROFILES`**: Defines visual descriptions, `[Wardrobe: ...]`, and `[Voice Style: ...]`.
+     - **Block 3: `### SCENE INSTRUCTIONS`**: Specifies environment, lighting, continuous camera motion, title card overlays (`- On-Screen Displayed Text / Title Card: "TITLE" (Subtitle: "SUBTITLE")`), and dual-layer audio ducking.
+     - **Block 4: `### TIMELINE`**: Chronological timecodes (`[0-3s]`, `[3-6s]`) with spoken character dialogue and offscreen narrator voiceovers.
 
-3. **Session Version DAG & Depth Tracker (`omnimash.state.session_manager`):**
-   - Tracks `edit_depth_in_thread` across sequential turns in a session tree.
-   - Emits `COMMIT_RECOMMENDED` at depth $\ge 3$ and manages non-linear version branching.
+3. **OpenTelemetry Telemetry Logger (`omnimash.engine.telemetry` & `omni_client`):**
+   - Configured with `OTEL_SEMCONV_STABILITY_OPT_IN='gen_ai_latest_experimental'` and `OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK='upload'`.
+   - Uploads structured `_input.jsonl` and `_output.jsonl` telemetry logs to `gs://<bucket>/telemetry/` capturing system instructions, prompt text, reference image URIs, and generation metadata with Cloud Trace spans.
 
-4. **Gemini Omni Flash Interactions Client (`omnimash.engine.omni_client`):**
-   - Integrates with Google GenAI SDK and Gemini Omni Flash (`gemini-omni-flash-preview`).
-   - Generates 720p native MP4 video with synchronized audio and multi-character consistency.
-   - Preserves thread continuity across turns using `interaction_thread_id`, supports `start_thread_from_video` on commits, and tags rendered video artifacts with SynthID / C2PA watermark provenance.
+4. **Model Armor Guardrail & Error Guidance Parser (`omnimash.security.guardrail` & `omni_client`):**
+   - Pre-gates incoming prompts for policy and injection safety.
+   - Implements `parse_guardrail_error_guidance()` to inspect HTTP 400 policy blocks and generate interactive quick-fix action buttons (`⚡ Auto-Abstract Real Names`, `❌ Detach Reference Photo`) for the frontend UI.
+

@@ -1,6 +1,6 @@
 # Session Version Tree DAG & State Lifecycle
 
-This document illustrates the non-linear version tree (DAG) structure and Commit & Branch Checkpointing that powers conversational video iteration in **OmniMash** (`src/omnimash/state/session_manager.py`).
+This document illustrates the non-linear version tree (DAG) structure, Mode 3 `TurnHistoryCarousel` visual branching (`⏪ Branch from Turn X`), and Keyframe Seed Anchor Locking (`🔒 Lock Visual Continuity`) that powers conversational video iteration in **OmniMash** (`src/omnimash/state/session_manager.py`).
 
 ---
 
@@ -12,22 +12,21 @@ This document illustrates the non-linear version tree (DAG) structure and Commit
 
 ## 🌳 Version Tree DAG & Thread Depth Lifecycle
 
-To prevent context decay in the multimodal latent space after ~4 sequential edits, OmniMash combines non-linear version branching with **Commit & Branch Checkpointing**:
+To prevent context decay in the multimodal latent space after sequential edits, OmniMash combines non-linear version branching with **Keyframe Seed Anchoring** (`<FIRST_FRAME>@KeyframeSeed`):
 
 ```mermaid
 graph TD
     subgraph ThreadMain["Active Thread Main (Depth Escalation)"]
-        Turn1["Turn 1 (Root Clip 0)<br/>Prompt: 'Severus Snape in 90s rap'<br/>Depth: 0 | ID: turn_1<br/>Video: /static/rendered/clip0_t1.mp4"]
-        Turn2["Turn 2 (Delta 1)<br/>Prompt: 'Add gold chains'<br/>Depth: 1 | Parent: turn_1<br/>Video: /static/rendered/clip0_t2.mp4"]
-        Turn3["Turn 3 (Delta 2)<br/>Prompt: 'Add neon green lighting'<br/>Depth: 2 | Parent: turn_2<br/>Video: /static/rendered/clip0_t3.mp4"]
-        Turn4["Turn 4 (Delta 3 ⚓ Checkpoint)<br/>Prompt: 'Add atmospheric fog'<br/>Depth: 3 | Status: COMMIT_RECOMMENDED<br/>Video: /static/rendered/clip0_t4.mp4"]
+        Turn1["Turn 0 (Root Keyframe Seed)<br/>Prompt: 'Severus Snape in 90s rap'<br/>Depth: 0 | Anchor: @KeyframeSeed<br/>Video: /static/rendered/clip0_t0.mp4"]
+        Turn2["Turn 1 (Delta 1)<br/>Prompt: 'Add gold chains'<br/>Depth: 1 | Parent: turn_0<br/>Video: /static/rendered/clip0_t1.mp4"]
+        Turn3["Turn 2 (Delta 2)<br/>Prompt: 'Add neon green lighting'<br/>Depth: 2 | Parent: turn_1<br/>Video: /static/rendered/clip0_t2.mp4"]
         
-        Turn1 --> Turn2 --> Turn3 --> Turn4
+        Turn1 --> Turn2 --> Turn3
     end
 
-    subgraph ThreadBeta["Re-Anchored Thread Beta (Context Flushed)"]
-        Turn4 -.->|POST /api/commit| CommitAction["Extract 720p Output Video & Flush Context"]
-        CommitAction --> TurnBeta1["Turn Beta 1 (Fresh Interactions Thread)<br/>Prompt: 'Add laser wand gestures'<br/>Depth: 0 | Checkpoint: True<br/>Video: /static/rendered/clip0_beta1.mp4"]
+    subgraph ThreadBranch["TurnHistoryCarousel (⏪ Branch from Turn X)"]
+        Turn1 -.->|⏪ Branch from Turn 0| TurnBranch1["Turn 0-B (Isolated Branch)<br/>Prompt: 'Add gothic potion beaker'<br/>Depth: 1 | Parent: turn_0<br/>Video: /static/rendered/clip0_branch1.mp4"]
+        TurnKeyframe["🔒 Lock Visual Continuity"] -.->|Keyframe Seed Lock| TurnBranch1
     end
 ```
 
@@ -46,6 +45,11 @@ graph TD
    - `is_committed`: Boolean checkpoint indicator.
    - `base_video_anchor_url`: URI of base video input if re-anchored.
 
-2. **`ClipSegment`:** Timeline reference pointing to the currently active turn node for a given clip index.
+2. **`TurnHistoryCarousel` (Mode 3 UI Component):**
+   - Displays interactive history cards for all turns (`Turn 0`, `Turn 1`, `Turn 2`).
+   - Renders 1-click **`⏪ Branch from Turn X`** controls to spawn clean side-branches without losing main timeline state.
 
-3. **`ProjectSession`:** Aggregation of all turn nodes (`dict[str, TurnNode]`) and the active timeline sequence (`list[ClipSegment]`).
+3. **`KeyframeSeedLock` (`<FIRST_FRAME>@KeyframeSeed`):**
+   - Decouples starting keyframe seed anchors from character reference image tokens (`@Image1`, `@Image2`).
+   - Toggles visual continuity locking across conversational diff turns.
+
