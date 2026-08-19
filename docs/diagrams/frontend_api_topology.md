@@ -1,6 +1,6 @@
 # Frontend UI & FastAPI Async API Topology
 
-This document details the Next.js / React 18 single-page application and its connection to FastAPI's async concept deconstruction, generation endpoints, commit endpoints, and SSE event streams (`src/omnimash/api/app.py`).
+This document details the Next.js / React 18 single-page application and its connection to FastAPI's async concept deconstruction, generation endpoints, commit endpoints, and Journey 3 REST API endpoints (`src/omnimash/api/app.py`).
 
 ---
 
@@ -15,230 +15,118 @@ This document details the Next.js / React 18 single-page application and its con
 ```mermaid
 graph TD
     subgraph BrowserClient["Browser Client (React 18 + Tailwind CSS)"]
-        UI["OmniMash Web UI Dashboard (3-Act Workflow)"]
-        Act1["Act 1: Concept & Character Cast Manager"]
-        Act2["Act 2: Storyboard Sequence & Fine-Tuning"]
-        Act3["Act 3: The Screening Room & Branching"]
+        UI["OmniMash Web UI Dashboard (3-Mode Studio Switcher)"]
+        Mode1["⚡ Mode 1: Guided Fine-Tune (Single Video Target)"]
+        Mode2["🎬 Mode 2: Screenplay Storyboard (Multi-Scene Master)"]
+        Mode3["🚀 Mode 3: Continuity Studio (Conversational Diff)"]
         
-        ConceptBar["💡 Open-Ended Parody Concept Input"]
-        RolesManager["👥 Dynamic Character Roles (Role A, Role B) + Image URLs"]
-        MetaTags["🎨 Editable Meta-Prompt Tags & Audio Beat"]
-        StoryboardEditor["🎬 Multi-Scene Storyboard Sequence Editor"]
-        PreviewCard["🪄 Live Storyboard Prompt Compiler Preview"]
-        DAGView["🌳 Version Tree DAG (Edit Depth & Checkpoint Badges)"]
-        ModalBanner["⚠️ Commit & Re-Anchor Modal"]
-        ModalStitch["🎬 Stitch & Combine Selected Clips Modal"]
+        Presets1["🪄 Quick Preset Templates (Hip-Hop Wand Shop, Cyberpunk Rap)"]
+        PreviewCard["👁️ Live 4-Block Prompt Compiler Preview"]
+        ShotWorkstation["🎬 Shot Card Workstation (10s Trailer Preset, +Add, Duplicate, Delete)"]
+        BatchBtn["🎬 Render All Shots (Batch Execution)"]
+        Carousel3["TurnHistoryCarousel (⏪ Branch from Turn X)"]
+        KeyframeLock["🔒 Lock Visual Continuity (<FIRST_FRAME>@KeyframeSeed)"]
+        GuardBanner["🚨 Policy Guardrail Alert Banner (⚡ Auto-Abstract, ❌ Detach Photo)"]
         Player["🎥 720p Video Player + SynthID Badge"]
 
-        UI --> Act1
-        UI --> Act2
-        UI --> Act3
+        UI --> Mode1
+        UI --> Mode2
+        UI --> Mode3
         
-        Act1 --> ConceptBar
-        Act1 --> RolesManager
-        Act1 --> MetaTags
-        Act2 --> StoryboardEditor
-        Act2 --> PreviewCard
-        Act3 --> Player
-        Act3 --> DAGView
-        Act3 --> ModalBanner
-        Act3 --> ModalStitch
+        Mode1 --> Presets1
+        Mode1 --> PreviewCard
+        Mode2 --> ShotWorkstation
+        Mode2 --> BatchBtn
+        Mode3 --> Carousel3
+        Mode3 --> KeyframeLock
+        UI --> GuardBanner
+        UI --> Player
     end
 
     subgraph BackendServices["Backend Services (FastAPI + Uvicorn)"]
         Gateway["FastAPI Async App (create_app)"]
-        EndpointDeconstruct["POST /api/deconstruct-concept"]
-        EndpointGen["POST /api/generate"]
-        EndpointCommit["POST /api/commit"]
-        EndpointStitch["POST /api/stitch-clips"]
+        EndpointSetup["POST /api/journey3/setup"]
+        EndpointKeyframe["POST /api/journey3/keyframe"]
+        EndpointGenerateShot["POST /api/journey3/generate-shot"]
+        EndpointDiff["POST /api/diff"]
+        EndpointStitch["POST /api/journey3/stitch"]
         EndpointRoot["GET / (HTML Studio Dashboard)"]
         
         Gateway --> EndpointRoot
-        Gateway --> EndpointDeconstruct
-        Gateway --> EndpointGen
-        Gateway --> EndpointCommit
+        Gateway --> EndpointSetup
+        Gateway --> EndpointKeyframe
+        Gateway --> EndpointGenerateShot
+        Gateway --> EndpointDiff
         Gateway --> EndpointStitch
     end
 
     subgraph OrchestrationEngine["Orchestration Engine"]
-        EndpointDeconstruct --> CompilerDeconstruct["PromptCompiler.deconstruct_concept()"]
-        EndpointGen --> Agent["OmniMashAgent"]
-        EndpointCommit --> Agent
+        EndpointSetup --> CompilerDeconstruct["PromptCompiler.deconstruct_concept()"]
+        EndpointGenerateShot --> CompilerShot["PromptCompiler.compile_journey3_shot_prompt()"]
+        EndpointDiff --> CompilerDelta["PromptCompiler.compile_delta()"]
+        EndpointKeyframe --> OmniKeyframe["OmniFlashClient.generate_keyframe_image()"]
+        EndpointGenerateShot --> OmniVideo["OmniFlashClient.generate_live_omni_flash_video()"]
+        EndpointDiff --> OmniDiff["OmniFlashClient.apply_interaction_diff()"]
         EndpointStitch --> StitcherEngine["VideoStitcher.concatenate_clips()"]
-        StitcherEngine --> StorageEngine["Storage.save_final_master()"]
         
-        Agent --> CompilerStoryboard["PromptCompiler.compile_storyboard()"]
-        Agent --> State["SessionManager (Version DAG & Depth)"]
-        Agent --> OmniClient["OmniFlashClient (Interactions API)"]
+        OmniVideo --> TelemetryLogger["OpenTelemetry Logger (gs://<bucket>/telemetry/)"]
+        OmniDiff --> TelemetryLogger
     end
 
-    ConceptBar -->|POST /api/deconstruct-concept| EndpointDeconstruct
-    EndpointDeconstruct -->|MetaPromptTags JSON| RolesManager
-    EndpointDeconstruct -->|MetaPromptTags JSON| MetaTags
+    Presets1 -->|POST /api/journey3/setup| EndpointSetup
+    EndpointSetup -->|MetaPromptTags & Character Roster| Mode1
     
-    StoryboardEditor -->|POST /api/generate| EndpointGen
-    ModalBanner -->|POST /api/commit| EndpointCommit
-    ModalStitch -->|POST /api/stitch-clips| EndpointStitch
-    
-    EndpointGen -->|JSON / SSE Event Stream| DAGView
-    EndpointCommit -->|Re-Anchored Status / Depth 0| DAGView
-    EndpointGen -->|720p Native Video URL| Player
-    EndpointStitch -->|Custom Stitched Master GCS URI| ModalStitch
+    ShotWorkstation -->|POST /api/journey3/generate-shot| EndpointGenerateShot
+    BatchBtn -->|Sequential Batch Render| EndpointGenerateShot
+    KeyframeLock -->|POST /api/diff| EndpointDiff
+    EndpointStitch -->|Custom Master Cut GCS URI| Player
 ```
 
 ---
 
 ## 🔌 API Contracts
 
-### `POST /api/deconstruct-concept`
-Parses open-ended parody concept shorthand into structured Character Roles (`Role A`, `Role B`), aesthetic tags, environment settings, camera framing, and audio beat.
+### `POST /api/journey3/setup`
+Parses open-ended parody concept shorthand into structured Character Roles (`Role A`, `Role B`), aesthetic tags, environment settings, camera framing, audio beat, and character wardrobe.
 
-**Request Payload (`ConceptDeconstructRequest`):**
+**Request Payload:**
 ```json
 {
   "concept": "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style"
 }
 ```
 
-**Response Payload (`MetaPromptTags`):**
+---
+
+### `POST /api/journey3/generate-shot`
+Generates a multi-character parody cut by compiling shot directives, character roles with attached reference image URLs, and `GEMINI_OMNI_FLASH_INSTR` 4-block meta-prompts.
+
+**Request Payload (`Journey3ShotGenerateRequest`):**
 ```json
 {
+  "shot_number": 1,
+  "action_directive": "Hero stance in rain with microphone wand",
+  "title_card_text": "BLOCKBUSTER TRAILER",
+  "title_card_subtitle": "IN THEATERS NOW",
+  "narrator_text": "In a world where magic meets high-tech cybernetics...",
+  "narrator_voice": "Deep Cinematic Announcer",
   "characters": [
     {
       "role_id": "Role A",
       "name": "Harry",
-      "description": "Harry Potter, a young wizard with round wire-rim glasses, untidy jet-black hair, and a distinct lightning bolt scar on his forehead",
-      "reference_url": null
-    },
-    {
-      "role_id": "Role B",
-      "name": "Draco",
-      "description": "Draco Malfoy, a pale blonde rival wizard with slicked-back platinum hair, sharp sneering facial features, and tailored silver-trimmed robes",
-      "reference_url": null
+      "wardrobe": "Plaid Trench with Gold Chains",
+      "reference_url": "https://storage.googleapis.com/omnimash-bucket/harry.jpg"
     }
-  ],
-  "aesthetic_tags": [
-    "2000s Atlanta Trap Disstrack",
-    "Diamond Lightning Bolt Chain",
-    "Vintage Streetwear",
-    "Heavy 808 Bass Lighting"
-  ],
-  "environment_tag": "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze",
-  "camera_lighting_tag": "Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights",
-  "audio_beat": "140 BPM Heavy 808 Trap"
+  ]
 }
 ```
 
 ---
 
-### `POST /api/generate`
-Generates a multi-character parody cut by compiling storyboard scene directives, character roles with attached Gemini Omni Image Role reference URLs, and aesthetic tags.
-
-**Request Payload (`GenerateRequest`):**
-```json
-{
-  "user_id": "usr_studio",
-  "project_id": "prj_director",
-  "concept": "Harry Potter vs Draco Malfoy rap battle in 2000s Atlanta trap style",
-  "characters": [
-    {
-      "role_id": "Role A",
-      "name": "Harry",
-      "description": "Harry Potter, a young wizard with round wire-rim glasses...",
-      "reference_url": "https://example.com/harry.jpg"
-    },
-    {
-      "role_id": "Role B",
-      "name": "Draco",
-      "description": "Draco Malfoy, a pale blonde rival wizard...",
-      "reference_url": "https://example.com/draco.jpg"
-    }
-  ],
-  "scenes": [
-    {
-      "scene_number": 1,
-      "active_roles": ["Role A"],
-      "action": "Arriving at foggy Hogwarts courtyard rapping into microphone wand",
-      "dialogue": "I been cooking potions since first year. Burrr!"
-    },
-    {
-      "scene_number": 2,
-      "active_roles": ["Role B"],
-      "action": "Stepping from shadows in high-gloss neon lighting with ice chain",
-      "dialogue": "This is Trap or Die, Potter! Let's get it!"
-    }
-  ],
-  "aesthetic_tags": ["2000s Atlanta Trap Disstrack", "Diamond Lightning Bolt Chain"],
-  "environment_tag": "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze",
-  "clip_index": 0,
-  "parent_turn_id": null
-}
-```
-
-**Response Payload (`GenerateResponse`):**
-```json
-{
-  "success": true,
-  "status": "COMPLETED",
-  "video_url": "/static/rendered/session_turn0.mp4",
-  "turn_id": "turn_abc123",
-  "depth": 1,
-  "raw_compiled_prompt": "[ROLE DEFINITIONS]\n- Role A (Harry)...",
-  "error": null
-}
-```
+### `POST /api/diff`
+Applies conversational interaction diffs referencing baseline keyframes (`<FIRST_FRAME>@KeyframeSeed`) for visual continuity locking across turns.
 
 ---
 
-### `POST /api/commit`
-Flushes conversational token context decay when edit depth reaches $\ge 3$, establishing a new keyframe baseline.
-
-**Request Payload (`CommitRequest`):**
-```json
-{
-  "user_id": "usr_studio",
-  "project_id": "prj_director",
-  "turn_id": "turn_abc123",
-  "next_prompt": "Re-anchored baseline keyframe for Act 3",
-  "session_name": "parody_session_1"
-}
-```
-
-**Response Payload (`GenerateResponse`):**
-```json
-{
-  "success": true,
-  "status": "REANCHORED",
-  "video_url": "/static/rendered/reanchored_session_turn1.mp4",
-  "turn_id": "turn_xyz789",
-  "depth": 0,
-  "error": null
-}
-```
-
----
-
-### `POST /api/stitch-clips`
-Concatenates custom-selected scene clips from session history into a unified master parody video MP4 and exports to GCS.
-
-**Request Payload (`StitchClipsRequest`):**
-```json
-{
-  "session_name": "parody_session_1",
-  "clip_urls": [
-    "/static/rendered/session_turn0.mp4",
-    "/static/rendered/session_turn1.mp4"
-  ],
-  "master_title": "custom_stitched_cut"
-}
-```
-
-**Response Payload (`SaveFinalResponse`):**
-```json
-{
-  "success": true,
-  "gcs_uri": "gs://omnimash-media-project/sessions/parody_session_1/final_masters/custom_stitched_cut.mp4",
-  "message": "Custom stitched master successfully saved to gs://omnimash-media-project/sessions/parody_session_1/final_masters/custom_stitched_cut.mp4"
-}
-```
-
+### `POST /api/journey3/stitch`
+Concatenates multi-shot storyboard clips into a single master MP4 export and saves to session-scoped GCS paths.
