@@ -61,7 +61,7 @@ def test_generate_endpoint_accepts_vocal_delivery_and_character_voice_style():
     assert data["success"] is True
     assert data["raw_compiled_prompt"] is not None
     assert (
-        "Voice Style (Spectacled Wizard Bruv <IMAGE_REF_0>): Fast-paced Atlanta trap flow"
+        "Voice Style (Role A <IMAGE_REF_0>): Fast-paced Atlanta trap flow"
         in data["raw_compiled_prompt"]
     )
     assert (

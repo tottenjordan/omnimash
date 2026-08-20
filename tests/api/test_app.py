@@ -137,7 +137,7 @@ def test_api_generate_and_extend_scene_with_vocal_delivery_and_voice_style():
     gen_data = gen_res.json()
     assert gen_data["success"] is True
     assert (
-        "Voice Style (Spectacled Wizard Bruv): Melodic autotune trap flow"
+        "Voice Style (Role A): Melodic autotune trap flow"
         in gen_data["raw_compiled_prompt"]
     )
     assert (
@@ -1123,8 +1123,7 @@ def test_journey3_clean_names_and_in_text_image_tag_replacement():
     data = res.json()
     assert data["success"] is True
     compiled = data.get("raw_compiled_prompt", "")
-    assert "- Swagrid Tha Plug: (Reference Image: @Image1" in compiled
-    assert "Role A - Swagrid Tha Plug" not in compiled
+    assert "- Role A: (Reference Image: @Image1" in compiled
     assert "Swagrid Tha Plug (@Image1) glides out of the forest" in compiled
 
 
