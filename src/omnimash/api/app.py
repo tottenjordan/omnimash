@@ -3383,27 +3383,51 @@ UI_HTML = r"""<!DOCTYPE html>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveAct(1)}
+                                            className={`text-left rounded-xl p-3 flex items-center gap-3 transition cursor-pointer border ${
+                                                activeAct === 1
+                                                    ? "bg-purple-900/40 border-purple-500 shadow-md shadow-purple-900/30"
+                                                    : "bg-gray-950/60 border-gray-800 hover:border-purple-600/60 hover:bg-gray-900/60"
+                                            }`}
+                                        >
                                             <span className="bg-purple-500/20 text-purple-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-purple-500/30 shrink-0">1</span>
                                             <div>
                                                 <span className="text-xs font-bold text-gray-200 block">Step 1: Global Production Context</span>
                                                 <span className="text-[11px] text-gray-400">Set character likeness, outfits &amp; shared scene parameters</span>
                                             </div>
-                                        </div>
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
-                                            <span className="bg-purple-500/20 text-purple-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-purple-500/30 shrink-0">2</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveAct(2)}
+                                            className={`text-left rounded-xl p-3 flex items-center gap-3 transition cursor-pointer border ${
+                                                activeAct === 2
+                                                    ? "bg-pink-900/40 border-pink-500 shadow-md shadow-pink-900/30"
+                                                    : "bg-gray-950/60 border-gray-800 hover:border-pink-600/60 hover:bg-gray-900/60"
+                                            }`}
+                                        >
+                                            <span className="bg-pink-500/20 text-pink-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-pink-500/30 shrink-0">2</span>
                                             <div>
                                                 <span className="text-xs font-bold text-gray-200 block">Step 2: Multi-Scene Storyboard Directing</span>
                                                 <span className="text-[11px] text-gray-400">Auto-expand screenplay into shot cards &amp; render batch clips</span>
                                             </div>
-                                        </div>
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
-                                            <span className="bg-purple-500/20 text-purple-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-purple-500/30 shrink-0">3</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveAct(3)}
+                                            className={`text-left rounded-xl p-3 flex items-center gap-3 transition cursor-pointer border ${
+                                                activeAct === 3
+                                                    ? "bg-amber-900/40 border-amber-500 shadow-md shadow-amber-900/30"
+                                                    : "bg-gray-950/60 border-gray-800 hover:border-amber-600/60 hover:bg-gray-900/60"
+                                            }`}
+                                        >
+                                            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-amber-500/30 shrink-0">3</span>
                                             <div>
                                                 <span className="text-xs font-bold text-gray-200 block">Step 3: Concatenate Master Screening Room</span>
                                                 <span className="text-[11px] text-gray-400">Preview, arrange &amp; concatenate clips into seamless master video</span>
                                             </div>
-                                        </div>
+                                        </button>
                                     </div>
                                 </div>
 
