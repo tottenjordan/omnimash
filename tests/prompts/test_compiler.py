@@ -147,7 +147,7 @@ def test_character_role_specific_aesthetic_tags():
         scenes=scenes,
     )
     assert get_character_identifier(chars[0], use_role_id=True) in prompt
-    assert "Red Gucci Tracksuit" in prompt
+    assert "Red high-fashion designer Tracksuit" in prompt
     assert "[# References <IMAGE_REF_0>@Image1]" in prompt
 
 
@@ -876,7 +876,7 @@ def test_sanitize_real_names_pop_culture_keywords():
     sanitized = sanitize_real_names(text)
     assert (
         sanitized
-        == "Potion Master Dawg, Rival Wizard, Dark Sorcerer, and Academy Hall."
+        == "Potion Master Dawg, Rival Wizard, Dark Sorcerer, and Gothic Academy."
     )
 
 
@@ -1383,7 +1383,7 @@ def test_compile_journey3_shot_prompt_includes_character_wardrobe_in_block1():
 
     assert "### INPUT ROLES & REFERENCES" in prompt
     assert "[Wardrobe: Black Velvet Trench Coat]" in prompt
-    assert "[Wardrobe: Oversized Gucci Tracksuit]" in prompt
+    assert "[Wardrobe: Oversized high-fashion designer Tracksuit]" in prompt
 
 
 def test_compile_journey3_shot_prompt_character_wardrobe_in_block2():
@@ -1415,7 +1415,7 @@ def test_compile_journey3_shot_prompt_character_wardrobe_in_block2():
     assert "[Wardrobe: Black Velvet Trench Coat]" in prompt
     assert "[Style: Gothic, Dark]" in prompt
     assert "[Voice Style: Pompous British drawl]" in prompt
-    assert "[Wardrobe: Oversized Gucci Tracksuit]" in prompt
+    assert "[Wardrobe: Oversized high-fashion designer Tracksuit]" in prompt
     assert "[Voice Style: Fast-paced rap flow]" in prompt
 
 
@@ -1597,9 +1597,22 @@ def test_compile_journey3_shot_prompt_uses_role_ids_for_all_character_references
 
 
 def test_sanitize_real_names_handles_camelcase_and_concatenated_names():
-    assert sanitize_real_names("YoTotti in Hogwarts") == "a tatted wizard in Academy Hall"
+    assert sanitize_real_names("YoTotti in Hogwarts") == "a tatted wizard in Gothic Academy"
     assert sanitize_real_names("JordanTotten coding") == "a young wizard scholar coding"
     assert sanitize_real_names("DumbleDior fashion") == "a high-fashion wizard headmaster fashion"
+
+
+def test_sanitize_real_names_standalone_luxury_brands_and_houses():
+    text = "Wearing a Dior robe and Gucci slippers in Gryffindor with a Rolex watch."
+    sanitized = sanitize_real_names(text)
+    assert "Dior" not in sanitized
+    assert "Gucci" not in sanitized
+    assert "Gryffindor" not in sanitized
+    assert "Rolex" not in sanitized
+    assert "luxury fashion" in sanitized
+    assert "high-fashion designer" in sanitized
+    assert "Gold Lion House" in sanitized
+    assert "luxury watch" in sanitized
 
 
 
