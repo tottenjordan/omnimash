@@ -62,7 +62,12 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bFrancesco Totti\b": "a tatted wizard",
     r"\bJohn Totti\b": "a tatted wizard",
     r"\bYo Totti\b": "a tatted wizard",
+    r"\bYoTotti\b": "a tatted wizard",
     r"\bTotti\b": "a tatted wizard",
+    r"\bJordan Totten\b": "a young wizard scholar",
+    r"\bJordanTotten\b": "a young wizard scholar",
+    r"\bDumble Dior\b": "a high-fashion wizard headmaster",
+    r"\bDumbleDior\b": "a high-fashion wizard headmaster",
     # Street Slang, Band Trademarks & Tattoo Sanitization
     r"\bstepped\s*on\b": "diluted",
     r"\bwidespread\s*panic\b": "vintage band emblem",
@@ -122,14 +127,22 @@ def sanitize_real_names(text: str) -> str:
 def get_character_identifier(
     char: CharacterRole | dict[str, Any] | Any,
     enable_sanitization: bool = True,
+    use_role_id: bool = False,
 ) -> str:
-    """Returns character identifier string (returns 'name_clean' if present, omitting 'role_id - ' prefix; otherwise 'role_id')."""
+    """Returns character identifier string.
+
+    When use_role_id is True (default for Gemini API prompt compilation), returns 'role_id' (e.g. 'Role A', 'Role B')
+    to ensure Gemini API prompts remain 100% clean and free of real-person/celebrity name tokens.
+    """
     if isinstance(char, dict):
         role_id = str(char.get("role_id", "") or "").strip()
         name = str(char.get("name", "") or "").strip()
     else:
         role_id = str(getattr(char, "role_id", "") or "").strip()
         name = str(getattr(char, "name", "") or "").strip()
+
+    if use_role_id and role_id:
+        return role_id
 
     if enable_sanitization:
         name_clean = sanitize_real_names(name) if name else ""
@@ -1517,7 +1530,7 @@ class PromptCompiler:
         char_refs: list[str] = []
         if characters:
             for char in characters:
-                char_id = get_character_identifier(char)
+                char_id = get_character_identifier(char, use_role_id=True)
                 tag = char_tag_map.get(char_id)
                 tag_str = f" {tag}" if tag else ""
 
@@ -1683,7 +1696,7 @@ class PromptCompiler:
 
         char_profiles: list[str] = []
         for char in characters:
-            char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
+            char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
             tag = char_tag_map.get(char_id)
             tag_str = f" {tag}" if tag else ""
 
@@ -1814,7 +1827,7 @@ class PromptCompiler:
 
         for char in characters:
             if char.voice_style and char.voice_style.strip():
-                char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
+                char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
                 tag = char_tag_map.get(char_id)
                 tag_str = f" {tag}" if tag else ""
                 scene_inst_parts.append(
@@ -1851,7 +1864,7 @@ class PromptCompiler:
                     for c in characters:
                         c_role = getattr(c, "role_id", "")
                         c_name = getattr(c, "name", "")
-                        c_id = get_character_identifier(c, enable_sanitization=enable_sanitization)
+                        c_id = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
                         if r_str.lower() in (
                             c_role.lower(),
                             c_name.lower(),
@@ -1860,7 +1873,7 @@ class PromptCompiler:
                             matched_c = c
                             break
                 if matched_c:
-                    c_id = get_character_identifier(matched_c, enable_sanitization=enable_sanitization)
+                    c_id = get_character_identifier(matched_c, enable_sanitization=enable_sanitization, use_role_id=True)
                     tag = char_tag_map.get(c_id)
                     tag_str = f" {tag}" if tag else ""
                     roles_list.append(f"{c_id}{tag_str}")
@@ -2565,7 +2578,7 @@ def compile_journey3_shot_prompt(
         char_lines: list[str] = []
         ref_idx = 1
         for char in characters:
-            char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
+            char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
             ref_url = (
                 getattr(char, "reference_url", None)
                 if not isinstance(char, dict)
@@ -2648,7 +2661,7 @@ def compile_journey3_shot_prompt(
             if ref_url and isinstance(ref_url, str) and ref_url.strip():
                 tag = f"@Image{img_idx}"
                 img_idx += 1
-                char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
+                char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
                 role_id = str(
                     getattr(char, "role_id", "")
                     if not isinstance(char, dict)
@@ -2728,10 +2741,24 @@ def compile_journey3_shot_prompt(
                 spk = sd_match.group(1).strip()
                 txt = sd_match.group(2).strip()
                 txt_clean = txt.strip('"').strip("'").strip('“').strip('”')
-                if enable_sanitization:
-                    spk = sanitize_real_names(spk)
+                matched_spk: str | None = None
+                if characters:
+                    spk_lower = spk.lower()
+                    for c in characters:
+                        c_name = str(getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "") or "").strip()
+                        c_role = str(getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "") or "").strip()
+                        if (
+                            spk_lower in (c_name.lower(), c_role.lower())
+                            or (c_name and c_name.lower() in spk_lower)
+                            or (c_role and c_role.lower() in spk_lower)
+                        ):
+                            matched_spk = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
+                            break
+                if not matched_spk:
+                    matched_spk = sanitize_real_names(spk) if enable_sanitization else spk
+                if enable_sanitization and txt_clean:
                     txt_clean = sanitize_real_names(txt_clean)
-                timeline_items.append(f'- Spoken Dialogue ({spk}): "{txt_clean}"')
+                timeline_items.append(f'- Spoken Dialogue ({matched_spk}): "{txt_clean}"')
                 continue
 
             match = re.match(r"^(?:-\s*)?([^:]+):\s*[\"“]?(.*?)[\"”]?$", chunk)
@@ -2745,7 +2772,6 @@ def compile_journey3_shot_prompt(
                 if characters:
                     spk_lower = spk.lower()
                     for c in characters:
-                        c_id = get_character_identifier(c, enable_sanitization=False)
                         c_name = str(
                             getattr(c, "name", "")
                             if not isinstance(c, dict)
@@ -2757,12 +2783,12 @@ def compile_journey3_shot_prompt(
                             else c.get("role_id", "") or ""
                         ).strip()
                         if (
-                            spk_lower in (c_id.lower(), c_name.lower(), c_role.lower())
+                            spk_lower in (c_name.lower(), c_role.lower())
                             or (c_name and c_name.lower() in spk_lower)
                             or (c_role and c_role.lower() in spk_lower)
                         ):
                             matched_char_id = get_character_identifier(
-                                c, enable_sanitization=enable_sanitization
+                                c, enable_sanitization=enable_sanitization, use_role_id=True
                             )
                             break
 

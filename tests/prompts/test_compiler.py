@@ -146,7 +146,7 @@ def test_character_role_specific_aesthetic_tags():
         characters=chars,
         scenes=scenes,
     )
-    assert get_character_identifier(chars[0]) in prompt
+    assert get_character_identifier(chars[0], use_role_id=True) in prompt
     assert "Red Gucci Tracksuit" in prompt
     assert "[# References <IMAGE_REF_0>@Image1]" in prompt
 
@@ -195,11 +195,11 @@ def test_compile_storyboard_with_audio_and_vocal_direction():
         in compiled
     )
     assert (
-        f"Voice Style ({get_character_identifier(chars[0])} <IMAGE_REF_0>): Fast-paced confident Atlanta rap flow with autotune"
+        f"Voice Style ({get_character_identifier(chars[0], use_role_id=True)} <IMAGE_REF_0>): Fast-paced confident Atlanta rap flow with autotune"
         in compiled
     )
     assert (
-        f"Voice Style ({get_character_identifier(chars[1])} <IMAGE_REF_1>): Pompous, cynical British drawl with aggressive cadence"
+        f"Voice Style ({get_character_identifier(chars[1], use_role_id=True)} <IMAGE_REF_1>): Pompous, cynical British drawl with aggressive cadence"
         in compiled
     )
     assert (
@@ -472,7 +472,7 @@ def test_compile_multi_role_prompt_with_screenplay_text():
     )
 
     assert (
-        f"- Scene 1 [{get_character_identifier(chars[0])}, {get_character_identifier(chars[1])}] (Screenplay Script):"
+        f"- Scene 1 [{get_character_identifier(chars[0], use_role_id=True)}, {get_character_identifier(chars[1], use_role_id=True)}] (Screenplay Script):"
         in prompt
     )
     assert (
@@ -779,7 +779,7 @@ def test_four_block_character_identifier_symmetry():
         reference_url="gs://bucket/harry.jpg",
         image_role="Character Reference",
     )
-    expected_id = get_character_identifier(char)
+    expected_id = get_character_identifier(char, use_role_id=True)
 
     parts = compiler.compile_prompt(
         raw_prompt="Hero catching the snitch",
@@ -792,7 +792,7 @@ def test_four_block_character_identifier_symmetry():
     assert (
         f"- {expected_id} <IMAGE_REF_0>: Young wizard with round glasses" in full_prompt
     )
-    assert f'{expected_id}: "Expelliarmus!"' in full_prompt
+    assert 'Harry <IMAGE_REF_0>: "Expelliarmus!"' in full_prompt
 
 
 def test_sanitize_real_names_prevents_over_sanitization():
@@ -854,15 +854,15 @@ def test_four_block_official_image_ref_tags():
 
     # Verify character profile binding format
     assert (
-        "- Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard"
+        "- Role A <IMAGE_REF_0>: Gaunt potion master wizard"
         in full_prompt
     )
     assert (
-        "- Spectacled Wizard Bruv <IMAGE_REF_1>: Young wizard with round wire-rim glasses"
+        "- Role B <IMAGE_REF_1>: Young wizard with round wire-rim glasses"
         in full_prompt
     )
     assert (
-        "- Dungeon Corridor <FIRST_FRAME>: Starting frame of stone dungeon corridor"
+        "- Role C <FIRST_FRAME>: Starting frame of stone dungeon corridor"
         in full_prompt
     )
 
@@ -1036,8 +1036,8 @@ def test_compile_storyboard_with_keyframe_seed_offsets_image_indexes():
     )
     assert "[# Sources <FIRST_FRAME>@KeyframeSeed]" in compiled
     assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in compiled
-    assert "- Char1 <IMAGE_REF_0>:" in compiled
-    assert "- Char2 <IMAGE_REF_1>:" in compiled
+    assert "- Role A <IMAGE_REF_0>:" in compiled
+    assert "- Role B <IMAGE_REF_1>:" in compiled
 
 
 def test_compile_storyboard_multi_speaker_dialogue_tag_binding():
@@ -1068,7 +1068,7 @@ def test_compile_storyboard_multi_speaker_dialogue_tag_binding():
         scenes=[scene],
     )
     assert (
-        'Role A - Dumble Dior <IMAGE_REF_0> says: "Welcome to Dripwarts!"' in compiled
+        'Role A - a high-fashion wizard headmaster <IMAGE_REF_0> says: "Welcome to Dripwarts!"' in compiled
     )
     assert (
         'Role B - Potion Master Dawg <IMAGE_REF_1> says: "Potions class is in session!"'
@@ -1442,8 +1442,8 @@ def test_compile_journey3_shot_prompt_timeline_separates_dialogue_and_visual_act
 
     assert "### TIMELINE" in prompt
     assert "- Visual Action: Potion Master reaches carefully for the beaker" in prompt
-    assert '- Spoken Dialogue (Potion Master): "Silence, Spectacled Wizard Bruv!"' in prompt
-    assert '- Spoken Dialogue (Spectacled Wizard Bruv): "Never!"' in prompt
+    assert '- Spoken Dialogue (Role A): "Silence, Spectacled Wizard Bruv!"' in prompt
+    assert '- Spoken Dialogue (Role B): "Never!"' in prompt
 
 
 def test_deconstruct_concept_extracts_intuitive_vision_defaults():
@@ -1548,5 +1548,58 @@ def test_compile_journey3_shot_prompt_enforces_gemini_omni_flash_structure():
     assert "### SCENE INSTRUCTIONS" in prompt
     assert "### TIMELINE" in prompt
     assert '- On-Screen Displayed Text / Title Card: "TITLE" (Subtitle: "SUBTITLE")' in prompt
+
+
+def test_get_character_identifier_returns_role_id_for_gemini_prompts():
+    char = CharacterRole(
+        role_id="Role A",
+        name="YoTotti",
+        description="Young tatted wizard",
+    )
+    # Default use_role_id=True returns role_id for clean API prompts
+    assert get_character_identifier(char, use_role_id=True) == "Role A"
+    # When use_role_id=False, returns sanitized name
+    assert get_character_identifier(char, use_role_id=False) == "a tatted wizard"
+
+
+def test_compile_journey3_shot_prompt_uses_role_ids_for_all_character_references():
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="YoTotti",
+            description="Young tatted wizard",
+            wardrobe="Plaid Trench Coat",
+            reference_url="gs://bucket/totti.jpg",
+        ),
+        CharacterRole(
+            role_id="Role B",
+            name="DumbleDior",
+            description="High fashion headmaster",
+            wardrobe="Silk Mink Coat",
+            reference_url="gs://bucket/dumble.jpg",
+        ),
+    ]
+    prompt = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="YoTotti enters the room as DumbleDior steps into fog",
+        characters=chars,
+        timeline_dialogue="YoTotti: Fifty bands for pure finesse! / DumbleDior: Type shit, on God!",
+    )
+    # Verify Block 2 profiles use Role A and Role B
+    assert "- Role A: (Reference Image: @Image1" in prompt
+    assert "- Role B: (Reference Image: @Image2" in prompt
+    # Verify raw names like YoTotti or DumbleDior do NOT appear in the prompt
+    assert "YoTotti" not in prompt
+    assert "DumbleDior" not in prompt
+    # Verify timeline uses Role A and Role B for dialogue
+    assert '- Spoken Dialogue (Role A): "Fifty bands for pure finesse!"' in prompt
+    assert '- Spoken Dialogue (Role B): "Type shit, on God!"' in prompt
+
+
+def test_sanitize_real_names_handles_camelcase_and_concatenated_names():
+    assert sanitize_real_names("YoTotti in Hogwarts") == "a tatted wizard in Academy Hall"
+    assert sanitize_real_names("JordanTotten coding") == "a young wizard scholar coding"
+    assert sanitize_real_names("DumbleDior fashion") == "a high-fashion wizard headmaster fashion"
+
 
 

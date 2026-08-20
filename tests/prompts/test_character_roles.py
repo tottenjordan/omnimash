@@ -45,13 +45,13 @@ def test_compile_with_character_roles_and_scenes():
         audio_beat="140 BPM Heavy 808 Trap",
     )
     assert "### CHARACTER PROFILES" in compiled
-    assert "Spectacled Wizard Bruv" in compiled
-    assert "Platinum Rival Blood" in compiled
+    assert "Role A" in compiled
+    assert "Role B" in compiled
     assert "### SCENE INSTRUCTIONS" in compiled
     assert "2000s Atlanta Trap" in compiled
     assert "### TIMELINE" in compiled
-    assert "Scene 1 [Spectacled Wizard Bruv <IMAGE_REF_0>]" in compiled
-    assert "Scene 2 [Platinum Rival Blood <IMAGE_REF_1>]" in compiled
+    assert "Scene 1 [Role A <IMAGE_REF_0>]" in compiled
+    assert "Scene 2 [Role B <IMAGE_REF_1>]" in compiled
     assert "cooking potions" in compiled
 
 
@@ -100,10 +100,10 @@ def test_compile_storyboard_minimal_args():
         scenes=scenes,
     )
     assert "### CHARACTER PROFILES" in compiled
-    assert "Spectacled Wizard Bruv" in compiled
+    assert "Role A" in compiled
     assert "### SCENE INSTRUCTIONS" in compiled
     assert "### TIMELINE" in compiled
-    assert "Scene 1 [Spectacled Wizard Bruv]" in compiled
+    assert "Scene 1 [Role A]" in compiled
 
 
 def test_character_role_voice_profile():
