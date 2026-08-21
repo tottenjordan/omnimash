@@ -281,6 +281,7 @@ class DeleteStoryboardRequest(BaseModel):
 
 class KeyframeImageRequest(BaseModel):
     shot_index: int = 1
+    image_prompt: str | None = None
     action: str = ""
     location: str = ""
     style_lighting: str = ""
@@ -1609,12 +1610,13 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data && data.error) {
                         setLastError(data.error);
                     } else if (data && data.shots && data.shots.length > 0) {
-                        setStageShots(data.shots);
+                        const shotsWithPrompts = data.shots.map((s) => ({
+                            ...s,
+                            image_prompt: s.image_prompt || [s.action, s.location].filter(Boolean).join(", ") || s.summary || ""
+                        }));
+                        setStageShots(shotsWithPrompts);
                         setActiveShotIdx(0);
                         setActiveStage(2);
-                        setTimeout(() => {
-                            handleGenerateAllKeyframes(data.shots);
-                        }, 100);
                     }
                 } catch (err) {
                     console.error("Storyboard expansion failed:", err);
@@ -1681,11 +1683,13 @@ UI_HTML = r"""<!DOCTYPE html>
                     const anchorUrl = (idx > 0 && stageShots[0] && stageShots[0].keyframe_image_url)
                         ? stageShots[0].keyframe_image_url
                         : null;
+                    const kfPrompt = shot.image_prompt || [shot.action, shot.location].filter(Boolean).join(", ") || shot.summary || "";
                     const res = await fetch("/api/storyboard/keyframe-image", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             shot_index: shotIdx,
+                            image_prompt: kfPrompt,
                             action: shot.action || "",
                             location: shot.location || "",
                             style_lighting: shot.style_lighting || stageStyleTone,
@@ -5631,6 +5635,24 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 </div>
                                                             )}
 
+                                                            {/* Editable Keyframe Image Generation Prompt Box */}
+                                                            <div className="space-y-1.5 mb-3 bg-gray-950/80 border border-amber-900/60 rounded-xl p-3 shadow-sm">
+                                                                <div className="flex items-center justify-between">
+                                                                    <label className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                                        <span>🖼️</span>
+                                                                        <span>Keyframe Image Generation Prompt</span>
+                                                                    </label>
+                                                                    <span className="text-[10px] text-gray-400 font-mono">Editable keyframe visual setup for Shot #{sNum}</span>
+                                                                </div>
+                                                                <textarea
+                                                                    rows={2}
+                                                                    value={shot.image_prompt !== undefined ? shot.image_prompt : [shot.action, shot.location].filter(Boolean).join(", ")}
+                                                                    onChange={(e) => updateStageShot(idx, "image_prompt", e.target.value)}
+                                                                    placeholder="Specify exact initial keyframe frame visual setup, environment lighting, and character layout before motion begins..."
+                                                                    className="w-full bg-black border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                                                />
+                                                            </div>
+
                                                             {/* 16:9 Large Keyframe Preview Container */}
                                                             <div className={`${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} bg-black rounded-xl overflow-hidden border border-gray-800 flex flex-col items-center justify-center relative group shadow-inner`}>
                                                                 {shot.keyframe_image_url ? (
@@ -8971,12 +8993,15 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     def generate_keyframe_image(
         req: KeyframeImageRequest,
     ) -> KeyframeImageResponse:
-        prompt_parts = [p for p in [req.action, req.location] if p]
-        prompt = (
-            ", ".join(prompt_parts)
-            if prompt_parts
-            else (req.summary or f"Shot {req.shot_index}")
-        )
+        if req.image_prompt and req.image_prompt.strip():
+            prompt = req.image_prompt.strip()
+        else:
+            prompt_parts = [p for p in [req.action, req.location] if p]
+            prompt = (
+                ", ".join(prompt_parts)
+                if prompt_parts
+                else (req.summary or f"Shot {req.shot_index}")
+            )
         ref_urls: list[str] = list(req.reference_image_urls or [])
         if req.characters:
             for c in req.characters:

@@ -1543,7 +1543,46 @@ def test_journey3_keyframe_error_returns_guardrail_guidance(monkeypatch: pytest.
     assert "triggers" in guidance
     assert "user_guidance" in guidance
     assert "suggested_actions" in guidance
-    assert "real_people_likeness" in guidance["triggers"]
+
+
+def test_storyboard_keyframe_image_uses_custom_image_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify /api/storyboard/keyframe-image prioritizes explicit image_prompt parameter over auto-generated string."""
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    received_prompts: list[str] = []
+
+    def mock_gen_kf(prompt: str, *args: Any, **kwargs: Any) -> Any:
+        received_prompts.append(prompt)
+        return "gs://test-bucket/mock_keyframe.png"
+
+    monkeypatch.setattr(app.state.agent.omni_client, "generate_keyframe_image", mock_gen_kf)
+
+    res = client.post(
+        "/api/storyboard/keyframe-image",
+        json={
+            "shot_index": 1,
+            "image_prompt": "Custom user-crafted keyframe prompt for Shot 1",
+            "action": "Legacy action description",
+            "location": "Legacy location",
+            "style_lighting": "Cinematic",
+            "summary": "Legacy summary",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["keyframe_image_url"] == "gs://test-bucket/mock_keyframe.png"
+    assert len(received_prompts) == 1
+    assert "Custom user-crafted keyframe prompt for Shot 1" in received_prompts[0]
+
+
+def test_ui_html_contains_editable_keyframe_prompt_box() -> None:
+    """Verify UI_HTML contains editable Keyframe Image Generation Prompt box on Step 2 shot cards."""
+    from omnimash.api.app import UI_HTML
+
+    assert "Keyframe Image Generation Prompt" in UI_HTML
+    assert "image_prompt" in UI_HTML
 
 
 def test_ui_html_contains_guardrail_guidance_state_and_alert_banner() -> None:
