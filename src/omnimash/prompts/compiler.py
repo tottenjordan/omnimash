@@ -85,10 +85,8 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bVersace\b": "luxury designer",
     r"\bRolex\b": "luxury watch",
     r"\bGryffindor\b": "Gold Lion House",
-    r"\bSlytherin\b": "Green Snake House",
     r"\bRavenclaw\b": "Blue Eagle House",
     r"\bHufflepuff\b": "Yellow Badger House",
-    r"\bHogwarts\b": "Gothic Academy",
     r"\bGolden Snitch\b": "glowing golden flying orb",
     r"\bSnitch\b": "golden flying orb",
     r"\bQuidditch\b": "aerial magical sport",
@@ -800,6 +798,7 @@ def enrich_timeline_dialogue_speakers(
     diag_raw: str,
     characters: list[CharacterRole] | None,
     char_tag_map: dict[str, str] | None = None,
+    enable_sanitization: bool = True,
 ) -> tuple[str, bool]:
     """Enriches multi-speaker dialogue strings by replacing character speaker labels
 
@@ -918,8 +917,13 @@ def enrich_timeline_dialogue_speakers(
         if matched_cand in cand_map:
             replaced = True
             target, c_voice = cand_map[matched_cand]
-            if c_voice and not diag_raw[match.end():].lstrip().startswith("("):
-                replacement = f"{target} (In a {c_voice})"
+            if c_voice:
+                voice_clean = sanitize_real_names(c_voice) if enable_sanitization else c_voice
+                if target.endswith("says:"):
+                    target_base = target[:-5].strip()
+                    replacement = f"{target_base} [Voice Style: {voice_clean}] says:"
+                else:
+                    replacement = f"{target} [Voice Style: {voice_clean}]"
                 if match.end() < len(diag_raw) and not diag_raw[match.end()].isspace():
                     replacement += " "
                 return replacement
@@ -1936,7 +1940,7 @@ class PromptCompiler:
                         f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}"
                     )
                 enriched_sp_text, _ = enrich_timeline_dialogue_speakers(
-                    sp_text.strip(), characters, char_tag_map
+                    sp_text.strip(), characters, char_tag_map, enable_sanitization=enable_sanitization
                 )
                 indented_script = "\n".join(
                     f"  {line}" for line in enriched_sp_text.strip().splitlines()
@@ -2004,6 +2008,7 @@ class PromptCompiler:
                                 diag_raw=diag_raw,
                                 characters=characters,
                                 char_tag_map=char_tag_map,
+                                enable_sanitization=enable_sanitization,
                             )
                         )
                         if replaced_speakers:
@@ -2755,6 +2760,7 @@ def compile_journey3_shot_prompt(
                 txt = sd_match.group(2).strip()
                 txt_clean = txt.strip('"').strip("'").strip('“').strip('”')
                 matched_spk: str | None = None
+                matched_char_obj = None
                 if characters:
                     spk_lower = spk.lower()
                     for c in characters:
@@ -2766,12 +2772,21 @@ def compile_journey3_shot_prompt(
                             or (c_role and c_role.lower() in spk_lower)
                         ):
                             matched_spk = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
+                            matched_char_obj = c
                             break
                 if not matched_spk:
                     matched_spk = sanitize_real_names(spk) if enable_sanitization else spk
                 if enable_sanitization and txt_clean:
                     txt_clean = sanitize_real_names(txt_clean)
-                timeline_items.append(f'- Spoken Dialogue ({matched_spk}): "{txt_clean}"')
+
+                voice_tag = ""
+                if matched_char_obj:
+                    v_raw = getattr(matched_char_obj, "voice_style", "") if not isinstance(matched_char_obj, dict) else matched_char_obj.get("voice_style", "")
+                    if v_raw and str(v_raw).strip():
+                        v_clean = sanitize_real_names(str(v_raw).strip()) if enable_sanitization else str(v_raw).strip()
+                        voice_tag = f" [Voice Style: {v_clean}]"
+
+                timeline_items.append(f'- Spoken Dialogue ({matched_spk}){voice_tag}: "{txt_clean}"')
                 continue
 
             match = re.match(r"^(?:-\s*)?([^:]+):\s*[\"“]?(.*?)[\"”]?$", chunk)
@@ -2782,6 +2797,7 @@ def compile_journey3_shot_prompt(
                 txt_clean = txt.strip('"').strip("'").strip('“').strip('”')
 
                 matched_char_id: str | None = None
+                matched_char_obj = None
                 if characters:
                     spk_lower = spk.lower()
                     for c in characters:
@@ -2803,6 +2819,7 @@ def compile_journey3_shot_prompt(
                             matched_char_id = get_character_identifier(
                                 c, enable_sanitization=enable_sanitization, use_role_id=True
                             )
+                            matched_char_obj = c
                             break
 
                 if not matched_char_id:
@@ -2811,16 +2828,26 @@ def compile_journey3_shot_prompt(
                 if enable_sanitization and txt_clean:
                     txt_clean = sanitize_real_names(txt_clean)
 
-                timeline_items.append(f'- Spoken Dialogue ({matched_char_id}): "{txt_clean}"')
+                voice_tag = ""
+                if matched_char_obj:
+                    v_raw = getattr(matched_char_obj, "voice_style", "") if not isinstance(matched_char_obj, dict) else matched_char_obj.get("voice_style", "")
+                    if v_raw and str(v_raw).strip():
+                        v_clean = sanitize_real_names(str(v_raw).strip()) if enable_sanitization else str(v_raw).strip()
+                        voice_tag = f" [Voice Style: {v_clean}]"
+
+                timeline_items.append(f'- Spoken Dialogue ({matched_char_id}){voice_tag}: "{txt_clean}"')
             else:
                 txt_clean = chunk.strip('"').strip("'").strip('“').strip('”')
                 if characters and len(characters) == 1:
                     spk_id = get_character_identifier(characters[0], enable_sanitization=enable_sanitization)
+                    v_raw = getattr(characters[0], "voice_style", "") if not isinstance(characters[0], dict) else characters[0].get("voice_style", "")
+                    voice_tag = f" [Voice Style: {sanitize_real_names(str(v_raw).strip()) if enable_sanitization else str(v_raw).strip()}]" if v_raw and str(v_raw).strip() else ""
                 else:
                     spk_id = "Speaker"
+                    voice_tag = ""
                 if enable_sanitization and txt_clean:
                     txt_clean = sanitize_real_names(txt_clean)
-                timeline_items.append(f'- Spoken Dialogue ({spk_id}): "{txt_clean}"')
+                timeline_items.append(f'- Spoken Dialogue ({spk_id}){voice_tag}: "{txt_clean}"')
 
     if resolved_audio:
         if resolved_audio.startswith("Silent video") or resolved_audio.startswith("Audio:"):
@@ -2840,6 +2867,14 @@ def compile_journey3_shot_prompt(
         f"- Action Directive: {action_str}",
         f"- Aspect Ratio: {aspect_ratio}",
     ]
+    if characters:
+        for c in characters:
+            v_raw = getattr(c, "voice_style", "") if not isinstance(c, dict) else c.get("voice_style", "")
+            if v_raw and str(v_raw).strip():
+                c_id = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
+                v_clean = sanitize_real_names(str(v_raw).strip()) if enable_sanitization else str(v_raw).strip()
+                scene_inst_items.append(f"- Voice Style ({c_id}): {v_clean}")
+
     if cumulative_state:
         st_block = cumulative_state.format_cumulative_state_block().strip()
         if st_block and st_block != "None.":

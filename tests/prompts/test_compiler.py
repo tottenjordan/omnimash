@@ -1187,7 +1187,7 @@ def test_timeline_dialogue_includes_parenthetical_voice_style():
         scenes=scenes,
     )
     assert "### TIMELINE" in compiled
-    assert 'says: (In a british accent) "Turn to page 394."' in compiled
+    assert 'Role A - Potion Master [Voice Style: british accent] says: "Turn to page 394."' in compiled
 
 
 def test_scene_instructions_vocal_delivery_priority():
