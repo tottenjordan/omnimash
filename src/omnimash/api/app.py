@@ -5599,7 +5599,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                         return (
                                                                             <div key={c.role_id || charIdx} className="flex items-center justify-between gap-2 text-xs font-mono text-purple-200">
                                                                                 <span className="truncate">
-                                                                                    🖼️ Attached Reference Anchor: <span className="font-bold text-amber-300">{filename}</span> <span className="text-[10px] text-gray-400">(Click ❌ Detach to clear for fresh visuals)</span>
+                                                                                    🖼️ Attached Reference Anchor ({c.role_id || `Role ${charIdx + 1}`}): <span className="font-bold text-amber-300">{filename}</span> <span className="text-[10px] text-gray-400">(Click ❌ Detach to clear for fresh visuals)</span>
                                                                                 </span>
                                                                                 <button
                                                                                     type="button"
@@ -7960,7 +7960,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                             return (
                                                                 <div key={c.role_id || charIdx} className="flex items-center justify-between gap-2 text-xs font-mono text-purple-200">
                                                                     <span className="truncate">
-                                                                        🖼️ Attached Reference Anchor ({c.name || c.role_id}): <span className="font-bold text-amber-300">{filename}</span> <span className="text-[10px] text-gray-400">(Click ❌ Detach to clear for fresh visuals)</span>
+                                                                        🖼️ Attached Reference Anchor ({c.role_id || `Role ${charIdx + 1}`}): <span className="font-bold text-amber-300">{filename}</span> <span className="text-[10px] text-gray-400">(Click ❌ Detach to clear for fresh visuals)</span>
                                                                     </span>
                                                                     <button
                                                                         type="button"
