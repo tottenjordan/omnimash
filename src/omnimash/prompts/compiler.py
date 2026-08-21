@@ -73,7 +73,6 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\b40-ounce\s*beer\b": "glowing golden goblet",
     r"\b40-ounce\b": "golden goblet",
     r"\bpop\s+you\s+for\b": "challenge you for",
-    r"\bshit\b": "stuff",
     r"\bstepped\s*on\b": "diluted",
     r"\bwidespread\s*panic\b": "vintage band emblem",
     r"\btear\s*drop\s*tattoos?\b": "facial ink accent",
