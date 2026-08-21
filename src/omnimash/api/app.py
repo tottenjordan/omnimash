@@ -818,6 +818,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stageRefImage, setStageRefImage] = useState("");
             const [stageRefAudio, setStageRefAudio] = useState("");
             const [screenplayScript, setScreenplayScript] = useState("");
+            const [keyframeImagePrompt, setKeyframeImagePrompt] = useState("");
             const [showScreenplayModal, setShowScreenplayModal] = useState(false);
             const [storyboardPath, setStoryboardPath] = useState("path1");
             const [showBestPracticesModal, setShowBestPracticesModal] = useState(false);
@@ -4627,13 +4628,68 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     </select>
                                                 </div>
                                             </div>
-                                            <textarea
-                                                rows={3}
-                                                value={concept}
-                                                onChange={(e) => setConcept(e.target.value)}
-                                                placeholder="Describe your 60s parody video concept in detail..."
-                                                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
-                                            />
+                                            {/* Primary Input 1: Dedicated Keyframe Image Generation Prompt */}
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-xs font-bold text-amber-400 uppercase tracking-wider border-l-4 border-amber-500 pl-3 flex items-center gap-1.5">
+                                                        <span>🖼️</span>
+                                                        <span>Keyframe Image Generation Prompt</span>
+                                                    </label>
+                                                    <span className="text-[10px] text-gray-400 font-mono">Initial frame visual setup, lighting &amp; character layout</span>
+                                                </div>
+                                                <textarea
+                                                    rows={3}
+                                                    value={keyframeImagePrompt || concept}
+                                                    onChange={(e) => setKeyframeImagePrompt(e.target.value)}
+                                                    placeholder="Specify the exact keyframe frame visual setup, environment lighting, aspect ratio, and initial character layout before motion begins..."
+                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                                />
+                                            </div>
+
+                                            {/* Primary Input 2: 10s Screenplay Script Directive */}
+                                            <div className="space-y-1.5 pt-2">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-xs font-bold text-amber-300 uppercase tracking-wider border-l-4 border-indigo-500 pl-3 flex items-center gap-1.5">
+                                                        <span>📜</span>
+                                                        <span>Screenplay Script (10s Shot)</span>
+                                                    </label>
+                                                    <span className="text-[10px] text-gray-400 font-mono">Format: Character (Action) "Dialogue"</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                                    <span className="text-[11px] text-gray-400 self-center font-medium">Quick Screenplay Presets:</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const kPrompt = "A high-fashion wizard headmaster in a silk robe standing in an opulent mahogany office, 9:16 portrait";
+                                                            const script = `Dumble Dior: (Casual, adjusting his spectacles) "Ah, blood! Thank heavens you're out the Feds!"\n\nYoTotti: (Smooth, unbothered, putting jewelry boxes into duffle bag) "They said my diamonds was so crazy that I must be committed."\n\nDumble Dior: (Deadpan) "Type shit."`;
+                                                            setKeyframeImagePrompt(kPrompt);
+                                                            setScreenplayScript(script);
+                                                        }}
+                                                        className="bg-amber-950/60 border border-amber-800/80 hover:border-amber-500 text-amber-200 text-[11px] px-2.5 py-1 rounded-lg transition"
+                                                    >
+                                                        📜 Wizard Headmaster Office (Character Action Dialogue)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const kPrompt = "Neon-lit cyberpunk alleyway, Operative A hacking holographic console, 9:16 portrait";
+                                                            const script = `Operative A: (Hacks security vault console under neon holographic interface) "Systems breached, we have 30 seconds."\n\nOperative B: (Covers perimeter with plasma pulse rifle) "Security drones inbound, move now!"`;
+                                                            setKeyframeImagePrompt(kPrompt);
+                                                            setScreenplayScript(script);
+                                                        }}
+                                                        className="bg-purple-950/60 border border-purple-800/80 hover:border-purple-500 text-purple-200 text-[11px] px-2.5 py-1 rounded-lg transition"
+                                                    >
+                                                        🎬 Cyberpunk Heist (Role A / Role B Script)
+                                                    </button>
+                                                </div>
+                                                <textarea
+                                                    rows={5}
+                                                    value={screenplayScript}
+                                                    onChange={(e) => setScreenplayScript(e.target.value)}
+                                                    placeholder={`Character (Action) "Dialogue" or [Role A] (Action) "Dialogue"\n\nExample:\nDumble Dior: (Adjusts his spectacles) "Ah, blood! Thank heavens you're out the Feds!"\n\nYoTotti: (Smirks, putting jewelry into duffle bag) "They said my diamonds was so crazy that I must be committed."`}
+                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                                />
+                                            </div>
 
                                             <div className="flex flex-wrap items-center gap-1.5 mt-2">
                                                 <span className="text-[11px] text-gray-400 font-medium">Quick Concept Presets:</span>
@@ -4643,6 +4699,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         type="button"
                                                         onClick={() => {
                                                             setConcept(item.concept);
+                                                            setKeyframeImagePrompt(item.concept);
                                                             handleDeconstructConcept(item.concept);
                                                         }}
                                                         className="bg-amber-950/60 border border-amber-800/80 hover:border-amber-500 text-amber-200 text-[11px] px-2.5 py-1 rounded-lg transition"
@@ -4671,46 +4728,6 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     {compileStoryboardPreview()}
                                                 </pre>
                                             </details>
-
-                                            <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                                                        <span>📜</span>
-                                                        <span>Timecoded Screenplay &amp; Director's Notes Studio</span>
-                                                    </label>
-                                                    <span className="text-[10px] text-gray-400 font-mono">Include [DIRECTOR'S NOTES], [0-3s] Action:, Audio:, Dialogue:</span>
-                                                </div>
-                                                <div className="flex flex-wrap gap-1.5 mb-2">
-                                                    <span className="text-[11px] text-gray-400 self-center font-medium">Presets:</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const preset = `[DIRECTOR'S NOTES]\n- Tone: High-Energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Intense rivalry between Dumble Dior & Snape Dawg; mutual respect masked by humorous disses.\n- Dumble Dior Profile: Regal, charismatic, confident flow.\n- Snape Dawg Profile: Deep subterranean trap flow with autotune.\n\n[0-3s] Action: Dumble Dior steps up to the mic under glowing neon lights. Audio: Heavy 808 trap beat with ambient crowd cheers. Dialogue: Dumble Dior: "Welcome to Dripwarts, turn the beat up!"\n\n[3-6s] Action: Snape Dawg drops a heavy 808 trap beat. Audio: Crisp snare trills and sub-bass drop. Dialogue: Snape Dawg: "Potions class is in session, no cap!"\n\n[6-10s] Action: Both perform synchronized rap battle climax amidst stage smoke and purple rim lights. Audio: Climax 808 beat drop. Dialogue: Both: "Trap or Die!"`;
-                                                            setScreenplayScript(preset);
-                                                        }}
-                                                        className="bg-amber-950/60 border border-amber-800/80 hover:border-amber-500 text-amber-200 text-[11px] px-2.5 py-1 rounded-lg transition"
-                                                    >
-                                                        📜 Rap Battle (Director's Notes + Timecodes)
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const preset = `[DIRECTOR'S NOTES]\n- Tone: Cinematic Cyberpunk Action\n- Relational Dynamic: Partner operatives navigating high-stakes heist.\n\n[0-5s] Action: Operative A hacks the security vault console under neon holographic interface. Audio: High-frequency data pulse and rhythmic synth bass. Dialogue: Operative A: "Systems breached, we have 30 seconds."\n\n[5-10s] Action: Operative B covers the perimeter with plasma pulse rifle. Audio: Rhythmic alarm klaxons and pulsing bass drop. Dialogue: Operative B: "Security drones inbound, move now!"`;
-                                                            setScreenplayScript(preset);
-                                                        }}
-                                                        className="bg-purple-950/60 border border-purple-800/80 hover:border-purple-500 text-purple-200 text-[11px] px-2.5 py-1 rounded-lg transition"
-                                                    >
-                                                        🎬 Cyberpunk Heist (Action &amp; Dialogue)
-                                                    </button>
-                                                </div>
-                                                <textarea
-                                                    rows={6}
-                                                    value={screenplayScript}
-                                                    onChange={(e) => setScreenplayScript(e.target.value)}
-                                                    placeholder={`[DIRECTOR'S NOTES]\n- Tone: High-energy 90s Cel-Shaded Anime Rap Battle\n- Relational Dynamic: Friendly rivalry between Dumble Dior and Snape Dawg\n\n# Supports both Character: (Action) "Dialogue" AND [0-3s] Timecoded Script:\n\nDumble Dior: (Steps up to the mic under glowing neon lights. Audio: Heavy 808 trap beat.) "Welcome to Dripwarts, turn the beat up!"\n\nSnape Dawg: (Drops a heavy 808 trap beat. Audio: Crisp snare trills and sub-bass drop.) "Potions class is in session, no cap!"\n\n[6-10s] Action: Both perform synchronized rap battle climax amidst stage smoke and purple rim lights. Audio: Climax 808 beat drop. Dialogue: Both: "Trap or Die!"`}
-                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
-                                                />
-                                            </div>
 
                                             <div>
                                                 <label className="text-xs font-bold text-gray-300 block mb-2">Style &amp; Tone Preset Pills:</label>

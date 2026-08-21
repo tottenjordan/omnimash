@@ -1681,6 +1681,15 @@ def test_character_voice_profile_propagation_to_voice_style() -> None:
     assert "Voice Style (Role A): Scottish accent with rapid delivery" in prompt
 
 
+def test_ui_html_contains_mode1_dedicated_keyframe_prompt_and_screenplay_inputs() -> None:
+    """Verify UI_HTML contains dedicated Keyframe Image Generation Prompt and Screenplay Script inputs for Mode 1."""
+    from omnimash.api.app import UI_HTML
+
+    assert "Keyframe Image Generation Prompt" in UI_HTML
+    assert "keyframeImagePrompt" in UI_HTML
+    assert "Screenplay Script (10s Shot)" in UI_HTML
+
+
 
 
 
