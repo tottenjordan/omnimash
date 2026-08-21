@@ -1059,7 +1059,10 @@ class OmniFlashClient:
         char_img_map: dict[str, int] = {}
         curr_idx = starting_index
 
-        for char in characters:
+        from omnimash.prompts.compiler import sort_characters_by_role_id
+        sorted_chars = sort_characters_by_role_id(characters)
+
+        for char in sorted_chars:
             role_id = (
                 getattr(char, "role_id", "")
                 if not isinstance(char, dict)

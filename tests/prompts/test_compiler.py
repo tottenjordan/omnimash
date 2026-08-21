@@ -942,6 +942,31 @@ def test_build_character_image_ref_tags_extracts_base_names_and_tokens():
     assert "Swagrid <IMAGE_REF_1>" in full_prompt
 
 
+def test_build_character_image_ref_tags_sorts_by_role_id():
+    """Verify build_character_image_ref_tags sorts characters by role_id so Role A is always <IMAGE_REF_0> and Role B is always <IMAGE_REF_1> regardless of array order."""
+    char_b = CharacterRole(
+        role_id="Role B",
+        name="Yo Totti",
+        description="Yo Totti",
+        reference_url="https://example.com/yototti.png",
+    )
+    char_a = CharacterRole(
+        role_id="Role A",
+        name="Bee Allison",
+        description="Bee Allison",
+        reference_url="https://example.com/bee_allison.png",
+    )
+
+    # Pass in reversed order [Role B, Role A]
+    sources, refs, char_tag_map = build_character_image_ref_tags([char_b, char_a])
+
+    # Role A (Bee Allison) must get <IMAGE_REF_0>, and Role B (Yo Totti) must get <IMAGE_REF_1>
+    assert char_tag_map.get("Role A") == "<IMAGE_REF_0>"
+    assert char_tag_map.get("Bee Allison") == "<IMAGE_REF_0>"
+    assert char_tag_map.get("Role B") == "<IMAGE_REF_1>"
+    assert char_tag_map.get("Yo Totti") == "<IMAGE_REF_1>"
+
+
 def test_compile_storyboard_preserves_shot_audio_soundscape():
     compiler = PromptCompiler()
     chars = [

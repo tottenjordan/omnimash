@@ -171,6 +171,37 @@ def get_character_identifier(
     return "Character"
 
 
+def sort_characters_by_role_id(characters: list[Any] | None) -> list[Any]:
+    """Sorts character role list deterministically: Starting Frame / Keyframe Seed first, followed by Role A, Role B, Role C, Role D."""
+    if not characters:
+        return []
+
+    def _role_key(c: Any) -> tuple[int, int, str]:
+        img_role = (
+            getattr(c, "image_role", "")
+            if not isinstance(c, dict)
+            else c.get("image_role", "") or ""
+        )
+        if img_role in ("Starting Frame", "Keyframe Seed Anchor"):
+            return (0, 0, "")
+
+        r_id = str(
+            getattr(c, "role_id", "")
+            if not isinstance(c, dict)
+            else c.get("role_id", "") or ""
+        ).strip().upper()
+        m = re.search(r"ROLE\s*([A-Z0-9]+)", r_id)
+        if m:
+            val = m.group(1)
+            if val.isdigit():
+                return (1, 0, f"{int(val):04d}")
+            elif len(val) == 1 and "A" <= val <= "Z":
+                return (1, 0, f"{ord(val) - ord('A'):04d}")
+        return (1, 1, r_id)
+
+    return sorted(characters, key=_role_key)
+
+
 def build_character_image_ref_tags(
     characters: list[CharacterRole] | None,
     starting_index: int = 1,
@@ -192,10 +223,11 @@ def build_character_image_ref_tags(
     if not characters:
         return sources_items, references_items, char_tag_map
 
+    sorted_chars = sort_characters_by_role_id(characters)
     ref_counter = 0
     img_idx = starting_index
 
-    for char in characters:
+    for char in sorted_chars:
         ref_url = (
             getattr(char, "reference_url", None)
             if not isinstance(char, dict)
