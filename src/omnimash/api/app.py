@@ -1722,6 +1722,26 @@ UI_HTML = r"""<!DOCTYPE html>
                 }
             };
 
+            const handleClearShotVideo = (idx) => {
+                setStageShots((prev) =>
+                    prev.map((s, i) =>
+                        i === idx
+                            ? { ...s, video_url: null, turn_id: null, raw_compiled_prompt: null }
+                            : s
+                    )
+                );
+            };
+
+            const handleClearShotKeyframe = (idx) => {
+                setStageShots((prev) =>
+                    prev.map((s, i) =>
+                        i === idx
+                            ? { ...s, keyframe_image_url: null }
+                            : s
+                    )
+                );
+            };
+
             const handleGenerateShotVideo = async (idx, shot, parentIdOverride = null) => {
                 const shotIdx = shot.shot_index || (idx + 1);
                 setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: true }));
@@ -5670,20 +5690,33 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 )}
                                                             </div>
 
-                                                            {/* Keyframe Generation Button */}
-                                                            <button
-                                                                type="button"
-                                                                disabled={keyframeLoadingMap[sNum]}
-                                                                onClick={() => handleGenerateKeyframeImage(idx, shot)}
-                                                                className="w-full bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 font-bold text-xs py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition disabled:opacity-50"
-                                                            >
-                                                                <span>🖼️</span>
-                                                                <span>
-                                                                    {keyframeLoadingMap[sNum]
-                                                                        ? "Rendering Keyframe Art (Gemini 3.1 Flash)..."
-                                                                        : "🖼️ Generate / Re-generate Keyframe Image (Gemini 3.1 Flash)"}
-                                                                </span>
-                                                            </button>
+                                                            {/* Keyframe Generation Buttons */}
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={keyframeLoadingMap[sNum]}
+                                                                    onClick={() => handleGenerateKeyframeImage(idx, shot)}
+                                                                    className="flex-1 bg-purple-950/70 hover:bg-purple-900 border border-purple-800 text-purple-200 font-bold text-xs py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition disabled:opacity-50"
+                                                                >
+                                                                    <span>🖼️</span>
+                                                                    <span>
+                                                                        {keyframeLoadingMap[sNum]
+                                                                            ? "Rendering Keyframe Art (Gemini 3.1 Flash)..."
+                                                                            : "🖼️ Generate / Re-generate Keyframe Image (Gemini 3.1 Flash)"}
+                                                                    </span>
+                                                                </button>
+                                                                {shot.keyframe_image_url && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleClearShotKeyframe(idx)}
+                                                                        className="bg-gray-900 hover:bg-red-950/60 border border-gray-700 hover:border-red-700 text-gray-300 hover:text-red-200 font-bold text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-1 transition"
+                                                                        title="Clear keyframe image art for this shot card"
+                                                                    >
+                                                                        <span>🗑️</span>
+                                                                        <span>Clear Keyframe</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
 
                                                             {/* Prompt & Payload Inspector Drawer Toggle */}
                                                             <div className="pt-1">
@@ -5914,19 +5947,32 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
 
                                                             {/* Render Video & Single-Change Conversational Diff Workstation */}
                                                             <div className="pt-3 border-t border-gray-800 space-y-3">
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={shotGeneratingMap[sNum]}
-                                                                    onClick={() => handleGenerateShotVideo(idx, shot)}
-                                                                    className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white font-extrabold text-xs py-3 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 transition"
-                                                                >
-                                                                    <span>🎬</span>
-                                                                    <span>
-                                                                        {shotGeneratingMap[sNum]
-                                                                            ? `Rendering Shot #${sNum} Video...`
-                                                                            : `🎬 Render Video for Shot #${sNum}`}
-                                                                    </span>
-                                                                </button>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={shotGeneratingMap[sNum]}
+                                                                        onClick={() => handleGenerateShotVideo(idx, shot)}
+                                                                        className="flex-1 bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white font-extrabold text-xs py-3 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 transition"
+                                                                    >
+                                                                        <span>🎬</span>
+                                                                        <span>
+                                                                            {shotGeneratingMap[sNum]
+                                                                                ? `Rendering Shot #${sNum} Video...`
+                                                                                : `🎬 Render Video for Shot #${sNum}`}
+                                                                        </span>
+                                                                    </button>
+                                                                    {shot.video_url && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleClearShotVideo(idx)}
+                                                                            className="bg-red-950/80 hover:bg-red-900 border border-red-700 text-red-200 font-bold text-xs py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 transition shadow"
+                                                                            title="Clear generated video clip for this shot card to re-render"
+                                                                        >
+                                                                            <span>🗑️</span>
+                                                                            <span>Clear Video Clip</span>
+                                                                        </button>
+                                                                    )}
+                                                                </div>
 
                                                                 {/* Single-Change Conversational Diff Editor Bar */}
                                                                 <div className="bg-purple-950/40 border border-purple-500/40 rounded-xl p-3 space-y-2">
@@ -6015,9 +6061,24 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                                                                         <span>Shot #{sNum}</span>
                                                                         {isActive && <span className="text-[9px] bg-amber-500 text-black px-1.5 py-0.2 rounded font-extrabold uppercase">Editing</span>}
                                                                     </span>
-                                                                    <span className="text-[10px] font-mono text-gray-400">
-                                                                        {s.duration_seconds || 10}s
-                                                                    </span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {s.video_url && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleClearShotVideo(i);
+                                                                                }}
+                                                                                className="text-[10px] bg-red-950/80 hover:bg-red-900 border border-red-700 text-red-200 px-1.5 py-0.5 rounded font-bold transition"
+                                                                                title="Clear video clip"
+                                                                            >
+                                                                                🗑️ Clear
+                                                                            </button>
+                                                                        )}
+                                                                        <span className="text-[10px] font-mono text-gray-400">
+                                                                            {s.duration_seconds || 10}s
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
 
                                                                 {/* Video or Keyframe Preview */}

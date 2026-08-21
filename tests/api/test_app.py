@@ -1585,6 +1585,16 @@ def test_ui_html_contains_editable_keyframe_prompt_box() -> None:
     assert "image_prompt" in UI_HTML
 
 
+def test_ui_html_contains_clear_video_and_keyframe_handlers() -> None:
+    """Verify UI_HTML contains handleClearShotVideo, handleClearShotKeyframe, and clear buttons on shot cards."""
+    from omnimash.api.app import UI_HTML
+
+    assert "handleClearShotVideo" in UI_HTML
+    assert "handleClearShotKeyframe" in UI_HTML
+    assert "Clear Video Clip" in UI_HTML
+    assert "Clear Keyframe" in UI_HTML
+
+
 def test_ui_html_contains_guardrail_guidance_state_and_alert_banner() -> None:
     """Verify UI_HTML contains guardrailGuidance state hook, policy alert banner, and quick-fix buttons."""
     from omnimash.api.app import UI_HTML
