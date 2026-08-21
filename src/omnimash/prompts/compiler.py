@@ -959,7 +959,7 @@ def enrich_timeline_dialogue_speakers(
         return diag_raw, False
 
     pattern = re.compile(
-        r"(?:^|(?<=[\s|\[(\"'“‘-]))(" + "|".join(pattern_parts) + r")(?:\s*says)?\s*:",
+        r"(?:\[(" + "|".join(pattern_parts) + r")\]|(?:\b)(" + "|".join(pattern_parts) + r")(?:\s*says)?\s*:)",
         flags=re.IGNORECASE,
     )
 
@@ -967,13 +967,18 @@ def enrich_timeline_dialogue_speakers(
 
     def repl_func(match: re.Match) -> str:
         nonlocal replaced
-        matched_cand = match.group(1).lower()
+        bracket_cand = match.group(1)
+        colon_cand = match.group(2)
+        matched_cand = (bracket_cand or colon_cand or "").lower()
+
         if matched_cand in cand_map:
             replaced = True
             target, c_voice = cand_map[matched_cand]
             if c_voice:
                 voice_clean = sanitize_real_names(c_voice) if enable_sanitization else c_voice
-                if target.endswith("says:"):
+                if bracket_cand:
+                    replacement = f"[{bracket_cand}] [Voice Style: {voice_clean}]"
+                elif target.endswith("says:"):
                     target_base = target[:-5].strip()
                     replacement = f"{target_base} [Voice Style: {voice_clean}] says:"
                 else:
@@ -981,7 +986,7 @@ def enrich_timeline_dialogue_speakers(
                 if match.end() < len(diag_raw) and not diag_raw[match.end()].isspace():
                     replacement += " "
                 return replacement
-            return target
+            return f"[{bracket_cand}]" if bracket_cand else target
         return match.group(0)
 
     enriched = pattern.sub(repl_func, diag_raw)
@@ -1788,11 +1793,8 @@ class PromptCompiler:
                     )
                 else:
                     desc_clean = char.description or ""
-                voice_str = (
-                    f" [Voice Style: {char.voice_style.strip()}]"
-                    if getattr(char, "voice_style", None) and char.voice_style.strip()
-                    else ""
-                )
+                v_style = ensure_character_voice_style(char, concept)
+                voice_str = f" [Voice Style: {v_style.strip()}]"
                 char_profiles.append(
                     f"- {char_id}{tag_str}: {desc_clean}{style_str}{voice_str}"
                 )
@@ -1898,12 +1900,13 @@ class PromptCompiler:
             )
 
         for char in characters:
-            if char.voice_style and char.voice_style.strip():
+            if not getattr(char, "is_offscreen_narrator", False):
                 char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
                 tag = char_tag_map.get(char_id)
                 tag_str = f" {tag}" if tag else ""
+                v_style = ensure_character_voice_style(char, concept)
                 scene_inst_parts.append(
-                    f"Voice Style ({char_id}{tag_str}): {char.voice_style.strip()}"
+                    f"Voice Style ({char_id}{tag_str}): {v_style.strip()}"
                 )
         if vocal_delivery and vocal_delivery.strip():
             scene_inst_parts.append(
