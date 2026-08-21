@@ -1649,6 +1649,38 @@ def test_ui_html_contains_10s_movie_trailer_studio_controls() -> None:
     assert "blockbuster_movie_trailer" in UI_HTML
 
 
+def test_character_voice_profile_propagation_to_voice_style() -> None:
+    """Verify incoming character payload with voice_profile or voice_style normalizes and propagates to compiled prompt."""
+    from omnimash.api.app import app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    payload = {
+        "project_name": "voice_test_project",
+        "session_id": "voice_session_1",
+        "shot_index": 1,
+        "action_directive": "YoTotti enters with heavy accent",
+        "characters": [
+            {
+                "role_id": "Role A",
+                "name": "YoTotti",
+                "description": "Young wizard",
+                "voice_profile": "Scottish accent with rapid delivery",
+            }
+        ],
+        "timeline_dialogue": 'YoTotti: "Hello world!"',
+    }
+
+    res = client.post("/api/journey3/generate-shot", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    prompt = data.get("raw_compiled_prompt", "")
+    assert "Scottish accent with rapid delivery" in prompt
+    assert "Voice Style (Role A): Scottish accent with rapid delivery" in prompt
+
+
 
 
 

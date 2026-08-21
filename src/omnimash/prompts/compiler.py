@@ -800,8 +800,9 @@ def parse_screenplay_script(
 
 def ensure_character_voice_style(char: CharacterRole | dict, concept: str = "") -> str:
     """Ensures every character has a clear, explicit accent and vocal delivery prompt instruction."""
-    v_raw = getattr(char, "voice_style", "") if not isinstance(char, dict) else char.get("voice_style", "")
-    v_str = str(v_raw or "").strip()
+    v_style = (getattr(char, "voice_style", None) if not isinstance(char, dict) else char.get("voice_style")) or ""
+    v_profile = (getattr(char, "voice_profile", None) if not isinstance(char, dict) else char.get("voice_profile")) or ""
+    v_str = str(v_style or v_profile or "").strip()
     if v_str and v_str != "Cinematic theatrical voice with distinct expressive delivery":
         return v_str
 
@@ -846,8 +847,10 @@ def apply_conversational_voice_edits(directive_text: str, characters: list[Chara
             if raw_target in (c_name, c_role, c_id) or c_role in raw_target or c_id in raw_target:
                 if isinstance(c, dict):
                     c["voice_style"] = new_voice
+                    c["voice_profile"] = new_voice
                 else:
                     setattr(c, "voice_style", new_voice)
+                    setattr(c, "voice_profile", new_voice)
 
 
 def enrich_timeline_dialogue_speakers(

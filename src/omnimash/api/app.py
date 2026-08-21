@@ -943,7 +943,8 @@ UI_HTML = r"""<!DOCTYPE html>
                 const rosterLines = activeChars.map((c, i) => {
                     const refStr = c.reference_url ? ` (@Image${i + 1})` : "";
                     const tags = (c.aesthetic_tags || []).length > 0 ? `, Wardrobe: ${c.aesthetic_tags.join(", ")}` : "";
-                    const voice = c.voice_profile ? `, Voice: ${c.voice_profile}` : "";
+                    const vVal = c.voice_style || c.voice_profile || "";
+                    const voice = vVal ? ` [Voice Style: ${vVal}]` : "";
                     const narrator = c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator]" : "";
                     return `- ${c.role_id} (${c.name || "Character"}${refStr}): ${c.description || "Visual profile"}${tags}${voice}${narrator}`;
                 }).join("\n") || "None.";
@@ -3785,8 +3786,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     </label>
                                                     <input
                                                         type="text"
-                                                        value={char.voice_profile || ""}
-                                                        onChange={(e) => updateCharacter(idx, "voice_profile", e.target.value)}
+                                                        value={char.voice_style || char.voice_profile || ""}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            updateCharacter(idx, "voice_style", val);
+                                                            updateCharacter(idx, "voice_profile", val);
+                                                        }}
                                                         placeholder="e.g. Deep raspy baritone voice with fast rap cadence..."
                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                     />
@@ -5033,8 +5038,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                     </label>
                                                                     <input
                                                                         type="text"
-                                                                        value={char.voice_profile || ""}
-                                                                        onChange={(e) => updateCharacter(cIdx, "voice_profile", e.target.value)}
+                                                                        value={char.voice_style || char.voice_profile || ""}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value;
+                                                                            updateCharacter(cIdx, "voice_style", val);
+                                                                            updateCharacter(cIdx, "voice_profile", val);
+                                                                        }}
                                                                         placeholder="e.g. Deep raspy baritone voice..."
                                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                                     />
@@ -7437,8 +7446,12 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                             </label>
                                                             <input
                                                                 type="text"
-                                                                value={char.voice_profile || ""}
-                                                                onChange={(e) => updateCharacter(idx, "voice_profile", e.target.value)}
+                                                                value={char.voice_style || char.voice_profile || ""}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    updateCharacter(idx, "voice_style", val);
+                                                                    updateCharacter(idx, "voice_profile", val);
+                                                                }}
                                                                 placeholder="e.g. Deep raspy baritone voice with fast rap cadence..."
                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                             />
@@ -8652,8 +8665,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                                 description=_clean(c.get("description", "")),
                                 reference_url=c.get("reference_url"),
                                 aesthetic_tags=[_clean(t) for t in c.get("aesthetic_tags", [])],
-                                voice_style=_clean(c.get("voice_style", "")),
-                                voice_profile=_clean(c.get("voice_profile", "")),
+                                voice_style=_clean(c.get("voice_style") or c.get("voice_profile") or ""),
+                                voice_profile=_clean(c.get("voice_style") or c.get("voice_profile") or ""),
                                 image_role=c.get("image_role", "Character Reference"),
                                 is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                             )
@@ -8667,8 +8680,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                                 description=_clean(cd.get("description", "")),
                                 reference_url=cd.get("reference_url"),
                                 aesthetic_tags=[_clean(t) for t in cd.get("aesthetic_tags", [])],
-                                voice_style=_clean(cd.get("voice_style", "")),
-                                voice_profile=_clean(cd.get("voice_profile", "")),
+                                voice_style=_clean(cd.get("voice_style") or cd.get("voice_profile") or ""),
+                                voice_profile=_clean(cd.get("voice_style") or cd.get("voice_profile") or ""),
                                 image_role=cd.get("image_role", "Character Reference"),
                                 is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                             )
@@ -8681,8 +8694,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                                 description=_clean(getattr(c, "description", "")),
                                 reference_url=getattr(c, "reference_url", None),
                                 aesthetic_tags=[_clean(t) for t in getattr(c, "aesthetic_tags", [])],
-                                voice_style=_clean(getattr(c, "voice_style", "")),
-                                voice_profile=_clean(getattr(c, "voice_profile", "")),
+                                voice_style=_clean(getattr(c, "voice_style", None) or getattr(c, "voice_profile", None) or ""),
+                                voice_profile=_clean(getattr(c, "voice_style", None) or getattr(c, "voice_profile", None) or ""),
                                 image_role=getattr(c, "image_role", "Character Reference"),
                                 is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                             )
@@ -8862,8 +8875,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=c.description,
                             reference_url=c.reference_url,
                             aesthetic_tags=c.aesthetic_tags,
-                            voice_style=c.voice_style,
-                            voice_profile=c.voice_profile,
+                            voice_style=c.voice_style or c.voice_profile or "",
+                            voice_profile=c.voice_style or c.voice_profile or "",
                             wardrobe=c.wardrobe,
                             image_role=c.image_role,
                             is_offscreen_narrator=c.is_offscreen_narrator,
@@ -8877,8 +8890,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=c.get("description", ""),
                             reference_url=c.get("reference_url"),
                             aesthetic_tags=c.get("aesthetic_tags", []),
-                            voice_style=c.get("voice_style", ""),
-                            voice_profile=c.get("voice_profile", ""),
+                            voice_style=c.get("voice_style") or c.get("voice_profile") or "",
+                            voice_profile=c.get("voice_style") or c.get("voice_profile") or "",
                             wardrobe=c.get("wardrobe", ""),
                             image_role=c.get("image_role", "Character Reference"),
                             is_offscreen_narrator=c.get("is_offscreen_narrator", False),
@@ -8893,8 +8906,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=cd.get("description", ""),
                             reference_url=cd.get("reference_url"),
                             aesthetic_tags=cd.get("aesthetic_tags", []),
-                            voice_style=cd.get("voice_style", ""),
-                            voice_profile=cd.get("voice_profile", ""),
+                            voice_style=cd.get("voice_style") or cd.get("voice_profile") or "",
+                            voice_profile=cd.get("voice_style") or cd.get("voice_profile") or "",
                             wardrobe=cd.get("wardrobe", ""),
                             image_role=cd.get("image_role", "Character Reference"),
                             is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
@@ -9038,8 +9051,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=_clean(c.get("description", "")),
                             reference_url=c.get("reference_url"),
                             aesthetic_tags=[_clean(t) for t in c.get("aesthetic_tags", [])],
-                            voice_style=_clean(c.get("voice_style", "")),
-                            voice_profile=_clean(c.get("voice_profile", "")),
+                            voice_style=_clean(c.get("voice_style") or c.get("voice_profile") or ""),
+                            voice_profile=_clean(c.get("voice_style") or c.get("voice_profile") or ""),
                             image_role=c.get("image_role", "Character Reference"),
                             is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                         )
@@ -9053,8 +9066,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=_clean(cd.get("description", "")),
                             reference_url=cd.get("reference_url"),
                             aesthetic_tags=[_clean(t) for t in cd.get("aesthetic_tags", [])],
-                            voice_style=_clean(cd.get("voice_style", "")),
-                            voice_profile=_clean(cd.get("voice_profile", "")),
+                            voice_style=_clean(cd.get("voice_style") or cd.get("voice_profile") or ""),
+                            voice_profile=_clean(cd.get("voice_style") or cd.get("voice_profile") or ""),
                             image_role=cd.get("image_role", "Character Reference"),
                             is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                         )
@@ -9067,8 +9080,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=_clean(getattr(c, "description", "")),
                             reference_url=getattr(c, "reference_url", None),
                             aesthetic_tags=[_clean(t) for t in getattr(c, "aesthetic_tags", [])],
-                            voice_style=_clean(getattr(c, "voice_style", "")),
-                            voice_profile=_clean(getattr(c, "voice_profile", "")),
+                            voice_style=_clean(getattr(c, "voice_style", None) or getattr(c, "voice_profile", None) or ""),
+                            voice_profile=_clean(getattr(c, "voice_style", None) or getattr(c, "voice_profile", None) or ""),
                             image_role=getattr(c, "image_role", "Character Reference"),
                             is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                         )
@@ -9201,8 +9214,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=c.get("description", ""),
                             reference_url=c.get("reference_url"),
                             aesthetic_tags=c.get("aesthetic_tags", []),
-                            voice_style=c.get("voice_style", ""),
-                            voice_profile=c.get("voice_profile", ""),
+                            voice_style=c.get("voice_style") or c.get("voice_profile") or "",
+                            voice_profile=c.get("voice_style") or c.get("voice_profile") or "",
                             wardrobe=c.get("wardrobe", ""),
                             image_role=c.get("image_role", "Character Reference"),
                             is_offscreen_narrator=c.get("is_offscreen_narrator", False),
@@ -9436,8 +9449,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=c.get("description", ""),
                             reference_url=c.get("reference_url"),
                             aesthetic_tags=c.get("aesthetic_tags", []),
-                            voice_style=c.get("voice_style", ""),
-                            voice_profile=c.get("voice_profile", ""),
+                            voice_style=c.get("voice_style") or c.get("voice_profile") or "",
+                            voice_profile=c.get("voice_style") or c.get("voice_profile") or "",
                             wardrobe=c.get("wardrobe", ""),
                             image_role=c.get("image_role", "Character Reference"),
                             is_offscreen_narrator=c.get("is_offscreen_narrator", False),
