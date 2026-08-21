@@ -818,6 +818,34 @@ def ensure_character_voice_style(char: CharacterRole | dict, concept: str = "") 
         return "Distinct cinematic voice with clear regional accent delivery"
 
 
+def apply_conversational_voice_edits(directive_text: str, characters: list[CharacterRole] | list[dict] | None) -> None:
+    """Parses conversational edit directives like 'Make Role C have a thick Scottish accent'
+
+    and updates the targeted character's voice_style attribute in place.
+    """
+    if not directive_text or not characters:
+        return
+
+    pattern = re.compile(
+        r"(?:make|give|change|set)\s+(Role\s+[A-Za-z0-9_\-]+|[A-Za-z0-9_\-]+)\s+(?:have\s+a|have|a|to\s+a|with\s+a|voice\s+style\s+to|accent\s+to)?\s*([A-Za-z0-9_\-\s]+?\b(?:accent|drawl|voice|flow|tone|delivery|cadence)\b)",
+        flags=re.IGNORECASE,
+    )
+    for match in pattern.finditer(directive_text):
+        raw_target = match.group(1).strip().lower()
+        new_voice = match.group(2).strip()
+
+        for c in characters:
+            c_name = str(getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "") or "").strip().lower()
+            c_role = str(getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "") or "").strip().lower()
+            c_id = get_character_identifier(c, use_role_id=True).lower()
+
+            if raw_target in (c_name, c_role, c_id) or c_role in raw_target or c_id in raw_target:
+                if isinstance(c, dict):
+                    c["voice_style"] = new_voice
+                else:
+                    setattr(c, "voice_style", new_voice)
+
+
 def enrich_timeline_dialogue_speakers(
     diag_raw: str,
     characters: list[CharacterRole] | None,
@@ -1716,6 +1744,7 @@ class PromptCompiler:
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
     ) -> str:
+        apply_conversational_voice_edits(concept, characters)
         start_idx = 1
         sources_items, references_items, char_tag_map = build_character_image_ref_tags(
             characters=characters,
@@ -2611,8 +2640,10 @@ def compile_journey3_shot_prompt(
     3. ### SCENE INSTRUCTIONS
     4. ### TIMELINE
     """
-    if characters and not character_roster:
-        char_lines: list[str] = []
+    if characters:
+        apply_conversational_voice_edits(action_directive, characters)
+        if not character_roster:
+            char_lines: list[str] = []
         ref_idx = 1
         for char in characters:
             char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)

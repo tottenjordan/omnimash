@@ -1615,4 +1615,23 @@ def test_sanitize_real_names_standalone_luxury_brands_and_houses():
     assert "luxury watch" in sanitized
 
 
+def test_conversational_edit_voice_style_directive():
+    chars = [
+        CharacterRole(
+            role_id="Role C",
+            name="YoTotti",
+            description="Young tatted wizard",
+        )
+    ]
+    prompt = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive='Make Role C have a thick Scottish accent',
+        characters=chars,
+        timeline_dialogue='YoTotti: "They said my diamonds hurt they feelings, fam?"',
+    )
+    assert "thick Scottish accent" in prompt
+    assert "Voice Style (Role C): thick Scottish accent" in prompt
+    assert '[Voice Style: thick Scottish accent]' in prompt
+
+
 
