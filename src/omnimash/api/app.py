@@ -1597,7 +1597,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            concept: concept || "Parody music video clash",
+                            concept: concept || keyframeImagePrompt || "Parody music video clash",
                             style_tone: stageStyleTone,
                             target_duration: parseFloat(stageTargetDuration) || 30.0,
                             characters: characters,
@@ -1960,7 +1960,7 @@ UI_HTML = r"""<!DOCTYPE html>
 
             // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
             const handleDeconstructConcept = async (conceptOverride) => {
-                const targetConcept = (typeof conceptOverride === "string" && conceptOverride.trim()) ? conceptOverride : concept;
+                const targetConcept = (typeof conceptOverride === "string" && conceptOverride.trim()) ? conceptOverride : (concept || keyframeImagePrompt || screenplayScript || "");
                 if (!targetConcept || !targetConcept.trim()) return;
                 setParentTurnId(null);
                 setRawCompiledPrompt("");
@@ -4711,8 +4711,8 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <div className="flex justify-end pt-1">
                                                 <button
                                                     type="button"
-                                                    disabled={deconstructLoading || !concept.trim()}
-                                                    onClick={() => handleDeconstructConcept(concept)}
+                                                    disabled={deconstructLoading || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
+                                                    onClick={() => handleDeconstructConcept(concept || keyframeImagePrompt || screenplayScript)}
                                                     className="bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition disabled:opacity-50 text-white"
                                                 >
                                                     <span>⚡</span>
@@ -5298,8 +5298,8 @@ UI_HTML = r"""<!DOCTYPE html>
                                             <div className="pt-3 flex flex-wrap justify-end gap-3">
                                                 <button
                                                     type="button"
-                                                    disabled={deconstructLoading || !concept.trim()}
-                                                    onClick={() => handleDeconstructConcept(concept)}
+                                                    disabled={deconstructLoading || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
+                                                    onClick={() => handleDeconstructConcept(concept || keyframeImagePrompt || screenplayScript)}
                                                     className="bg-gray-900 hover:bg-gray-800 border border-purple-800 text-purple-300 font-bold text-xs py-3 px-5 rounded-xl shadow-lg flex items-center gap-2 transition disabled:opacity-50"
                                                     title="Analyze concept prompt to automatically extract characters, aesthetics, audio beat, and style tags"
                                                 >
@@ -5308,7 +5308,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    disabled={expandLoading || !concept.trim()}
+                                                    disabled={expandLoading || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
                                                     onClick={handleExpandStoryboard}
                                                     className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50"
                                                 >
@@ -5347,7 +5347,7 @@ UI_HTML = r"""<!DOCTYPE html>
                                             </button>
                                             <button
                                                 type="button"
-                                                disabled={expandLoading || !concept.trim()}
+                                                disabled={expandLoading || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
                                                 onClick={handleReSyncStoryboardDefaults}
                                                 className="bg-gradient-to-r from-purple-600 to-amber-600 hover:from-purple-500 hover:to-amber-500 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow flex items-center gap-1.5 transition disabled:opacity-50"
                                             >
