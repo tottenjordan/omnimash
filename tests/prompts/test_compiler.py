@@ -1593,7 +1593,7 @@ def test_compile_journey3_shot_prompt_uses_role_ids_for_all_character_references
     assert "DumbleDior" not in prompt
     # Verify timeline uses Role A and Role B for dialogue
     assert '- Spoken Dialogue (Role A) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Fifty bands for pure finesse!"' in prompt
-    assert '- Spoken Dialogue (Role B) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Type shit, on God!"' in prompt
+    assert '- Spoken Dialogue (Role B) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Type stuff, on God!"' in prompt
 
 
 def test_sanitize_real_names_handles_camelcase_and_concatenated_names():

@@ -68,7 +68,12 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bJordanTotten\b": "a young wizard scholar",
     r"\bDumble Dior\b": "a high-fashion wizard headmaster",
     r"\bDumbleDior\b": "a high-fashion wizard headmaster",
-    # Street Slang, Band Trademarks & Tattoo Sanitization
+    # Street Slang, Band Trademarks, Drug & Alcohol Sanitization
+    r"\bbaking\s*soda\b": "magical potion powder",
+    r"\b40-ounce\s*beer\b": "glowing golden goblet",
+    r"\b40-ounce\b": "golden goblet",
+    r"\bpop\s+you\s+for\b": "challenge you for",
+    r"\bshit\b": "stuff",
     r"\bstepped\s*on\b": "diluted",
     r"\bwidespread\s*panic\b": "vintage band emblem",
     r"\btear\s*drop\s*tattoos?\b": "facial ink accent",
