@@ -3,6 +3,7 @@ import os
 import re
 import uuid
 from typing import Any
+from urllib.parse import quote_plus
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -1474,9 +1475,12 @@ UI_HTML = r"""<!DOCTYPE html>
                 setJ3StitchLoading(true);
                 setLastError(null);
                 try {
-                    const clips = (clipsOverride && Array.isArray(clipsOverride) && clipsOverride.length > 0)
+                    let clips = (clipsOverride && Array.isArray(clipsOverride) && clipsOverride.length > 0)
                         ? clipsOverride
                         : j3ShotCards.map((c) => c.video_url).filter(Boolean);
+                    if ((!clips || clips.length === 0) && turnHistory && turnHistory.length > 0) {
+                        clips = turnHistory.map((t) => t.video_url).filter(Boolean);
+                    }
                     const res = await fetch("/api/journey3/stitch", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -9189,12 +9193,19 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             session_id=req.session_id,
             aspect_ratio=req.aspect_ratio,
         )
-        master_url = master_path
-        if not master_url.startswith("http") and not master_url.startswith("/static"):
-            if master_url.startswith("gs://"):
-                master_url = f"/api/media-proxy?uri={master_url}"
+        if os.path.exists(master_path):
+            sess_name = req.session_id or "default"
+            gcs_dest = f"sessions/{sess_name}/masters/{os.path.basename(master_path)}"
+            gcs_uri = agent.storage.upload_file(master_path, gcs_dest)
+            if gcs_uri:
+                master_path = gcs_uri
+                master_url = f"/api/media-proxy?uri={quote_plus(gcs_uri)}"
             else:
                 master_url = f"/static/{os.path.basename(master_path)}"
+        elif master_path.startswith("gs://"):
+            master_url = f"/api/media-proxy?uri={quote_plus(master_path)}"
+        else:
+            master_url = master_path
         return {
             "status": "ok",
             "master_video_path": master_path,
@@ -9568,12 +9579,19 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             session_id=req.session_id,
             aspect_ratio=req.aspect_ratio,
         )
-        master_url = master_path
-        if not master_url.startswith("http") and not master_url.startswith("/static"):
-            if master_url.startswith("gs://"):
-                master_url = f"/api/media-proxy?uri={master_url}"
+        if os.path.exists(master_path):
+            sess_name = req.session_id or "default"
+            gcs_dest = f"sessions/{sess_name}/masters/{os.path.basename(master_path)}"
+            gcs_uri = agent.storage.upload_file(master_path, gcs_dest)
+            if gcs_uri:
+                master_path = gcs_uri
+                master_url = f"/api/media-proxy?uri={quote_plus(gcs_uri)}"
             else:
                 master_url = f"/static/{os.path.basename(master_path)}"
+        elif master_path.startswith("gs://"):
+            master_url = f"/api/media-proxy?uri={quote_plus(master_path)}"
+        else:
+            master_url = master_path
         return {
             "status": "ok",
             "success": True,
