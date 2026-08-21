@@ -1862,14 +1862,20 @@ class OmniFlashClient:
         else:
             char_objs = []
 
+        ordered_ref_urls: list[str] = []
         if char_objs:
-            active_ref_urls = {c.reference_url for c in char_objs if c.reference_url}
-            if reference_image_urls:
-                reference_image_urls = [u for u in reference_image_urls if u in active_ref_urls]
-            else:
-                reference_image_urls = [c.reference_url for c in char_objs if c.reference_url]
-        elif characters is not None:
-            reference_image_urls = []
+            for c in char_objs:
+                if c.reference_url and c.reference_url.strip():
+                    u = c.reference_url.strip()
+                    if u not in ordered_ref_urls and u != anchor_keyframe_url:
+                        ordered_ref_urls.append(u)
+
+        if reference_image_urls:
+            for u in reference_image_urls:
+                if u and u.strip() and u.strip() not in ordered_ref_urls and u.strip() != anchor_keyframe_url:
+                    ordered_ref_urls.append(u.strip())
+
+        reference_image_urls = ordered_ref_urls
 
         style_preset_header = ""
         if style_preset and style_preset.strip():
@@ -1897,8 +1903,6 @@ class OmniFlashClient:
         token_counter = 1
         if reference_image_urls:
             for ref_url in reference_image_urls:
-                if anchor_keyframe_url and ref_url == anchor_keyframe_url:
-                    continue
                 if ref_url not in ref_url_to_token:
                     ref_url_to_token[ref_url] = f"@Image{token_counter}"
                     token_counter += 1

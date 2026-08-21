@@ -1507,7 +1507,7 @@ def test_ui_html_contains_detach_reference_image_and_anchor_badge() -> None:
 
     assert "handleDetachReferenceUrl" in UI_HTML
     assert "❌ Detach Reference Image" in UI_HTML
-    assert "🖼️ Attached Reference Anchor:" in UI_HTML
+    assert "🖼️ Attached Reference Anchor (" in UI_HTML
     assert "(Click ❌ Detach to clear for fresh visuals)" in UI_HTML
 
 

@@ -2139,6 +2139,44 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
         assert any("telemetry/sess_telemetry_test_video_clip_output.jsonl" in str(b) for b in uploaded_blobs)
 
 
+def test_generate_keyframe_image_preserves_character_reference_image_order() -> None:
+    """Verify generate_keyframe_image aligns reference_image_urls ordering to @Image1, @Image2 token assignments in character roster."""
+    from omnimash.engine.omni_client import OmniEngineClient
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniEngineClient(mock_mode=True)
+
+    char_a = CharacterRole(
+        role_id="Role A",
+        name="Bee Allison",
+        description="Trap wizard",
+        reference_url="gs://bucket/bee_allison_sheet.png",
+    )
+    char_b = CharacterRole(
+        role_id="Role B",
+        name="YoTotti",
+        description="Tatted wizard",
+        reference_url="gs://bucket/yototti_sheet.png",
+    )
+
+    # Pass reference_image_urls in reversed order [yototti, bee_allison]
+    reversed_ref_urls = [
+        "gs://bucket/yototti_sheet.png",
+        "gs://bucket/bee_allison_sheet.png",
+    ]
+
+    res_url, compiled_prompt = client.generate_keyframe_image(
+        prompt="Bee Allison and YoTotti in gothic study",
+        characters=[char_a, char_b],
+        reference_image_urls=reversed_ref_urls,
+        return_compiled_prompt=True,
+    )
+
+    # Bee Allison (Role A) must be @Image1, and yototti (Role B) must be @Image2
+    assert "Bee Allison: (Reference Image: @Image1)" in compiled_prompt
+    assert "(Reference Image: @Image2)" in compiled_prompt
+
+
 
 
 
