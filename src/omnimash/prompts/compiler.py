@@ -1912,6 +1912,9 @@ class PromptCompiler:
             scene_inst_parts.append(
                 f"Global Vocal Delivery: {vocal_delivery.strip()} (Note: Individual character Voice Styles take precedence over global delivery)."
             )
+        scene_inst_parts.append(
+            "- Audio Accent & Voice Lock: Maintain strict vocal accent separation between characters. Each character must keep their distinct regional vocal timbre and pronunciation without bleeding into other characters' accents."
+        )
 
         scene_instructions_str = (
             "\n".join(scene_inst_parts)
