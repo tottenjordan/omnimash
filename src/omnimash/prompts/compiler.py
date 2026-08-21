@@ -29,10 +29,10 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bDraco\b": "Rival Wizard",
     r"\bHermione Granger\b": "Retainer Academic Fam",
     r"\bRon Weasley\b": "Redhair Wizard Blood",
-    r"\bSlytherin\b": "Emerald Snake Guild",
+    r"\bSlytherin\b": "Green Snake House",
     r"\bDark Mark\b": "Golden Skull Emblem",
     r"\bAzkaban\b": "High Security Fortress",
-    r"\bHogwarts\b": "Academy Hall",
+    r"\bHogwarts\b": "Gothic Academy",
     r"\bBurberry\b": "Plaid Trench",
     r"\bJordans\b": "High Top Kicks",
     r"\bCartier\b": "Gold Wire Glasses",
@@ -794,6 +794,30 @@ def parse_screenplay_script(
     }
 
 
+def ensure_character_voice_style(char: CharacterRole | dict, concept: str = "") -> str:
+    """Ensures every character has a clear, explicit accent and vocal delivery prompt instruction."""
+    v_raw = getattr(char, "voice_style", "") if not isinstance(char, dict) else char.get("voice_style", "")
+    v_str = str(v_raw or "").strip()
+    if v_str and v_str != "Cinematic theatrical voice with distinct expressive delivery":
+        return v_str
+
+    name = str(getattr(char, "name", "") if not isinstance(char, dict) else char.get("name", "") or "").lower()
+    desc = str(getattr(char, "description", "") if not isinstance(char, dict) else char.get("description", "") or "").lower()
+    role = str(getattr(char, "role_id", "") if not isinstance(char, dict) else char.get("role_id", "") or "").lower()
+    combined = f"{name} {desc} {role} {concept.lower()}".strip()
+
+    if any(k in combined for k in ("dumbledore", "dior", "headmaster", "snape", "harry", "draco", "wizard", "gothic", "british", "potter", "malfoy")):
+        return "Pompous Queen's English British drawl with theatrical cadence"
+    elif any(k in combined for k in ("totti", "yototti", "trap", "rap", "hip-hop", "808", "atlanta")):
+        return "Smooth Atlanta rap flow with distinct rhythmic trap cadence"
+    elif any(k in combined for k in ("ramsay", "chef")):
+        return "Fiery intense British accent with rapid explosive delivery"
+    elif any(k in combined for k in ("julia", "culinary")):
+        return "High-pitched cheerful mid-Atlantic accent with enthusiastic lilt"
+    else:
+        return "Distinct cinematic voice with clear regional accent delivery"
+
+
 def enrich_timeline_dialogue_speakers(
     diag_raw: str,
     characters: list[CharacterRole] | None,
@@ -833,12 +857,7 @@ def enrich_timeline_dialogue_speakers(
             if not isinstance(c, dict)
             else c.get("role_id", "") or ""
         ).strip()
-        c_voice_raw = (
-            getattr(c, "voice_style", "")
-            if not isinstance(c, dict)
-            else c.get("voice_style", "") or ""
-        )
-        c_voice_style = str(c_voice_raw or "").strip()
+        c_voice_style = ensure_character_voice_style(c)
 
         tag_map = char_tag_map or {}
         tag = tag_map.get(c_id)
@@ -2612,11 +2631,7 @@ def compile_journey3_shot_prompt(
                 if not isinstance(char, dict)
                 else char.get("aesthetic_tags")
             )
-            voice_style = (
-                getattr(char, "voice_style", None)
-                if not isinstance(char, dict)
-                else char.get("voice_style")
-            )
+            voice_style = ensure_character_voice_style(char, concept=action_directive)
 
             wardrobe_str = (
                 f" [Wardrobe: {str(wardrobe).strip()}]"
@@ -2634,11 +2649,7 @@ def compile_journey3_shot_prompt(
                     style_val = str(aesthetic_tags).strip()
             style_str = f" [Style: {style_val}]" if style_val else ""
 
-            voice_str = (
-                f" [Voice Style: {str(voice_style).strip()}]"
-                if voice_style and str(voice_style).strip()
-                else ""
-            )
+            voice_str = f" [Voice Style: {str(voice_style).strip()}]"
 
             if ref_url and isinstance(ref_url, str) and ref_url.strip():
                 char_lines.append(
@@ -2781,10 +2792,9 @@ def compile_journey3_shot_prompt(
 
                 voice_tag = ""
                 if matched_char_obj:
-                    v_raw = getattr(matched_char_obj, "voice_style", "") if not isinstance(matched_char_obj, dict) else matched_char_obj.get("voice_style", "")
-                    if v_raw and str(v_raw).strip():
-                        v_clean = sanitize_real_names(str(v_raw).strip()) if enable_sanitization else str(v_raw).strip()
-                        voice_tag = f" [Voice Style: {v_clean}]"
+                    v_style = ensure_character_voice_style(matched_char_obj, concept=action_directive)
+                    v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
+                    voice_tag = f" [Voice Style: {v_clean}]"
 
                 timeline_items.append(f'- Spoken Dialogue ({matched_spk}){voice_tag}: "{txt_clean}"')
                 continue
@@ -2830,18 +2840,18 @@ def compile_journey3_shot_prompt(
 
                 voice_tag = ""
                 if matched_char_obj:
-                    v_raw = getattr(matched_char_obj, "voice_style", "") if not isinstance(matched_char_obj, dict) else matched_char_obj.get("voice_style", "")
-                    if v_raw and str(v_raw).strip():
-                        v_clean = sanitize_real_names(str(v_raw).strip()) if enable_sanitization else str(v_raw).strip()
-                        voice_tag = f" [Voice Style: {v_clean}]"
+                    v_style = ensure_character_voice_style(matched_char_obj, concept=action_directive)
+                    v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
+                    voice_tag = f" [Voice Style: {v_clean}]"
 
                 timeline_items.append(f'- Spoken Dialogue ({matched_char_id}){voice_tag}: "{txt_clean}"')
             else:
                 txt_clean = chunk.strip('"').strip("'").strip('“').strip('”')
                 if characters and len(characters) == 1:
                     spk_id = get_character_identifier(characters[0], enable_sanitization=enable_sanitization)
-                    v_raw = getattr(characters[0], "voice_style", "") if not isinstance(characters[0], dict) else characters[0].get("voice_style", "")
-                    voice_tag = f" [Voice Style: {sanitize_real_names(str(v_raw).strip()) if enable_sanitization else str(v_raw).strip()}]" if v_raw and str(v_raw).strip() else ""
+                    v_style = ensure_character_voice_style(characters[0], concept=action_directive)
+                    v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
+                    voice_tag = f" [Voice Style: {v_clean}]"
                 else:
                     spk_id = "Speaker"
                     voice_tag = ""
@@ -2869,11 +2879,10 @@ def compile_journey3_shot_prompt(
     ]
     if characters:
         for c in characters:
-            v_raw = getattr(c, "voice_style", "") if not isinstance(c, dict) else c.get("voice_style", "")
-            if v_raw and str(v_raw).strip():
-                c_id = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
-                v_clean = sanitize_real_names(str(v_raw).strip()) if enable_sanitization else str(v_raw).strip()
-                scene_inst_items.append(f"- Voice Style ({c_id}): {v_clean}")
+            v_style = ensure_character_voice_style(c, concept=action_directive)
+            c_id = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
+            v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
+            scene_inst_items.append(f"- Voice Style ({c_id}): {v_clean}")
 
     if cumulative_state:
         st_block = cumulative_state.format_cumulative_state_block().strip()
