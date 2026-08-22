@@ -705,6 +705,19 @@ class StoryboardAgent:
     ) -> list[StoryboardShot]:
         """Expands a vision concept into 3-6 distinct <=10s shot directives formatted in Gemini Omni Flash timing blocks."""
         shots: list[StoryboardShot] = []
+        from omnimash.prompts.compiler import PromptCompiler
+        derived = PromptCompiler().deconstruct_concept(concept) if concept else None
+        env_default = (derived.environment_tag if derived and getattr(derived, "environment_tag", None) else None) or f"{concept} setting"
+        lighting_default = (
+            (derived.camera_lighting_tag if derived and getattr(derived, "camera_lighting_tag", None) else None)
+            or f"{style_tone}, cinematic high-contrast lighting"
+        )
+        framing_default = "Static medium shot with subtle handheld drift"
+        audio_default = (
+            (derived.audio_beat if derived and getattr(derived, "audio_beat", None) else None)
+            or "Slow heavy 808 trap beat with sub-bass"
+        )
+
         if screenplay_script and screenplay_script.strip():
             parsed_timecodes = parse_timecoded_script(
                 screenplay_script, default_duration=target_duration
@@ -713,24 +726,24 @@ class StoryboardAgent:
                 mock_templates = [
                     (
                         "Entrance & Setup",
-                        "A dimly lit stone dungeon classroom with bubbling cauldrons and soft ambient smoke",
-                        f"{style_tone}, cinematic high-contrast lighting with warm shadows",
-                        "Static medium shot with subtle handheld drift",
-                        "Slow heavy 808 trap beat with bubbling liquid sound and quiet vinyl crackle",
+                        env_default,
+                        lighting_default,
+                        framing_default,
+                        audio_default,
                     ),
                     (
                         "Dramatic Action",
-                        "Gothic potion classroom with floating candles and glowing mystical symbols",
-                        f"{style_tone}, vibrant dramatic color grading and neon rim lights",
+                        env_default,
+                        f"{lighting_default}, vibrant dramatic rim lights",
                         "Dynamic dolly zoom in on character face",
-                        "Trap beat drop with sub-bass and crisp snare trills",
+                        f"{audio_default} with crisp snare trills",
                     ),
                     (
                         "Transformation Reveal",
-                        "High contrast Hogwarts courtyard with dramatic stage smoke and ambient flares",
-                        f"{style_tone}, polished commercial lighting and anamorphic lens flares",
+                        env_default,
+                        f"{lighting_default}, polished anamorphic lens flares",
                         "Low angle pedestal shot moving upward slowly",
-                        "Aggressive 90s hip hop beat with heavy kick drum and vocal sample",
+                        f"Aggressive beat: {audio_default}",
                     ),
                 ]
                 for i, item in enumerate(parsed_timecodes):

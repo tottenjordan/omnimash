@@ -696,9 +696,9 @@ def test_compile_prompt_four_block_omni_flash_template():
     assert "### TIMELINE" in full_prompt
 
     # 2. Verify Image Role tagging
-    assert "[# Sources <FIRST_FRAME>@Image3]" in full_prompt
+    assert "[# Sources <FIRST_FRAME>@Image1]" in full_prompt
     assert (
-        "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image4]"
+        "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3 <IMAGE_REF_2>@Image4]"
         in full_prompt
     )
 
@@ -965,6 +965,26 @@ def test_build_character_image_ref_tags_sorts_by_role_id():
     assert char_tag_map.get("Bee Allison") == "<IMAGE_REF_0>"
     assert char_tag_map.get("Role B") == "<IMAGE_REF_1>"
     assert char_tag_map.get("Yo Totti") == "<IMAGE_REF_1>"
+
+
+def test_expand_vision_inherits_deconstructed_concept_defaults():
+    """Verify expand_vision derives location, framing, and style_lighting defaults from concept."""
+    from omnimash.prompts.storyboard_agent import StoryboardAgent
+
+    agent = StoryboardAgent()
+    shots = agent.expand_vision(
+        concept="Hip-Hop Wand Shop with glowing golden cases and black velvet",
+        style_tone="Cinematic Rap Skit",
+        target_duration=15.0,
+        screenplay_script="[00:00 - 00:05] Character A walks into shop.\nCharacter A: 'Show me the wand.'",
+    )
+
+    assert len(shots) > 0
+    first_shot = shots[0]
+    assert first_shot.location is not None
+    assert first_shot.style_lighting is not None
+    assert first_shot.framing_motion is not None
+    assert first_shot.audio is not None
 
 
 def test_compile_storyboard_preserves_shot_audio_soundscape():

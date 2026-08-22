@@ -238,6 +238,11 @@ class StoryboardExpandRequest(BaseModel):
     characters: list[CharacterRoleModel | dict] | None = None
     screenplay_script: str = ""
     directors_notes: str = ""
+    camera_lighting: str | None = None
+    aesthetic_tags: list[str] | None = None
+    audio_beat: str | None = None
+    vocal_delivery: str | None = None
+    environment: str | None = None
 
 
 class StoryboardExpandResponse(BaseModel):
@@ -1603,16 +1608,25 @@ UI_HTML = r"""<!DOCTYPE html>
                             target_duration: parseFloat(stageTargetDuration) || 30.0,
                             characters: characters,
                             screenplay_script: screenplayScript,
-                            aspect_ratio: aspectRatio
+                            aspect_ratio: aspectRatio,
+                            camera_lighting: cameraLightingTag,
+                            aesthetic_tags: aestheticTags,
+                            audio_beat: audioBeat,
+                            vocal_delivery: vocalDelivery,
+                            environment: environmentTag
                         })
                     });
                     const data = await res.json();
                     if (data && data.error) {
                         setLastError(data.error);
                     } else if (data && data.shots && data.shots.length > 0) {
-                        const shotsWithPrompts = data.shots.map((s) => ({
+                        const shotsWithPrompts = data.shots.map((s, idx) => ({
                             ...s,
-                            image_prompt: s.image_prompt || [s.action, s.location].filter(Boolean).join(", ") || s.summary || ""
+                            location: s.location || environmentTag || concept || "Cinematic set",
+                            framing_motion: s.framing_motion || cameraLightingTag || "Static medium shot with subtle drift",
+                            style_lighting: s.style_lighting || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : stageStyleTone || "Cinematic high-contrast lighting"),
+                            audio: s.audio || audioBeat || "[0-3s] Heavy 808 Trap Beat Drop",
+                            image_prompt: s.image_prompt || `${s.action || s.summary}. Setting: ${s.location || environmentTag || concept}. Lighting: ${cameraLightingTag || stageStyleTone}`
                         }));
                         setStageShots(shotsWithPrompts);
                         setActiveShotIdx(0);

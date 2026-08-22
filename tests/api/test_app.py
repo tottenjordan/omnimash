@@ -1610,6 +1610,18 @@ def test_ui_html_contains_guardrail_guidance_state_and_alert_banner() -> None:
     assert "handleDetachReferencePhoto" in UI_HTML
 
 
+def test_ui_html_expand_storyboard_passes_and_applies_vision_defaults() -> None:
+    """Verify UI_HTML handleExpandStoryboard passes camera_lighting, aesthetic_tags, audio_beat, vocal_delivery, and environment, and maps defaults onto expanded shot cards."""
+    from omnimash.api.app import UI_HTML
+
+    assert "camera_lighting: cameraLightingTag" in UI_HTML
+    assert "aesthetic_tags: aestheticTags" in UI_HTML
+    assert "audio_beat: audioBeat" in UI_HTML
+    assert "vocal_delivery: vocalDelivery" in UI_HTML
+    assert "environment: environmentTag" in UI_HTML
+    assert "framing_motion: s.framing_motion || cameraLightingTag" in UI_HTML
+
+
 def test_ui_html_contains_mode1_presets_and_compiled_prompt_preview() -> None:
     """Verify UI_HTML contains QUICK_PRESET_TEMPLATES and live compiled prompt preview box."""
     from omnimash.api.app import UI_HTML
