@@ -1496,8 +1496,8 @@ def test_build_multimodal_contents_four_block_omni_flash() -> None:
     assert "### INPUT ROLES" in text_val
 
     # 2. Verify explicit image role tags matching CharacterRole.image_role
-    assert "[# Sources <FIRST_FRAME>@Image3]" in text_val
-    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image4]" in text_val
+    assert "[# Sources <FIRST_FRAME>@Image1]" in text_val
+    assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3 <IMAGE_REF_2>@Image4]" in text_val
 
 
 def test_four_block_character_identifier_symmetry() -> None:
@@ -1767,7 +1767,7 @@ def test_generate_character_reference_sheet_mock_mode() -> None:
         return_compiled_prompt=True,
     )
     assert url2.startswith("data:image/svg+xml;base64,")
-    assert "A multi-panel cinematic analog photo realistic" in prompt
+    assert "A multi-panel character sheet layout on a white background" in prompt
     assert "futuristic monk" in prompt
     assert "Neon Robes, Laser Staff" in prompt
     assert "(Reference Image: @Image1)" in prompt
@@ -1781,6 +1781,18 @@ def test_generate_character_reference_sheet_custom_override() -> None:
         return_compiled_prompt=True,
     )
     assert prompt == custom_p
+
+
+def test_generate_character_reference_sheet_with_style_preset() -> None:
+    client = OmniClient(mock_mode=True)
+    url, prompt = client.generate_character_reference_sheet(
+        character_name="YoTotti",
+        description="Young tatted wizard",
+        style_preset="1930s Rubber Hose Toon",
+        return_compiled_prompt=True,
+    )
+    assert "exact artistic style of 1930s Rubber Hose Toon" in prompt
+    assert "1930s Rubber Hose Toon" in prompt
 
 
 def test_generate_character_reference_sheet_genai_call() -> None:

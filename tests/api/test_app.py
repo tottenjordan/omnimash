@@ -1065,6 +1065,36 @@ def test_generate_character_sheet_endpoint():
     assert "(Reference Image: @Image1)" in data["raw_compiled_prompt"]
 
 
+def test_generate_character_sheet_endpoint_with_style_preset():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/characters/generate-sheet",
+        json={
+            "character_name": "YoTotti",
+            "description": "Young tatted wizard",
+            "style_preset": "1930s Rubber Hose Toon",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "1930s Rubber Hose Toon" in data["raw_compiled_prompt"]
+
+
+def test_ui_html_contains_auto_style_character_controls():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res = client.get("/")
+    assert res.status_code == 200
+    html = res.text
+    assert "handleAutoStyleCharacter" in html
+    assert "Auto-Style All Characters" in html
+    assert "Auto-Style for" in html
+
+
 def test_save_character_sheet_endpoint():
     app = create_app(mock_mode=True)
     client = TestClient(app)

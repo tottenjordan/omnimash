@@ -2137,16 +2137,20 @@ class OmniFlashClient:
         aspect_ratio: str = "16:9",
         return_compiled_prompt: bool = False,
         session_id: str | None = None,
+        style_preset: str | None = None,
     ) -> Any:
         """Generates a multi-panel character reference sheet image using Gemini Flash Image."""
         tags_str = ", ".join(aesthetic_tags) if aesthetic_tags else ""
+        style_directive = f" in the exact artistic style of {style_preset}" if style_preset and style_preset.strip() else ""
         if custom_prompt_override and custom_prompt_override.strip():
             prompt_text = custom_prompt_override.strip()
+            if style_directive and style_preset not in prompt_text:
+                prompt_text = f"{prompt_text} (Artistic Style: {style_preset})"
         else:
             prompt_text = (
-                f"A multi-panel cinematic analog photo realistic with natural skin texture character sheet layout on a white background, "
+                f"A multi-panel character sheet layout on a white background{style_directive}, "
                 f"featuring a single, consistent character based on your source @Image1, their visual likeness and description ({description}), "
-                f"and their wardrobe and aesthetic style signifiers ({tags_str}). On the far left, a high-detail, close-up feature bust. "
+                f"and their wardrobe and aesthetic style signifiers ({tags_str}). Re-draw and re-style Attached Image #1 into the specified artistic medium ({style_preset if style_preset else 'cinematic photo realistic'}). On the far left, a high-detail, close-up feature bust. "
                 f"To the right of that, a vertical column featuring front, profile, and back head busts in high detail. "
                 f"To the right of that, a horizontal row of three matching-style full-body figures: direct front, three-quarter front, "
                 f"and three-quarter back views, all in neutral poses showing full gear. The perspectives and layout are precise, "
@@ -2183,7 +2187,7 @@ class OmniFlashClient:
                 '<rect x="360" y="490" width="220" height="170" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
                 '<text x="470" y="580" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">BACK HEAD BUST</text>'
                 '<rect x="600" y="120" width="200" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
-                '<text x="700" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY FRONT</text>'
+                '<text x="700" y="390" text-anchor="middle" fill="#64748b" font-size="16" font-weight="700">FULL-BODY FRONT</text>'
                 '<rect x="820" y="120" width="200" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
                 '<text x="920" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY 3/4 FRONT</text>'
                 '<rect x="1040" y="120" width="180" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
@@ -2288,6 +2292,7 @@ class OmniFlashClient:
         aspect_ratio: str = "16:9",
         return_compiled_prompt: bool = False,
         session_id: str | None = None,
+        style_preset: str | None = None,
     ) -> Any:
         """Generates a multi-panel character turnaround reference sheet image using Gemini Flash Image."""
         return self.generate_character_reference_sheet(
@@ -2300,6 +2305,7 @@ class OmniFlashClient:
             aspect_ratio=aspect_ratio,
             return_compiled_prompt=return_compiled_prompt,
             session_id=session_id,
+            style_preset=style_preset,
         )
 
 

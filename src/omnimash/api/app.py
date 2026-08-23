@@ -32,6 +32,7 @@ class GenerateCharacterSheetRequest(BaseModel):
     aspect_ratio: str = "16:9"
     model: str = "gemini-3.1-flash-image"
     custom_prompt: str | None = None
+    style_preset: str | None = None
 
 
 class GenerateCharacterSheetResponse(BaseModel):
@@ -2274,6 +2275,7 @@ UI_HTML = r"""<!DOCTYPE html>
                 setCharSheetGenerating(prev => ({ ...prev, [idx]: true }));
                 try {
                     const promptToUse = charSheetPrompt[idx] || getDefaultTurnaroundPrompt(char);
+                    const styleToUse = stageStyleTone || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : null);
                     const res = await fetch("/api/characters/generate-sheet", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -2284,7 +2286,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             aesthetic_tags: char.aesthetic_tags || [],
                             aspect_ratio: charSheetAspectRatio[idx] || "16:9",
                             model: charSheetModel[idx] || "gemini-3.1-flash-image",
-                            custom_prompt: promptToUse
+                            custom_prompt: promptToUse,
+                            style_preset: styleToUse
                         })
                     });
                     const data = await res.json();
@@ -2301,6 +2304,49 @@ UI_HTML = r"""<!DOCTYPE html>
                     alert("Error generating character sheet: " + err.message);
                 } finally {
                     setCharSheetGenerating(prev => ({ ...prev, [idx]: false }));
+                }
+            };
+
+            const handleAutoStyleCharacter = async (idx, char) => {
+                if (!char) return;
+                setCharSheetGenerating(prev => ({ ...prev, [idx]: true }));
+                try {
+                    const styleToUse = stageStyleTone || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : "1930s Rubber Hose Toon");
+                    const res = await fetch("/api/characters/generate-sheet", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            character_name: char.name || char.role_id,
+                            description: char.description || "",
+                            source_image_url: char.reference_url,
+                            aesthetic_tags: char.aesthetic_tags || [],
+                            aspect_ratio: charSheetAspectRatio[idx] || "16:9",
+                            model: charSheetModel[idx] || "gemini-3.1-flash-image",
+                            style_preset: styleToUse
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success && data.keyframe_image_url) {
+                        const updated = [...characters];
+                        updated[idx] = { ...updated[idx], reference_url: data.keyframe_image_url };
+                        setCharacters(updated);
+                        setCharSheetPreview(prev => ({ ...prev, [idx]: data.keyframe_image_url }));
+                    } else {
+                        alert("Failed to auto-style reference sheet: " + (data.detail || "Unknown error"));
+                    }
+                } catch (err) {
+                    console.error("Error auto-styling character:", err);
+                    alert("Error auto-styling character: " + err.message);
+                } finally {
+                    setCharSheetGenerating(prev => ({ ...prev, [idx]: false }));
+                }
+            };
+
+            const handleAutoStyleAllCharacters = async () => {
+                for (let i = 0; i < characters.length; i++) {
+                    if (characters[i] && characters[i].reference_url) {
+                        await handleAutoStyleCharacter(i, characters[i]);
+                    }
                 }
             };
 
@@ -3607,6 +3653,15 @@ UI_HTML = r"""<!DOCTYPE html>
                                             </button>
                                             <button
                                                 type="button"
+                                                onClick={handleAutoStyleAllCharacters}
+                                                className="bg-purple-950/80 hover:bg-purple-900 border border-purple-700 text-purple-200 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm font-bold"
+                                                title="Auto-style all character reference photos to match active preset"
+                                            >
+                                                <span>🎨</span>
+                                                <span>Auto-Style All Characters</span>
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={handleResetRoster}
                                                 className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5 transition shadow-sm"
                                                 title="Clear all characters from current roster"
@@ -4018,15 +4073,29 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                                     />
                                                                 </div>
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={charSheetGenerating[idx]}
-                                                                    onClick={() => handleGenerateCharSheet(idx, char)}
-                                                                    className="w-full bg-gradient-to-r from-amber-600 to-pink-600 hover:from-amber-500 hover:to-pink-500 text-white font-bold text-xs py-2 px-3 rounded-lg shadow flex items-center justify-center gap-1.5 transition disabled:opacity-50"
-                                                                >
-                                                                    <span>⚡</span>
-                                                                    <span>{charSheetGenerating[idx] ? "Rendering..." : "⚡ Render Character Sheet"}</span>
-                                                                </button>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={charSheetGenerating[idx]}
+                                                                        onClick={() => handleGenerateCharSheet(idx, char)}
+                                                                        className="flex-1 bg-gradient-to-r from-amber-600 to-pink-600 hover:from-amber-500 hover:to-pink-500 text-white font-bold text-xs py-2 px-3 rounded-lg shadow flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                                                                    >
+                                                                        <span>⚡</span>
+                                                                        <span>{charSheetGenerating[idx] ? "Rendering..." : "⚡ Render Character Sheet"}</span>
+                                                                    </button>
+                                                                    {char.reference_url && (
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={charSheetGenerating[idx]}
+                                                                            onClick={() => handleAutoStyleCharacter(idx, char)}
+                                                                            className="flex-1 bg-purple-950/80 hover:bg-purple-900 border border-purple-700 text-purple-200 font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition shadow disabled:opacity-50"
+                                                                            title={`Auto-style character reference photo to match active preset (${stageStyleTone || 'Active Preset'})`}
+                                                                        >
+                                                                            <span>🎨</span>
+                                                                            <span>{charSheetGenerating[idx] ? "Styling..." : `🎨 Auto-Style for ${stageStyleTone || 'Preset'}`}</span>
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                             </div>
 
                                                             {/* Image Preview & Save Button */}
@@ -10004,6 +10073,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 image_model=req.model,
                 aspect_ratio=req.aspect_ratio,
                 return_compiled_prompt=True,
+                style_preset=req.style_preset,
             )
 
             if isinstance(res, tuple) and len(res) == 2:
