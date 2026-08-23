@@ -1787,6 +1787,7 @@ class PromptCompiler:
         keyframe_image_url: str | None = None,
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
+        style_preset: str | None = None,
     ) -> str:
         apply_conversational_voice_edits(concept, characters)
         start_idx = 1
@@ -1843,6 +1844,14 @@ class PromptCompiler:
             scene_inst_parts.append(f"Aesthetic Tags: {', '.join(aesthetic_tags)}")
         if environment_tag and environment_tag.strip():
             scene_inst_parts.append(f"Environment: {environment_tag.strip()}")
+
+        if style_preset and style_preset.strip():
+            sp_clean = style_preset.strip()
+            if enable_sanitization:
+                sp_clean = sanitize_real_names(sp_clean)
+            scene_inst_parts.append(
+                f"- Medium & Aesthetic Style: Shot strictly in the exact artistic medium of Attached Image #1 (<FIRST_FRAME>@KeyframeSeed): {sp_clean}. Maintain 100% visual texture and animation medium continuity with <FIRST_FRAME>@KeyframeSeed, rendering all movement, characters, and environment strictly in {sp_clean} with zero photorealistic texture bleeding."
+            )
 
         scene_inst_parts.append(
             "Camera & Lighting: In a single continuous shot. No scene cuts."
@@ -2150,6 +2159,7 @@ class PromptCompiler:
         edit_instruction: str | None = None,
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
+        style_preset: str | None = None,
     ) -> str:
         base_prompt = self.compile_multi_role_prompt(
             concept=concept,
@@ -2163,6 +2173,7 @@ class PromptCompiler:
             keyframe_image_url=keyframe_image_url,
             enable_sanitization=enable_sanitization,
             aspect_ratio=aspect_ratio,
+            style_preset=style_preset,
         )
         if edit_instruction and edit_instruction.strip():
             clean_instruction = edit_instruction.strip()
@@ -2676,6 +2687,7 @@ def compile_journey3_shot_prompt(
     title_card_subtitle: str | None = None,
     narrator_text: str | None = None,
     narrator_voice: str | None = None,
+    style_preset: str | None = None,
 ) -> str:
     """Compiles 4-block prompt for Journey 3 shot generation adhering to GEMINI_OMNI_FLASH_INSTR.
 
@@ -2953,6 +2965,14 @@ def compile_journey3_shot_prompt(
         f"- Action Directive: {action_str}",
         f"- Aspect Ratio: {aspect_ratio}",
     ]
+    if style_preset and style_preset.strip():
+        sp_clean = style_preset.strip()
+        if enable_sanitization:
+            sp_clean = sanitize_real_names(sp_clean)
+        scene_inst_items.append(
+            f"- Medium & Aesthetic Style: Shot strictly in the exact artistic medium of Attached Image #1 (<FIRST_FRAME>@KeyframeSeed): {sp_clean}. Maintain 100% visual texture and animation medium continuity with <FIRST_FRAME>@KeyframeSeed, rendering all movement, characters, and environment strictly in {sp_clean} with zero photorealistic texture bleeding."
+        )
+
     if characters:
         for c in characters:
             v_style = ensure_character_voice_style(c, concept=action_directive)
