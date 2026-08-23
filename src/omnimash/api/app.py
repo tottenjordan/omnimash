@@ -397,6 +397,8 @@ class Journey3ShotGenerateRequest(BaseModel):
     title_card_subtitle: str | None = None
     narrator_text: str | None = None
     narrator_voice: str | None = None
+    style_preset: str | None = None
+    model_style: str | None = None
 
 
 
@@ -9304,6 +9306,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             keyframe_image_url=keyframe_url,
             enable_sanitization=req.enable_safety_sanitization,
             aspect_ratio=req.aspect_ratio,
+            style_preset=req.style_lighting or style_lighting_val,
         )
 
         # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor
@@ -9679,6 +9682,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 title_card_subtitle=req.title_card_subtitle,
                 narrator_text=req.narrator_text,
                 narrator_voice=req.narrator_voice,
+                style_preset=req.style_preset or req.model_style,
             )
 
         keyframe_url = req.keyframe_image_url

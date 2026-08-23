@@ -1679,4 +1679,22 @@ def test_conversational_edit_voice_style_directive():
     assert '[Voice Style: thick Scottish accent]' in prompt
 
 
+def test_compile_journey3_shot_prompt_enforces_style_preset_medium_continuity():
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="YoTotti",
+            description="Young tatted wizard",
+        )
+    ]
+    prompt = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="YoTotti casting a spell",
+        characters=chars,
+        style_preset="Claymation Stop-Motion",
+    )
+    assert "Medium & Aesthetic Style: Shot strictly in the exact artistic medium of Attached Image #1 (<FIRST_FRAME>@KeyframeSeed): Claymation Stop-Motion" in prompt
+    assert "rendering all movement, characters, and environment strictly in Claymation Stop-Motion with zero photorealistic texture bleeding" in prompt
+
+
 
