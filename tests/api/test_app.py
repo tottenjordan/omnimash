@@ -3,10 +3,6 @@ import pytest
 from fastapi.testclient import TestClient
 from omnimash.api.app import (
     UI_HTML,
-    DraftBatchItem,
-    DraftBatchRequest,
-    DraftBatchResponse,
-    DraftBatchShotItem,
     GenerateRequest,
     GenerateShotRequest,
     StitchMasterRequest,
@@ -1798,6 +1794,7 @@ def test_api_storyboard_draft_batch_endpoint():
                 "shot_index": 1,
                 "action": "Harry preparing potions in foggy courtyard",
                 "style_lighting": "Gothic neon trap lighting",
+                "keyframe_image_url": "https://example.com/kf_test.png",
             },
             {
                 "shot_index": 2,
@@ -1824,6 +1821,7 @@ def test_api_storyboard_draft_batch_endpoint():
     assert draft1["resolution"] == "360p"
     assert draft1["status"] in ("COMPLETED", "COMMIT_RECOMMENDED")
     assert draft1["video_url"] is not None
+    assert draft1["keyframe_image_url"] == "https://example.com/kf_test.png"
 
     draft2 = data["drafts"][1]
     assert draft2["shot_index"] == 1
@@ -1832,6 +1830,17 @@ def test_api_storyboard_draft_batch_endpoint():
     draft3 = data["drafts"][2]
     assert draft3["shot_index"] == 2
     assert draft3["variation_index"] == 0
+
+
+def test_ui_html_contains_draft_room_studio_controls() -> None:
+    """Verify UI_HTML contains 'The Draft Room' studio controls and 4K Master upscale triggers."""
+    from omnimash.api.app import UI_HTML
+
+    assert "⚡ The Draft Room" in UI_HTML
+    assert "handleGenerateDraftBatch" in UI_HTML
+    assert "handleUpscaleDraftTo4K" in UI_HTML
+    assert "🏆 Upgrade to 4K Master" in UI_HTML
+
 
 
 
