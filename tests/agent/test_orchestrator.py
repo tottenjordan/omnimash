@@ -58,7 +58,7 @@ def test_adk_agent_instruction_and_compiler_integration():
     adk_agent = build_adk_agent(mock_mode=True)
     assert isinstance(adk_agent.instruction, str)
     assert "Prompt Compiler" in adk_agent.instruction
-    assert "[SUBJECT ANCHOR]" in adk_agent.instruction
+    assert "Anchor & Inject" in adk_agent.instruction
 
 
 def test_adk_agent_delta_prompt_instruction_rules():

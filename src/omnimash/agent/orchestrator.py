@@ -337,6 +337,7 @@ class OmniMashAgent:
         keyframe_image_url: str | None = None,
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
+        resolution: str = "720p",
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
@@ -489,9 +490,9 @@ class OmniMashAgent:
 
         turn_index = len(session.turns)
         parent_turn = session.turns.get(parent_turn_id) if parent_turn_id else None
-        parent_thread_id = parent_turn.interaction_thread_id if parent_turn else None
+        parent_thread_id = parent_turn.interaction_thread_id if parent_turn else parent_turn_id
 
-        if is_conversational_edit and parent_turn:
+        if is_conversational_edit and (parent_turn or parent_thread_id):
             is_valid, edit_err = self.validate_conversational_edit(
                 guard_res.sanitized_prompt
             )
@@ -502,7 +503,7 @@ class OmniMashAgent:
                     error_message=edit_err,
                 )
             delta_prompt = self.taxonomy.build_delta_prompt(
-                parent_turn.prompt,
+                parent_turn.prompt if parent_turn else "",
                 guard_res.sanitized_prompt,
                 override_prompt=compiled_override,
             )
@@ -510,8 +511,8 @@ class OmniMashAgent:
             self.storage.save_session_prompt(
                 session.session_id, turn_index, delta_prompt
             )
-            effective_keyframe = keyframe_image_url or getattr(
-                parent_turn, "video_url", None
+            effective_keyframe = keyframe_image_url or (
+                getattr(parent_turn, "video_url", None) if parent_turn else None
             )
             gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
@@ -525,6 +526,7 @@ class OmniMashAgent:
                 keyframe_image_url=effective_keyframe,
                 enable_sanitization=enable_sanitization,
                 aspect_ratio=aspect_ratio,
+                resolution=resolution,
             )
         else:
             if characters or scenes:
@@ -597,6 +599,7 @@ class OmniMashAgent:
                 keyframe_image_url=keyframe_image_url,
                 enable_sanitization=enable_sanitization,
                 aspect_ratio=aspect_ratio,
+                resolution=resolution,
             )
 
         if gen_res.error_message and not gen_res.video_url:
@@ -708,6 +711,7 @@ class OmniMashAgent:
         keyframe_image_url: str | None = None,
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
+        resolution: str = "720p",
     ) -> Any:
         if parent_thread_id:
             return self.omni_client.apply_interaction_diff(
@@ -722,6 +726,7 @@ class OmniMashAgent:
                 keyframe_image_url=keyframe_image_url,
                 enable_safety_sanitization=enable_sanitization,
                 aspect_ratio=aspect_ratio,
+                resolution=resolution,
             )
         return self.omni_client.generate_clip(
             prompt,
@@ -734,6 +739,7 @@ class OmniMashAgent:
             keyframe_image_url=keyframe_image_url,
             enable_safety_sanitization=enable_sanitization,
             aspect_ratio=aspect_ratio,
+            resolution=resolution,
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:
@@ -810,7 +816,12 @@ class OmniMashAgent:
         user_id: str = "usr_default",
         project_id: str = "prj_default",
         vocal_delivery: str | None = None,
+        resolution: str = "720p",
     ) -> AgentTurnResponse:
+        session = self._get_session(session_name)
+        turn = session.turns.get(turn_id) if (session and turn_id) else None
+        prev_inter_id = turn.interaction_thread_id if turn else turn_id
+
         prompt_parts = []
         if active_roles:
             roles_str = ", ".join(active_roles)
@@ -830,6 +841,9 @@ class OmniMashAgent:
             session_name=session_name,
             voiceover=dialogue,
             vocal_delivery=vocal_delivery,
+            is_conversational_edit=True if prev_inter_id else False,
+            aspect_ratio="16:9",
+            resolution=resolution,
         )
 
 
@@ -846,7 +860,7 @@ def build_adk_agent(mock_mode: bool | None = None) -> Agent:
         parent_turn_id: str | None = None,
         reference_url: str | None = None,
     ) -> dict[str, str | bool | int | None]:
-        """Generates a 720p parody video clip or conversational diff branch."""
+        """Generates a parody video clip or conversational diff branch using Gemini Omni 1.1 Flash."""
         res = orchestrator.process_user_turn(
             user_id=user_id,
             project_id=project_id,
@@ -865,22 +879,30 @@ def build_adk_agent(mock_mode: bool | None = None) -> Agent:
         }
 
     instruction = (
-        "You are the Prompt Compiler for OmniMash. Your job is to format user video concepts "
-        "and conversational delta edits for the gemini-omni-flash-preview video model.\n\n"
-        "Initial Video Turn Structure (6-Part Anchor & Inject):\n"
-        "[SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION] + [AUDIO TRACK]\n\n"
+        "You are the Prompt Compiler for OmniMash, powered by Gemini Omni 1.1 Flash. "
+        "Your job is to format user video concepts, dual-keyframe transitions (<FIRST_FRAME> and <LAST_FRAME>), "
+        "360p draft previews / 4K master exports, stateful scene extensions with up to 10s prior context analysis "
+        "(max 40s total continuation via previous_interaction_id), and conversational delta edits.\n\n"
+        "Initial Video Turn Structure (4-Block Anchor & Inject):\n"
+        "Block 1: ### INPUT ROLES & REFERENCES (<FIRST_FRAME>@Image1, <LAST_FRAME>@Image2, <IMAGE_REF_0>@Image3)\n"
+        "Block 2: ### CHARACTER PROFILES\n"
+        "Block 3: ### SCENE INSTRUCTIONS\n"
+        "Block 4: ### TIMELINE ([0-3s], [3-6s], [6-10s])\n\n"
         "Multi-Turn Conversational Delta Structure (Lock & Isolate):\n"
         "[PRESERVATION LOCK]: {maintain character face, likeness, expression, wardrobe baseline, environment, and audio stem rhythm} | "
         "[ISOLATED DIFF]: {alter only the single specified visual or acoustic variable}\n\n"
         "Rules:\n"
-        "1. Prompt the video and audio layers simultaneously in the same payload so Omni Flash's joint latent space binds character kinematics to acoustic tempo.\n"
-        "2. Never resubmit the massive full prompt on conversational delta edits to prevent facial shifting.\n"
-        "3. Always acknowledge the lock first, then isolate the variable being altered."
+        "1. Prompt the video and audio layers simultaneously in the same payload so Omni Flash 1.1's joint latent space binds character kinematics to acoustic tempo.\n"
+        "2. Leverage stateful extension (previous_interaction_id) to analyze 10s of prior context (up to 40s max cumulative extension).\n"
+        "3. Pair <LAST_FRAME> anchors strictly with <FIRST_FRAME> anchors when specifying dual-keyframe interpolated transitions.\n"
+        "4. Support fast 360p draft rendering for rapid feedback before exporting 4K masters."
     )
+
+    model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash-preview")
 
     return Agent(
         name="omnimash_orchestrator",
-        model="gemini-omni-flash-preview",
+        model=model_id,
         instruction=instruction,
         tools=[generate_parody_clip],
     )

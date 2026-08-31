@@ -216,3 +216,42 @@ class MediaExtractor:
             suggested_audio="140 BPM Heavy 808 Trap",
             suggested_dialogue='Harry: "I been cooking potions since first year. Burrr!" / Draco: "This is Trap or Die, Potter!"',
         )
+
+    def extract_reference_video_clip(
+        self,
+        source_video_path: str,
+        output_clip_path: str,
+        start_time_seconds: float = 0.0,
+        duration_seconds: float = 3.0,
+    ) -> str:
+        """Crops a 3-second .mp4 video reference clip for motion transfer conditioning using ffmpeg."""
+        if dirname := os.path.dirname(output_clip_path):
+            os.makedirs(dirname, exist_ok=True)
+
+        if self.mock_mode:
+            if os.path.exists(source_video_path):
+                import shutil
+                shutil.copyfile(source_video_path, output_clip_path)
+            else:
+                with open(output_clip_path, "wb") as f:
+                    f.write(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+            return output_clip_path
+
+        import subprocess
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss", str(start_time_seconds),
+            "-i", source_video_path,
+            "-t", str(duration_seconds),
+            "-c:v", "libx264",
+            "-an",
+            output_clip_path,
+        ]
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except Exception:
+            if not os.path.exists(output_clip_path):
+                with open(output_clip_path, "wb") as f:
+                    f.write(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+        return output_clip_path

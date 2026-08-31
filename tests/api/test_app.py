@@ -1742,9 +1742,10 @@ def test_ui_html_contains_10s_movie_trailer_studio_controls() -> None:
 
 def test_character_voice_profile_propagation_to_voice_style() -> None:
     """Verify incoming character payload with voice_profile or voice_style normalizes and propagates to compiled prompt."""
-    from omnimash.api.app import app
+    from omnimash.api.app import create_app
     from fastapi.testclient import TestClient
 
+    app = create_app(mock_mode=True)
     client = TestClient(app)
 
     payload = {
@@ -1761,6 +1762,7 @@ def test_character_voice_profile_propagation_to_voice_style() -> None:
             }
         ],
         "timeline_dialogue": 'YoTotti: "Hello world!"',
+        "keyframe_image_url": "http://example.com/keyframe.png",
     }
 
     res = client.post("/api/journey3/generate-shot", json=payload)
