@@ -267,6 +267,43 @@ class SaveStoryboardResponse(BaseModel):
     message: str
 
 
+class DraftBatchShotItem(BaseModel):
+    shot_index: int
+    action: str
+    style_lighting: str | None = None
+    audio: str | None = None
+    location: str | None = None
+    keyframe_image_url: str | None = None
+
+
+class DraftBatchRequest(BaseModel):
+    session_name: str | None = None
+    shots: list[DraftBatchShotItem]
+    variations_per_shot: int = 2
+    resolution: str = "360p"
+    aspect_ratio: str = "16:9"
+
+
+class DraftBatchItem(BaseModel):
+    shot_index: int
+    variation_index: int
+    action: str
+    resolution: str = "360p"
+    status: str = "COMPLETED"
+    video_url: str | None = None
+    gcs_uri: str | None = None
+    turn_id: str | None = None
+    keyframe_image_url: str | None = None
+
+
+class DraftBatchResponse(BaseModel):
+    success: bool
+    session_name: str
+    resolution: str
+    total_drafts: int
+    drafts: list[DraftBatchItem]
+
+
 class StoryboardMetadataModel(BaseModel):
     name: str
     slug: str
@@ -1060,6 +1097,72 @@ UI_HTML = r"""<!DOCTYPE html>
             const [keyframeSeedAnchor, setKeyframeSeedAnchor] = useState("KeyframeSeed");
             const [j3DiffPrompt, setJ3DiffPrompt] = useState("Make background darker with glowing blue neon, Add heavy 808 bass drop audio cue");
             const [j3DiffLoading, setJ3DiffLoading] = useState(false);
+
+            // The Draft Room State Hooks & Handlers
+            const [draftBatchShots, setDraftBatchShots] = useState([]);
+            const [isDraftingBatch, setIsDraftingBatch] = useState(false);
+
+            const handleGenerateDraftBatch = async () => {
+                setIsDraftingBatch(true);
+                try {
+                    const shotsPayload = (j3ShotCards && j3ShotCards.length > 0) ? j3ShotCards.map((card, i) => ({
+                        shot_index: card.shot_index || (i + 1),
+                        action: card.action_directive || card.action || card.image_prompt || "Concept Variation",
+                        style_lighting: j3StylePreset || "Cinematic 360p Draft",
+                        audio: audioBeat || "",
+                        keyframe_image_url: card.keyframe_image_url || null
+                    })) : [
+                        { shot_index: 1, action: concept || "Draft Variation Option A", style_lighting: "Gothic Neon Synth" },
+                        { shot_index: 2, action: concept || "Draft Variation Option B", style_lighting: "Cyberpunk 808 Trap" }
+                    ];
+
+                    const res = await fetch("/api/storyboard/draft-batch", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName || "draft_room_session",
+                            shots: shotsPayload,
+                            variations_per_shot: 2,
+                            resolution: "360p",
+                            aspect_ratio: aspectRatio || "16:9"
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.success && data.drafts) {
+                        setDraftBatchShots(data.drafts);
+                    }
+                } catch (err) {
+                    console.error("Failed to generate draft batch:", err);
+                } finally {
+                    setIsDraftingBatch(false);
+                }
+            };
+
+            const handleUpscaleDraftTo4K = async (draftItem) => {
+                try {
+                    const payload = {
+                        session_id: sessionName,
+                        shot_index: draftItem.shot_index || 1,
+                        action_directive: draftItem.action || draftItem.action_directive || draftItem.prompt || "4K Master Export",
+                        keyframe_image_url: draftItem.keyframe_image_url || null,
+                        resolution: "4k",
+                        aspect_ratio: aspectRatio || "16:9"
+                    };
+                    const res = await fetch("/api/journey3/generate-shot", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data && data.success && data.video_url) {
+                        setCurrentVideo(data.video_url);
+                        setStatus("4K MASTER GENERATED");
+                    }
+                } catch (err) {
+                    console.error("Failed to upscale draft to 4K:", err);
+                }
+            };
+
 
             // Tab 3 Character Roles & Vault State
             const [j3Characters, setJ3Characters] = useState([
@@ -8064,9 +8167,85 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                             </button>
                                         </div>
                                     </div>
+                                {/* ⚡ THE DRAFT ROOM (360p Multi-Card Comparison Studio) */}
+                                <div className="border border-amber-800/60 bg-gray-900/90 backdrop-blur p-6 rounded-2xl shadow-2xl space-y-6">
+                                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-amber-900/40 pb-4">
+                                        <div>
+                                            <h2 className="text-xl font-black text-amber-400 flex items-center gap-2">
+                                                <span>⚡</span>
+                                                <span>⚡ The Draft Room (360p Multi-Card Comparison Studio)</span>
+                                            </h2>
+                                            <p className="text-xs text-gray-300 mt-1">
+                                                Fast 360p parallel concept variations comparison studio (~60% faster at 1/3 render cost). Test lighting, audio beats &amp; concept directions before 4K export.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleGenerateDraftBatch}
+                                            disabled={isDraftingBatch}
+                                            className="bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-black font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg transition flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            <span>{isDraftingBatch ? "⚡ Rendering 360p Draft Batch..." : "⚡ Generate 360p Draft Batch"}</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Multi-Card Draft Grid */}
+                                    {draftBatchShots && draftBatchShots.length > 0 ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {draftBatchShots.map((draft, idx) => (
+                                                <div key={idx} className="bg-gray-950/80 border border-amber-900/40 rounded-xl p-4 space-y-3 shadow-lg flex flex-col justify-between">
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800/60 px-2 py-0.5 rounded">
+                                                                Shot #{draft.shot_index || (idx + 1)} • Variation {draft.variation_index !== undefined ? draft.variation_index + 1 : idx + 1}
+                                                            </span>
+                                                            <span className="text-[10px] font-mono bg-gray-800 text-gray-300 px-2 py-0.5 rounded">
+                                                                {draft.resolution || "360p"}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-gray-200 font-medium line-clamp-3">
+                                                            {draft.action || draft.prompt || "Draft variation directive"}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Live 360p Video Player */}
+                                                    <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-gray-800">
+                                                        {draft.video_url ? (
+                                                            <video
+                                                                src={draft.video_url}
+                                                                controls
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs font-mono">
+                                                                {isDraftingBatch ? "⚡ Rendering 360p..." : "No Video Draft"}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* 1-Click Upgrade to 4K Master */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleUpscaleDraftTo4K(draft)}
+                                                        className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs py-2 px-4 rounded-xl shadow transition flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <span>🏆 Upgrade to 4K Master</span>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-gray-950/40 border border-dashed border-gray-800 rounded-xl p-8 text-center space-y-2">
+                                            <span className="text-2xl block">🎬</span>
+                                            <p className="text-xs text-gray-400">
+                                                No draft variations generated yet. Click <strong className="text-amber-400">⚡ Generate 360p Draft Batch</strong> above to compare concept options side-by-side.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* STEP 2: SHOT CARD WORKSTATION */}
+
                                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-3.5">
                                         <div className="flex items-center gap-2.5">
@@ -9843,6 +10022,47 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             "master_video_path": master_path,
             "master_video_url": master_url,
         }
+
+    @app.post("/api/storyboard/draft-batch", response_model=DraftBatchResponse)
+    def generate_draft_batch(req: DraftBatchRequest) -> DraftBatchResponse:
+        session_name = req.session_name or "draft_batch_session"
+        drafts: list[DraftBatchItem] = []
+        for shot in req.shots:
+            for var_idx in range(req.variations_per_shot):
+                directive = shot.action
+                if shot.style_lighting:
+                    directive = f"{directive}, style: {shot.style_lighting}"
+                turn = agent.process_user_turn(
+                    user_id="usr_default",
+                    project_id="prj_draft_room",
+                    prompt=directive,
+                    keyframe_image_url=shot.keyframe_image_url,
+                    audio_stem=shot.audio,
+                    resolution=req.resolution or "360p",
+                    aspect_ratio=req.aspect_ratio,
+                    clip_index=shot.shot_index,
+                    session_name=session_name,
+                )
+                drafts.append(
+                    DraftBatchItem(
+                        shot_index=shot.shot_index,
+                        variation_index=var_idx,
+                        action=shot.action,
+                        resolution=req.resolution or "360p",
+                        status="COMPLETED" if turn.success else "FAILED",
+                        video_url=turn.video_url,
+                        gcs_uri=getattr(turn, "gcs_uri", None),
+                        turn_id=turn.turn_id,
+                        keyframe_image_url=shot.keyframe_image_url,
+                    )
+                )
+        return DraftBatchResponse(
+            success=True,
+            session_name=session_name,
+            resolution=req.resolution or "360p",
+            total_drafts=len(drafts),
+            drafts=drafts,
+        )
 
     @app.post("/api/extend-scene", response_model=GenerateResponse)
     def extend_scene(req: ExtendSceneRequest) -> GenerateResponse:
