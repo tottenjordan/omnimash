@@ -299,7 +299,7 @@ graph TD
 OmniMash provides a canonical **4-Stage Storyboard & Multi-Shot Production Workflow** in **Act 2 (The Director's Studio)** that bridges open-ended creative concepts and fine-grained, shot-by-shot video directing. By decoupling initial narrative deconstruction from sequential keyframe chaining and conversational diff editing, the studio guarantees 100% character visual consistency, continuous audio sync, and surgical iteration across multi-shot productions.
 
 <div align="center">
-  <img src="docs/diagrams/omnimash_storyboard_4_stage_workflow.png" alt="Canonical 4-Stage Storyboard & Multi-Shot Production Workflow Diagram" width="100%" />
+  <img src="docs/diagrams/omnimash_user_journey_inputs.png" alt="Canonical 4-Stage Storyboard & Multi-Shot Production Workflow Diagram" width="100%" />
 </div>
 
 ### 🏛️ The 4 Canonical Stages
