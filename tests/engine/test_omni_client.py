@@ -587,6 +587,60 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
     }
 
 
+def test_load_reference_images_as_input_supports_mp4_video_clips() -> None:
+    """Verify _load_reference_images_as_input returns video type object for .mp4 reference clips."""
+    import base64
+    from omnimash.prompts.compiler import CharacterRole
+
+    client = OmniFlashClient(mock_mode=True)
+    char1 = CharacterRole(
+        role_id="Role A",
+        name="Harry",
+        description="Harry Potter Motion Ref",
+        reference_url="gs://test-bucket/motion_clip.mp4",
+    )
+
+    with patch.object(
+        client.storage,
+        "download_blob_bytes",
+        return_value=(b"fake_mp4_bytes", "video/mp4"),
+    ):
+        imgs, char_map = client._load_reference_images_as_input(
+            session_id="session_123", characters=[char1]
+        )
+
+    assert len(imgs) == 1
+    assert imgs[0] == {
+        "type": "video",
+        "data": base64.b64encode(b"fake_mp4_bytes").decode("utf-8"),
+        "mime_type": "video/mp4",
+    }
+
+
+def test_build_multimodal_contents_supports_video_keyframe_seed() -> None:
+    """Verify _build_multimodal_contents assigns video type key for video keyframe seed URLs."""
+    client = OmniFlashClient(mock_mode=True)
+    video_url = "gs://test-bucket/motion_seed.mp4"
+
+    with patch.object(
+        client.storage,
+        "download_blob_bytes",
+        return_value=(b"fake_video_bytes", "video/mp4"),
+    ):
+        contents = client._build_multimodal_contents(
+            prompt="Motion transfer test",
+            keyframe_image_url=video_url,
+        )
+
+    assert isinstance(contents, list)
+    assert contents[0]["type"] == "user_input"
+    user_content = contents[0]["content"]
+    assert user_content[0]["type"] == "video"
+    assert user_content[0]["mime_type"] == "video/mp4"
+
+
+
+
 def test_fetch_image_bytes_handles_gcs_https_urls() -> None:
     """Verify _fetch_image_bytes converts https://storage.googleapis.com URLs to gs:// URIs and uses authenticated GCS download."""
     client = OmniFlashClient(mock_mode=True)

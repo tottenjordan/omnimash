@@ -1,3 +1,5 @@
+import os
+
 from omnimash.ingestion.media_extractor import (
     MediaExtractor,
     ParodyResearchResult,
@@ -34,3 +36,30 @@ def test_media_extractor_parody_research():
     assert len(res.suggested_props) > 0
     assert res.vibe_intensity >= 0
     assert "Trap" in res.suggested_audio or "808" in res.suggested_audio
+
+
+def test_crop_3s_motion_reference_clip(tmp_path):
+    extractor = MediaExtractor(mock_mode=True)
+    input_video = str(tmp_path / "test_input.mp4")
+    with open(input_video, "wb") as f:
+        f.write(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+
+    output_clip = extractor.crop_3s_motion_reference(input_video, start_sec=1.5)
+    assert output_clip.endswith("_motion_3s.mp4")
+    assert os.path.exists(output_clip)
+
+    # Test negative start_sec is clamped gracefully
+    output_clip_neg = extractor.crop_3s_motion_reference(input_video, start_sec=-5.0)
+    assert output_clip_neg.endswith("_motion_3s.mp4")
+    assert os.path.exists(output_clip_neg)
+
+
+def test_crop_3s_motion_reference_clip_non_mock_fallback(tmp_path):
+    extractor = MediaExtractor(mock_mode=False)
+    input_video = str(tmp_path / "non_existent_input.mp4")
+    output_clip = extractor.crop_3s_motion_reference(input_video, start_sec=0.0)
+    assert output_clip.endswith("_motion_3s.mp4")
+    assert os.path.exists(output_clip)
+    assert os.path.getsize(output_clip) > 0
+
+

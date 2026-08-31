@@ -18,18 +18,18 @@
 
 </div>
 
-> AI Parody & Mashup Video Studio inspired by viral sensations like **[Dripwarts](https://www.youtube.com/@Onirostudios)** (*DumbleDior*, *Snape Dawg*, *Harry Potter*). Powered by **`gemini-omni-flash-preview`** (unified multimodal video, native synced audio, and conversational diffs in 720p), **Gemini Omni Image Roles** ([Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles)), **Google ADK (Agent Development Kit)** multi-agent orchestration, and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
+> AI Parody & Mashup Video Studio inspired by viral sensations like **[Dripwarts](https://www.youtube.com/@Onirostudios)** (*DumbleDior*, *Snape Dawg*, *Harry Potter*). Powered by **`gemini-omni-1.1-flash-preview`** (Gemini Omni Flash 1.1 Preview with stateful scene extension via `previous_interaction_id`, dual keyframing `<FIRST_FRAME>` & `<LAST_FRAME>`, multi-resolution rendering `360p` / `720p` / `4K`, 3s motion reference video ingestion, native synced audio, and conversational diffs), **Gemini Omni Image Roles** ([Gemini Omni Image Roles Specification](https://ai.google.dev/gemini-api/docs/omni#set-image-roles)), **Google ADK (Agent Development Kit >= 2.8.0)** multi-agent orchestration, and the **Gemini Enterprise Agent Platform** (ADK, Agent Engine, Model Armor).
 
-**OmniMash** runs a flexible multimodal generation and conversational diff pipeline: it ingests open-ended visual concepts, deconstructs them via NLP into editable `MetaPromptTags`, binds dynamic Character Roles (`Role A`, `Role B`) to reference images via **Gemini Omni Image Roles**, compiles multi-scene storyboards into structured prompt blocks (`### INPUT ROLES & REFERENCES`, `### CUMULATIVE SHOT STATE`, `### VISUAL ACTION & CAMERA`, and `### TIMELINE & DIALOGUE`), manages **Dual-Layer Audio Specifications** (Global Session Audio vs Per-Shot Audio overrides), orchestrates parallel shot rendering via **ADK Multi-Agent Pipelines**, generates 10-second 720p clips with native audio via **Gemini Omni Flash**, branches edits non-linearly across a **Session Version Tree DAG**, and flushes context decay via **Commit & Branch Checkpointing**.
+**OmniMash** runs a flexible multimodal generation and conversational diff pipeline: it ingests open-ended visual concepts, deconstructs them via NLP into editable `MetaPromptTags`, binds dynamic Character Roles (`Role A`, `Role B`) to reference images via **Gemini Omni Image Roles**, compiles multi-scene storyboards into structured prompt blocks (`### INPUT ROLES & REFERENCES`, `### CUMULATIVE SHOT STATE`, `### VISUAL ACTION & CAMERA`, and `### TIMELINE & DIALOGUE`), supports **Dual Keyframe Interpolation** (`<FIRST_FRAME>` & `<LAST_FRAME>`), enables rapid prototyping via **⚡ The Draft Room (360p Multi-Card Comparison Studio)**, ingests 3-second `.mp4` choreography reference clips (`@VideoReference1`), manages **Dual-Layer Audio Specifications**, orchestrates parallel shot rendering via **ADK Multi-Agent Pipelines**, generates stateful clips with native audio via **Gemini Omni Flash 1.1**, branches edits non-linearly across a **Session Version Tree DAG**, and flushes context decay via **Commit & Branch Checkpointing**.
 
 | Stage | Module | What it does |
 | :--- | :--- | :--- |
 | 1 | 🛡️ **`omnimash.security`** | **Model Armor Gateway:** Pre-gates prompts for RAI violations (hate speech, dangerous content, prompt injections) and abstracts pop-culture/celebrity names, street slang, and tattoo signifiers. |
-| 2 | 🪄 **`omnimash.prompts`** | **Prompt Compiler & Deconstruction Engine:** Parses concepts into dynamic `CharacterRole` bindings, manages dual-layer audio specifications, and compiles 4-block structured prompts (`### INPUT ROLES & REFERENCES`, `### CUMULATIVE SHOT STATE`, `### VISUAL ACTION & CAMERA`, `### TIMELINE & DIALOGUE`). |
+| 2 | 🪄 **`omnimash.prompts`** | **Prompt Compiler & Deconstruction Engine:** Parses concepts into dynamic `CharacterRole` bindings, manages dual-layer audio specifications, dual keyframe anchors (`<FIRST_FRAME>` and `<LAST_FRAME>`), and compiles 4-block structured prompts. |
 | 3 | 🤖 **`omnimash.agent`** | **Google ADK Multi-Agent Pipeline:** Orchestrates story deconstruction (`ScriptDeconstructorAgent`), storyboard compilation (`StoryboardCompilerAgent`), parallel shot rendering (`ParallelAgent` worker pool), and final cut stitching (`FinalCutStitcherAgent` / `RootProductionOrchestrator`). |
 | 4 | 🌳 **`omnimash.state`** | **Version Tree DAG & Checkpoints:** Manages non-linear clip branching (`TurnNode`, `ProjectSession`) and tracks thread edit depth ($\ge 3$) to signal `COMMIT_RECOMMENDED`. |
-| 5 | 🎬 **`omnimash.engine`** | **Gemini Omni Flash Client:** Drives the `Interactions API` with SynthID/C2PA watermarking, multi-character image role references, and base video re-anchoring on thread commits. |
-| 6 | 🎞️ **`omnimash.stitching` & `omnimash.api`** | **FFmpeg Concatenation & FastAPI UI:** Assembles 10s clips into 30–60s master videos and serves the interactive Continuity Studio dashboard with project-level Character Vaults and 1-click reference sheet quick-selection. |
+| 5 | 🎬 **`omnimash.engine`** | **Gemini Omni Flash 1.1 Client:** Drives the `Interactions API` with `gemini-omni-1.1-flash-preview`, stateful thread extension via `previous_interaction_id`, multi-resolution control (`360p` / `720p` / `4K`), 3s motion reference ingestion (`@VideoReference1`), SynthID/C2PA watermarking, and multi-character image role references. |
+| 6 | 🎞️ **`omnimash.stitching` & `omnimash.api`** | **FFmpeg Concatenation & FastAPI UI:** Assembles 10s clips into 30–60s master videos and serves the interactive Continuity Studio dashboard with The Draft Room 360p preview grid, Stage 2 dual keyframe controls, project-level Character Vaults, and 1-click reference sheet selection. |
 
 <details>
   <summary>blending realities — how the pipeline flows</summary>
@@ -58,6 +58,7 @@ OmniMash works like an AI music video mixing studio:
   - [Google ADK Multi-Agent Pipeline Architecture](#-google-adk-multi-agent-pipeline-architecture)
   - [Dual-Layer Audio Specification & Prompt Compiler Architecture](#-dual-layer-audio-specification--prompt-compiler-architecture)
   - [Multi-Scene 30–60s Master Video Assembly Architecture](#-multi-scene-3060s-master-video-assembly-architecture)
+- [Gemini Omni Flash 1.1 Preview Capabilities & Next-Gen Workstations](#-gemini-omni-flash-11-preview-capabilities--next-gen-workstations)
 - [Storyboard & Multi-Shot Production User Journey](#-storyboard--multi-shot-production-user-journey-act-2)
 - [Project-Level Character Vault & Turnaround Sheets](#-project-level-character-vault--turnaround-sheets)
 - [Diagrams & Reference Architectures](#diagrams--reference-architectures)
@@ -261,12 +262,44 @@ graph TD
 
 ---
 
+## 🚀 Gemini Omni Flash 1.1 Preview Capabilities & Next-Gen Workstations
+
+OmniMash natively integrates **Gemini Omni Flash 1.1 Preview** (`gemini-omni-1.1-flash-preview`), unlocking stateful multi-turn extensions, multi-resolution rendering control, dual keyframing, and multimodal motion transfer:
+
+```mermaid
+graph TD
+    Omni11["Gemini Omni Flash 1.1 Engine (gemini-omni-1.1-flash-preview)"]
+    Omni11 --> DraftRoom["⚡ The Draft Room (360p Parallel Previews)"]
+    Omni11 --> DualKey["🖼️ Dual Keyframe Transition Studio (<FIRST_FRAME> & <LAST_FRAME>)"]
+    Omni11 --> MotionRef["💃 3-Second Motion Reference Ingestion (@VideoReference1)"]
+    Omni11 --> StatefulExt["🔄 Stateful Thread Extension (previous_interaction_id up to 40s)"]
+    Omni11 --> Master4K["🏆 4K Commercial Master Exports"]
+```
+
+### ⚡ 1. "The Draft Room" Multi-Resolution Comparison Studio
+- **360p Draft Mode (`POST /api/storyboard/draft-batch`)**: Renders 3–4 prompt concept variations in parallel at **360p Draft resolution** (`response_format={"resolution": "360p"}`). Drafts render ~60% faster at 1/3 the cost, allowing directors to test lighting, soundscape, or character movement options side-by-side.
+- **🏆 1-Click 4K Upscale**: Once a favorite draft variation is selected, directors click **🏆 Upgrade to 4K Master** to trigger a high-res re-render (`response_format={"resolution": "4k"}`) preserving keyframe anchors.
+
+### 🖼️ 2. Transition Studio Dual Keyframe Controls
+- **Dual Keyframe Anchors (`<FIRST_FRAME>` & `<LAST_FRAME>`)**: Binds a starting keyframe image `<FIRST_FRAME>@Image1` and an ending keyframe image `<LAST_FRAME>@Image2` on Stage 2 Shot Cards.
+- **Cinematic Transition Presets**: Enables frame-accurate camera movement presets (*Whip-Pan*, *Dolly Zoom*, *360 Orbit*, *Seamless Loop*) connecting the two bounding keyframes.
+
+### 💃 3. 3-Second Motion Reference Ingestion & Choreography Transfer
+- **Video Reference Clips (`POST /api/motion-reference/upload`)**: Crops up to 3 seconds of `.mp4` choreography or stunt video references via `ffmpeg` with timestamp alignment.
+- **Multimodal Motion Binding**: Ingests video clips into Gemini Omni Flash 1.1 payloads (`@VideoReference1`), transferring exact body dance moves, gestures, and performance timing onto parody characters.
+
+### 🔄 4. Native Stateful Scene Extension (`previous_interaction_id`)
+- **Stateful Continuation**: Passes `previous_interaction_id` to analyze up to 10 seconds of prior video context.
+- **40-Second Extended Context**: Extends consecutive scene turns up to 40 seconds of total cumulative video without jump cuts or identity decay.
+
+---
+
 ## 🎬 Storyboard & Multi-Shot Production User Journey (Act 2)
 
 OmniMash provides a canonical **4-Stage Storyboard & Multi-Shot Production Workflow** in **Act 2 (The Director's Studio)** that bridges open-ended creative concepts and fine-grained, shot-by-shot video directing. By decoupling initial narrative deconstruction from sequential keyframe chaining and conversational diff editing, the studio guarantees 100% character visual consistency, continuous audio sync, and surgical iteration across multi-shot productions.
 
 <div align="center">
-  <img src="docs/diagrams/omnimash_storyboard_4_stage_workflow.png" alt="Canonical 4-Stage Storyboard & Multi-Shot Production Workflow Diagram" width="100%" />
+  <img src="docs/diagrams/omnimash_user_journey_inputs.png" alt="Canonical 4-Stage Storyboard & Multi-Shot Production Workflow Diagram" width="100%" />
 </div>
 
 ### 🏛️ The 4 Canonical Stages
