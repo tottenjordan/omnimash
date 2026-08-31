@@ -3,6 +3,10 @@ import pytest
 from fastapi.testclient import TestClient
 from omnimash.api.app import (
     UI_HTML,
+    DraftBatchItem,
+    DraftBatchRequest,
+    DraftBatchResponse,
+    DraftBatchShotItem,
     GenerateRequest,
     GenerateShotRequest,
     StitchMasterRequest,
@@ -1781,6 +1785,54 @@ def test_ui_html_contains_mode1_dedicated_keyframe_prompt_and_screenplay_inputs(
     assert "Keyframe Image Generation Prompt" in UI_HTML
     assert "keyframeImagePrompt" in UI_HTML
     assert "Screenplay Script (10s Shot)" in UI_HTML
+
+
+def test_api_storyboard_draft_batch_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    req_data = {
+        "session_name": "draft_batch_session",
+        "shots": [
+            {
+                "shot_index": 1,
+                "action": "Harry preparing potions in foggy courtyard",
+                "style_lighting": "Gothic neon trap lighting",
+            },
+            {
+                "shot_index": 2,
+                "action": "Draco stepping out of shadows with iced out chain",
+                "style_lighting": "High contrast neon",
+            },
+        ],
+        "variations_per_shot": 2,
+        "resolution": "360p",
+    }
+
+    res = client.post("/api/storyboard/draft-batch", json=req_data)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["session_name"] == "draft_batch_session"
+    assert data["resolution"] == "360p"
+    assert data["total_drafts"] == 4
+    assert len(data["drafts"]) == 4
+
+    draft1 = data["drafts"][0]
+    assert draft1["shot_index"] == 1
+    assert draft1["variation_index"] == 0
+    assert draft1["resolution"] == "360p"
+    assert draft1["status"] in ("COMPLETED", "COMMIT_RECOMMENDED")
+    assert draft1["video_url"] is not None
+
+    draft2 = data["drafts"][1]
+    assert draft2["shot_index"] == 1
+    assert draft2["variation_index"] == 1
+
+    draft3 = data["drafts"][2]
+    assert draft3["shot_index"] == 2
+    assert draft3["variation_index"] == 0
+
 
 
 

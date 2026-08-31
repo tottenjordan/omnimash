@@ -267,6 +267,42 @@ class SaveStoryboardResponse(BaseModel):
     message: str
 
 
+class DraftBatchShotItem(BaseModel):
+    shot_index: int
+    action: str
+    style_lighting: str | None = None
+    audio: str | None = None
+    location: str | None = None
+    keyframe_image_url: str | None = None
+
+
+class DraftBatchRequest(BaseModel):
+    session_name: str | None = None
+    shots: list[DraftBatchShotItem]
+    variations_per_shot: int = 2
+    resolution: str = "360p"
+    aspect_ratio: str = "16:9"
+
+
+class DraftBatchItem(BaseModel):
+    shot_index: int
+    variation_index: int
+    action: str
+    resolution: str = "360p"
+    status: str = "COMPLETED"
+    video_url: str | None = None
+    gcs_uri: str | None = None
+    turn_id: str | None = None
+
+
+class DraftBatchResponse(BaseModel):
+    success: bool
+    session_name: str
+    resolution: str
+    total_drafts: int
+    drafts: list[DraftBatchItem]
+
+
 class StoryboardMetadataModel(BaseModel):
     name: str
     slug: str
@@ -9843,6 +9879,46 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             "master_video_path": master_path,
             "master_video_url": master_url,
         }
+
+    @app.post("/api/storyboard/draft-batch", response_model=DraftBatchResponse)
+    def generate_draft_batch(req: DraftBatchRequest) -> DraftBatchResponse:
+        session_name = req.session_name or "draft_batch_session"
+        drafts: list[DraftBatchItem] = []
+        for shot in req.shots:
+            for var_idx in range(req.variations_per_shot):
+                directive = shot.action
+                if shot.style_lighting:
+                    directive = f"{directive}, style: {shot.style_lighting}"
+                turn = agent.process_user_turn(
+                    user_id="usr_default",
+                    project_id="prj_draft_room",
+                    prompt=directive,
+                    keyframe_image_url=shot.keyframe_image_url,
+                    audio_stem=shot.audio,
+                    resolution=req.resolution or "360p",
+                    aspect_ratio=req.aspect_ratio,
+                    clip_index=shot.shot_index,
+                    session_name=session_name,
+                )
+                drafts.append(
+                    DraftBatchItem(
+                        shot_index=shot.shot_index,
+                        variation_index=var_idx,
+                        action=shot.action,
+                        resolution=req.resolution or "360p",
+                        status="COMPLETED" if turn.success else "FAILED",
+                        video_url=turn.video_url,
+                        gcs_uri=getattr(turn, "gcs_uri", None),
+                        turn_id=turn.turn_id,
+                    )
+                )
+        return DraftBatchResponse(
+            success=True,
+            session_name=session_name,
+            resolution=req.resolution or "360p",
+            total_drafts=len(drafts),
+            drafts=drafts,
+        )
 
     @app.post("/api/extend-scene", response_model=GenerateResponse)
     def extend_scene(req: ExtendSceneRequest) -> GenerateResponse:
