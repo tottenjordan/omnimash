@@ -34,7 +34,7 @@ This document outlines the mandatory engineering standards, tooling rules, and d
 ---
 
 ## 📦 Git, Commit & Pull Request Guidelines
-- **Structural Changes as Pull Requests**: All structural changes (modifying core architecture, schemas, system instructions, or adding new features) must be committed on a dedicated branch (`feature/...`, `refactor/...`, `fix/...`) and submitted as a Pull Request.
+- **Structural Changes as Pull Requests**: All structural changes (modifying core architecture, schemas, system instructions, or adding new features) must be committed on a dedicated branch (`feature/...`, `refactor/...`, `fix/...`) and submitted as a Pull Request. Never merge any Pull Request until the user has explicitly reviewed it and given direct approval to merge.
 - **Commit Messages**: Write clean, descriptive commit messages matching Conventional Commits.
 
 ---
