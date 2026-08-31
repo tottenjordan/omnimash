@@ -172,7 +172,7 @@ def get_character_identifier(
 
 
 def sort_characters_by_role_id(characters: list[Any] | None) -> list[Any]:
-    """Sorts character role list deterministically: Starting Frame / Keyframe Seed first, followed by Role A, Role B, Role C, Role D."""
+    """Sorts character role list deterministically: Starting Frame / Keyframe Seed first, followed by Ending Frame, Role A, Role B, Role C, Role D."""
     if not characters:
         return []
 
@@ -184,6 +184,8 @@ def sort_characters_by_role_id(characters: list[Any] | None) -> list[Any]:
         )
         if img_role in ("Starting Frame", "Keyframe Seed Anchor"):
             return (0, 0, "")
+        if img_role in ("Ending Frame", "Keyframe Last Anchor"):
+            return (0, 1, "")
 
         r_id = str(
             getattr(c, "role_id", "")
@@ -208,7 +210,7 @@ def build_character_image_ref_tags(
     has_keyframe_seed: bool = False,
     enable_sanitization: bool = True,
 ) -> tuple[list[str], list[str], dict[str, str]]:
-    """Builds official Gemini Omni Flash <IMAGE_REF_N> and <FIRST_FRAME> tag structures.
+    """Builds official Gemini Omni Flash <IMAGE_REF_N>, <FIRST_FRAME>, and <LAST_FRAME> tag structures.
 
     Returns:
       (sources_items, references_items, char_tag_map)
@@ -256,6 +258,9 @@ def build_character_image_ref_tags(
         if img_role in ("Starting Frame", "Keyframe Seed Anchor"):
             tag = "<FIRST_FRAME>"
             sources_items.append(f"<FIRST_FRAME>@Image{img_idx}")
+        elif img_role in ("Ending Frame", "Keyframe Last Anchor"):
+            tag = "<LAST_FRAME>"
+            sources_items.append(f"<LAST_FRAME>@Image{img_idx}")
         else:
             tag = f"<IMAGE_REF_{ref_counter}>"
             references_items.append(f"{tag}@Image{img_idx}")
@@ -287,6 +292,15 @@ def build_character_image_ref_tags(
                 char_tag_map[k_str.lower()] = tag
 
         img_idx += 1
+
+    has_first_frame = has_keyframe_seed or any(
+        s.startswith("<FIRST_FRAME>") for s in sources_items
+    )
+    has_last_frame = any(
+        s.startswith("<LAST_FRAME>") for s in sources_items
+    )
+    if has_last_frame and not has_first_frame:
+        raise ValueError("<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor in prompt payload.")
 
     return sources_items, references_items, char_tag_map
 
@@ -2156,11 +2170,32 @@ class PromptCompiler:
         vocal_delivery: str | None = None,
         has_keyframe_seed: bool = False,
         keyframe_image_url: str | None = None,
+        last_frame_image_url: str | None = None,
         edit_instruction: str | None = None,
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         style_preset: str | None = None,
     ) -> str:
+        if last_frame_image_url and last_frame_image_url.strip():
+            if characters is None:
+                characters = []
+            else:
+                characters = list(characters)
+            has_last = any(
+                (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", "")) in ("Ending Frame", "Keyframe Last Anchor")
+                for c in characters
+            )
+            if not has_last:
+                characters.append(
+                    CharacterRole(
+                        role_id="Ending Frame",
+                        name="Ending Frame Anchor",
+                        description="Ending Frame Anchor concept image",
+                        reference_url=last_frame_image_url.strip(),
+                        image_role="Ending Frame",
+                    )
+                )
+
         base_prompt = self.compile_multi_role_prompt(
             concept=concept,
             characters=characters,
@@ -2668,6 +2703,12 @@ class CumulativeShotState:
         return "\n".join(lines) if lines else "None."
 
 
+def validate_compiled_prompt(prompt_text: str) -> None:
+    """Validates that prompt text payload adheres to Gemini Omni Flash anchor rules."""
+    if "<LAST_FRAME>" in prompt_text and "<FIRST_FRAME>" not in prompt_text:
+        raise ValueError("<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor in prompt payload.")
+
+
 def compile_journey3_shot_prompt(
     shot_number: int,
     action_directive: str,
@@ -2688,6 +2729,7 @@ def compile_journey3_shot_prompt(
     narrator_text: str | None = None,
     narrator_voice: str | None = None,
     style_preset: str | None = None,
+    last_frame_image_url: str | None = None,
 ) -> str:
     """Compiles 4-block prompt for Journey 3 shot generation adhering to GEMINI_OMNI_FLASH_INSTR.
 
@@ -2697,6 +2739,23 @@ def compile_journey3_shot_prompt(
     3. ### SCENE INSTRUCTIONS
     4. ### TIMELINE
     """
+    if last_frame_image_url and last_frame_image_url.strip():
+        if characters is None:
+            characters = []
+        else:
+            characters = list(characters)
+        has_last = any(
+            (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", "")) in ("Ending Frame", "Keyframe Last Anchor")
+            for c in characters
+        )
+        if not has_last:
+            characters.append({
+                "name": "Ending Frame Anchor",
+                "role_id": "Ending Frame",
+                "image_role": "Ending Frame",
+                "reference_url": last_frame_image_url.strip(),
+            })
+
     if characters:
         apply_conversational_voice_edits(action_directive, characters)
         if not character_roster:
@@ -2737,11 +2796,24 @@ def compile_journey3_shot_prompt(
                     style_val = str(aesthetic_tags).strip()
             style_str = f" [Style: {style_val}]" if style_val else ""
 
+            img_role = (
+                getattr(char, "image_role", "Character Reference")
+                if not isinstance(char, dict)
+                else char.get("image_role", "Character Reference")
+            ) or "Character Reference"
+
+            if img_role in ("Starting Frame", "Keyframe Seed Anchor"):
+                ref_desc = f"<FIRST_FRAME>@Image{ref_idx}"
+            elif img_role in ("Ending Frame", "Keyframe Last Anchor"):
+                ref_desc = f"<LAST_FRAME>@Image{ref_idx}"
+            else:
+                ref_desc = f"Reference Image: @Image{ref_idx}"
+
             voice_str = f" [Voice Style: {str(voice_style).strip()}]"
 
             if ref_url and isinstance(ref_url, str) and ref_url.strip():
                 char_lines.append(
-                    f"- {char_id}: (Reference Image: @Image{ref_idx} - extract character facial likeness and wardrobe, ignore old background environment){wardrobe_str}{style_str}{voice_str}"
+                    f"- {char_id}: ({ref_desc} - extract character facial likeness and wardrobe, ignore old background environment){wardrobe_str}{style_str}{voice_str}"
                 )
                 ref_idx += 1
             else:
@@ -2991,6 +3063,8 @@ def compile_journey3_shot_prompt(
     block3 = f"### SCENE INSTRUCTIONS\n{scene_inst_str}"
     block4 = f"### TIMELINE\n{timeline_content}"
 
-    return f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
+    res = f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
+    validate_compiled_prompt(res)
+    return res
 
 

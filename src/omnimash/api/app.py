@@ -184,6 +184,8 @@ class GenerateRequest(BaseModel):
     shot_directive: str | None = None
     enable_safety_sanitization: bool = True
     aspect_ratio: str = "16:9"
+    resolution: str = "720p"
+    last_frame_image_url: str | None = None
 
 
 class DiffRequest(GenerateRequest):
@@ -222,6 +224,8 @@ class StoryboardShotModel(BaseModel):
     dialogue: str = ""
     summary: str = ""
     keyframe_image_url: str = ""
+    last_frame_image_url: str | None = None
+    resolution: str = "720p"
     video_url: str = ""
     narrative_stage: str = "Rising Action"
     preceding_context: str = ""
@@ -316,6 +320,8 @@ class GenerateShotRequest(BaseModel):
     duration_seconds: float = 10.0
     parent_turn_id: str | None = None
     keyframe_image_url: str | None = None
+    last_frame_image_url: str | None = None
+    resolution: str = "720p"
     style_lighting: str = ""
     audio_stem: str | None = None
     enable_safety_sanitization: bool = True
@@ -385,6 +391,8 @@ class Journey3ShotGenerateRequest(BaseModel):
     action_directive: str
     dialogue_text: str = ""
     keyframe_image_url: str | None = None
+    last_frame_image_url: str | None = None
+    resolution: str = "720p"
     aspect_ratio: str = "16:9"
     enable_safety_sanitization: bool = True
     compiled_override: str | None = None
@@ -419,10 +427,12 @@ class SaveFinalResponse(BaseModel):
 class ExtendSceneRequest(BaseModel):
     session_name: str | None = None
     turn_id: str | None = None
+    previous_interaction_id: str | None = None
     next_scene_action: str = ""
     dialogue: str | None = None
     active_roles: list[str] | None = None
     vocal_delivery: str = ""
+    resolution: str = "720p"
 
 
 class GenerateResponse(BaseModel):
@@ -675,6 +685,15 @@ UI_HTML = r"""<!DOCTYPE html>
                     localStorage.setItem("omnimash_aspect_ratio", aspectRatio);
                 }
             }, [aspectRatio]);
+
+            const [omniResolution, setOmniResolution] = useState(() => {
+                return localStorage.getItem("omnimash_resolution") || "720p";
+            });
+            useEffect(() => {
+                if (omniResolution) {
+                    localStorage.setItem("omnimash_resolution", omniResolution);
+                }
+            }, [omniResolution]);
 
             // Act 3: The Screening Room & Branching State
             const [currentVideo, setCurrentVideo] = useState("");
@@ -1402,6 +1421,8 @@ UI_HTML = r"""<!DOCTYPE html>
                             audio_stem: card.audio_stem || null,
                             global_audio_beat: audioBeat || null,
                             keyframe_image_url: card.keyframe_image_url || null,
+                            last_frame_image_url: card.last_frame_image_url || null,
+                            resolution: omniResolution,
                             aspect_ratio: aspectRatio,
                             enable_safety_sanitization: enableSafetySanitization,
                             compiled_override: card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card),
@@ -8007,14 +8028,28 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                     </div>
                                                 </div>
 
-                                                <div className="flex items-center gap-2 mt-5 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl">
-                                                    <span className="text-xs font-bold text-gray-300">Safety Sanitization Toggle:</span>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={enableSafetySanitization}
-                                                        onChange={(e) => setEnableSafetySanitization(e.target.checked)}
-                                                        className="rounded border-gray-700 text-blue-600 focus:ring-blue-500"
-                                                    />
+                                                <div className="flex flex-wrap items-center gap-3 mt-5">
+                                                    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl">
+                                                        <span className="text-xs font-bold text-gray-300">⚡ Draft Mode &amp; Resolution:</span>
+                                                        <select
+                                                            value={omniResolution}
+                                                            onChange={(e) => setOmniResolution(e.target.value)}
+                                                            className="bg-gray-900 border border-gray-800 rounded-lg text-xs text-white p-1 font-mono focus:outline-none focus:border-blue-500"
+                                                        >
+                                                            <option value="360p">⚡ 360p Fast Preview (Draft Mode)</option>
+                                                            <option value="720p">🎥 720p Standard</option>
+                                                            <option value="4k">🏆 4K Master Export</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl">
+                                                        <span className="text-xs font-bold text-gray-300">Safety Sanitization Toggle:</span>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={enableSafetySanitization}
+                                                            onChange={(e) => setEnableSafetySanitization(e.target.checked)}
+                                                            className="rounded border-gray-700 text-blue-600 focus:ring-blue-500"
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -8934,6 +8969,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     edit_instruction=req.prompt if is_edit else None,
                     enable_sanitization=req.enable_safety_sanitization,
                     aspect_ratio=req.aspect_ratio,
+                    last_frame_image_url=req.last_frame_image_url,
                 )
 
         agent_turn = agent.process_user_turn(
@@ -8959,6 +8995,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             optimize_prompt=req.optimize_prompt,
             enable_sanitization=req.enable_safety_sanitization,
             aspect_ratio=req.aspect_ratio,
+            resolution=req.resolution,
         )
         return GenerateResponse(
             success=agent_turn.success,
@@ -9279,6 +9316,19 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                         )
                     )
 
+        if req.last_frame_image_url and req.last_frame_image_url.strip():
+            has_last = any(c.image_role in ("Ending Frame", "Keyframe Last Anchor") for c in char_objs)
+            if not has_last:
+                char_objs.append(
+                    CharacterRole(
+                        role_id="Ending Frame",
+                        name="Ending Frame Anchor",
+                        description="Ending Frame Anchor concept image",
+                        reference_url=req.last_frame_image_url.strip(),
+                        image_role="Ending Frame",
+                    )
+                )
+
         active_roles: list[str] = []
         if char_objs:
             active_roles = [c.role_id or c.name for c in char_objs if c.role_id or c.name]
@@ -9304,6 +9354,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             audio_beat=audio_stem_val,
             has_keyframe_seed=bool(keyframe_url),
             keyframe_image_url=keyframe_url,
+            last_frame_image_url=req.last_frame_image_url,
             enable_sanitization=req.enable_safety_sanitization,
             aspect_ratio=req.aspect_ratio,
             style_preset=req.style_lighting or style_lighting_val,
@@ -9339,6 +9390,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             audio_stem=audio_stem_val,
             enable_sanitization=req.enable_safety_sanitization,
             aspect_ratio=req.aspect_ratio,
+            resolution=req.resolution,
         )
         return GenerateShotResponse(
             success=agent_turn.success,
@@ -9683,6 +9735,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 narrator_text=req.narrator_text,
                 narrator_voice=req.narrator_voice,
                 style_preset=req.style_preset or req.model_style,
+                last_frame_image_url=req.last_frame_image_url,
             )
 
         keyframe_url = req.keyframe_image_url
@@ -9711,6 +9764,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 voiceover=req.dialogue_text if req.dialogue_text else None,
                 enable_sanitization=req.enable_safety_sanitization,
                 aspect_ratio=req.aspect_ratio,
+                resolution=req.resolution,
             )
         except Exception as exc:
             err_str = str(exc)
@@ -9794,11 +9848,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     def extend_scene(req: ExtendSceneRequest) -> GenerateResponse:
         agent_turn = agent.extend_scene(
             session_name=req.session_name,
-            turn_id=req.turn_id,
+            turn_id=req.turn_id or req.previous_interaction_id,
             next_scene_action=req.next_scene_action,
             dialogue=req.dialogue,
             active_roles=req.active_roles,
             vocal_delivery=req.vocal_delivery,
+            resolution=req.resolution,
         )
         return GenerateResponse(
             success=agent_turn.success,

@@ -1084,21 +1084,37 @@ class OmniFlashClient:
             img_bytes, mime_type = self._fetch_image_bytes(ref_url)
 
             if img_bytes:
-                if ref_url.lower().endswith(".png"):
+                if ref_url.lower().endswith(".mp4"):
+                    mime_type = "video/mp4"
+                elif ref_url.lower().endswith(".png"):
                     mime_type = "image/png"
                 elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(
                     ".jpeg"
                 ):
                     mime_type = "image/jpeg"
 
-                b64_str = base64.b64encode(img_bytes).decode("utf-8")
-                image_objects.append(
-                    {
-                        "type": "image",
-                        "data": b64_str,
-                        "mime_type": mime_type,
-                    }
-                )
+                if len(img_bytes) > 25 * 1024 * 1024 and self._genai_client and hasattr(self._genai_client, "files"):
+                    import tempfile
+                    suffix = ".mp4" if mime_type == "video/mp4" else ".png"
+                    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_f:
+                        tmp_f.write(img_bytes)
+                        tmp_path = tmp_f.name
+                    try:
+                        file_obj = self._genai_client.files.upload(file=tmp_path, mime_type=mime_type)
+                        image_objects.append(file_obj)
+                    finally:
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+                else:
+                    b64_str = base64.b64encode(img_bytes).decode("utf-8")
+                    type_key = "video" if mime_type.startswith("video/") else "image"
+                    image_objects.append(
+                        {
+                            "type": type_key,
+                            "data": b64_str,
+                            "mime_type": mime_type,
+                        }
+                    )
                 char_id = get_character_identifier(char)
                 r_id = str(role_id or "").strip()
                 n_str = str(name or "").strip()
@@ -1271,8 +1287,9 @@ class OmniFlashClient:
         directors_notes: dict[str, Any] | str | None = None,
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
+        resolution: str = "720p",
     ) -> tuple[bool, str | None, str | None]:
-        """Calls Gemini Omni Flash (gemini-omni-flash-preview) via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
+        """Calls Gemini Omni Flash 1.1 Preview via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
             ensure_rendered_video(target_rel_path, prompt=prompt)
             self._log_multimodal_inference(
@@ -1322,11 +1339,16 @@ class OmniFlashClient:
             enable_safety_sanitization=enable_safety_sanitization,
         )
 
+        model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash-preview")
         kwargs: dict[str, Any] = {
-            "model": "gemini-omni-flash-preview",
+            "model": model_id,
             "input": input_payload,
         }
-        # Note: gemini-omni-flash-preview API path does not accept previous_interaction_id kwarg
+        if previous_interaction_id:
+            kwargs["previous_interaction_id"] = previous_interaction_id
+
+        if resolution:
+            kwargs["response_format"] = {"resolution": resolution}
 
         for attempt in range(1, max_attempts + 1):
             try:
@@ -1541,6 +1563,7 @@ class OmniFlashClient:
         keyframe_image_url: str | None = None,
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
+        resolution: str = "720p",
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -1560,6 +1583,7 @@ class OmniFlashClient:
             keyframe_image_url=keyframe_image_url,
             enable_safety_sanitization=enable_safety_sanitization,
             aspect_ratio=aspect_ratio,
+            resolution=resolution,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
@@ -1610,6 +1634,7 @@ class OmniFlashClient:
         keyframe_image_url: str | None = None,
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
+        resolution: str = "720p",
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -1629,6 +1654,7 @@ class OmniFlashClient:
             keyframe_image_url=keyframe_image_url,
             enable_safety_sanitization=enable_safety_sanitization,
             aspect_ratio=aspect_ratio,
+            resolution=resolution,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
