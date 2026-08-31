@@ -161,6 +161,17 @@ class ExtractReferenceRequest(BaseModel):
     session_name: str | None = None
 
 
+class MotionReferenceRequest(BaseModel):
+    input_video_path: str
+    start_sec: float = 0.0
+
+
+class MotionReferenceResponse(BaseModel):
+    success: bool = True
+    clip_path: str
+    message: str | None = None
+
+
 class GenerateRequest(BaseModel):
     user_id: str = "usr_default"
     project_id: str = "prj_default"
@@ -882,6 +893,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [stageTargetDuration, setStageTargetDuration] = useState(30.0);
             const [stageRefImage, setStageRefImage] = useState("");
             const [stageRefAudio, setStageRefAudio] = useState("");
+            const [motionReferenceClip, setMotionReferenceClip] = useState("");
             const [screenplayScript, setScreenplayScript] = useState("");
             const [keyframeImagePrompt, setKeyframeImagePrompt] = useState("");
             const [showScreenplayModal, setShowScreenplayModal] = useState(false);
@@ -2297,6 +2309,30 @@ UI_HTML = r"""<!DOCTYPE html>
                 updated[index] = { ...updated[index], [field]: value };
                 setCharacters(updated);
                 setJ3Characters(updated);
+            };
+
+            const handleUploadMotionReference = async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                const formData = new FormData();
+                formData.append("file", file);
+                try {
+                    const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+                    const uploadData = await uploadRes.json();
+                    if (uploadData && uploadData.url) {
+                        const cropRes = await fetch("/api/motion-reference/upload", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ input_video_path: uploadData.url, start_sec: 0.0 }),
+                        });
+                        const cropData = await cropRes.json();
+                        if (cropData && cropData.clip_path) {
+                            setMotionReferenceClip(cropData.clip_path);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Motion reference upload error:", err);
+                }
             };
 
             const handleDetachReferenceUrl = (idx) => {
@@ -5063,7 +5099,26 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         value={stageRefImage}
                                                         onChange={(e) => setStageRefImage(e.target.value)}
                                                         placeholder="https://example.com/character.jpg or gs://..."
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-pink-500"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-pink-500 mb-2"
+                                                    />
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-[11px] font-bold text-gray-400">📹 Motion Reference Clip (3s MP4 Video)</label>
+                                                        <label className="text-[10px] font-bold bg-indigo-950 hover:bg-indigo-900 border border-indigo-700 text-indigo-300 px-2 py-0.5 rounded cursor-pointer transition">
+                                                            📁 Upload Motion Ref
+                                                            <input
+                                                                type="file"
+                                                                accept="video/*,.mp4,.mov"
+                                                                className="hidden"
+                                                                onChange={handleUploadMotionReference}
+                                                            />
+                                                        </label>
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        value={motionReferenceClip}
+                                                        onChange={(e) => setMotionReferenceClip(e.target.value)}
+                                                        placeholder="Upload reference video or specify cropped 3s clip path..."
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-indigo-500"
                                                     />
                                                 </div>
                                             </div>
@@ -5775,6 +5830,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                     <span className="text-xs font-bold text-cyan-300 bg-cyan-950 px-2.5 py-1 rounded-lg border border-cyan-800">
                                                                         🎭 {shot.narrative_stage || "Rising Action"}
                                                                     </span>
+                                                                    {motionReferenceClip && (
+                                                                        <span className="text-xs font-bold text-emerald-300 bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-700 flex items-center gap-1">
+                                                                            <span>📹</span>
+                                                                            <span>Motion Ref Active</span>
+                                                                        </span>
+                                                                    )}
                                                                 </div>
 
                                                                  {/* Scene Continuation & Continuous Shot Control */}
@@ -5836,6 +5897,54 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                                  className="w-full bg-black/60 border border-gray-800 rounded-lg p-1.5 text-gray-200 focus:outline-none focus:border-indigo-500 font-mono text-[10px]"
                                                                              />
                                                                          </div>
+                                                                     </div>
+                                                                     <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-1 border-t border-gray-900">
+                                                                         <span className="text-[9px] font-bold text-gray-400">Transition Presets:</span>
+                                                                         <button
+                                                                             type="button"
+                                                                             onClick={() => updateStageShot(idx, "camera_transition", "Whip-Pan transition to next shot")}
+                                                                             className={`px-2 py-0.5 rounded text-[10px] font-bold transition border ${
+                                                                                 shot.camera_transition?.includes("Whip-Pan")
+                                                                                     ? "bg-indigo-600 text-white border-indigo-400 shadow"
+                                                                                     : "bg-black/60 text-indigo-300 border-indigo-900/60 hover:bg-indigo-950"
+                                                                             }`}
+                                                                         >
+                                                                             ⚡ Whip-Pan
+                                                                         </button>
+                                                                         <button
+                                                                             type="button"
+                                                                             onClick={() => updateStageShot(idx, "camera_transition", "Dolly Zoom push-in transition")}
+                                                                             className={`px-2 py-0.5 rounded text-[10px] font-bold transition border ${
+                                                                                 shot.camera_transition?.includes("Dolly Zoom")
+                                                                                     ? "bg-indigo-600 text-white border-indigo-400 shadow"
+                                                                                     : "bg-black/60 text-indigo-300 border-indigo-900/60 hover:bg-indigo-950"
+                                                                             }`}
+                                                                         >
+                                                                             🔍 Dolly Zoom
+                                                                         </button>
+                                                                         <button
+                                                                             type="button"
+                                                                             onClick={() => updateStageShot(idx, "camera_transition", "360 Orbit camera sweep transition")}
+                                                                             className={`px-2 py-0.5 rounded text-[10px] font-bold transition border ${
+                                                                                 shot.camera_transition?.includes("360 Orbit")
+                                                                                     ? "bg-indigo-600 text-white border-indigo-400 shadow"
+                                                                                     : "bg-black/60 text-indigo-300 border-indigo-900/60 hover:bg-indigo-950"
+                                                                             }`}
+                                                                         >
+                                                                             🔄 360 Orbit
+                                                                         </button>
+                                                                         <button
+                                                                             type="button"
+                                                                             onClick={() => updateStageShot(idx, "camera_transition", "Seamless Loop match cut transition")}
+                                                                             className={`px-2 py-0.5 rounded text-[10px] font-bold transition border ${
+                                                                                 shot.camera_transition?.includes("Seamless Loop")
+                                                                                     ? "bg-indigo-600 text-white border-indigo-400 shadow"
+                                                                                     : "bg-black/60 text-indigo-300 border-indigo-900/60 hover:bg-indigo-950"
+                                                                             }`}
+                                                                         >
+                                                                             🔁 Seamless Loop
+                                                                         </button>
+                                                                     </div>
                                                                      </div>
                                                                  </div>
                                                             </div>
@@ -5927,6 +6036,84 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 )}
                                                             </div>
 
+                                                            {/* Ending Keyframe Anchor (<LAST_FRAME>) Control */}
+                                                            <div className="space-y-2 bg-gray-950/80 border border-purple-900/60 rounded-xl p-3 shadow-sm my-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <label className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                                        <span>🏁</span>
+                                                                        <span>Ending Keyframe Anchor ({"<LAST_FRAME>"})</span>
+                                                                    </label>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <label className="text-[10px] font-bold bg-purple-950 hover:bg-purple-900 border border-purple-700 text-purple-200 px-2 py-0.5 rounded cursor-pointer transition flex items-center gap-1">
+                                                                            <span>📁 Upload {"<LAST_FRAME>"}</span>
+                                                                            <input
+                                                                                type="file"
+                                                                                accept="image/*"
+                                                                                className="hidden"
+                                                                                onChange={async (e) => {
+                                                                                    const file = e.target.files && e.target.files[0];
+                                                                                    if (file) {
+                                                                                        const formData = new FormData();
+                                                                                        formData.append("file", file);
+                                                                                        try {
+                                                                                            const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                                                                            const data = await res.json();
+                                                                                            if (data && data.url) {
+                                                                                                updateStageShot(idx, "last_frame_image_url", data.url);
+                                                                                            }
+                                                                                        } catch (err) {
+                                                                                            console.error("Last frame keyframe upload error:", err);
+                                                                                        }
+                                                                                    }
+                                                                                }}
+                                                                            />
+                                                                        </label>
+                                                                        {shot.last_frame_image_url && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => updateStageShot(idx, "last_frame_image_url", "")}
+                                                                                className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 rounded px-2 py-0.5 text-[10px] font-bold transition flex items-center gap-1"
+                                                                            >
+                                                                                <span>❌ Clear {"<LAST_FRAME>"}</span>
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                                                                    <div className="md:col-span-8 space-y-1">
+                                                                        <label className="text-[10px] font-bold text-gray-400 block">
+                                                                            Ending Keyframe Image URL / GCS Path ({"<LAST_FRAME>"})
+                                                                        </label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={shot.last_frame_image_url || ""}
+                                                                            onChange={(e) => updateStageShot(idx, "last_frame_image_url", e.target.value)}
+                                                                            placeholder="https://... or gs://... or upload image above to anchor ending keyframe"
+                                                                            className="w-full bg-black border border-gray-800 rounded-lg p-2 text-xs text-purple-200 placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-[11px]"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="md:col-span-4 flex items-center justify-center">
+                                                                        {shot.last_frame_image_url ? (
+                                                                            <div className="relative w-full h-20 bg-black rounded-lg overflow-hidden border border-purple-800">
+                                                                                <img
+                                                                                    src={getDisplayableRefUrl(shot.last_frame_image_url)}
+                                                                                    alt={`Ending Keyframe Shot #${sNum}`}
+                                                                                    className="w-full h-full object-cover"
+                                                                                />
+                                                                                <span className="absolute bottom-1 right-1 text-[9px] font-extrabold bg-purple-950 text-purple-200 px-1.5 py-0.5 rounded border border-purple-700">
+                                                                                    {"<LAST_FRAME>"}
+                                                                                </span>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="w-full h-20 bg-black/50 rounded-lg border border-dashed border-gray-800 flex flex-col items-center justify-center text-center p-2 text-gray-600">
+                                                                                <span className="text-xs font-semibold text-gray-500">No {"<LAST_FRAME>"} Set</span>
+                                                                                <span className="text-[9px] text-gray-600">Optional ending anchor</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
                                                             {/* Prompt & Payload Inspector Drawer Toggle */}
                                                             <div className="pt-1">
                                                                 <button
@@ -5952,6 +6139,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                                     <span className="text-gray-300">Image #1: Keyframe Seed Image</span>
                                                                                     <span className={shot.keyframe_image_url ? "text-green-400 font-bold" : "text-amber-400"}>
                                                                                         {shot.keyframe_image_url ? "ATTACHED ✓" : "OPTIONAL (Missing)"}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between bg-black/60 p-2 rounded border border-gray-800">
+                                                                                    <span className="text-purple-300">Image #2: Ending Keyframe ({"<LAST_FRAME>"})</span>
+                                                                                    <span className={shot.last_frame_image_url ? "text-purple-400 font-bold" : "text-gray-500"}>
+                                                                                        {shot.last_frame_image_url ? "ATTACHED ✓" : "OPTIONAL (Missing)"}
                                                                                     </span>
                                                                                 </div>
                                                                                 {characters && characters.map((c, cI) => (
@@ -8295,7 +8488,15 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                         {j3ShotCards.map((card, cardIdx) => (
                                             <div key={card.shot_index || cardIdx} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-3">
                                                 <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
-                                                    <span className="text-xs font-bold text-blue-300">Shot Card #{card.shot_index} (Max 10s)</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-bold text-blue-300">Shot Card #{card.shot_index} (Max 10s)</span>
+                                                        {motionReferenceClip && (
+                                                            <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-700 flex items-center gap-1">
+                                                                <span>📹</span>
+                                                                <span>Motion Ref Active</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-[10px] font-mono text-gray-400">Sequence Index: {card.shot_index}</span>
                                                         <button
@@ -9264,6 +9465,23 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             return JSONResponse(
                 status_code=500, content={"success": False, "error": str(exc)}
             )
+
+    @app.post("/api/motion-reference/upload", response_model=MotionReferenceResponse)
+    def upload_motion_reference(req: MotionReferenceRequest) -> MotionReferenceResponse:
+        """Crops a 3-second motion reference clip from input_video_path starting at start_sec."""
+        try:
+            clip_path = agent.media_extractor.crop_3s_motion_reference(
+                input_video_path=req.input_video_path,
+                start_sec=req.start_sec,
+            )
+            return MotionReferenceResponse(
+                success=True,
+                clip_path=clip_path,
+                message="Motion reference clip cropped successfully",
+            )
+        except Exception as exc:
+            logger.error("Motion reference cropping failed: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.post("/api/storyboard/expand", response_model=StoryboardExpandResponse)
     def expand_storyboard(req: StoryboardExpandRequest) -> StoryboardExpandResponse:

@@ -1842,13 +1842,47 @@ def test_ui_html_contains_draft_room_studio_controls() -> None:
     assert "🏆 Upgrade to 4K Master" in UI_HTML
 
 
+def test_api_upload_motion_reference_endpoint():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/motion-reference/upload",
+        json={
+            "input_video_path": "static/uploads/sample.mp4",
+            "start_sec": 1.5,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "clip_path" in data
+    assert data["clip_path"].endswith("_motion_3s.mp4")
 
 
+def test_ui_html_contains_motion_reference_controls() -> None:
+    """Verify UI_HTML contains motion reference clip state, upload handler, and motion ref badge elements."""
+    from omnimash.api.app import UI_HTML
+
+    assert "motionReferenceClip" in UI_HTML
+    assert "handleUploadMotionReference" in UI_HTML
+    assert "/api/motion-reference/upload" in UI_HTML
+    assert "📹 Motion Reference Clip (3s MP4 Video)" in UI_HTML
+    assert "Motion Ref Active" in UI_HTML
 
 
+def test_ui_html_contains_stage2_dual_keyframe_controls() -> None:
+    """Verify UI_HTML contains Stage 2 ending keyframe anchor (<LAST_FRAME>) controls and camera transition presets."""
+    from omnimash.api.app import UI_HTML
 
-
-
-
+    assert "last_frame_image_url" in UI_HTML
+    assert "<LAST_FRAME>" in UI_HTML
+    assert "Whip-Pan" in UI_HTML
+    assert "Dolly Zoom" in UI_HTML
+    assert "360 Orbit" in UI_HTML
+    assert "Seamless Loop" in UI_HTML
+    assert "Upload" in UI_HTML and "last_frame_image_url" in UI_HTML
+    assert "Clear" in UI_HTML
+    assert "Ending Keyframe Image URL" in UI_HTML
+    assert "Image #2: Ending Keyframe" in UI_HTML
 
 

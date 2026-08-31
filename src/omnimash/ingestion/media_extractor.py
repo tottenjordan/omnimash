@@ -217,6 +217,20 @@ class MediaExtractor:
             suggested_dialogue='Harry: "I been cooking potions since first year. Burrr!" / Draco: "This is Trap or Die, Potter!"',
         )
 
+    def crop_3s_motion_reference(
+        self, input_video_path: str, start_sec: float = 0.0
+    ) -> str:
+        """Crops a 3-second motion reference clip from input_video_path starting at start_sec using ffmpeg."""
+        start_sec = max(0.0, float(start_sec))
+        base_name, ext = os.path.splitext(input_video_path)
+        output_clip_path = f"{base_name}_motion_3s.mp4"
+        return self.extract_reference_video_clip(
+            source_video_path=input_video_path,
+            output_clip_path=output_clip_path,
+            start_time_seconds=start_sec,
+            duration_seconds=3.0,
+        )
+
     def extract_reference_video_clip(
         self,
         source_video_path: str,
@@ -225,6 +239,7 @@ class MediaExtractor:
         duration_seconds: float = 3.0,
     ) -> str:
         """Crops a 3-second .mp4 video reference clip for motion transfer conditioning using ffmpeg."""
+        start_time_seconds = max(0.0, float(start_time_seconds))
         if dirname := os.path.dirname(output_clip_path):
             os.makedirs(dirname, exist_ok=True)
 
@@ -244,6 +259,7 @@ class MediaExtractor:
             "-ss", str(start_time_seconds),
             "-i", source_video_path,
             "-t", str(duration_seconds),
+            "-avoid_negative_ts", "make_zero",
             "-c:v", "libx264",
             "-an",
             output_clip_path,

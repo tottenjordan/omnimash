@@ -1172,9 +1172,10 @@ class OmniFlashClient:
             img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
             if img_bytes:
                 b64_str = base64.b64encode(img_bytes).decode("utf-8")
+                type_key = "video" if (mime_type.startswith("video/") or keyframe_image_url.lower().endswith(".mp4")) else "image"
                 keyframe_image_parts.append(
                     {
-                        "type": "image",
+                        "type": type_key,
                         "data": b64_str,
                         "mime_type": mime_type,
                     }
@@ -1791,7 +1792,9 @@ class OmniFlashClient:
         if os.path.exists(ref_url) and os.path.isfile(ref_url):
             try:
                 mime_type = "image/png"
-                if ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
+                if ref_url.lower().endswith(".mp4"):
+                    mime_type = "video/mp4"
+                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
                     mime_type = "image/jpeg"
                 with open(ref_url, "rb") as f:
                     return f.read(), mime_type
