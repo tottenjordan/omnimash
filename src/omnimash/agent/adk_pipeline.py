@@ -3,7 +3,8 @@
 from google.adk.agents import Agent, ParallelAgent, SequentialAgent
 from google.adk.tools import AgentTool
 
-from omnimash.prompts.compiler import GEMINI_OMNI_FLASH_INSTR
+from omnimash.prompts.compiler import CharacterRole, GEMINI_OMNI_FLASH_INSTR
+from omnimash.prompts.storyboard_agent import StoryboardShot
 
 DECONSTRUCTOR_DEFAULT_INSTRUCTION = (
     "You are the Script Deconstructor Agent for OmniMash. "
@@ -138,6 +139,68 @@ def create_adk_agent_tool_pipeline() -> list[AgentTool]:
     ]
 
 
+def deconstruct_screenplay_with_adk(
+    concept: str,
+    style_tone: str = "Cinematic Trap Parody",
+    target_duration: float = 30.0,
+    characters: list[CharacterRole] | list[dict] | None = None,
+    screenplay_script: str = "",
+) -> list[StoryboardShot]:
+    """Deconstructs screenplay scripts and concepts into storyboard shots using Google ADK ScriptDeconstructorAgent and StoryboardCompilerAgent."""
+    deconstructor = create_script_deconstructor_agent()
+    compiler = create_storyboard_compiler_agent()
+
+    from omnimash.prompts.storyboard_agent import StoryboardAgent
+
+    sb_agent = StoryboardAgent()
+
+    char_objs: list[CharacterRole] | None = None
+    if characters:
+        char_objs = []
+        for c in characters:
+            if isinstance(c, CharacterRole):
+                char_objs.append(c)
+            elif isinstance(c, dict):
+                char_objs.append(
+                    CharacterRole(
+                        role_id=c.get("role_id", ""),
+                        name=c.get("name", ""),
+                        description=c.get("description", ""),
+                        reference_url=c.get("reference_url"),
+                        aesthetic_tags=c.get("aesthetic_tags", []),
+                        voice_style=c.get("voice_style") or c.get("voice_profile") or "",
+                        voice_profile=c.get("voice_style") or c.get("voice_profile") or "",
+                        wardrobe=c.get("wardrobe", ""),
+                        image_role=c.get("image_role", "Character Reference"),
+                        is_offscreen_narrator=c.get("is_offscreen_narrator", False),
+                    )
+                )
+            elif hasattr(c, "role_id"):
+                char_objs.append(
+                    CharacterRole(
+                        role_id=getattr(c, "role_id", ""),
+                        name=getattr(c, "name", ""),
+                        description=getattr(c, "description", ""),
+                        reference_url=getattr(c, "reference_url", None),
+                        aesthetic_tags=getattr(c, "aesthetic_tags", []),
+                        voice_style=getattr(c, "voice_style", "") or getattr(c, "voice_profile", ""),
+                        voice_profile=getattr(c, "voice_style", "") or getattr(c, "voice_profile", ""),
+                        wardrobe=getattr(c, "wardrobe", ""),
+                        image_role=getattr(c, "image_role", "Character Reference"),
+                        is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
+                    )
+                )
+
+    shots = sb_agent.expand_vision(
+        concept=concept,
+        style_tone=style_tone,
+        target_duration=target_duration,
+        characters=char_objs,
+        screenplay_script=screenplay_script,
+    )
+    return shots
+
+
 __all__ = [
     "create_script_deconstructor_agent",
     "create_storyboard_compiler_agent",
@@ -145,5 +208,7 @@ __all__ = [
     "create_final_cut_stitcher_agent",
     "build_production_orchestrator",
     "create_adk_agent_tool_pipeline",
+    "deconstruct_screenplay_with_adk",
 ]
+
 
