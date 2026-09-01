@@ -169,15 +169,22 @@ def parse_timecoded_script(
     if not script_text or not script_text.strip():
         return []
 
-    pattern = r"\[\s*(\d+(?:\.\d+)?)\s*s?\s*-\s*(\d+(?:\.\d+)?)\s*s?\s*\]"
+    def _parse_tc_sec(val_str: str) -> float:
+        val_str = val_str.strip()
+        if ":" in val_str:
+            parts = val_str.split(":")
+            return float(parts[0]) * 60.0 + float(parts[1])
+        return float(val_str)
+
+    pattern = r"\[\s*((?:\d+:)?\d+(?:\.\d+)?)\s*s?\s*-\s*((?:\d+:)?\d+(?:\.\d+)?)\s*s?\s*\]"
     matches = list(re.finditer(pattern, script_text))
 
     raw_blocks: list[dict[str, Any]] = []
 
     if matches:
         for i, m in enumerate(matches):
-            start_t = float(m.group(1))
-            end_t = float(m.group(2))
+            start_t = _parse_tc_sec(m.group(1))
+            end_t = _parse_tc_sec(m.group(2))
             text_start = m.end()
             text_end = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
             block = script_text[text_start:text_end].strip()

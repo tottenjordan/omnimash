@@ -79,3 +79,22 @@ def test_adk_pipeline_instructions_include_omni_flash_guidance_and_agent_tools()
     assert all(isinstance(t, AgentTool) for t in tools)
 
 
+def test_adk_script_deconstructor_expands_storyboard():
+    from omnimash.agent.adk_pipeline import deconstruct_screenplay_with_adk
+    from omnimash.prompts.storyboard_agent import StoryboardShot
+
+    shots = deconstruct_screenplay_with_adk(
+        concept="Cyberpunk battle",
+        style_tone="Cinematic Trap Parody",
+        target_duration=30.0,
+        screenplay_script="[00:00-00:05] Intro shot: Neon street\n[00:05-00:10] Action: Duel begins",
+    )
+    assert isinstance(shots, list)
+    assert len(shots) == 2
+    assert isinstance(shots[0], StoryboardShot)
+    assert shots[0].shot_index == 1
+    assert shots[0].duration_seconds == 5.0
+    assert "Neon street" in shots[0].summary or "Neon street" in shots[0].action
+
+
+

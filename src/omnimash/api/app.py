@@ -8,6 +8,7 @@ from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from omnimash.agent.adk_pipeline import deconstruct_screenplay_with_adk
 from omnimash.agent.orchestrator import OmniMashAgent
 from omnimash.ingestion.media_extractor import (
     ParodyResearchResult,
@@ -9537,7 +9538,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                         )
                     )
 
-        shots = agent.storyboard_agent.expand_vision(
+        shots = deconstruct_screenplay_with_adk(
             concept=req.concept,
             style_tone=req.style_tone,
             target_duration=req.target_duration,

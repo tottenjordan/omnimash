@@ -2243,6 +2243,86 @@ def test_generate_keyframe_image_preserves_character_reference_image_order() -> 
     assert "(Reference Image: @Image2)" in compiled_prompt
 
 
+def test_multimodal_telemetry_span_resolutions_and_thread_id() -> None:
+    """Verify OmniFlashClient telemetry spans record 360p, 720p, and 4k resolutions and previous_interaction_id."""
+    client = OmniFlashClient(mock_mode=True)
+    mock_start_span = MagicMock()
+    client.telemetry.start_inference_span = mock_start_span
+
+    # Test 360p resolution
+    client.generate_clip(
+        prompt="Test 360p video",
+        session_id="sess_360p",
+        resolution="360p",
+    )
+    mock_start_span.assert_called_with(
+        session_id="sess_360p_video_clip",
+        error_code=None,
+        guardrail_type=None,
+        resolution="360p",
+        previous_interaction_id=None,
+    )
+
+    # Test 720p resolution
+    client.generate_clip(
+        prompt="Test 720p video",
+        session_id="sess_720p",
+        resolution="720p",
+    )
+    mock_start_span.assert_called_with(
+        session_id="sess_720p_video_clip",
+        error_code=None,
+        guardrail_type=None,
+        resolution="720p",
+        previous_interaction_id=None,
+    )
+
+    # Test 4k resolution
+    client.generate_clip(
+        prompt="Test 4k video",
+        session_id="sess_4k",
+        resolution="4k",
+    )
+    mock_start_span.assert_called_with(
+        session_id="sess_4k_video_clip",
+        error_code=None,
+        guardrail_type=None,
+        resolution="4k",
+        previous_interaction_id=None,
+    )
+
+    # Test apply_interaction_diff with resolution and previous_interaction_id
+    client.apply_interaction_diff(
+        interaction_thread_id="thread_stateful_123",
+        diff_prompt="Test diff prompt",
+        session_id="sess_diff",
+        resolution="720p",
+    )
+    mock_start_span.assert_called_with(
+        session_id="sess_diff_video_clip",
+        error_code=None,
+        guardrail_type=None,
+        resolution="720p",
+        previous_interaction_id="thread_stateful_123",
+    )
+
+    # Test start_thread_from_video with resolution
+    client.start_thread_from_video(
+        base_video_url="/static/rendered/clip.mp4",
+        initial_prompt="Test start thread video",
+        session_id="sess_reanchor",
+        resolution="4k",
+    )
+    mock_start_span.assert_called_with(
+        session_id="sess_reanchor_video_clip",
+        error_code=None,
+        guardrail_type=None,
+        resolution="4k",
+        previous_interaction_id=None,
+    )
+
+
+
 
 
 

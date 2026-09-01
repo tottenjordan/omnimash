@@ -192,3 +192,128 @@ def test_orchestrator_stitch_session_master_passes_audio_path():
         )
         mock_save.assert_called_once()
         assert gcs_uri == "gs://bucket/master.mp4"
+
+
+def test_apply_dialogue_audio_ducking_filter(tmp_path):
+    from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
+
+    music_file = tmp_path / "music.mp3"
+    music_file.write_bytes(b"dummy music data")
+    dialogue_file = tmp_path / "dialogue.mp3"
+    dialogue_file.write_bytes(b"dummy dialogue data")
+
+    mock_res = MagicMock()
+    mock_res.returncode = 0
+
+    with patch("subprocess.run", return_value=mock_res) as mock_subproc:
+        out_path = apply_dialogue_audio_ducking(
+            music_path=str(music_file),
+            dialogue_path=str(dialogue_file),
+            output_dir=str(tmp_path),
+            ducking_db=-12.0,
+            mock_mode=False,
+        )
+        assert out_path.endswith(".aac") or out_path.endswith(".mp3")
+        mock_subproc.assert_called_once()
+        cmd = mock_subproc.call_args[0][0]
+        assert cmd[0] == "ffmpeg"
+        assert str(music_file) in cmd
+        assert str(dialogue_file) in cmd
+        assert "-filter_complex" in cmd
+        filter_idx = cmd.index("-filter_complex")
+        filter_str = cmd[filter_idx + 1]
+        assert "sidechaincompress" in filter_str
+        assert "threshold=0.2512" in filter_str
+
+
+def test_apply_dialogue_audio_ducking_custom_ducking_db(tmp_path):
+    from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
+
+    music_file = tmp_path / "music.mp3"
+    music_file.write_bytes(b"dummy music data")
+    dialogue_file = tmp_path / "dialogue.mp3"
+    dialogue_file.write_bytes(b"dummy dialogue data")
+
+    mock_res = MagicMock()
+    mock_res.returncode = 0
+
+    with patch("subprocess.run", return_value=mock_res) as mock_subproc:
+        apply_dialogue_audio_ducking(
+            music_path=str(music_file),
+            dialogue_path=str(dialogue_file),
+            output_dir=str(tmp_path),
+            ducking_db=-18.0,
+            mock_mode=False,
+        )
+        cmd = mock_subproc.call_args[0][0]
+        filter_str = cmd[cmd.index("-filter_complex") + 1]
+        assert "threshold=0.1259" in filter_str
+
+
+def test_apply_dialogue_audio_ducking_ffmpeg_failure(tmp_path):
+    from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
+
+    fail_res = MagicMock()
+    fail_res.returncode = 1
+    fail_res.stderr = "FFmpeg processing error"
+
+    with patch("subprocess.run", return_value=fail_res):
+        out_path = apply_dialogue_audio_ducking(
+            music_path="/invalid/music.mp3",
+            dialogue_path="/invalid/dialogue.mp3",
+            output_dir=str(tmp_path),
+            mock_mode=False,
+        )
+        assert os.path.exists(out_path)
+        with open(out_path, "r") as f:
+            assert "fallback ducked audio content" in f.read()
+
+
+def test_apply_dialogue_audio_ducking_mock_mode(tmp_path):
+    from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
+
+    out_path = apply_dialogue_audio_ducking(
+        music_path="/static/music.mp3",
+        dialogue_path="/static/voice.mp3",
+        output_dir=str(tmp_path),
+        mock_mode=True,
+    )
+    assert os.path.exists(out_path)
+    with open(out_path, "r") as f:
+        assert "mock ducked audio" in f.read()
+
+
+def test_stitch_storyboard_master_wires_audio_ducking(tmp_path):
+    stitcher = VideoStitcher(mock_mode=True)
+    music_file = str(tmp_path / "music.mp3")
+    narrator_file = str(tmp_path / "dialogue.mp3")
+
+    with (
+        patch(
+            "omnimash.stitching.stitcher.apply_dialogue_audio_ducking",
+            return_value=str(tmp_path / "ducked.aac"),
+        ) as mock_ducking,
+        patch.object(stitcher, "concatenate_clips", return_value=str(tmp_path / "master.mp4")) as mock_concat,
+    ):
+        result = stitcher.stitch_storyboard_master(
+            shot_clips=[],
+            background_music_path=music_file,
+            narrator_audio_paths=[narrator_file],
+            output_dir=str(tmp_path),
+        )
+
+        mock_ducking.assert_called_once_with(
+            music_path=music_file,
+            dialogue_path=narrator_file,
+            output_dir=str(tmp_path),
+            mock_mode=True,
+        )
+        mock_concat.assert_called_once_with(
+            clip_paths=[],
+            output_dir=str(tmp_path),
+            session_id=None,
+            master_audio_path=str(tmp_path / "ducked.aac"),
+        )
+        assert result == str(tmp_path / "master.mp4")
+
+

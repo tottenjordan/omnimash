@@ -5,6 +5,7 @@ import subprocess
 import uuid
 from typing import Any
 
+from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
 from omnimash.storage.gcs import GcsStorageManager
 
 logger = logging.getLogger(__name__)
@@ -370,7 +371,14 @@ class VideoStitcher:
                 ordered_clips.insert(idx, card_clip_path)
 
         master_audio = background_music_path
-        if not master_audio and narrator_audio_paths and len(narrator_audio_paths) > 0:
+        if background_music_path and narrator_audio_paths and len(narrator_audio_paths) > 0:
+            master_audio = apply_dialogue_audio_ducking(
+                music_path=background_music_path,
+                dialogue_path=narrator_audio_paths[0],
+                output_dir=output_dir,
+                mock_mode=self.mock_mode,
+            )
+        elif not master_audio and narrator_audio_paths and len(narrator_audio_paths) > 0:
             master_audio = narrator_audio_paths[0]
 
         return self.concatenate_clips(
