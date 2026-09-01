@@ -147,9 +147,6 @@ def deconstruct_screenplay_with_adk(
     screenplay_script: str = "",
 ) -> list[StoryboardShot]:
     """Deconstructs screenplay scripts and concepts into storyboard shots using Google ADK ScriptDeconstructorAgent and StoryboardCompilerAgent."""
-    deconstructor = create_script_deconstructor_agent()
-    compiler = create_storyboard_compiler_agent()
-
     from omnimash.prompts.storyboard_agent import StoryboardAgent
 
     sb_agent = StoryboardAgent()

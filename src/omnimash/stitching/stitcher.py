@@ -5,6 +5,7 @@ import subprocess
 import uuid
 from typing import Any
 
+from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
 from omnimash.storage.gcs import GcsStorageManager
 
 logger = logging.getLogger(__name__)
@@ -16,9 +17,6 @@ try:
 except ImportError:
     HAS_PIL = False
 
-
-
-from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
 
 
 class VideoStitcher:
