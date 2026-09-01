@@ -868,6 +868,8 @@ class OmniFlashClient:
         characters: list[Any] | None = None,
         keyframe_image_url: str | None = None,
         reference_image_uris: list[str] | None = None,
+        resolution: str | None = None,
+        previous_interaction_id: str | None = None,
     ) -> None:
         """Logs multimodal prompt JSONL exports and OpenTelemetry GenAI inference spans to Cloud Storage and Cloud Trace.
 
@@ -1039,6 +1041,8 @@ class OmniFlashClient:
                 session_id=session_key,
                 error_code=error_code,
                 guardrail_type=guardrail_type,
+                resolution=resolution,
+                previous_interaction_id=previous_interaction_id,
             )
             if span:
                 span.end()
@@ -1305,6 +1309,8 @@ class OmniFlashClient:
                 },
                 characters=characters,
                 keyframe_image_url=keyframe_image_url,
+                resolution=resolution,
+                previous_interaction_id=previous_interaction_id,
             )
             return True, previous_interaction_id, None
 
@@ -1324,6 +1330,8 @@ class OmniFlashClient:
                 error_code="500",
                 characters=characters,
                 keyframe_image_url=keyframe_image_url,
+                resolution=resolution,
+                previous_interaction_id=previous_interaction_id,
             )
             return False, None, msg
 
@@ -1407,6 +1415,8 @@ class OmniFlashClient:
                             },
                             characters=characters,
                             keyframe_image_url=keyframe_image_url,
+                            resolution=resolution,
+                            previous_interaction_id=previous_interaction_id,
                         )
                         return True, inter_id, None
 
@@ -1549,6 +1559,8 @@ class OmniFlashClient:
             guardrail_type=guardrail_type,
             characters=characters,
             keyframe_image_url=keyframe_image_url,
+            resolution=resolution,
+            previous_interaction_id=previous_interaction_id,
         )
         return False, None, last_error
 
@@ -1703,6 +1715,8 @@ class OmniFlashClient:
         audio_stem: str | None = None,
         characters: list[CharacterRole] | None = None,
         enable_safety_sanitization: bool = True,
+        aspect_ratio: str = "16:9",
+        resolution: str = "720p",
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
@@ -1715,6 +1729,8 @@ class OmniFlashClient:
             characters=characters,
             session_id=session_id,
             enable_safety_sanitization=enable_safety_sanitization,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
         )
         generation_mode = "LIVE_OMNI_FLASH"
         if not success:

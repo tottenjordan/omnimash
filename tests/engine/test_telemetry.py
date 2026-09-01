@@ -39,6 +39,7 @@ def test_build_telemetry_labels_standard() -> None:
     labels = telemetry_logger.build_telemetry_labels(session_id="sess_123")
 
     assert labels["gen_ai.system"] == "vertex_ai"
+    assert labels["gen_ai.session.id"] == "sess_123"
     assert labels["event.name"] == "gen_ai.client.inference.operation.details"
     assert (
         labels["gen_ai.input.messages_ref"]
@@ -61,6 +62,7 @@ def test_build_telemetry_labels_with_error_and_guardrail() -> None:
     )
 
     assert labels["gen_ai.system"] == "vertex_ai"
+    assert labels["gen_ai.session.id"] == "sess_456"
     assert labels["event.name"] == "gen_ai.client.inference.operation.details"
     assert (
         labels["gen_ai.input.messages_ref"]
@@ -90,6 +92,7 @@ def test_start_inference_span() -> None:
 
     expected_labels = {
         "gen_ai.system": "vertex_ai",
+        "gen_ai.session.id": "sess_789",
         "event.name": "gen_ai.client.inference.operation.details",
         "gen_ai.input.messages_ref": "gs://my-omnimash-bucket/telemetry/sess_789_input.jsonl",
         "gen_ai.output.messages_ref": "gs://my-omnimash-bucket/telemetry/sess_789_output.jsonl",
@@ -100,3 +103,33 @@ def test_start_inference_span() -> None:
         name="custom.gen_ai.span", attributes=expected_labels
     )
     assert span == mock_span
+
+
+def test_telemetry_inference_span_records_resolution_and_tokens() -> None:
+    telemetry_logger = GenAITelemetryLogger(bucket_name="my-omnimash-bucket")
+    mock_tracer = MagicMock()
+    mock_span = MagicMock()
+    mock_tracer.start_span.return_value = mock_span
+    telemetry_logger.tracer = mock_tracer
+
+    span = telemetry_logger.start_inference_span(
+        session_id="sess_resolution_123",
+        span_name="gen_ai.client.inference",
+        resolution="4k",
+        previous_interaction_id="inter_thread_777",
+    )
+
+    expected_labels = {
+        "gen_ai.system": "vertex_ai",
+        "gen_ai.session.id": "sess_resolution_123",
+        "event.name": "gen_ai.client.inference.operation.details",
+        "gen_ai.input.messages_ref": "gs://my-omnimash-bucket/telemetry/sess_resolution_123_input.jsonl",
+        "gen_ai.output.messages_ref": "gs://my-omnimash-bucket/telemetry/sess_resolution_123_output.jsonl",
+        "gen_ai.request.resolution": "4k",
+        "previous_interaction_id": "inter_thread_777",
+    }
+    mock_tracer.start_span.assert_called_once_with(
+        name="gen_ai.client.inference", attributes=expected_labels
+    )
+    assert span == mock_span
+

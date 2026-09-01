@@ -25,6 +25,8 @@ class GenAITelemetryLogger:
         session_id: str,
         error_code: str | None = None,
         guardrail_type: str | None = None,
+        resolution: str | None = None,
+        previous_interaction_id: str | None = None,
     ) -> dict[str, str]:
         """Builds structured OpenTelemetry GenAI span labels matching OpenTelemetry GenAI semantic conventions.
 
@@ -32,16 +34,25 @@ class GenAITelemetryLogger:
             session_id: Unique session identifier for input/output GCS references.
             error_code: Optional error code if inference or guardrail failed.
             guardrail_type: Optional guardrail type if safety filter was triggered.
+            resolution: Optional generation resolution (e.g. '360p', '720p', '4k').
+            previous_interaction_id: Optional previous interaction thread ID for stateful turns.
 
         Returns:
             Dictionary containing OpenTelemetry GenAI labels.
         """
         labels: dict[str, str] = {
             "gen_ai.system": "vertex_ai",
+            "gen_ai.session.id": str(session_id),
             "event.name": "gen_ai.client.inference.operation.details",
             "gen_ai.input.messages_ref": f"gs://{self.bucket_name}/telemetry/{session_id}_input.jsonl",
             "gen_ai.output.messages_ref": f"gs://{self.bucket_name}/telemetry/{session_id}_output.jsonl",
         }
+
+        if resolution is not None:
+            labels["gen_ai.request.resolution"] = str(resolution)
+
+        if previous_interaction_id is not None:
+            labels["previous_interaction_id"] = str(previous_interaction_id)
 
         if error_code is not None:
             labels["gen_ai.error.code"] = str(error_code)
@@ -57,6 +68,8 @@ class GenAITelemetryLogger:
         span_name: str = "gen_ai.client.inference",
         error_code: str | None = None,
         guardrail_type: str | None = None,
+        resolution: str | None = None,
+        previous_interaction_id: str | None = None,
     ) -> trace.Span:
         """Starts an OpenTelemetry span prepopulated with GenAI telemetry labels.
 
@@ -65,6 +78,8 @@ class GenAITelemetryLogger:
             span_name: OpenTelemetry span name.
             error_code: Optional error code.
             guardrail_type: Optional guardrail safety type.
+            resolution: Optional generation resolution.
+            previous_interaction_id: Optional previous interaction identifier.
 
         Returns:
             Active OpenTelemetry Span.
@@ -73,8 +88,11 @@ class GenAITelemetryLogger:
             session_id=session_id,
             error_code=error_code,
             guardrail_type=guardrail_type,
+            resolution=resolution,
+            previous_interaction_id=previous_interaction_id,
         )
         return self.tracer.start_span(name=span_name, attributes=labels)
+
 
 
 def setup_opentelemetry_genai_logging(
