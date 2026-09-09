@@ -1939,3 +1939,25 @@ def test_journey3_generate_shot_seamless_loop():
         assert "<FIRST_FRAME>@KeyframeSeed" in captured_prompt
         assert "<LAST_FRAME>@KeyframeSeed" in captured_prompt
         assert "Seamless Infinite Loop Mode" in captured_prompt
+
+
+def test_ui_html_contains_1080p_studio_tier_and_seamless_loop_controls() -> None:
+    """Verify UI_HTML contains 1080p Studio Full HD resolution option and Seamless Loop toggle."""
+    from omnimash.api.app import UI_HTML
+
+    # 1080p Studio Tier in resolution selectors
+    assert '<option value="1080p">💎 1080p (Studio Full HD)</option>' in UI_HTML
+    assert UI_HTML.count('value="1080p"') >= 5, "Expected 1080p option in all Mode 1, Mode 2, and Draft Room selectors"
+
+    # Seamless loop controls in Stage 2 Workstation and Inspector Drawer
+    assert "is_seamless_loop" in UI_HTML
+    assert "🔁 Seamless Infinite Loop" in UI_HTML
+    assert 'checked={!!shot.is_seamless_loop}' in UI_HTML
+    assert 'updateStageShot(idx, "is_seamless_loop", e.target.checked)' in UI_HTML
+    assert "ACTIVE (Loops to Seed Frame) ✓" in UI_HTML
+
+    # Seamless loop and resolution binding in handleGenerateShotVideo payload
+    assert "resolution: omniResolution" in UI_HTML
+    assert "is_seamless_loop: !!shot.is_seamless_loop" in UI_HTML
+
+
