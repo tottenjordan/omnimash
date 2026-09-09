@@ -2322,6 +2322,75 @@ def test_multimodal_telemetry_span_resolutions_and_thread_id() -> None:
     )
 
 
+def test_generate_live_omni_flash_video_assembles_full_response_format(tmp_path: Any) -> None:
+    """Verify that _generate_live_omni_flash_video assembles aspect_ratio, duration, and resolution in response_format."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_full_rf_123", output_video=mock_output_video
+    )
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "test_rf_out.mp4")
+    success, inter_id, error = client._generate_live_omni_flash_video(
+        prompt="A magical wizard rap duel",
+        target_rel_path=target_file,
+        aspect_ratio="9:16",
+        resolution="720p",
+        duration_seconds=5,
+    )
+
+    assert success is True
+    assert inter_id == "inter_full_rf_123"
+    assert error is None
+
+    assert mock_interactions.create.called
+    call_kwargs = mock_interactions.create.call_args.kwargs
+    rf = call_kwargs.get("response_format", {})
+    assert rf.get("type") == "video"
+    assert rf.get("resolution") == "720p"
+    assert rf.get("aspect_ratio") == "9:16"
+    assert rf.get("duration") == "5s"
+
+
+def test_poll_and_download_file_uri_mock(tmp_path: Any) -> None:
+    """Verify that _poll_and_download_file_uri polls files.get and downloads bytes when state is ACTIVE."""
+    client = OmniFlashClient(mock_mode=False)
+    mock_files = MagicMock()
+
+    file_processing = MagicMock(state="PROCESSING")
+    file_active = MagicMock(state="ACTIVE", uri="https://generativelanguage.googleapis.com/v1beta/files/test_vid_123")
+    mock_files.get.side_effect = [file_processing, file_active]
+    mock_files.download.return_value = b"downloaded_high_res_mp4_bytes"
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.files = mock_files
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "polled_output.mp4")
+    downloaded_bytes = client._poll_and_download_file_uri(
+        file_name="files/test_vid_123",
+        target_path=target_file,
+        poll_interval=0.01,
+        timeout_seconds=2.0,
+    )
+
+    assert downloaded_bytes == b"downloaded_high_res_mp4_bytes"
+    assert os.path.exists(target_file)
+    with open(target_file, "rb") as f:
+        assert f.read() == b"downloaded_high_res_mp4_bytes"
+    assert mock_files.get.call_count == 2
+    mock_files.download.assert_called_once_with(file="files/test_vid_123")
+
+
+
 
 
 

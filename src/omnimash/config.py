@@ -15,6 +15,7 @@ class OmniMashSettings(BaseSettings):
     omni_model_id: str = "gemini-omni-1.1-flash-preview"
     default_resolution: str = "720p"
     draft_resolution: str = "360p"
+    studio_resolution: str = "1080p"
     master_resolution: str = "4k"
     model_armor_template_id: str = "omnimash-safety-filter"
     mock_mode: bool = False

@@ -6,6 +6,7 @@ import os
 import re
 import struct
 import subprocess
+import time
 from typing import Any
 import uuid
 import wave
@@ -1281,6 +1282,35 @@ class OmniFlashClient:
         else:
             return sanitized_input
 
+    def _poll_and_download_file_uri(
+        self,
+        file_name: str,
+        target_path: str,
+        poll_interval: float = 1.0,
+        timeout_seconds: float = 60.0,
+    ) -> bytes:
+        """Polls files.get until state is ACTIVE, then downloads and saves video bytes."""
+        if not self._genai_client or not hasattr(self._genai_client, "files"):
+            raise RuntimeError("Gemini client files API is not available")
+
+        start_time = time.time()
+        while time.time() - start_time < timeout_seconds:
+            file_info = self._genai_client.files.get(name=file_name)
+            state = getattr(file_info, "state", None)
+            if state == "ACTIVE" or str(state).upper() == "ACTIVE":
+                video_bytes = self._genai_client.files.download(file=file_name)
+                if target_path:
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with open(target_path, "wb") as f:
+                        f.write(video_bytes)
+                return video_bytes
+            elif state in ("FAILED", "ERROR") or str(state).upper() in ("FAILED", "ERROR"):
+                error_msg = getattr(file_info, "error", None) or "File processing failed"
+                raise RuntimeError(f"File URI processing failed: {error_msg}")
+            time.sleep(poll_interval)
+
+        raise TimeoutError(f"Timed out after {timeout_seconds}s waiting for file URI {file_name} to become ACTIVE")
+
     def _generate_live_omni_flash_video(
         self,
         prompt: str,
@@ -1293,6 +1323,7 @@ class OmniFlashClient:
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        duration_seconds: int | float | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash 1.1 Preview via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -1356,8 +1387,16 @@ class OmniFlashClient:
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id
 
-        if resolution:
-            kwargs["response_format"] = {"resolution": resolution}
+        response_format: dict[str, Any] = {
+            "type": "video",
+            "resolution": resolution,
+            "aspect_ratio": aspect_ratio,
+        }
+        if duration_seconds is not None:
+            response_format["duration"] = f"{int(duration_seconds)}s"
+        if resolution in ("4k", "1080p") and not self.mock_mode:
+            response_format["delivery"] = "uri"
+        kwargs["response_format"] = response_format
 
         for attempt in range(1, max_attempts + 1):
             try:
@@ -1385,12 +1424,18 @@ class OmniFlashClient:
                         output_vid = outputs[0]
 
                 if output_vid:
+                    file_uri_name = (
+                        getattr(output_vid, "name", None)
+                        or getattr(output_vid, "file_uri", None)
+                        or getattr(output_vid, "uri", None)
+                    )
                     data = (
                         getattr(output_vid, "data", None)
                         or getattr(output_vid, "video_bytes", None)
                         or getattr(output_vid, "bytes", None)
                         or getattr(output_vid, "video", None)
                     )
+                    video_bytes = None
                     if data:
                         video_bytes = (
                             base64.b64decode(data) if isinstance(data, str) else data
@@ -1398,6 +1443,13 @@ class OmniFlashClient:
                         os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
                         with open(target_rel_path, "wb") as f:
                             f.write(video_bytes)
+                    elif file_uri_name and hasattr(self._genai_client, "files"):
+                        video_bytes = self._poll_and_download_file_uri(
+                            file_name=file_uri_name,
+                            target_path=target_rel_path,
+                        )
+
+                    if video_bytes:
                         logger.info(
                             "Successfully generated native Gemini Omni Flash MP4 to %s (size: %d bytes)",
                             target_rel_path,
