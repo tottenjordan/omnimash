@@ -1802,10 +1802,32 @@ class OmniFlashClient:
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        regenerate_audio: bool = False,
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
         rel_path = url.lstrip("/")
+
+        effective_base_video = base_video_url
+        if regenerate_audio:
+            # Strip existing audio track with FFmpeg (-c:v copy -an) so Omni Flash generates completely fresh audio
+            stripped_path = f"static/rendered/{thread_id}_stripped_silent.mp4"
+            os.makedirs(os.path.dirname(stripped_path), exist_ok=True)
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                base_video_url,
+                "-c:v",
+                "copy",
+                "-an",
+                stripped_path,
+            ]
+            try:
+                subprocess.run(cmd, capture_output=True, check=False)
+                effective_base_video = stripped_path
+            except Exception as exc:
+                logger.warning("Failed to strip audio via FFmpeg from base video %s: %s", base_video_url, exc)
 
         prompt = initial_prompt or "Reanchored video turn"
         success, inter_id, error_message = self._generate_live_omni_flash_video(
@@ -1813,6 +1835,7 @@ class OmniFlashClient:
             rel_path,
             characters=characters,
             session_id=session_id,
+            keyframe_image_url=effective_base_video,
             enable_safety_sanitization=enable_safety_sanitization,
             aspect_ratio=aspect_ratio,
             resolution=resolution,

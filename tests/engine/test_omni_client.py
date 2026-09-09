@@ -2422,6 +2422,44 @@ def test_build_multimodal_contents_with_motion_reference_video() -> None:
     assert "[# References <VIDEO_REF_0>@VideoReference1]" in prompt_text
 
 
+def test_start_thread_from_video_regenerate_audio_strips_audio(tmp_path: Any) -> None:
+    """Verifies that start_thread_from_video with regenerate_audio=True executes FFmpeg with -an to strip audio before re-anchoring."""
+    client = OmniFlashClient(mock_mode=True)
+    input_video = str(tmp_path / "input_base.mp4")
+    with open(input_video, "wb") as f:
+        f.write(b"fake_mp4_bytes")
+
+    with patch("subprocess.run") as mock_run, patch.object(
+        client, "_generate_live_omni_flash_video", return_value=(True, "reanchor_thread_123", None)
+    ) as mock_gen:
+        mock_run.return_value = MagicMock(returncode=0)
+
+        res = client.start_thread_from_video(
+            base_video_url=input_video,
+            initial_prompt="Regenerated beat with fresh audio",
+            regenerate_audio=True,
+        )
+
+        assert res.interaction_thread_id == "reanchor_thread_123"
+        # Verify FFmpeg was invoked to strip audio with -an and -c:v copy
+        ffmpeg_calls = [
+            call for call in mock_run.call_args_list if call.args and "ffmpeg" in call.args[0]
+        ]
+        assert len(ffmpeg_calls) >= 1
+        cmd = ffmpeg_calls[0].args[0]
+        assert "-an" in cmd
+        assert "-c:v" in cmd
+        assert "copy" in cmd
+
+        # Verify the stripped video path was passed to generation
+        mock_gen.assert_called_once()
+        call_kwargs = mock_gen.call_args.kwargs
+        assert call_kwargs.get("keyframe_image_url") is not None
+        assert call_kwargs.get("keyframe_image_url") != input_video
+        assert "stripped" in call_kwargs.get("keyframe_image_url") or "silent" in call_kwargs.get("keyframe_image_url")
+
+
+
 
 
 
