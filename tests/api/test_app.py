@@ -1911,3 +1911,31 @@ def test_ui_html_contains_stage2_dual_keyframe_controls() -> None:
     assert "Image #2: Ending Keyframe" in UI_HTML
 
 
+def test_journey3_generate_shot_seamless_loop():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    with patch.object(
+        app.state.agent,
+        "process_user_turn",
+        wraps=app.state.agent.process_user_turn,
+    ) as mock_turn:
+        res = client.post(
+            "/api/journey3/generate-shot",
+            json={
+                "session_id": "test_loop_session",
+                "shot_index": 1,
+                "action_directive": "YoTotti in seamless spell casting loop",
+                "keyframe_image_url": "http://example.com/seed_kf.png",
+                "is_seamless_loop": True,
+            },
+        )
+        assert res.status_code == 200
+        assert res.json()["success"] is True
+        assert mock_turn.call_count == 1
+        _, kwargs = mock_turn.call_args
+        captured_prompt = kwargs.get("compiled_override")
+        assert captured_prompt is not None
+        assert "<FIRST_FRAME>@KeyframeSeed" in captured_prompt
+        assert "<LAST_FRAME>@KeyframeSeed" in captured_prompt
+        assert "Seamless Infinite Loop Mode" in captured_prompt

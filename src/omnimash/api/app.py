@@ -379,6 +379,7 @@ class GenerateShotRequest(BaseModel):
     narrator_text: str | None = None
     aspect_ratio: str = "16:9"
     motion_reference_clip: str | None = None
+    is_seamless_loop: bool = False
 
 
 class GenerateShotResponse(BaseModel):
@@ -458,6 +459,7 @@ class Journey3ShotGenerateRequest(BaseModel):
     style_preset: str | None = None
     model_style: str | None = None
     motion_reference_clip: str | None = None
+    is_seamless_loop: bool = False
 
 
 Journey3GenerateShotRequest = Journey3ShotGenerateRequest
@@ -10140,6 +10142,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 narrator_voice=req.narrator_voice,
                 style_preset=req.style_preset or req.model_style,
                 last_frame_image_url=req.last_frame_image_url,
+                keyframe_image_url=req.keyframe_image_url,
+                is_seamless_loop=req.is_seamless_loop,
             )
 
         keyframe_url = req.keyframe_image_url

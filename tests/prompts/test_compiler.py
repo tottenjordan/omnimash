@@ -1697,4 +1697,26 @@ def test_compile_journey3_shot_prompt_enforces_style_preset_medium_continuity():
     assert "rendering all movement, characters, and environment strictly in Claymation Stop-Motion with zero photorealistic texture bleeding" in prompt
 
 
+def test_compile_journey3_shot_prompt_seamless_loop():
+    chars = [
+        CharacterRole(
+            role_id="Role A",
+            name="YoTotti",
+            description="Young tatted wizard",
+        )
+    ]
+    prompt = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="YoTotti spinning continuously with magical embers swirling",
+        characters=chars,
+        keyframe_image_url="http://example.com/seed.png",
+        is_seamless_loop=True,
+    )
+    assert "<FIRST_FRAME>@KeyframeSeed" in prompt
+    assert "<LAST_FRAME>@KeyframeSeed" in prompt
+    assert "Seamless Infinite Loop Mode" in prompt
+    assert "Seamless continuous infinite loop directive" in prompt or "seamless continuous infinite loop" in prompt.lower()
+
+
+
 

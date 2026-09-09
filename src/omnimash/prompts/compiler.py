@@ -2730,6 +2730,8 @@ def compile_journey3_shot_prompt(
     narrator_voice: str | None = None,
     style_preset: str | None = None,
     last_frame_image_url: str | None = None,
+    keyframe_image_url: str | None = None,
+    is_seamless_loop: bool = False,
 ) -> str:
     """Compiles 4-block prompt for Journey 3 shot generation adhering to GEMINI_OMNI_FLASH_INSTR.
 
@@ -2739,6 +2741,9 @@ def compile_journey3_shot_prompt(
     3. ### SCENE INSTRUCTIONS
     4. ### TIMELINE
     """
+    if is_seamless_loop and keyframe_image_url and keyframe_image_url.strip():
+        last_frame_image_url = keyframe_image_url.strip()
+
     if last_frame_image_url and last_frame_image_url.strip():
         if characters is None:
             characters = []
@@ -2829,9 +2834,18 @@ def compile_journey3_shot_prompt(
         if char_lines:
             character_roster = "\n".join(char_lines)
 
+    prefix_sources = ""
+    if is_seamless_loop and keyframe_image_url and keyframe_image_url.strip():
+        prefix_sources = "[# Sources <FIRST_FRAME>@KeyframeSeed <LAST_FRAME>@KeyframeSeed]\n"
+    elif keyframe_image_url and keyframe_image_url.strip():
+        prefix_sources = "[# Sources <FIRST_FRAME>@KeyframeSeed]\n"
+
     roster_str = character_roster.strip() if character_roster else "None."
     if enable_sanitization and roster_str != "None.":
         roster_str = sanitize_real_names(roster_str)
+    if prefix_sources:
+        roster_str = prefix_sources + (roster_str if roster_str != "None." else "")
+        roster_str = roster_str.strip()
 
 
     action_str = action_directive.strip()
@@ -3051,6 +3065,11 @@ def compile_journey3_shot_prompt(
             c_id = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
             v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
             scene_inst_items.append(f"- Voice Style ({c_id}): {v_clean}")
+
+    if is_seamless_loop:
+        scene_inst_items.append(
+            "- Seamless Infinite Loop Mode: Seamless continuous infinite loop directive. Mirror start frame <FIRST_FRAME>@KeyframeSeed and end frame <LAST_FRAME>@KeyframeSeed so the final frame smoothly, imperceptibly loops back to the beginning with identical character posture, camera position, and ambient lighting."
+        )
 
     if cumulative_state:
         st_block = cumulative_state.format_cumulative_state_block().strip()
