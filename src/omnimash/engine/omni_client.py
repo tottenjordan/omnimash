@@ -6,6 +6,7 @@ import os
 import re
 import struct
 import subprocess
+import time
 from typing import Any
 import uuid
 import wave
@@ -1169,8 +1170,9 @@ class OmniFlashClient:
         keyframe_image_url: str | None = None,
         directors_notes: dict[str, Any] | str | None = None,
         enable_safety_sanitization: bool = True,
+        motion_reference_clip: str | None = None,
     ) -> list[dict[str, Any]] | str:
-        """Assembles keyframe seed image, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
+        """Assembles keyframe seed image, motion reference video clip, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
         keyframe_image_parts: list[dict[str, Any]] = []
         if keyframe_image_url:
             img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
@@ -1185,12 +1187,27 @@ class OmniFlashClient:
                     }
                 )
 
+        motion_ref_parts: list[dict[str, Any]] = []
+        has_motion_ref = False
+        if motion_reference_clip:
+            m_bytes, m_mime = self._fetch_image_bytes(motion_reference_clip)
+            if m_bytes:
+                b64_str = base64.b64encode(m_bytes).decode("utf-8")
+                motion_ref_parts.append(
+                    {
+                        "type": "video",
+                        "data": b64_str,
+                        "mime_type": "video/mp4",
+                    }
+                )
+                has_motion_ref = True
+
         has_kf_seed = bool(keyframe_image_parts)
         start_ref_idx = 1
         ref_image_parts, char_img_map = self._load_reference_images_as_input(
             session_id, characters, starting_index=start_ref_idx
         )
-        all_image_parts = keyframe_image_parts + ref_image_parts
+        all_image_parts = keyframe_image_parts + motion_ref_parts + ref_image_parts
 
         sources_items, references_items, char_tag_map = build_character_image_ref_tags(
             characters=characters,
@@ -1198,6 +1215,9 @@ class OmniFlashClient:
             has_keyframe_seed=has_kf_seed,
             enable_sanitization=enable_safety_sanitization,
         )
+
+        if has_motion_ref:
+            references_items.append("<VIDEO_REF_0>@VideoReference1")
 
         input_roles_lines: list[str] = []
         if sources_items:
@@ -1214,6 +1234,13 @@ class OmniFlashClient:
         tone_header = ""
         if keyframe_image_parts and "# Visual Tone & Starting Frame Anchor" not in prompt:
             tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
+
+        motion_ref_header = ""
+        if has_motion_ref and "# Motion Reference Conditioning:" not in prompt:
+            motion_ref_header = (
+                "# Motion Reference Conditioning:\n"
+                "Condition motion choreography, pacing, camera movement, and kinetic timing on the attached motion reference video clip (<VIDEO_REF_0>@VideoReference1).\n\n"
+            )
 
         notes_header = ""
         if directors_notes:
@@ -1270,6 +1297,7 @@ class OmniFlashClient:
         sanitized_input = (
             input_roles_header
             + tone_header
+            + motion_ref_header
             + notes_header
             + character_roster_header
             + clean_prompt
@@ -1280,6 +1308,35 @@ class OmniFlashClient:
             return [{"type": "user_input", "content": all_image_parts + [text_part]}]
         else:
             return sanitized_input
+
+    def _poll_and_download_file_uri(
+        self,
+        file_name: str,
+        target_path: str,
+        poll_interval: float = 1.0,
+        timeout_seconds: float = 60.0,
+    ) -> bytes:
+        """Polls files.get until state is ACTIVE, then downloads and saves video bytes."""
+        if not self._genai_client or not hasattr(self._genai_client, "files"):
+            raise RuntimeError("Gemini client files API is not available")
+
+        start_time = time.time()
+        while time.time() - start_time < timeout_seconds:
+            file_info = self._genai_client.files.get(name=file_name)
+            state = getattr(file_info, "state", None)
+            if state == "ACTIVE" or str(state).upper() == "ACTIVE":
+                video_bytes = self._genai_client.files.download(file=file_name)
+                if target_path:
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with open(target_path, "wb") as f:
+                        f.write(video_bytes)
+                return video_bytes
+            elif state in ("FAILED", "ERROR") or str(state).upper() in ("FAILED", "ERROR"):
+                error_msg = getattr(file_info, "error", None) or "File processing failed"
+                raise RuntimeError(f"File URI processing failed: {error_msg}")
+            time.sleep(poll_interval)
+
+        raise TimeoutError(f"Timed out after {timeout_seconds}s waiting for file URI {file_name} to become ACTIVE")
 
     def _generate_live_omni_flash_video(
         self,
@@ -1293,6 +1350,8 @@ class OmniFlashClient:
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        duration_seconds: int | float | None = None,
+        motion_reference_clip: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash 1.1 Preview via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -1346,6 +1405,7 @@ class OmniFlashClient:
             keyframe_image_url=keyframe_image_url,
             directors_notes=directors_notes,
             enable_safety_sanitization=enable_safety_sanitization,
+            motion_reference_clip=motion_reference_clip,
         )
 
         model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash-preview")
@@ -1356,8 +1416,16 @@ class OmniFlashClient:
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id
 
-        if resolution:
-            kwargs["response_format"] = {"resolution": resolution}
+        response_format: dict[str, Any] = {
+            "type": "video",
+            "resolution": resolution,
+            "aspect_ratio": aspect_ratio,
+        }
+        if duration_seconds is not None:
+            response_format["duration"] = f"{int(duration_seconds)}s"
+        if resolution in ("4k", "1080p") and not self.mock_mode:
+            response_format["delivery"] = "uri"
+        kwargs["response_format"] = response_format
 
         for attempt in range(1, max_attempts + 1):
             try:
@@ -1385,12 +1453,18 @@ class OmniFlashClient:
                         output_vid = outputs[0]
 
                 if output_vid:
+                    file_uri_name = (
+                        getattr(output_vid, "name", None)
+                        or getattr(output_vid, "file_uri", None)
+                        or getattr(output_vid, "uri", None)
+                    )
                     data = (
                         getattr(output_vid, "data", None)
                         or getattr(output_vid, "video_bytes", None)
                         or getattr(output_vid, "bytes", None)
                         or getattr(output_vid, "video", None)
                     )
+                    video_bytes = None
                     if data:
                         video_bytes = (
                             base64.b64decode(data) if isinstance(data, str) else data
@@ -1398,6 +1472,13 @@ class OmniFlashClient:
                         os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
                         with open(target_rel_path, "wb") as f:
                             f.write(video_bytes)
+                    elif file_uri_name and hasattr(self._genai_client, "files"):
+                        video_bytes = self._poll_and_download_file_uri(
+                            file_name=file_uri_name,
+                            target_path=target_rel_path,
+                        )
+
+                    if video_bytes:
                         logger.info(
                             "Successfully generated native Gemini Omni Flash MP4 to %s (size: %d bytes)",
                             target_rel_path,
@@ -1577,6 +1658,7 @@ class OmniFlashClient:
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        motion_reference_clip: str | None = None,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -1597,6 +1679,7 @@ class OmniFlashClient:
             enable_safety_sanitization=enable_safety_sanitization,
             aspect_ratio=aspect_ratio,
             resolution=resolution,
+            motion_reference_clip=motion_reference_clip,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
@@ -1648,6 +1731,7 @@ class OmniFlashClient:
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        motion_reference_clip: str | None = None,
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -1668,6 +1752,7 @@ class OmniFlashClient:
             enable_safety_sanitization=enable_safety_sanitization,
             aspect_ratio=aspect_ratio,
             resolution=resolution,
+            motion_reference_clip=motion_reference_clip,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
@@ -1717,10 +1802,32 @@ class OmniFlashClient:
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        regenerate_audio: bool = False,
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
         rel_path = url.lstrip("/")
+
+        effective_base_video = base_video_url
+        if regenerate_audio:
+            # Strip existing audio track with FFmpeg (-c:v copy -an) so Omni Flash generates completely fresh audio
+            stripped_path = f"static/rendered/{thread_id}_stripped_silent.mp4"
+            os.makedirs(os.path.dirname(stripped_path), exist_ok=True)
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                base_video_url,
+                "-c:v",
+                "copy",
+                "-an",
+                stripped_path,
+            ]
+            try:
+                subprocess.run(cmd, capture_output=True, check=False)
+                effective_base_video = stripped_path
+            except Exception as exc:
+                logger.warning("Failed to strip audio via FFmpeg from base video %s: %s", base_video_url, exc)
 
         prompt = initial_prompt or "Reanchored video turn"
         success, inter_id, error_message = self._generate_live_omni_flash_video(
@@ -1728,6 +1835,7 @@ class OmniFlashClient:
             rel_path,
             characters=characters,
             session_id=session_id,
+            keyframe_image_url=effective_base_video,
             enable_safety_sanitization=enable_safety_sanitization,
             aspect_ratio=aspect_ratio,
             resolution=resolution,

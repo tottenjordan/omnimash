@@ -1,4 +1,5 @@
 from typing import Any
+from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from omnimash.api.app import (
@@ -1859,6 +1860,30 @@ def test_api_upload_motion_reference_endpoint():
     assert data["clip_path"].endswith("_motion_3s.mp4")
 
 
+def test_api_generate_shot_with_motion_reference_clip():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    with patch.object(
+        app.state.agent,
+        "process_user_turn",
+        wraps=app.state.agent.process_user_turn,
+    ) as mock_turn:
+        res = client.post(
+            "/api/generate-shot",
+            json={
+                "session_name": "test_motion_ref_session",
+                "shot_index": 1,
+                "action": "Dancer doing flair spin",
+                "motion_reference_clip": "static/uploads/motion_ref_3s.mp4",
+            },
+        )
+        assert res.status_code == 200
+        assert res.json()["success"] is True
+        assert mock_turn.call_count == 1
+        _, kwargs = mock_turn.call_args
+        assert kwargs.get("motion_reference_clip") == "static/uploads/motion_ref_3s.mp4"
+
+
 def test_ui_html_contains_motion_reference_controls() -> None:
     """Verify UI_HTML contains motion reference clip state, upload handler, and motion ref badge elements."""
     from omnimash.api.app import UI_HTML
@@ -1884,5 +1909,55 @@ def test_ui_html_contains_stage2_dual_keyframe_controls() -> None:
     assert "Clear" in UI_HTML
     assert "Ending Keyframe Image URL" in UI_HTML
     assert "Image #2: Ending Keyframe" in UI_HTML
+
+
+def test_journey3_generate_shot_seamless_loop():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    with patch.object(
+        app.state.agent,
+        "process_user_turn",
+        wraps=app.state.agent.process_user_turn,
+    ) as mock_turn:
+        res = client.post(
+            "/api/journey3/generate-shot",
+            json={
+                "session_id": "test_loop_session",
+                "shot_index": 1,
+                "action_directive": "YoTotti in seamless spell casting loop",
+                "keyframe_image_url": "http://example.com/seed_kf.png",
+                "is_seamless_loop": True,
+            },
+        )
+        assert res.status_code == 200
+        assert res.json()["success"] is True
+        assert mock_turn.call_count == 1
+        _, kwargs = mock_turn.call_args
+        captured_prompt = kwargs.get("compiled_override")
+        assert captured_prompt is not None
+        assert "<FIRST_FRAME>@KeyframeSeed" in captured_prompt
+        assert "<LAST_FRAME>@KeyframeSeed" in captured_prompt
+        assert "Seamless Infinite Loop Mode" in captured_prompt
+
+
+def test_ui_html_contains_1080p_studio_tier_and_seamless_loop_controls() -> None:
+    """Verify UI_HTML contains 1080p Studio Full HD resolution option and Seamless Loop toggle."""
+    from omnimash.api.app import UI_HTML
+
+    # 1080p Studio Tier in resolution selectors
+    assert '<option value="1080p">💎 1080p (Studio Full HD)</option>' in UI_HTML
+    assert UI_HTML.count('value="1080p"') >= 5, "Expected 1080p option in all Mode 1, Mode 2, and Draft Room selectors"
+
+    # Seamless loop controls in Stage 2 Workstation and Inspector Drawer
+    assert "is_seamless_loop" in UI_HTML
+    assert "🔁 Seamless Infinite Loop" in UI_HTML
+    assert 'checked={!!shot.is_seamless_loop}' in UI_HTML
+    assert 'updateStageShot(idx, "is_seamless_loop", e.target.checked)' in UI_HTML
+    assert "ACTIVE (Loops to Seed Frame) ✓" in UI_HTML
+
+    # Seamless loop and resolution binding in handleGenerateShotVideo payload
+    assert "resolution: omniResolution" in UI_HTML
+    assert "is_seamless_loop: !!shot.is_seamless_loop" in UI_HTML
 
 

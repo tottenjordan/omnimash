@@ -2322,6 +2322,146 @@ def test_multimodal_telemetry_span_resolutions_and_thread_id() -> None:
     )
 
 
+def test_generate_live_omni_flash_video_assembles_full_response_format(tmp_path: Any) -> None:
+    """Verify that _generate_live_omni_flash_video assembles aspect_ratio, duration, and resolution in response_format."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_full_rf_123", output_video=mock_output_video
+    )
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "test_rf_out.mp4")
+    success, inter_id, error = client._generate_live_omni_flash_video(
+        prompt="A magical wizard rap duel",
+        target_rel_path=target_file,
+        aspect_ratio="9:16",
+        resolution="720p",
+        duration_seconds=5,
+    )
+
+    assert success is True
+    assert inter_id == "inter_full_rf_123"
+    assert error is None
+
+    assert mock_interactions.create.called
+    call_kwargs = mock_interactions.create.call_args.kwargs
+    rf = call_kwargs.get("response_format", {})
+    assert rf.get("type") == "video"
+    assert rf.get("resolution") == "720p"
+    assert rf.get("aspect_ratio") == "9:16"
+    assert rf.get("duration") == "5s"
+
+
+def test_poll_and_download_file_uri_mock(tmp_path: Any) -> None:
+    """Verify that _poll_and_download_file_uri polls files.get and downloads bytes when state is ACTIVE."""
+    client = OmniFlashClient(mock_mode=False)
+    mock_files = MagicMock()
+
+    file_processing = MagicMock(state="PROCESSING")
+    file_active = MagicMock(state="ACTIVE", uri="https://generativelanguage.googleapis.com/v1beta/files/test_vid_123")
+    mock_files.get.side_effect = [file_processing, file_active]
+    mock_files.download.return_value = b"downloaded_high_res_mp4_bytes"
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.files = mock_files
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "polled_output.mp4")
+    downloaded_bytes = client._poll_and_download_file_uri(
+        file_name="files/test_vid_123",
+        target_path=target_file,
+        poll_interval=0.01,
+        timeout_seconds=2.0,
+    )
+
+    assert downloaded_bytes == b"downloaded_high_res_mp4_bytes"
+    assert os.path.exists(target_file)
+    with open(target_file, "rb") as f:
+        assert f.read() == b"downloaded_high_res_mp4_bytes"
+    assert mock_files.get.call_count == 2
+    mock_files.download.assert_called_once_with(file="files/test_vid_123")
+
+
+def test_build_multimodal_contents_with_motion_reference_video() -> None:
+    """Verify _build_multimodal_contents injects motion reference video parts and <VIDEO_REF_0> tag when motion_reference_clip is passed."""
+    client = OmniFlashClient(mock_mode=True)
+    motion_clip_path = "static/uploads/motion_ref_sample.mp4"
+
+    with patch.object(
+        client,
+        "_fetch_image_bytes",
+        return_value=(b"fake_motion_video_mp4_bytes", "video/mp4"),
+    ):
+        payload = client._build_multimodal_contents(
+            prompt="High energy breakdance choreography",
+            motion_reference_clip=motion_clip_path,
+        )
+
+    assert isinstance(payload, list)
+    assert len(payload) == 1
+    user_content = payload[0]["content"]
+
+    # Verify that a video part for the motion reference clip is present
+    video_parts = [p for p in user_content if isinstance(p, dict) and p.get("type") == "video"]
+    assert len(video_parts) >= 1
+    assert video_parts[0]["mime_type"] == "video/mp4"
+
+    # Verify text prompt contains <VIDEO_REF_0> reference and input roles header
+    text_part = user_content[-1]
+    prompt_text = text_part.get("text", "")
+    assert "### INPUT ROLES" in prompt_text
+    assert "<VIDEO_REF_0>" in prompt_text
+    assert "[# References <VIDEO_REF_0>@VideoReference1]" in prompt_text
+
+
+def test_start_thread_from_video_regenerate_audio_strips_audio(tmp_path: Any) -> None:
+    """Verifies that start_thread_from_video with regenerate_audio=True executes FFmpeg with -an to strip audio before re-anchoring."""
+    client = OmniFlashClient(mock_mode=True)
+    input_video = str(tmp_path / "input_base.mp4")
+    with open(input_video, "wb") as f:
+        f.write(b"fake_mp4_bytes")
+
+    with patch("subprocess.run") as mock_run, patch.object(
+        client, "_generate_live_omni_flash_video", return_value=(True, "reanchor_thread_123", None)
+    ) as mock_gen:
+        mock_run.return_value = MagicMock(returncode=0)
+
+        res = client.start_thread_from_video(
+            base_video_url=input_video,
+            initial_prompt="Regenerated beat with fresh audio",
+            regenerate_audio=True,
+        )
+
+        assert res.interaction_thread_id == "reanchor_thread_123"
+        # Verify FFmpeg was invoked to strip audio with -an and -c:v copy
+        ffmpeg_calls = [
+            call for call in mock_run.call_args_list if call.args and "ffmpeg" in call.args[0]
+        ]
+        assert len(ffmpeg_calls) >= 1
+        cmd = ffmpeg_calls[0].args[0]
+        assert "-an" in cmd
+        assert "-c:v" in cmd
+        assert "copy" in cmd
+
+        # Verify the stripped video path was passed to generation
+        mock_gen.assert_called_once()
+        call_kwargs = mock_gen.call_args.kwargs
+        assert call_kwargs.get("keyframe_image_url") is not None
+        assert call_kwargs.get("keyframe_image_url") != input_video
+        assert "stripped" in call_kwargs.get("keyframe_image_url") or "silent" in call_kwargs.get("keyframe_image_url")
+
+
+
+
+
 
 
 

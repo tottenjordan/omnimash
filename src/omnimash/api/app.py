@@ -378,6 +378,8 @@ class GenerateShotRequest(BaseModel):
     title_card_subtitle: str | None = None
     narrator_text: str | None = None
     aspect_ratio: str = "16:9"
+    motion_reference_clip: str | None = None
+    is_seamless_loop: bool = False
 
 
 class GenerateShotResponse(BaseModel):
@@ -456,6 +458,11 @@ class Journey3ShotGenerateRequest(BaseModel):
     narrator_voice: str | None = None
     style_preset: str | None = None
     model_style: str | None = None
+    motion_reference_clip: str | None = None
+    is_seamless_loop: bool = False
+
+
+Journey3GenerateShotRequest = Journey3ShotGenerateRequest
 
 
 
@@ -925,7 +932,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     audio: "[0-3s] 140 BPM Trap Beat Intro | [3-10s] Heavy 808 Sub-Bass",
                     dialogue: "Spectacled Wizard Bruv: \"I been cooking potions since first year.\"",
                     camera_transition: "Continuous match cut from preceding shot",
-                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot"
+                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot",
+                    is_seamless_loop: false
                 },
                 {
                     shot_index: 2,
@@ -938,7 +946,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     audio: "[0-3s] Heavy 808 Trap Beat Drop | [3-10s] Sub-Bass and Crisp Snares",
                     dialogue: "Platinum Rival Blood: \"This is Trap or Die, Potter! Let's get it!\"",
                     camera_transition: "Continuous match cut from preceding shot",
-                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot"
+                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot",
+                    is_seamless_loop: false
                 },
                 {
                     shot_index: 3,
@@ -951,7 +960,8 @@ UI_HTML = r"""<!DOCTYPE html>
                     audio: "[0-3s] Aggressive Trap Climax | [3-10s] Heavy Kick Drum & Synth Riser",
                     dialogue: "Both: \"Trap or Die!\"",
                     camera_transition: "Continuous match cut from preceding shot",
-                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot"
+                    character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot",
+                    is_seamless_loop: false
                 }
             ]);
             const [expandLoading, setExpandLoading] = useState(false);
@@ -1920,7 +1930,10 @@ UI_HTML = r"""<!DOCTYPE html>
                             parent_turn_id: parentTurnId,
                             audio_stem: shot.audio || null,
                             enable_safety_sanitization: enableSafetySanitization,
-                            aspect_ratio: aspectRatio
+                            aspect_ratio: aspectRatio,
+                            resolution: omniResolution,
+                            last_frame_image_url: shot.last_frame_image_url || null,
+                            is_seamless_loop: !!shot.is_seamless_loop
                         })
                     });
                     const data = await res.json();
@@ -3710,6 +3723,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <option value="21:9">21:9 Ultrawide</option>
                                             </select>
                                         </div>
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
+                                            <span className="text-gray-300">⚡ Resolution</span>
+                                            <select
+                                                value={omniResolution}
+                                                onChange={(e) => setOmniResolution(e.target.value)}
+                                                className="bg-gray-900 text-purple-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-purple-500 cursor-pointer"
+                                            >
+                                                <option value="360p">⚡ 360p Fast Preview</option>
+                                                <option value="720p">🎥 720p Standard</option>
+                                                <option value="1080p">💎 1080p (Studio Full HD)</option>
+                                                <option value="4k">🏆 4K Master Export</option>
+                                            </select>
+                                        </div>
                                         <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none">
                                             <span>🛡️ Safety Sanitization</span>
                                             <input
@@ -4483,6 +4509,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <option value="21:9">21:9 Ultrawide</option>
                                             </select>
                                         </div>
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-pink-500 transition select-none shadow-inner">
+                                            <span className="text-gray-300">⚡ Resolution</span>
+                                            <select
+                                                value={omniResolution}
+                                                onChange={(e) => setOmniResolution(e.target.value)}
+                                                className="bg-gray-900 text-pink-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-pink-500 cursor-pointer"
+                                            >
+                                                <option value="360p">⚡ 360p Fast Preview</option>
+                                                <option value="720p">🎥 720p Standard</option>
+                                                <option value="1080p">💎 1080p (Studio Full HD)</option>
+                                                <option value="4k">🏆 4K Master Export</option>
+                                            </select>
+                                        </div>
                                         <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-pink-500 transition select-none">
                                             <span>🛡️ Safety Sanitization</span>
                                             <input
@@ -4824,6 +4863,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <option value="9:16">9:16 Portrait / Shorts</option>
                                                             <option value="1:1">1:1 Square / Instagram</option>
                                                             <option value="21:9">21:9 Ultrawide</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-amber-500 transition select-none shadow-inner">
+                                                        <span className="text-gray-300">⚡ Resolution</span>
+                                                        <select
+                                                            value={omniResolution}
+                                                            onChange={(e) => setOmniResolution(e.target.value)}
+                                                            className="bg-gray-900 text-amber-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
+                                                        >
+                                                            <option value="360p">⚡ 360p Fast Preview</option>
+                                                            <option value="720p">🎥 720p Standard</option>
+                                                            <option value="1080p">💎 1080p (Studio Full HD)</option>
+                                                            <option value="4k">🏆 4K Master Export</option>
                                                         </select>
                                                     </div>
                                                     <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-amber-500 transition select-none shadow-inner">
@@ -5692,6 +5744,19 @@ UI_HTML = r"""<!DOCTYPE html>
                                                     <option value="21:9">21:9 Ultrawide</option>
                                                 </select>
                                             </div>
+                                            <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
+                                                <span className="text-gray-300">⚡ Resolution</span>
+                                                <select
+                                                    value={omniResolution}
+                                                    onChange={(e) => setOmniResolution(e.target.value)}
+                                                    className="bg-gray-900 text-purple-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-purple-500 cursor-pointer"
+                                                >
+                                                    <option value="360p">⚡ 360p Fast Preview</option>
+                                                    <option value="720p">🎥 720p Standard</option>
+                                                    <option value="1080p">💎 1080p (Studio Full HD)</option>
+                                                    <option value="4k">🏆 4K Master Export</option>
+                                                </select>
+                                            </div>
                                             <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
                                                 <span>🛡️ Safety Sanitization</span>
                                                 <input
@@ -6115,6 +6180,25 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                 </div>
                                                             </div>
 
+                                                            {/* 🔁 Seamless Infinite Loop Control */}
+                                                            <div className="flex items-center justify-between bg-black/60 border border-indigo-900/60 rounded-xl p-2.5 my-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-base">🔁</span>
+                                                                    <div>
+                                                                        <span className="text-xs font-bold text-indigo-300 block">🔁 Seamless Infinite Loop</span>
+                                                                        <span className="text-[10px] text-gray-400 block">Mirror start and end frames for continuous cyclical looping</span>
+                                                                    </div>
+                                                                </div>
+                                                                <label className="relative inline-flex items-center cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={!!shot.is_seamless_loop}
+                                                                        onChange={(e) => updateStageShot(idx, "is_seamless_loop", e.target.checked)}
+                                                                        className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                                                                    />
+                                                                </label>
+                                                            </div>
+
                                                             {/* Prompt & Payload Inspector Drawer Toggle */}
                                                             <div className="pt-1">
                                                                 <button
@@ -6146,6 +6230,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                                     <span className="text-purple-300">Image #2: Ending Keyframe ({"<LAST_FRAME>"})</span>
                                                                                     <span className={shot.last_frame_image_url ? "text-purple-400 font-bold" : "text-gray-500"}>
                                                                                         {shot.last_frame_image_url ? "ATTACHED ✓" : "OPTIONAL (Missing)"}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between bg-black/60 p-2 rounded border border-gray-800">
+                                                                                    <span className="text-indigo-300">🔁 Seamless Infinite Loop:</span>
+                                                                                    <span className={shot.is_seamless_loop ? "text-indigo-400 font-bold" : "text-gray-500"}>
+                                                                                        {shot.is_seamless_loop ? "ACTIVE (Loops to Seed Frame) ✓" : "OFF"}
                                                                                     </span>
                                                                                 </div>
                                                                                 {characters && characters.map((c, cI) => (
@@ -8335,6 +8425,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         >
                                                             <option value="360p">⚡ 360p Fast Preview (Draft Mode)</option>
                                                             <option value="720p">🎥 720p Standard</option>
+                                                            <option value="1080p">💎 1080p (Studio Full HD)</option>
                                                             <option value="4k">🏆 4K Master Export</option>
                                                         </select>
                                                     </div>
@@ -9789,6 +9880,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             enable_sanitization=req.enable_safety_sanitization,
             aspect_ratio=req.aspect_ratio,
             resolution=req.resolution,
+            motion_reference_clip=req.motion_reference_clip,
         )
         return GenerateShotResponse(
             success=agent_turn.success,
@@ -10134,6 +10226,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 narrator_voice=req.narrator_voice,
                 style_preset=req.style_preset or req.model_style,
                 last_frame_image_url=req.last_frame_image_url,
+                keyframe_image_url=req.keyframe_image_url,
+                is_seamless_loop=req.is_seamless_loop,
             )
 
         keyframe_url = req.keyframe_image_url
@@ -10163,6 +10257,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 enable_sanitization=req.enable_safety_sanitization,
                 aspect_ratio=req.aspect_ratio,
                 resolution=req.resolution,
+                motion_reference_clip=req.motion_reference_clip,
             )
         except Exception as exc:
             err_str = str(exc)
