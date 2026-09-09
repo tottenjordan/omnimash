@@ -2390,6 +2390,39 @@ def test_poll_and_download_file_uri_mock(tmp_path: Any) -> None:
     mock_files.download.assert_called_once_with(file="files/test_vid_123")
 
 
+def test_build_multimodal_contents_with_motion_reference_video() -> None:
+    """Verify _build_multimodal_contents injects motion reference video parts and <VIDEO_REF_0> tag when motion_reference_clip is passed."""
+    client = OmniFlashClient(mock_mode=True)
+    motion_clip_path = "static/uploads/motion_ref_sample.mp4"
+
+    with patch.object(
+        client,
+        "_fetch_image_bytes",
+        return_value=(b"fake_motion_video_mp4_bytes", "video/mp4"),
+    ):
+        payload = client._build_multimodal_contents(
+            prompt="High energy breakdance choreography",
+            motion_reference_clip=motion_clip_path,
+        )
+
+    assert isinstance(payload, list)
+    assert len(payload) == 1
+    user_content = payload[0]["content"]
+
+    # Verify that a video part for the motion reference clip is present
+    video_parts = [p for p in user_content if isinstance(p, dict) and p.get("type") == "video"]
+    assert len(video_parts) >= 1
+    assert video_parts[0]["mime_type"] == "video/mp4"
+
+    # Verify text prompt contains <VIDEO_REF_0> reference and input roles header
+    text_part = user_content[-1]
+    prompt_text = text_part.get("text", "")
+    assert "### INPUT ROLES" in prompt_text
+    assert "<VIDEO_REF_0>" in prompt_text
+    assert "[# References <VIDEO_REF_0>@VideoReference1]" in prompt_text
+
+
+
 
 
 

@@ -1,4 +1,5 @@
 from typing import Any
+from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from omnimash.api.app import (
@@ -1857,6 +1858,30 @@ def test_api_upload_motion_reference_endpoint():
     assert data["success"] is True
     assert "clip_path" in data
     assert data["clip_path"].endswith("_motion_3s.mp4")
+
+
+def test_api_generate_shot_with_motion_reference_clip():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    with patch.object(
+        app.state.agent,
+        "process_user_turn",
+        wraps=app.state.agent.process_user_turn,
+    ) as mock_turn:
+        res = client.post(
+            "/api/generate-shot",
+            json={
+                "session_name": "test_motion_ref_session",
+                "shot_index": 1,
+                "action": "Dancer doing flair spin",
+                "motion_reference_clip": "static/uploads/motion_ref_3s.mp4",
+            },
+        )
+        assert res.status_code == 200
+        assert res.json()["success"] is True
+        assert mock_turn.call_count == 1
+        _, kwargs = mock_turn.call_args
+        assert kwargs.get("motion_reference_clip") == "static/uploads/motion_ref_3s.mp4"
 
 
 def test_ui_html_contains_motion_reference_controls() -> None:

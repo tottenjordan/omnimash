@@ -338,6 +338,7 @@ class OmniMashAgent:
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        motion_reference_clip: str | None = None,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
@@ -379,6 +380,8 @@ class OmniMashAgent:
                     optimize_prompt=optimize_prompt,
                     enable_sanitization=enable_sanitization,
                     aspect_ratio=aspect_ratio,
+                    resolution=resolution,
+                    motion_reference_clip=motion_reference_clip,
                 )
                 if not turn_resp.success:
                     return turn_resp
@@ -527,6 +530,7 @@ class OmniMashAgent:
                 enable_sanitization=enable_sanitization,
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
+                motion_reference_clip=motion_reference_clip,
             )
         else:
             if characters or scenes:
@@ -600,6 +604,7 @@ class OmniMashAgent:
                 enable_sanitization=enable_sanitization,
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
+                motion_reference_clip=motion_reference_clip,
             )
 
         if gen_res.error_message and not gen_res.video_url:
@@ -712,6 +717,7 @@ class OmniMashAgent:
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        motion_reference_clip: str | None = None,
     ) -> Any:
         if parent_thread_id:
             return self.omni_client.apply_interaction_diff(
@@ -727,6 +733,7 @@ class OmniMashAgent:
                 enable_safety_sanitization=enable_sanitization,
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
+                motion_reference_clip=motion_reference_clip,
             )
         return self.omni_client.generate_clip(
             prompt,
@@ -740,6 +747,7 @@ class OmniMashAgent:
             enable_safety_sanitization=enable_sanitization,
             aspect_ratio=aspect_ratio,
             resolution=resolution,
+            motion_reference_clip=motion_reference_clip,
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:

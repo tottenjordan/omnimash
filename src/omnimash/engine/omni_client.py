@@ -1170,8 +1170,9 @@ class OmniFlashClient:
         keyframe_image_url: str | None = None,
         directors_notes: dict[str, Any] | str | None = None,
         enable_safety_sanitization: bool = True,
+        motion_reference_clip: str | None = None,
     ) -> list[dict[str, Any]] | str:
-        """Assembles keyframe seed image, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
+        """Assembles keyframe seed image, motion reference video clip, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
         keyframe_image_parts: list[dict[str, Any]] = []
         if keyframe_image_url:
             img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
@@ -1186,12 +1187,27 @@ class OmniFlashClient:
                     }
                 )
 
+        motion_ref_parts: list[dict[str, Any]] = []
+        has_motion_ref = False
+        if motion_reference_clip:
+            m_bytes, m_mime = self._fetch_image_bytes(motion_reference_clip)
+            if m_bytes:
+                b64_str = base64.b64encode(m_bytes).decode("utf-8")
+                motion_ref_parts.append(
+                    {
+                        "type": "video",
+                        "data": b64_str,
+                        "mime_type": "video/mp4",
+                    }
+                )
+                has_motion_ref = True
+
         has_kf_seed = bool(keyframe_image_parts)
         start_ref_idx = 1
         ref_image_parts, char_img_map = self._load_reference_images_as_input(
             session_id, characters, starting_index=start_ref_idx
         )
-        all_image_parts = keyframe_image_parts + ref_image_parts
+        all_image_parts = keyframe_image_parts + motion_ref_parts + ref_image_parts
 
         sources_items, references_items, char_tag_map = build_character_image_ref_tags(
             characters=characters,
@@ -1199,6 +1215,9 @@ class OmniFlashClient:
             has_keyframe_seed=has_kf_seed,
             enable_sanitization=enable_safety_sanitization,
         )
+
+        if has_motion_ref:
+            references_items.append("<VIDEO_REF_0>@VideoReference1")
 
         input_roles_lines: list[str] = []
         if sources_items:
@@ -1215,6 +1234,13 @@ class OmniFlashClient:
         tone_header = ""
         if keyframe_image_parts and "# Visual Tone & Starting Frame Anchor" not in prompt:
             tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
+
+        motion_ref_header = ""
+        if has_motion_ref and "# Motion Reference Conditioning:" not in prompt:
+            motion_ref_header = (
+                "# Motion Reference Conditioning:\n"
+                "Condition motion choreography, pacing, camera movement, and kinetic timing on the attached motion reference video clip (<VIDEO_REF_0>@VideoReference1).\n\n"
+            )
 
         notes_header = ""
         if directors_notes:
@@ -1271,6 +1297,7 @@ class OmniFlashClient:
         sanitized_input = (
             input_roles_header
             + tone_header
+            + motion_ref_header
             + notes_header
             + character_roster_header
             + clean_prompt
@@ -1324,6 +1351,7 @@ class OmniFlashClient:
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
         duration_seconds: int | float | None = None,
+        motion_reference_clip: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash 1.1 Preview via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -1377,6 +1405,7 @@ class OmniFlashClient:
             keyframe_image_url=keyframe_image_url,
             directors_notes=directors_notes,
             enable_safety_sanitization=enable_safety_sanitization,
+            motion_reference_clip=motion_reference_clip,
         )
 
         model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash-preview")
@@ -1629,6 +1658,7 @@ class OmniFlashClient:
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        motion_reference_clip: str | None = None,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -1649,6 +1679,7 @@ class OmniFlashClient:
             enable_safety_sanitization=enable_safety_sanitization,
             aspect_ratio=aspect_ratio,
             resolution=resolution,
+            motion_reference_clip=motion_reference_clip,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"
@@ -1700,6 +1731,7 @@ class OmniFlashClient:
         enable_safety_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
+        motion_reference_clip: str | None = None,
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -1720,6 +1752,7 @@ class OmniFlashClient:
             enable_safety_sanitization=enable_safety_sanitization,
             aspect_ratio=aspect_ratio,
             resolution=resolution,
+            motion_reference_clip=motion_reference_clip,
         )
 
         generation_mode = "LIVE_OMNI_FLASH"

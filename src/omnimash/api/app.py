@@ -378,6 +378,7 @@ class GenerateShotRequest(BaseModel):
     title_card_subtitle: str | None = None
     narrator_text: str | None = None
     aspect_ratio: str = "16:9"
+    motion_reference_clip: str | None = None
 
 
 class GenerateShotResponse(BaseModel):
@@ -456,6 +457,10 @@ class Journey3ShotGenerateRequest(BaseModel):
     narrator_voice: str | None = None
     style_preset: str | None = None
     model_style: str | None = None
+    motion_reference_clip: str | None = None
+
+
+Journey3GenerateShotRequest = Journey3ShotGenerateRequest
 
 
 
@@ -9789,6 +9794,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             enable_sanitization=req.enable_safety_sanitization,
             aspect_ratio=req.aspect_ratio,
             resolution=req.resolution,
+            motion_reference_clip=req.motion_reference_clip,
         )
         return GenerateShotResponse(
             success=agent_turn.success,
@@ -10163,6 +10169,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 enable_sanitization=req.enable_safety_sanitization,
                 aspect_ratio=req.aspect_ratio,
                 resolution=req.resolution,
+                motion_reference_clip=req.motion_reference_clip,
             )
         except Exception as exc:
             err_str = str(exc)
