@@ -6045,7 +6045,6 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                              🔁 Seamless Loop
                                                                          </button>
                                                                      </div>
-                                                                     </div>
                                                                  </div>
                                                             </div>
 
@@ -8486,6 +8485,8 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                             </button>
                                         </div>
                                     </div>
+                                </div>
+
                                 {/* ⚡ THE DRAFT ROOM (360p Multi-Card Comparison Studio) */}
                                 <div className="border border-amber-800/60 bg-gray-900/90 backdrop-blur p-6 rounded-2xl shadow-2xl space-y-6">
                                     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-amber-900/40 pb-4">
