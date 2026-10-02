@@ -39,7 +39,7 @@ package-lock.json
 .idea/
 .vscode/
 
-# ADK local session database
+# ADK local session database & local tool outputs
 .adk/
 *.db
-
+outputs/
