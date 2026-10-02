@@ -29,9 +29,7 @@ def test_omni_client_fetch_image_bytes_blocks_private_ips_and_unauthorized_local
     client = OmniFlashClient(mock_mode=True)
 
     # SSRF metadata & loopback URLs must be blocked
-    data_meta, _ = client._fetch_image_bytes(
-        "http://169.254.169.254/computeMetadata/v1/"
-    )
+    data_meta, _ = client._fetch_image_bytes("http://169.254.169.254/computeMetadata/v1/")
     assert data_meta == b""
 
     data_local, _ = client._fetch_image_bytes("http://127.0.0.1:8000/secret")

@@ -149,4 +149,3 @@ def test_save_and_load_session_roster_endpoints():
     res_empty = client.get("/api/characters/roster?session_name=nonexistent_session")
     assert res_empty.status_code == 200
     assert res_empty.json()["characters"] == []
-

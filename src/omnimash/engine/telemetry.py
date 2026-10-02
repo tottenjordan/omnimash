@@ -94,7 +94,6 @@ class GenAITelemetryLogger:
         return self.tracer.start_span(name=span_name, attributes=labels)
 
 
-
 def setup_opentelemetry_genai_logging(
     bucket_name: str, app_name: str = "omnimash-api"
 ) -> GenAITelemetryLogger:

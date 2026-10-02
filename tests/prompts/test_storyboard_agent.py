@@ -17,25 +17,17 @@ def test_storyboard_shot_5_part_structure():
         framing_motion="Static medium shot",
         audio="Slow booming 808 trap beat with bubbling liquid sounds",
     )
-    prompt = shot.to_omni_flash_prompt(
-        role_mappings="[ROLE DEFINITIONS]\n- Role A (Snape)"
-    )
+    prompt = shot.to_omni_flash_prompt(role_mappings="[ROLE DEFINITIONS]\n- Role A (Snape)")
     assert "[ROLE DEFINITIONS]" in prompt
     assert "Shot 1 (0-10s)" in prompt
     assert "- Action / Subject: Snape stirring a glowing purple potion carefully" in prompt
-    assert (
-        "- Location: A dimly lit stone dungeon classroom with bubbling cauldrons"
-        in prompt
-    )
+    assert "- Location: A dimly lit stone dungeon classroom with bubbling cauldrons" in prompt
     assert (
         "- Style & Lighting: Cinematic, realistic, lit by a warm off-screen fire with soft shadows"
         in prompt
     )
     assert "- Shot Framing & Motion: Static medium shot" in prompt
-    assert (
-        "- Audio Soundscape: Slow booming 808 trap beat with bubbling liquid sounds"
-        in prompt
-    )
+    assert "- Audio Soundscape: Slow booming 808 trap beat with bubbling liquid sounds" in prompt
 
 
 def test_storyboard_shot_to_omni_flash_prompt_without_role_mappings():
@@ -395,7 +387,10 @@ def test_expand_vision_splits_long_script_into_10s_shots():
         assert shot.shot_index == i + 1
         assert "continuous shot" in shot.framing_motion.lower()
         assert "match cut" in shot.camera_transition.lower()
-        assert "maintain" in shot.character_continuity.lower() or "character" in shot.character_continuity.lower()
+        assert (
+            "maintain" in shot.character_continuity.lower()
+            or "character" in shot.character_continuity.lower()
+        )
 
     prompt_shot2 = shots_30s[1].to_omni_flash_prompt()
     assert "[SHOT DIRECTIVE: Shot 2 (10-20s)]" in prompt_shot2
@@ -441,10 +436,7 @@ def test_parse_timecoded_script_character_dialogue_extraction():
     assert "sorcerer BRICKS" not in parsed[0]["action"]
 
     assert parsed[1]["duration_seconds"] == 5.0
-    assert (
-        parsed[1]["dialogue"]
-        == 'Swagrid: "Your cut from before. What\'s the first move?"'
-    )
+    assert parsed[1]["dialogue"] == 'Swagrid: "Your cut from before. What\'s the first move?"'
     assert parsed[1]["action"] == "Swagrid heaves black duffel bag."
     assert "What's the first move" not in parsed[1]["action"]
 
@@ -480,10 +472,3 @@ def test_storyboard_shot_to_from_dict():
     assert restored.audio_mode == "custom"
     assert restored.soundscape == "Custom bubbling soundscape"
     assert restored.action == "Wizard brewing potion"
-
-
-
-
-
-
-

@@ -54,17 +54,11 @@ class SessionManager:
         else:
             session_key = f"{user_id}:{project_id}"
         if session_key not in self._sessions:
-            if self.storage is not None and hasattr(
-                self.storage, "get_session_manifest"
-            ):
+            if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
                 try:
-                    manifest = self.storage.get_session_manifest(
-                        session_key, project_id=project_id
-                    )
+                    manifest = self.storage.get_session_manifest(session_key, project_id=project_id)
                     if isinstance(manifest, dict) and "turns" in manifest:
-                        self._sessions[session_key] = ProjectSession.model_validate(
-                            manifest
-                        )
+                        self._sessions[session_key] = ProjectSession.model_validate(manifest)
                         return self._sessions[session_key]
                 except Exception:
                     pass
@@ -89,10 +83,7 @@ class SessionManager:
         depth = 0
         if parent_turn_id and parent_turn_id in session.turns:
             parent = session.turns[parent_turn_id]
-            if (
-                parent.interaction_thread_id == interaction_thread_id
-                and not is_checkpoint
-            ):
+            if parent.interaction_thread_id == interaction_thread_id and not is_checkpoint:
                 depth = parent.edit_depth_in_thread + 1
 
         turn = TurnNode(

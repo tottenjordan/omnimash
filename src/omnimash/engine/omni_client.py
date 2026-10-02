@@ -84,11 +84,7 @@ def _generate_dynamic_audio_wav(
 
     beat_interval = 60 / bpm
     has_vocal = bool(
-        voiceover
-        or "voiceover" in lower
-        or "dialogue" in lower
-        or ":" in prompt
-        or '"' in prompt
+        voiceover or "voiceover" in lower or "dialogue" in lower or ":" in prompt or '"' in prompt
     )
 
     audio_data = []
@@ -106,9 +102,7 @@ def _generate_dynamic_audio_wav(
                 if kick_t < 0.2:
                     slide_freq = 140 * math.exp(-kick_t * 15) + 38
                     val += (
-                        0.7
-                        * math.sin(2 * math.pi * slide_freq * kick_t)
-                        * math.exp(-kick_t * 10)
+                        0.7 * math.sin(2 * math.pi * slide_freq * kick_t) * math.exp(-kick_t * 10)
                     )
             if beat_index in [1, 3]:
                 snare_t = beat_pos
@@ -140,11 +134,7 @@ def _generate_dynamic_audio_wav(
             for f in chord_freqs:
                 val += 0.12 * math.sin(2 * math.pi * f * t)
             if beat_index == 0 and beat_pos < 0.3:
-                val += (
-                    0.5
-                    * math.sin(2 * math.pi * 50 * beat_pos)
-                    * math.exp(-beat_pos * 8)
-                )
+                val += 0.5 * math.sin(2 * math.pi * 50 * beat_pos) * math.exp(-beat_pos * 8)
             crackle = ((i * 37911 + 71) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
             val += 0.04 * crackle
 
@@ -154,11 +144,7 @@ def _generate_dynamic_audio_wav(
                 kick_t = beat_pos
                 if kick_t < 0.25:
                     freq = 120 * math.exp(-kick_t * 20) + 45
-                    val += (
-                        0.6
-                        * math.sin(2 * math.pi * freq * kick_t)
-                        * math.exp(-kick_t * 12)
-                    )
+                    val += 0.6 * math.sin(2 * math.pi * freq * kick_t) * math.exp(-kick_t * 12)
             if beat_index in [1, 3]:
                 snare_t = beat_pos
                 if snare_t < 0.2:
@@ -227,9 +213,7 @@ def extract_clean_dialogue_summary(prompt: str) -> str:
         line.strip()
         for line in cleaned.splitlines()
         if line.strip()
-        and not line.strip().startswith(
-            ("Role ", "Active Roles:", "Environment:", "Aesthetic:")
-        )
+        and not line.strip().startswith(("Role ", "Active Roles:", "Environment:", "Aesthetic:"))
     ]
     return " ".join(lines)[:100] or "AI Parody Storyboard Preview"
 
@@ -250,9 +234,7 @@ def ensure_rendered_video(
     os.makedirs(os.path.dirname(rel_path), exist_ok=True)
 
     # Extract voiceover / dialogue if not explicitly passed
-    effective_silent = (
-        is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
-    )
+    effective_silent = is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
 
     unique_id = uuid.uuid4().hex[:8]
     wav_silent_path = f"static/rendered/temp_silent_{unique_id}.wav"
@@ -783,10 +765,10 @@ class OmniFlashClient:
         retry_delay: float | None = None,
     ):
         self.api_key = api_key
-        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
-        self.retry_delay = (
-            retry_delay if retry_delay is not None else (0.0 if mock_mode else 0.5)
+        self.mock_mode = (
+            mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
+        self.retry_delay = retry_delay if retry_delay is not None else (0.0 if mock_mode else 0.5)
         self.project = os.environ.get(
             "GOOGLE_CLOUD_PROJECT",
             getattr(settings, "google_cloud_project", "hybrid-vertex"),
@@ -803,9 +785,7 @@ class OmniFlashClient:
             project_id=self.project,
             mock_mode=self.mock_mode,
         )
-        self.telemetry = setup_opentelemetry_genai_logging(
-            bucket_name=self.storage.bucket_name
-        )
+        self.telemetry = setup_opentelemetry_genai_logging(bucket_name=self.storage.bucket_name)
 
         effective_key = (
             self.api_key
@@ -895,7 +875,11 @@ class OmniFlashClient:
         if reference_image_uris:
             ref_image_uris.extend([str(u) for u in reference_image_uris if u])
 
-        if keyframe_image_url and isinstance(keyframe_image_url, str) and keyframe_image_url.strip():
+        if (
+            keyframe_image_url
+            and isinstance(keyframe_image_url, str)
+            and keyframe_image_url.strip()
+        ):
             ref_image_uris.append(keyframe_image_url.strip())
 
         if characters:
@@ -931,12 +915,18 @@ class OmniFlashClient:
             if found_uris:
                 ref_image_uris.extend(found_uris)
         elif isinstance(input_prompt, dict):
-            prompt_text = str(input_prompt.get("prompt", input_prompt.get("text", str(input_prompt))))
+            prompt_text = str(
+                input_prompt.get("prompt", input_prompt.get("text", str(input_prompt)))
+            )
             if "system_instructions" in input_prompt:
                 system_instructions = str(input_prompt["system_instructions"])
-            if "reference_image_uris" in input_prompt and isinstance(input_prompt["reference_image_uris"], list):
+            if "reference_image_uris" in input_prompt and isinstance(
+                input_prompt["reference_image_uris"], list
+            ):
                 ref_image_uris.extend([str(u) for u in input_prompt["reference_image_uris"] if u])
-            elif "reference_urls" in input_prompt and isinstance(input_prompt["reference_urls"], list):
+            elif "reference_urls" in input_prompt and isinstance(
+                input_prompt["reference_urls"], list
+            ):
                 ref_image_uris.extend([str(u) for u in input_prompt["reference_urls"] if u])
             if "keyframe_image_url" in input_prompt and input_prompt["keyframe_image_url"]:
                 ref_image_uris.append(str(input_prompt["keyframe_image_url"]))
@@ -985,7 +975,11 @@ class OmniFlashClient:
                         for uri_key in ("uri", "url", "gcs_uri", "reference_url"):
                             if uri_key in item and item[uri_key]:
                                 ref_image_uris.append(str(item[uri_key]))
-                    elif item.get("type") == "user_input" and "content" in item and isinstance(item["content"], list):
+                    elif (
+                        item.get("type") == "user_input"
+                        and "content" in item
+                        and isinstance(item["content"], list)
+                    ):
                         for sub in item["content"]:
                             if isinstance(sub, dict):
                                 if sub.get("type") == "text":
@@ -1065,6 +1059,7 @@ class OmniFlashClient:
         curr_idx = starting_index
 
         from omnimash.prompts.compiler import sort_characters_by_role_id
+
         sorted_chars = sort_characters_by_role_id(characters)
 
         for char in sorted_chars:
@@ -1073,11 +1068,7 @@ class OmniFlashClient:
                 if not isinstance(char, dict)
                 else char.get("role_id", "")
             )
-            name = (
-                getattr(char, "name", "")
-                if not isinstance(char, dict)
-                else char.get("name", "")
-            )
+            name = getattr(char, "name", "") if not isinstance(char, dict) else char.get("name", "")
             ref_url = (
                 getattr(char, "reference_url", None)
                 if not isinstance(char, dict)
@@ -1093,19 +1084,24 @@ class OmniFlashClient:
                     mime_type = "video/mp4"
                 elif ref_url.lower().endswith(".png"):
                     mime_type = "image/png"
-                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(
-                    ".jpeg"
-                ):
+                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
                     mime_type = "image/jpeg"
 
-                if len(img_bytes) > 25 * 1024 * 1024 and self._genai_client and hasattr(self._genai_client, "files"):
+                if (
+                    len(img_bytes) > 25 * 1024 * 1024
+                    and self._genai_client
+                    and hasattr(self._genai_client, "files")
+                ):
                     import tempfile
+
                     suffix = ".mp4" if mime_type == "video/mp4" else ".png"
                     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_f:
                         tmp_f.write(img_bytes)
                         tmp_path = tmp_f.name
                     try:
-                        file_obj = self._genai_client.files.upload(file=tmp_path, mime_type=mime_type)
+                        file_obj = self._genai_client.files.upload(
+                            file=tmp_path, mime_type=mime_type
+                        )
                         image_objects.append(file_obj)
                     finally:
                         if os.path.exists(tmp_path):
@@ -1178,7 +1174,14 @@ class OmniFlashClient:
             img_bytes, mime_type = self._fetch_image_bytes(keyframe_image_url)
             if img_bytes:
                 b64_str = base64.b64encode(img_bytes).decode("utf-8")
-                type_key = "video" if (mime_type.startswith("video/") or keyframe_image_url.lower().endswith(".mp4")) else "image"
+                type_key = (
+                    "video"
+                    if (
+                        mime_type.startswith("video/")
+                        or keyframe_image_url.lower().endswith(".mp4")
+                    )
+                    else "image"
+                )
                 keyframe_image_parts.append(
                     {
                         "type": type_key,
@@ -1227,9 +1230,7 @@ class OmniFlashClient:
 
         input_roles_header = ""
         if input_roles_lines:
-            input_roles_header = (
-                "### INPUT ROLES\n" + "\n".join(input_roles_lines) + "\n\n"
-            )
+            input_roles_header = "### INPUT ROLES\n" + "\n".join(input_roles_lines) + "\n\n"
 
         tone_header = ""
         if keyframe_image_parts and "# Visual Tone & Starting Frame Anchor" not in prompt:
@@ -1252,16 +1253,28 @@ class OmniFlashClient:
                 if len(lines_n) > 1:
                     notes_header = "\n".join(lines_n) + "\n\n"
             elif isinstance(directors_notes, str) and directors_notes.strip():
-                notes_header = f"# Director's Notes & Relational Dynamics:\n{directors_notes.strip()}\n\n"
+                notes_header = (
+                    f"# Director's Notes & Relational Dynamics:\n{directors_notes.strip()}\n\n"
+                )
 
         character_roster_header = ""
         if characters:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
             for c in characters:
                 char_id = get_character_identifier(c)
-                desc = getattr(c, "description", "") if not isinstance(c, dict) else c.get("description", "")
-                raw_tags = getattr(c, "aesthetic_tags", None) if not isinstance(c, dict) else c.get("aesthetic_tags")
-                str_tags: list[str] = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
+                desc = (
+                    getattr(c, "description", "")
+                    if not isinstance(c, dict)
+                    else c.get("description", "")
+                )
+                raw_tags = (
+                    getattr(c, "aesthetic_tags", None)
+                    if not isinstance(c, dict)
+                    else c.get("aesthetic_tags")
+                )
+                str_tags: list[str] = (
+                    [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
+                )
                 tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
 
                 tag = char_tag_map.get(char_id)
@@ -1291,7 +1304,10 @@ class OmniFlashClient:
             )
             input_roles_header = ""
 
-        if "# Character Roster & Visual Directives:" in clean_prompt or "### CHARACTER PROFILES" in clean_prompt:
+        if (
+            "# Character Roster & Visual Directives:" in clean_prompt
+            or "### CHARACTER PROFILES" in clean_prompt
+        ):
             character_roster_header = ""
 
         sanitized_input = (
@@ -1336,7 +1352,9 @@ class OmniFlashClient:
                 raise RuntimeError(f"File URI processing failed: {error_msg}")
             time.sleep(poll_interval)
 
-        raise TimeoutError(f"Timed out after {timeout_seconds}s waiting for file URI {file_name} to become ACTIVE")
+        raise TimeoutError(
+            f"Timed out after {timeout_seconds}s waiting for file URI {file_name} to become ACTIVE"
+        )
 
     def _generate_live_omni_flash_video(
         self,
@@ -1435,9 +1453,7 @@ class OmniFlashClient:
                     max_attempts,
                     prompt,
                 )
-                if not self._genai_client or not hasattr(
-                    self._genai_client, "interactions"
-                ):
+                if not self._genai_client or not hasattr(self._genai_client, "interactions"):
                     last_error = "Gemini client or interactions API not available"
                     break
 
@@ -1466,9 +1482,7 @@ class OmniFlashClient:
                     )
                     video_bytes = None
                     if data:
-                        video_bytes = (
-                            base64.b64decode(data) if isinstance(data, str) else data
-                        )
+                        video_bytes = base64.b64decode(data) if isinstance(data, str) else data
                         os.makedirs(os.path.dirname(target_rel_path), exist_ok=True)
                         with open(target_rel_path, "wb") as f:
                             f.write(video_bytes)
@@ -1501,9 +1515,7 @@ class OmniFlashClient:
                         )
                         return True, inter_id, None
 
-                last_error = (
-                    "Gemini Omni Flash returned interaction without video output data"
-                )
+                last_error = "Gemini Omni Flash returned interaction without video output data"
                 logger.warning(last_error)
             except Exception as exc:
                 exc_str = str(exc)
@@ -1622,9 +1634,7 @@ class OmniFlashClient:
             else {}
         )
         guardrail_type = (
-            guardrail_info.get("triggers", [None])[0]
-            if guardrail_info.get("triggers")
-            else None
+            guardrail_info.get("triggers", [None])[0] if guardrail_info.get("triggers") else None
         )
         self._log_multimodal_inference(
             session_id=session_id or "global",
@@ -1662,9 +1672,7 @@ class OmniFlashClient:
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
-            f"turn_{turn_index}_video.mp4"
-            if turn_index is not None
-            else f"{thread_id}_turn0.mp4"
+            f"turn_{turn_index}_video.mp4" if turn_index is not None else f"{thread_id}_turn0.mp4"
         )
         safe_sess = (
             re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
@@ -1789,7 +1797,8 @@ class OmniFlashClient:
                     interaction_thread_id=inter_id or interaction_thread_id,
                     video_url="",
                     gcs_uri=None,
-                    error_message=error_message or "Gemini Omni Flash interaction diff generation failed",
+                    error_message=error_message
+                    or "Gemini Omni Flash interaction diff generation failed",
                     generation_mode="LIVE_OMNI_FLASH",
                 )
 
@@ -1845,7 +1854,9 @@ class OmniFlashClient:
                 subprocess.run(cmd, capture_output=True, check=False)
                 effective_base_video = stripped_path
             except Exception as exc:
-                logger.warning("Failed to strip audio via FFmpeg from base video %s: %s", base_video_url, exc)
+                logger.warning(
+                    "Failed to strip audio via FFmpeg from base video %s: %s", base_video_url, exc
+                )
 
         prompt = initial_prompt or "Reanchored video turn"
         success, inter_id, error_message = self._generate_live_omni_flash_video(
@@ -1933,12 +1944,16 @@ class OmniFlashClient:
                     "localhost",
                     "metadata.google.internal",
                 ):
-                    logger.warning("Blocked disallowed HTTP host in _fetch_image_bytes: %s", hostname)
+                    logger.warning(
+                        "Blocked disallowed HTTP host in _fetch_image_bytes: %s", hostname
+                    )
                     return b"", "image/png"
                 try:
                     ip = ipaddress.ip_address(hostname)
                     if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                        logger.warning("Blocked private/loopback IP in _fetch_image_bytes: %s", hostname)
+                        logger.warning(
+                            "Blocked private/loopback IP in _fetch_image_bytes: %s", hostname
+                        )
                         return b"", "image/png"
                 except ValueError:
                     pass
@@ -2021,7 +2036,9 @@ class OmniFlashClient:
                     )
                 elif hasattr(c, "role_id") or hasattr(c, "name"):
                     raw_tags = getattr(c, "aesthetic_tags", [])
-                    str_tags = [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
+                    str_tags = (
+                        [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
+                    )
                     all_char_objs.append(
                         CharacterRole(
                             role_id=getattr(c, "role_id", ""),
@@ -2048,8 +2065,23 @@ class OmniFlashClient:
                 if name.lower() in r_lower or name.lower() in s_lower:
                     return True
 
-                stop_words = {"the", "and", "fam", "bruv", "chef", "blood", "star", "queen", "king", "master"}
-                words = [w.lower() for w in re.split(r"\W+", name) if len(w) >= 3 and w.lower() not in stop_words]
+                stop_words = {
+                    "the",
+                    "and",
+                    "fam",
+                    "bruv",
+                    "chef",
+                    "blood",
+                    "star",
+                    "queen",
+                    "king",
+                    "master",
+                }
+                words = [
+                    w.lower()
+                    for w in re.split(r"\W+", name)
+                    if len(w) >= 3 and w.lower() not in stop_words
+                ]
                 for w in words:
                     if w in r_lower or w in s_lower:
                         return True
@@ -2058,14 +2090,20 @@ class OmniFlashClient:
                 if san_name:
                     if san_name.lower() in r_lower or san_name.lower() in s_lower:
                         return True
-                    san_words = [w.lower() for w in re.split(r"\W+", san_name) if len(w) >= 3 and w.lower() not in stop_words]
+                    san_words = [
+                        w.lower()
+                        for w in re.split(r"\W+", san_name)
+                        if len(w) >= 3 and w.lower() not in stop_words
+                    ]
                     for w in san_words:
                         if w in r_lower or w in s_lower:
                             return True
             return False
 
         if all_char_objs:
-            char_objs = [c for c in all_char_objs if _is_char_in_prompt(c, prompt, sanitized_prompt)]
+            char_objs = [
+                c for c in all_char_objs if _is_char_in_prompt(c, prompt, sanitized_prompt)
+            ]
             if not char_objs:
                 char_objs = list(all_char_objs)
         else:
@@ -2081,7 +2119,12 @@ class OmniFlashClient:
 
         if reference_image_urls:
             for u in reference_image_urls:
-                if u and u.strip() and u.strip() not in ordered_ref_urls and u.strip() != anchor_keyframe_url:
+                if (
+                    u
+                    and u.strip()
+                    and u.strip() not in ordered_ref_urls
+                    and u.strip() != anchor_keyframe_url
+                ):
                     ordered_ref_urls.append(u.strip())
 
         reference_image_urls = ordered_ref_urls
@@ -2128,11 +2171,7 @@ class OmniFlashClient:
             for c in char_objs:
                 char_id = get_character_identifier(c)
                 wardrobe_str = f" [Wardrobe: {c.wardrobe}]" if c.wardrobe else ""
-                tag_str = (
-                    f" [Style: {', '.join(c.aesthetic_tags)}]"
-                    if c.aesthetic_tags
-                    else ""
-                )
+                tag_str = f" [Style: {', '.join(c.aesthetic_tags)}]" if c.aesthetic_tags else ""
                 if c.reference_url and c.reference_url.strip():
                     token = ref_url_to_token.get(c.reference_url, c.reference_url)
                     name_to_img_tag[char_id] = token
@@ -2174,9 +2213,7 @@ class OmniFlashClient:
         self.last_keyframe_prompt = prompt_text
 
         def _get_mock_keyframe() -> str:
-            clean_prompt = (
-                prompt.replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
-            )
+            clean_prompt = prompt.replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
             clean_style = (
                 (style_preset or style_tone)
                 .replace('"', "&quot;")
@@ -2185,60 +2222,73 @@ class OmniFlashClient:
                 if (style_preset or style_tone)
                 else ""
             )
-            style_label = f"STYLE: {clean_style.upper()}" if clean_style else "STYLE: CINEMATIC PARODY"
-            
+            style_label = (
+                f"STYLE: {clean_style.upper()}" if clean_style else "STYLE: CINEMATIC PARODY"
+            )
+
             line1 = clean_prompt[:65]
             line2 = clean_prompt[65:130] if len(clean_prompt) > 65 else ""
 
             svg = (
                 '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">'
-                '<defs>'
+                "<defs>"
                 '<linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">'
                 '<stop offset="0%" stop-color="#0b0f19"/>'
                 '<stop offset="50%" stop-color="#111827"/>'
                 '<stop offset="100%" stop-color="#1e1b4b"/>'
-                '</linearGradient>'
+                "</linearGradient>"
                 '<linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">'
                 '<stop offset="0%" stop-color="#9333ea"/>'
                 '<stop offset="100%" stop-color="#3b82f6"/>'
-                '</linearGradient>'
-                '</defs>'
+                "</linearGradient>"
+                "</defs>"
                 '<rect width="100%" height="100%" fill="url(#bgGrad)"/>'
-                '<!-- Viewfinder Corner Brackets -->'
+                "<!-- Viewfinder Corner Brackets -->"
                 '<path d="M 40 80 L 40 40 L 80 40" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
                 '<path d="M 1240 80 L 1240 40 L 1200 40" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
                 '<path d="M 40 640 L 40 680 L 80 680" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
                 '<path d="M 1240 640 L 1240 680 L 1200 680" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
-                '<!-- Crosshairs -->'
+                "<!-- Crosshairs -->"
                 '<line x1="640" y1="340" x2="640" y2="380" stroke="#38bdf8" stroke-width="2" opacity="0.4"/>'
                 '<line x1="620" y1="360" x2="660" y2="360" stroke="#38bdf8" stroke-width="2" opacity="0.4"/>'
-                '<!-- Header Badge -->'
+                "<!-- Header Badge -->"
                 '<rect x="440" y="50" width="400" height="44" rx="22" fill="url(#badgeGrad)"/>'
                 '<text x="640" y="78" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="800" font-family="system-ui, sans-serif" letter-spacing="2">KEYFRAME PREVIEW DIRECTIVE</text>'
-                '<!-- Content Frame -->'
+                "<!-- Content Frame -->"
                 '<rect x="80" y="140" width="1120" height="440" fill="#000000" fill-opacity="0.4" rx="16" stroke="#334155" stroke-width="2"/>'
-                '<!-- Main Action Directives -->'
+                "<!-- Main Action Directives -->"
                 '<text x="640" y="280" dominant-baseline="middle" text-anchor="middle" fill="#f8fafc" font-size="28" font-weight="700" font-family="system-ui, sans-serif">'
-                f'{line1}'
-                '</text>'
-                + (f'<text x="640" y="340" dominant-baseline="middle" text-anchor="middle" fill="#cbd5e1" font-size="24" font-weight="500" font-family="system-ui, sans-serif">{line2}</text>' if line2 else '') +
-                '<!-- Style & Lighting Pill -->'
+                f"{line1}"
+                "</text>"
+                + (
+                    f'<text x="640" y="340" dominant-baseline="middle" text-anchor="middle" fill="#cbd5e1" font-size="24" font-weight="500" font-family="system-ui, sans-serif">{line2}</text>'
+                    if line2
+                    else ""
+                )
+                + "<!-- Style & Lighting Pill -->"
                 '<rect x="340" y="440" width="600" height="48" rx="24" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>'
                 f'<text x="640" y="470" dominant-baseline="middle" text-anchor="middle" fill="#38bdf8" font-size="18" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="1">{style_label}</text>'
-                '<!-- Footer Metadata -->'
+                "<!-- Footer Metadata -->"
                 '<text x="100" y="640" fill="#64748b" font-size="16" font-family="monospace">REC ● 00:00:00:00</text>'
                 f'<text x="1180" y="640" text-anchor="end" fill="#64748b" font-size="16" font-family="monospace">{aspect_ratio} | 4K UHD | 24 FPS</text>'
-                '</svg>'
+                "</svg>"
             )
             b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
             return f"data:image/svg+xml;base64,{b64_svg}"
 
         def _return(url: str) -> Any:
-            url_str = url if isinstance(url, str) else (url[0] if isinstance(url, (list, tuple)) else str(url))
+            url_str = (
+                url
+                if isinstance(url, str)
+                else (url[0] if isinstance(url, (list, tuple)) else str(url))
+            )
             self._log_multimodal_inference(
                 session_id=session_id or "global",
                 turn_name="keyframe",
-                input_prompt={"prompt": prompt_text, "reference_image_uris": list(ref_url_to_token.keys())},
+                input_prompt={
+                    "prompt": prompt_text,
+                    "reference_image_uris": list(ref_url_to_token.keys()),
+                },
                 output_data={
                     "media_url": url_str,
                     "gcs_uri": self.storage.get_gcs_uri(url_str),
@@ -2256,7 +2306,9 @@ class OmniFlashClient:
             return _return(_get_mock_keyframe())
 
         try:
-            effective_key = self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            effective_key = (
+                self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            )
             if effective_key:
                 image_client = genai.Client(api_key=effective_key, vertexai=False)
             else:
@@ -2272,9 +2324,20 @@ class OmniFlashClient:
                     anchor_bytes, anchor_mime = self._fetch_image_bytes(anchor_keyframe_url)
                     if anchor_bytes:
                         if hasattr(genai, "types") and hasattr(genai.types, "Part"):
-                            contents.append(genai.types.Part.from_bytes(data=anchor_bytes, mime_type=anchor_mime))
+                            contents.append(
+                                genai.types.Part.from_bytes(
+                                    data=anchor_bytes, mime_type=anchor_mime
+                                )
+                            )
                         else:
-                            contents.append({"inline_data": {"mime_type": anchor_mime, "data": base64.b64encode(anchor_bytes).decode("utf-8")}})
+                            contents.append(
+                                {
+                                    "inline_data": {
+                                        "mime_type": anchor_mime,
+                                        "data": base64.b64encode(anchor_bytes).decode("utf-8"),
+                                    }
+                                }
+                            )
 
                 if reference_image_urls:
                     for ref_url in reference_image_urls:
@@ -2283,12 +2346,27 @@ class OmniFlashClient:
                         img_bytes, mime_type = self._fetch_image_bytes(ref_url)
                         if img_bytes:
                             if hasattr(genai, "types") and hasattr(genai.types, "Part"):
-                                contents.append(genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type))
+                                contents.append(
+                                    genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
+                                )
                             else:
-                                contents.append({"inline_data": {"mime_type": mime_type, "data": base64.b64encode(img_bytes).decode("utf-8")}})
+                                contents.append(
+                                    {
+                                        "inline_data": {
+                                            "mime_type": mime_type,
+                                            "data": base64.b64encode(img_bytes).decode("utf-8"),
+                                        }
+                                    }
+                                )
 
-                logger.info("==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n%s\n=====================================================================", prompt_text)
-                print(f"\n==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n{prompt_text}\n=====================================================================\n", flush=True)
+                logger.info(
+                    "==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n%s\n=====================================================================",
+                    prompt_text,
+                )
+                print(
+                    f"\n==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n{prompt_text}\n=====================================================================\n",
+                    flush=True,
+                )
                 contents.append(prompt_text)
 
                 config = None
@@ -2297,7 +2375,9 @@ class OmniFlashClient:
                         safety_settings=_get_relaxed_safety_settings(),
                     )
 
-                target_model = image_model if image_model and image_model.strip() else "gemini-3.1-flash-image"
+                target_model = (
+                    image_model if image_model and image_model.strip() else "gemini-3.1-flash-image"
+                )
                 response = image_client.models.generate_content(
                     model=target_model,
                     contents=contents,
@@ -2312,9 +2392,7 @@ class OmniFlashClient:
                             if inline_data and getattr(inline_data, "data", None):
                                 data = inline_data.data
                                 img_bytes = (
-                                    base64.b64decode(data)
-                                    if isinstance(data, str)
-                                    else data
+                                    base64.b64decode(data) if isinstance(data, str) else data
                                 )
                                 blob_name = f"keyframes/keyframe_{uuid.uuid4().hex[:8]}.png"
                                 self.storage.upload_bytes(
@@ -2327,9 +2405,7 @@ class OmniFlashClient:
 
             return _return(_get_mock_keyframe())
         except Exception as exc:
-            logger.warning(
-                "Failed to generate keyframe image via GenAI client: %s", exc
-            )
+            logger.warning("Failed to generate keyframe image via GenAI client: %s", exc)
             return _return(_get_mock_keyframe())
 
     def generate_character_reference_sheet(
@@ -2347,10 +2423,14 @@ class OmniFlashClient:
     ) -> Any:
         """Generates a multi-panel character reference sheet image using Gemini Flash Image."""
         tags_str = ", ".join(aesthetic_tags) if aesthetic_tags else ""
-        style_directive = f" in the exact artistic style of {style_preset}" if style_preset and style_preset.strip() else ""
+        style_directive = (
+            f" in the exact artistic style of {style_preset}"
+            if style_preset and style_preset.strip()
+            else ""
+        )
         if custom_prompt_override and custom_prompt_override.strip():
             prompt_text = custom_prompt_override.strip()
-            if style_directive and style_preset not in prompt_text:
+            if style_directive and style_preset and style_preset not in prompt_text:
                 prompt_text = f"{prompt_text} (Artistic Style: {style_preset})"
         else:
             prompt_text = (
@@ -2368,17 +2448,27 @@ class OmniFlashClient:
                 prompt_text = f"{prompt_text} (Reference Image: @Image1)"
 
         def _get_mock_ref_sheet() -> str:
-            clean_name = (character_name or "Character Reference Sheet").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
-            clean_desc = (description or "").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")[:60]
+            clean_name = (
+                (character_name or "Character Reference Sheet")
+                .replace('"', "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+            clean_desc = (
+                (description or "")
+                .replace('"', "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")[:60]
+            )
             desc_sub = f" - {clean_desc}" if clean_desc else ""
             svg = (
                 '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">'
-                '<defs>'
+                "<defs>"
                 '<linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">'
                 '<stop offset="0%" stop-color="#0f172a"/>'
                 '<stop offset="100%" stop-color="#1e293b"/>'
-                '</linearGradient>'
-                '</defs>'
+                "</linearGradient>"
+                "</defs>"
                 '<rect width="100%" height="100%" fill="url(#bgGrad)"/>'
                 '<rect x="40" y="40" width="1200" height="640" rx="12" fill="#ffffff"/>'
                 '<rect x="40" y="40" width="1200" height="60" rx="12" fill="#0f172a"/>'
@@ -2398,17 +2488,24 @@ class OmniFlashClient:
                 '<text x="920" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY 3/4 FRONT</text>'
                 '<rect x="1040" y="120" width="180" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
                 '<text x="1130" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY 3/4 BACK</text>'
-                '</svg>'
+                "</svg>"
             )
             b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
             return f"data:image/svg+xml;base64,{b64_svg}"
 
         def _return(url: str) -> Any:
-            url_str = url if isinstance(url, str) else (url[0] if isinstance(url, (list, tuple)) else str(url))
+            url_str = (
+                url
+                if isinstance(url, str)
+                else (url[0] if isinstance(url, (list, tuple)) else str(url))
+            )
             self._log_multimodal_inference(
                 session_id=session_id or "global",
                 turn_name="turnaround",
-                input_prompt={"prompt": prompt_text, "reference_image_uris": [source_image_url] if source_image_url else []},
+                input_prompt={
+                    "prompt": prompt_text,
+                    "reference_image_uris": [source_image_url] if source_image_url else [],
+                },
                 output_data={
                     "media_url": url_str,
                     "gcs_uri": self.storage.get_gcs_uri(url_str),
@@ -2424,7 +2521,9 @@ class OmniFlashClient:
             return _return(_get_mock_ref_sheet())
 
         try:
-            effective_key = self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            effective_key = (
+                self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            )
             if effective_key:
                 image_client = genai.Client(api_key=effective_key, vertexai=False)
             else:
@@ -2440,9 +2539,18 @@ class OmniFlashClient:
                     img_bytes, mime_type = self._fetch_image_bytes(source_image_url)
                     if img_bytes:
                         if hasattr(genai, "types") and hasattr(genai.types, "Part"):
-                            contents.append(genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type))
+                            contents.append(
+                                genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
+                            )
                         else:
-                            contents.append({"inline_data": {"mime_type": mime_type, "data": base64.b64encode(img_bytes).decode("utf-8")}})
+                            contents.append(
+                                {
+                                    "inline_data": {
+                                        "mime_type": mime_type,
+                                        "data": base64.b64encode(img_bytes).decode("utf-8"),
+                                    }
+                                }
+                            )
 
                 contents.append(prompt_text)
 
@@ -2452,7 +2560,9 @@ class OmniFlashClient:
                         safety_settings=_get_relaxed_safety_settings(),
                     )
 
-                target_model = image_model if image_model and image_model.strip() else "gemini-3.1-flash-image"
+                target_model = (
+                    image_model if image_model and image_model.strip() else "gemini-3.1-flash-image"
+                )
                 response = image_client.models.generate_content(
                     model=target_model,
                     contents=contents,
@@ -2467,9 +2577,7 @@ class OmniFlashClient:
                             if inline_data and getattr(inline_data, "data", None):
                                 data = inline_data.data
                                 img_bytes = (
-                                    base64.b64decode(data)
-                                    if isinstance(data, str)
-                                    else data
+                                    base64.b64decode(data) if isinstance(data, str) else data
                                 )
                                 blob_name = f"ref_sheets/ref_sheet_{uuid.uuid4().hex[:8]}.png"
                                 self.storage.upload_bytes(
@@ -2478,13 +2586,13 @@ class OmniFlashClient:
                                 gcs_uri = self.storage.get_gcs_uri(blob_name)
                                 return _return(f"/api/media-proxy?uri={quote(gcs_uri, safe='')}")
             except Exception as e:
-                logger.warning("gemini-3.1-flash-image generation failed for reference sheet: %s", e)
+                logger.warning(
+                    "gemini-3.1-flash-image generation failed for reference sheet: %s", e
+                )
 
             return _return(_get_mock_ref_sheet())
         except Exception as exc:
-            logger.warning(
-                "Failed to generate character reference sheet via GenAI client: %s", exc
-            )
+            logger.warning("Failed to generate character reference sheet via GenAI client: %s", exc)
             return _return(_get_mock_ref_sheet())
 
     def generate_turnaround_sheet(
@@ -2517,6 +2625,3 @@ class OmniFlashClient:
 
 OmniClient = OmniFlashClient
 OmniEngineClient = OmniFlashClient
-
-
-

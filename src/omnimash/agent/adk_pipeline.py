@@ -78,9 +78,8 @@ def create_shot_execution_worker(
 ) -> Agent:
     """Creates a Google ADK Agent for rendering a single video shot."""
     effective_name = name or f"shot_execution_worker_{shot_idx}"
-    effective_instruction = (
-        instruction
-        or SHOT_EXECUTION_WORKER_DEFAULT_INSTRUCTION.format(shot_idx=shot_idx)
+    effective_instruction = instruction or SHOT_EXECUTION_WORKER_DEFAULT_INSTRUCTION.format(
+        shot_idx=shot_idx
     )
     return Agent(
         name=effective_name,
@@ -110,9 +109,7 @@ def build_production_orchestrator(num_shots: int = 3) -> SequentialAgent:
     """Builds the multi-agent production pipeline orchestrator."""
     deconstructor = create_script_deconstructor_agent()
     storyboard_compiler = create_storyboard_compiler_agent()
-    shot_workers = [
-        create_shot_execution_worker(shot_idx=i) for i in range(1, num_shots + 1)
-    ]
+    shot_workers = [create_shot_execution_worker(shot_idx=i) for i in range(1, num_shots + 1)]
     parallel_shots = ParallelAgent(
         name="shot_execution_pipeline",
         sub_agents=shot_workers,
@@ -151,9 +148,7 @@ def deconstruct_screenplay_with_adk(
     from omnimash.prompts.storyboard_agent import StoryboardAgent
 
     sb_agent = StoryboardAgent()
-    deconstructor_agent = create_script_deconstructor_agent(
-        tools=[sb_agent.expand_vision]
-    )
+    deconstructor_agent = create_script_deconstructor_agent(tools=[sb_agent.expand_vision])
     _ = deconstructor_agent
 
     char_objs: list[CharacterRole] | None = None
@@ -185,8 +180,10 @@ def deconstruct_screenplay_with_adk(
                         description=getattr(c, "description", ""),
                         reference_url=getattr(c, "reference_url", None),
                         aesthetic_tags=getattr(c, "aesthetic_tags", []),
-                        voice_style=getattr(c, "voice_style", "") or getattr(c, "voice_profile", ""),
-                        voice_profile=getattr(c, "voice_style", "") or getattr(c, "voice_profile", ""),
+                        voice_style=getattr(c, "voice_style", "")
+                        or getattr(c, "voice_profile", ""),
+                        voice_profile=getattr(c, "voice_style", "")
+                        or getattr(c, "voice_profile", ""),
                         wardrobe=getattr(c, "wardrobe", ""),
                         image_role=getattr(c, "image_role", "Character Reference"),
                         is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
@@ -212,5 +209,3 @@ __all__ = [
     "create_adk_agent_tool_pipeline",
     "deconstruct_screenplay_with_adk",
 ]
-
-

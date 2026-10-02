@@ -15,4 +15,3 @@ class CharacterRole:
     wardrobe: str = ""
     image_role: str = "Character Reference"
     is_offscreen_narrator: bool = False
-

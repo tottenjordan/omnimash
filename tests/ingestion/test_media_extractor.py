@@ -61,5 +61,3 @@ def test_crop_3s_motion_reference_clip_non_mock_fallback(tmp_path):
     assert output_clip.endswith("_motion_3s.mp4")
     assert os.path.exists(output_clip)
     assert os.path.getsize(output_clip) > 0
-
-

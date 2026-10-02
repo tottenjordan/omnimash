@@ -22,9 +22,7 @@ def test_setup_opentelemetry_genai_logging_sets_env_vars() -> None:
         bucket_name="test-telemetry-bucket", app_name="omnimash-test-api"
     )
 
-    assert (
-        os.environ.get("OTEL_SEMCONV_STABILITY_OPT_IN") == "gen_ai_latest_experimental"
-    )
+    assert os.environ.get("OTEL_SEMCONV_STABILITY_OPT_IN") == "gen_ai_latest_experimental"
     assert os.environ.get("OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK") == "upload"
     assert os.environ.get("OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT") == "jsonl"
     assert os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY") == "true"
@@ -132,4 +130,3 @@ def test_telemetry_inference_span_records_resolution_and_tokens() -> None:
         name="gen_ai.client.inference", attributes=expected_labels
     )
     assert span == mock_span
-

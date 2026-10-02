@@ -64,9 +64,7 @@ def test_generate_endpoint_accepts_vocal_delivery_and_character_voice_style():
         "Voice Style (Role A <IMAGE_REF_0>): Fast-paced Atlanta trap flow"
         in data["raw_compiled_prompt"]
     )
-    assert (
-        "Vocal Delivery: Punchy synchronized rap cadence" in data["raw_compiled_prompt"]
-    )
+    assert "Vocal Delivery: Punchy synchronized rap cadence" in data["raw_compiled_prompt"]
 
 
 def test_generate_with_character_roles_and_scenes():

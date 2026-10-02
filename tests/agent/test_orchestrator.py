@@ -42,9 +42,7 @@ def test_commit_recommended_and_branch_flow():
     r3 = agent.process_user_turn(
         "u1", "p1", "Add neon lights", 0, r2.turn_id, is_conversational_edit=True
     )
-    r4 = agent.process_user_turn(
-        "u1", "p1", "Add fog", 0, r3.turn_id, is_conversational_edit=True
-    )
+    r4 = agent.process_user_turn("u1", "p1", "Add fog", 0, r3.turn_id, is_conversational_edit=True)
     assert r4.status_event == "COMMIT_RECOMMENDED"
 
     # Commit and branch
@@ -134,9 +132,7 @@ def test_orchestrator_save_final_master_with_raw_compiled_prompt(monkeypatch):
     agent = OmniMashAgent(mock_mode=True)
     calls = []
 
-    def mock_save_final_master(
-        session_id, source_rel_path, master_title, prompt_data=None
-    ):
+    def mock_save_final_master(session_id, source_rel_path, master_title, prompt_data=None):
         calls.append((session_id, source_rel_path, master_title, prompt_data))
         return "https://pub/master.mp4", "gs://bucket/master.mp4"
 
@@ -254,7 +250,10 @@ def test_orchestrator_preserves_screenplay_script_in_storyboard_prompt():
     assert res.success is True
     assert res.raw_compiled_prompt is not None
     assert "### TIMELINE" in res.raw_compiled_prompt
-    assert f"- Scene 1 [{get_character_identifier(chars[0], use_role_id=True)}, {get_character_identifier(chars[1], use_role_id=True)}] (Screenplay Script):" in res.raw_compiled_prompt
+    assert (
+        f"- Scene 1 [{get_character_identifier(chars[0], use_role_id=True)}, {get_character_identifier(chars[1], use_role_id=True)}] (Screenplay Script):"
+        in res.raw_compiled_prompt
+    )
     assert '  Spectacled Wizard Bruv: (Holds wand) "Is this it?"' in res.raw_compiled_prompt
 
 
@@ -398,9 +397,7 @@ def test_storyboard_shot_generation_calls_generate_clip(monkeypatch):
         return orig_apply_diff(*args, **kwargs)
 
     monkeypatch.setattr(agent.omni_client, "generate_clip", mock_generate_clip)
-    monkeypatch.setattr(
-        agent.omni_client, "apply_interaction_diff", mock_apply_interaction_diff
-    )
+    monkeypatch.setattr(agent.omni_client, "apply_interaction_diff", mock_apply_interaction_diff)
 
     r2 = agent.process_user_turn(
         user_id="u_sb",
@@ -435,9 +432,7 @@ def test_process_user_turn_multi_chunk_chains_previous_interaction_id(monkeypatc
         return orig_apply_diff(*args, **kwargs)
 
     monkeypatch.setattr(agent.omni_client, "generate_clip", mock_generate_clip)
-    monkeypatch.setattr(
-        agent.omni_client, "apply_interaction_diff", mock_apply_interaction_diff
-    )
+    monkeypatch.setattr(agent.omni_client, "apply_interaction_diff", mock_apply_interaction_diff)
 
     res = agent.process_user_turn(
         user_id="u_chunk",

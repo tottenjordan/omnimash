@@ -71,9 +71,7 @@ def test_save_and_load_character_gcs():
         "aesthetic_tags": ["Red Gucci Tracksuit"],
         "voice_style": "Atlanta trap flow",
     }
-    pub_url, gcs_uri = storage.save_character(
-        char_data, session_id="test_session", is_library=True
-    )
+    pub_url, gcs_uri = storage.save_character(char_data, session_id="test_session", is_library=True)
     assert "library/characters/harry.json" in gcs_uri
     assert (
         pub_url
@@ -374,9 +372,7 @@ def test_list_project_characters_with_legacy_fallback():
 
     blob_saved = MagicMock()
     blob_saved.name = "projects/p1/saved_characters/hero.json"
-    blob_saved.download_as_text.return_value = json.dumps(
-        {"name": "Hero", "role_id": "Role A"}
-    )
+    blob_saved.download_as_text.return_value = json.dumps({"name": "Hero", "role_id": "Role A"})
 
     blob_legacy_dup = MagicMock()
     blob_legacy_dup.name = "projects/p1/sessions/s1/characters/hero.json"
@@ -424,10 +420,7 @@ def test_get_session_manifest_reads_from_gcs_bucket_when_not_cached():
     mock_blob.download_as_text.return_value = json.dumps(manifest_payload)
 
     def get_blob(blob_path: str):
-        if (
-            blob_path
-            == "projects/p1/sessions/cold_start_sess/prompts/session_manifest.json"
-        ):
+        if blob_path == "projects/p1/sessions/cold_start_sess/prompts/session_manifest.json":
             return mock_blob
         fallback_blob = MagicMock()
         fallback_blob.exists.return_value = False

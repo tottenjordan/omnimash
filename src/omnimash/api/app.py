@@ -242,7 +242,9 @@ class StoryboardShotModel(BaseModel):
     narrative_stage: str = "Rising Action"
     preceding_context: str = ""
     camera_transition: str = "Continuous match cut"
-    character_continuity: str = "Maintain subject outfit, posture, and facial expression from preceding shot"
+    character_continuity: str = (
+        "Maintain subject outfit, posture, and facial expression from preceding shot"
+    )
     title_card_text: str | None = None
     title_card_subtitle: str | None = None
     narrator_text: str | None = None
@@ -463,7 +465,6 @@ class Journey3ShotGenerateRequest(BaseModel):
 
 
 Journey3GenerateShotRequest = Journey3ShotGenerateRequest
-
 
 
 class Journey3StitchMasterRequest(BaseModel):
@@ -9369,11 +9370,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             req.parent_turn_id
             and (
                 not (req.scenes or req.concept or req.shot_directive)
-                or (
-                    req.prompt
-                    and req.prompt.strip()
-                    and req.prompt.strip() != base_action
-                )
+                or (req.prompt and req.prompt.strip() and req.prompt.strip() != base_action)
             )
         )
         compiled_override_val = req.compiled_override
@@ -9397,8 +9394,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                                 description=_clean(c.get("description", "")),
                                 reference_url=c.get("reference_url"),
                                 aesthetic_tags=[_clean(t) for t in c.get("aesthetic_tags", [])],
-                                voice_style=_clean(c.get("voice_style") or c.get("voice_profile") or ""),
-                                voice_profile=_clean(c.get("voice_style") or c.get("voice_profile") or ""),
+                                voice_style=_clean(
+                                    c.get("voice_style") or c.get("voice_profile") or ""
+                                ),
+                                voice_profile=_clean(
+                                    c.get("voice_style") or c.get("voice_profile") or ""
+                                ),
                                 image_role=c.get("image_role", "Character Reference"),
                                 is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                             )
@@ -9412,8 +9413,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                                 description=_clean(cd.get("description", "")),
                                 reference_url=cd.get("reference_url"),
                                 aesthetic_tags=[_clean(t) for t in cd.get("aesthetic_tags", [])],
-                                voice_style=_clean(cd.get("voice_style") or cd.get("voice_profile") or ""),
-                                voice_profile=_clean(cd.get("voice_style") or cd.get("voice_profile") or ""),
+                                voice_style=_clean(
+                                    cd.get("voice_style") or cd.get("voice_profile") or ""
+                                ),
+                                voice_profile=_clean(
+                                    cd.get("voice_style") or cd.get("voice_profile") or ""
+                                ),
                                 image_role=cd.get("image_role", "Character Reference"),
                                 is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                             )
@@ -9425,9 +9430,19 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                                 name=_clean(getattr(c, "name", "")),
                                 description=_clean(getattr(c, "description", "")),
                                 reference_url=getattr(c, "reference_url", None),
-                                aesthetic_tags=[_clean(t) for t in getattr(c, "aesthetic_tags", [])],
-                                voice_style=_clean(getattr(c, "voice_style", None) or getattr(c, "voice_profile", None) or ""),
-                                voice_profile=_clean(getattr(c, "voice_style", None) or getattr(c, "voice_profile", None) or ""),
+                                aesthetic_tags=[
+                                    _clean(t) for t in getattr(c, "aesthetic_tags", [])
+                                ],
+                                voice_style=_clean(
+                                    getattr(c, "voice_style", None)
+                                    or getattr(c, "voice_profile", None)
+                                    or ""
+                                ),
+                                voice_profile=_clean(
+                                    getattr(c, "voice_style", None)
+                                    or getattr(c, "voice_profile", None)
+                                    or ""
+                                ),
                                 image_role=getattr(c, "image_role", "Character Reference"),
                                 is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                             )
@@ -9590,9 +9605,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 }
         except Exception as exc:
             logger.error("File upload failed: %s", exc)
-            return JSONResponse(
-                status_code=500, content={"success": False, "error": str(exc)}
-            )
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
 
     @app.post("/api/motion-reference/upload", response_model=MotionReferenceResponse)
     def upload_motion_reference(req: MotionReferenceRequest) -> MotionReferenceResponse:
@@ -9601,8 +9614,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         if not raw_path:
             raise HTTPException(status_code=400, detail="Missing input_video_path")
         if not (
-            raw_path.startswith("gs://")
-            or raw_path.startswith("https://storage.googleapis.com/")
+            raw_path.startswith("gs://") or raw_path.startswith("https://storage.googleapis.com/")
         ):
             import tempfile
 
@@ -9713,15 +9725,17 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     narrative_stage=getattr(s, "narrative_stage", "Rising Action"),
                     preceding_context=getattr(s, "preceding_context", ""),
                     camera_transition=getattr(s, "camera_transition", "Continuous match cut"),
-                    character_continuity=getattr(s, "character_continuity", "Maintain subject outfit, posture, and facial expression from preceding shot"),
+                    character_continuity=getattr(
+                        s,
+                        "character_continuity",
+                        "Maintain subject outfit, posture, and facial expression from preceding shot",
+                    ),
                 )
                 for s in shots
             ]
         )
 
-    @app.post(
-        "/api/storyboard/keyframe-image", response_model=KeyframeImageResponse
-    )
+    @app.post("/api/storyboard/keyframe-image", response_model=KeyframeImageResponse)
     def generate_keyframe_image(
         req: KeyframeImageRequest,
     ) -> KeyframeImageResponse:
@@ -9737,7 +9751,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         ref_urls: list[str] = list(req.reference_image_urls or [])
         if req.characters:
             for c in req.characters:
-                ref = c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None)
+                ref = (
+                    c.get("reference_url")
+                    if isinstance(c, dict)
+                    else getattr(c, "reference_url", None)
+                )
                 if ref and ref not in ref_urls:
                     ref_urls.append(ref)
 
@@ -9751,7 +9769,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
         return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
 
-    def parse_shot_directive_if_needed(req: GenerateShotRequest) -> tuple[str, str, str, str, str, str]:
+    def parse_shot_directive_if_needed(
+        req: GenerateShotRequest,
+    ) -> tuple[str, str, str, str, str, str]:
         action = req.action or ""
         dialogue = req.dialogue or ""
         audio = req.audio or req.audio_stem or ""
@@ -9768,10 +9788,16 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 elif not sd.startswith("[SHOT DIRECTIVE") and not sd.startswith("- "):
                     action = sd
             if not dialogue:
-                match_diag = re.search(r"-\s*(?:Dialogue\s*/\s*Text\s*Overlay|Dialogue|Voiceover):\s*(.*)", sd, re.IGNORECASE)
+                match_diag = re.search(
+                    r"-\s*(?:Dialogue\s*/\s*Text\s*Overlay|Dialogue|Voiceover):\s*(.*)",
+                    sd,
+                    re.IGNORECASE,
+                )
                 if match_diag and match_diag.group(1).strip():
                     dialogue = match_diag.group(1).strip()
-                    if (dialogue.startswith('"') and dialogue.endswith('"')) or (dialogue.startswith("'") and dialogue.endswith("'")):
+                    if (dialogue.startswith('"') and dialogue.endswith('"')) or (
+                        dialogue.startswith("'") and dialogue.endswith("'")
+                    ):
                         dialogue = dialogue[1:-1].strip()
             if not audio:
                 match_aud = re.search(r"-\s*Audio\s*Soundscape:\s*(.*)", sd, re.IGNORECASE)
@@ -9804,7 +9830,14 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
         keyframe_url = req.keyframe_image_url
 
-        action_val, dialogue_val, audio_val, location_val, style_lighting_val, framing_motion_val = parse_shot_directive_if_needed(req)
+        (
+            action_val,
+            dialogue_val,
+            audio_val,
+            location_val,
+            style_lighting_val,
+            framing_motion_val,
+        ) = parse_shot_directive_if_needed(req)
         audio_stem_val = audio_val or req.audio_stem
 
         def _clean(val: str | None) -> str:
@@ -9816,7 +9849,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         ref_urls: list[str] = []
         if req.characters:
             for c in req.characters:
-                ref = c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None)
+                ref = (
+                    c.get("reference_url")
+                    if isinstance(c, dict)
+                    else getattr(c, "reference_url", None)
+                )
                 if ref and ref not in ref_urls:
                     ref_urls.append(ref)
                 if isinstance(c, CharacterRole):
@@ -9829,8 +9866,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=_clean(c.get("description", "")),
                             reference_url=c.get("reference_url"),
                             aesthetic_tags=[_clean(t) for t in c.get("aesthetic_tags", [])],
-                            voice_style=_clean(c.get("voice_style") or c.get("voice_profile") or ""),
-                            voice_profile=_clean(c.get("voice_style") or c.get("voice_profile") or ""),
+                            voice_style=_clean(
+                                c.get("voice_style") or c.get("voice_profile") or ""
+                            ),
+                            voice_profile=_clean(
+                                c.get("voice_style") or c.get("voice_profile") or ""
+                            ),
                             image_role=c.get("image_role", "Character Reference"),
                             is_offscreen_narrator=c.get("is_offscreen_narrator", False),
                         )
@@ -9844,8 +9885,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=_clean(cd.get("description", "")),
                             reference_url=cd.get("reference_url"),
                             aesthetic_tags=[_clean(t) for t in cd.get("aesthetic_tags", [])],
-                            voice_style=_clean(cd.get("voice_style") or cd.get("voice_profile") or ""),
-                            voice_profile=_clean(cd.get("voice_style") or cd.get("voice_profile") or ""),
+                            voice_style=_clean(
+                                cd.get("voice_style") or cd.get("voice_profile") or ""
+                            ),
+                            voice_profile=_clean(
+                                cd.get("voice_style") or cd.get("voice_profile") or ""
+                            ),
                             image_role=cd.get("image_role", "Character Reference"),
                             is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
                         )
@@ -9858,15 +9903,25 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                             description=_clean(getattr(c, "description", "")),
                             reference_url=getattr(c, "reference_url", None),
                             aesthetic_tags=[_clean(t) for t in getattr(c, "aesthetic_tags", [])],
-                            voice_style=_clean(getattr(c, "voice_style", None) or getattr(c, "voice_profile", None) or ""),
-                            voice_profile=_clean(getattr(c, "voice_style", None) or getattr(c, "voice_profile", None) or ""),
+                            voice_style=_clean(
+                                getattr(c, "voice_style", None)
+                                or getattr(c, "voice_profile", None)
+                                or ""
+                            ),
+                            voice_profile=_clean(
+                                getattr(c, "voice_style", None)
+                                or getattr(c, "voice_profile", None)
+                                or ""
+                            ),
                             image_role=getattr(c, "image_role", "Character Reference"),
                             is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
                         )
                     )
 
         if req.last_frame_image_url and req.last_frame_image_url.strip():
-            has_last = any(c.image_role in ("Ending Frame", "Keyframe Last Anchor") for c in char_objs)
+            has_last = any(
+                c.image_role in ("Ending Frame", "Keyframe Last Anchor") for c in char_objs
+            )
             if not has_last:
                 char_objs.append(
                     CharacterRole(
@@ -9892,7 +9947,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             duration_seconds=req.duration_seconds,
         )
 
-        aesthetic_tags = [t for t in [style_lighting_val or req.style_lighting, framing_motion_val] if t and t.strip()]
+        aesthetic_tags = [
+            t
+            for t in [style_lighting_val or req.style_lighting, framing_motion_val]
+            if t and t.strip()
+        ]
 
         # Option A: Auto-generate keyframe image first if missing so video and compiled prompt always have starting image seed and tone anchor
         if not keyframe_url and (action_val or sanitized_directive):
@@ -9905,7 +9964,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                     aspect_ratio=req.aspect_ratio,
                 )
             except Exception as exc:
-                logger.warning("Auto keyframe image generation before video generation failed: %s", exc)
+                logger.warning(
+                    "Auto keyframe image generation before video generation failed: %s", exc
+                )
 
         compiled_prompt = agent.taxonomy.compiler.compile_storyboard(
             concept=action_val,
@@ -9960,9 +10021,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 status_code=400,
                 detail="At least one clip URL is required for stitching.",
             )
-        stitched_path = agent.stitcher.concatenate_clips(
-            req.clip_urls, session_id=req.session_name
-        )
+        stitched_path = agent.stitcher.concatenate_clips(req.clip_urls, session_id=req.session_name)
         _pub_url, gcs_uri = agent.storage.save_final_master(
             session_id=req.session_name,
             source_rel_path=stitched_path,
@@ -10024,9 +10083,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                         )
                     )
 
-        style_tone = (
-            req.style_presets[0] if req.style_presets else "Cinematic Trap Parody"
-        )
+        style_tone = req.style_presets[0] if req.style_presets else "Cinematic Trap Parody"
         shots = agent.storyboard_agent.expand_vision(
             concept=req.master_description,
             style_tone=style_tone,
@@ -10045,7 +10102,18 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             if name:
                 if name in t_lower:
                     return True
-                stop_words = {"the", "and", "fam", "bruv", "chef", "blood", "star", "queen", "king", "master"}
+                stop_words = {
+                    "the",
+                    "and",
+                    "fam",
+                    "bruv",
+                    "chef",
+                    "blood",
+                    "star",
+                    "queen",
+                    "king",
+                    "master",
+                }
                 words = [w for w in re.split(r"\W+", name) if len(w) >= 3 and w not in stop_words]
                 for w in words:
                     if w in t_lower:
@@ -10058,7 +10126,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             matched_char_ids: list[str] = []
             if char_objs:
                 matched_style_strings: list[str] = []
-                combined_shot_text = f"{s.action} {getattr(s, 'dialogue', '')} {getattr(s, 'summary', '')}"
+                combined_shot_text = (
+                    f"{s.action} {getattr(s, 'dialogue', '')} {getattr(s, 'summary', '')}"
+                )
                 for c in char_objs:
                     if _is_char_in_text(c, combined_shot_text):
                         matched_char_ids.append(c.role_id)
@@ -10091,7 +10161,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 "dialogue": getattr(s, "dialogue", ""),
                 "summary": getattr(s, "summary", ""),
                 "keyframe_image_url": getattr(s, "keyframe_image_url", ""),
-                "included_character_ids": matched_char_ids if matched_char_ids else ([char_objs[0].role_id] if char_objs else []),
+                "included_character_ids": matched_char_ids
+                if matched_char_ids
+                else ([char_objs[0].role_id] if char_objs else []),
             }
             shot_cards.append(card)
 
@@ -10136,8 +10208,10 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             "characters": req.characters or [],
         }
 
-    @app.post("/api/journey3/keyframe")
-    def journey3_keyframe(req: Journey3KeyframePromptEditRequest) -> dict[str, Any]:
+    @app.post("/api/journey3/keyframe", response_model=None)
+    def journey3_keyframe(
+        req: Journey3KeyframePromptEditRequest,
+    ) -> dict[str, Any] | JSONResponse:
         char_objs: list[CharacterRole] = []
         if req.characters:
             chars_to_use = req.characters
@@ -10145,11 +10219,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 filtered_chars = [
                     c
                     for c in req.characters
-                    if (
-                        c.get("role_id")
-                        if isinstance(c, dict)
-                        else getattr(c, "role_id", "")
-                    )
+                    if (c.get("role_id") if isinstance(c, dict) else getattr(c, "role_id", ""))
                     in req.included_character_ids
                 ]
                 if filtered_chars:
@@ -10181,9 +10251,17 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 if (c.reference_url if hasattr(c, "reference_url") else c.get("reference_url"))
             }
             all_char_ref_urls = {
-                (c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None))
+                (
+                    c.get("reference_url")
+                    if isinstance(c, dict)
+                    else getattr(c, "reference_url", None)
+                )
                 for c in req.characters
-                if (c.get("reference_url") if isinstance(c, dict) else getattr(c, "reference_url", None))
+                if (
+                    c.get("reference_url")
+                    if isinstance(c, dict)
+                    else getattr(c, "reference_url", None)
+                )
             }
             excluded_char_ref_urls = all_char_ref_urls - included_ref_urls
             if excluded_char_ref_urls:
@@ -10222,8 +10300,10 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 },
             )
 
-    @app.post("/api/journey3/generate-shot")
-    def journey3_generate_shot(req: Journey3ShotGenerateRequest) -> dict[str, Any]:
+    @app.post("/api/journey3/generate-shot", response_model=None)
+    def journey3_generate_shot(
+        req: Journey3ShotGenerateRequest,
+    ) -> dict[str, Any] | JSONResponse:
         session_id = req.session_id or "default_j3_session"
 
         char_objs: list[CharacterRole] = []
@@ -10233,11 +10313,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 filtered_chars = [
                     c
                     for c in req.characters
-                    if (
-                        c.get("role_id")
-                        if isinstance(c, dict)
-                        else getattr(c, "role_id", "")
-                    )
+                    if (c.get("role_id") if isinstance(c, dict) else getattr(c, "role_id", ""))
                     in req.included_character_ids
                 ]
                 if filtered_chars:
@@ -10360,12 +10436,15 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             "keyframe_image_url": keyframe_url,
             "turn_id": agent_turn.turn_id,
             "status": agent_turn.status_event,
-            "generation_mode": getattr(
-                agent_turn, "generation_mode", "LIVE_OMNI_FLASH"
-            ),
+            "generation_mode": getattr(agent_turn, "generation_mode", "LIVE_OMNI_FLASH"),
             "error": agent_turn.error_message,
             "raw_compiled_prompt": agent_turn.raw_compiled_prompt or compiled_prompt,
-            "cumulative_state": [f"{char}: {st}" for char, states in cum_state.character_states.items() for st in states] + cum_state.scene_states,
+            "cumulative_state": [
+                f"{char}: {st}"
+                for char, states in cum_state.character_states.items()
+                for st in states
+            ]
+            + cum_state.scene_states,
         }
 
     @app.post("/api/journey3/stitch")
@@ -10403,9 +10482,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
         session_name = req.session_name or "draft_batch_session"
         tasks: list[tuple[DraftBatchShotItem, int]] = [
-            (shot, var_idx)
-            for shot in req.shots
-            for var_idx in range(req.variations_per_shot)
+            (shot, var_idx) for shot in req.shots for var_idx in range(req.variations_per_shot)
         ]
 
         def _run_draft(item: tuple[DraftBatchShotItem, int]) -> DraftBatchItem:
@@ -10539,9 +10616,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     def create_project_session(
         project_name: str, req: CreateSessionRequest
     ) -> CreateSessionResponse:
-        gcs_uri = agent.storage.create_session(
-            req.session_name, project_id=project_name
-        )
+        gcs_uri = agent.storage.create_session(req.session_name, project_id=project_name)
         return CreateSessionResponse(
             success=True,
             project_name=project_name,
@@ -10550,9 +10625,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             message=f"Session '{req.session_name}' created under project '{project_name}'",
         )
 
-    @app.get(
-        "/api/projects/{project_name}/characters", response_model=CharacterListResponse
-    )
+    @app.get("/api/projects/{project_name}/characters", response_model=CharacterListResponse)
     def list_project_characters(project_name: str) -> CharacterListResponse:
         raw_chars = agent.storage.list_project_characters(project_name)
         characters = [
@@ -10669,9 +10742,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/storyboards/load", response_model=dict[str, Any])
     def load_storyboard(req: LoadStoryboardRequest) -> dict[str, Any]:
-        storyboard_data = agent.storage.load_storyboard(
-            req.slug, session_id=req.session_name
-        )
+        storyboard_data = agent.storage.load_storyboard(req.slug, session_id=req.session_name)
         if storyboard_data is None:
             raise HTTPException(
                 status_code=404,
@@ -10681,9 +10752,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/storyboards/delete", response_model=dict[str, Any])
     def delete_storyboard(req: DeleteStoryboardRequest) -> dict[str, Any]:
-        deleted = agent.storage.delete_storyboard(
-            req.slug, session_id=req.session_name
-        )
+        deleted = agent.storage.delete_storyboard(req.slug, session_id=req.session_name)
         message = (
             f"Storyboard '{req.slug}' deleted successfully"
             if deleted
@@ -10740,7 +10809,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
-
     @app.post("/api/characters/generate-sheet", response_model=GenerateCharacterSheetResponse)
     def generate_character_sheet_endpoint(req: GenerateCharacterSheetRequest):
         try:
@@ -10786,7 +10854,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 model=req.model,
                 details=str(e),
             )
-
 
     @app.post("/api/characters/save-sheet", response_model=SaveCharacterSheetResponse)
     def save_character_sheet_endpoint(req: SaveCharacterSheetRequest):
