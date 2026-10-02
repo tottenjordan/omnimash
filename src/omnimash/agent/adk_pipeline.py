@@ -3,6 +3,7 @@
 from google.adk.agents import Agent, ParallelAgent, SequentialAgent
 from google.adk.tools import AgentTool
 
+from omnimash.config import settings
 from omnimash.prompts.compiler import CharacterRole, GEMINI_OMNI_FLASH_INSTR
 from omnimash.prompts.storyboard_agent import StoryboardShot
 
@@ -16,9 +17,9 @@ DECONSTRUCTOR_DEFAULT_INSTRUCTION = (
 STORYBOARD_COMPILER_DEFAULT_INSTRUCTION = (
     "You are the Storyboard Compiler Agent for OmniMash. "
     "Your responsibility is to take deconstructed scene directives, character specifications, "
-    "and style presets to compile precise 6-part video generation prompts formatted as: "
-    "[SUBJECT ANCHOR] + [AESTHETIC INJECTION] + [ENVIRONMENT] + [CAMERA/LIGHTING] + [MOTION] + [AUDIO TRACK] "
-    "optimized for Gemini Omni Flash (gemini-omni-flash-preview).\n\n"
+    "and style presets to compile precise 4-Block Meta-Prompt video generation prompts "
+    "(`### INPUT ROLES & REFERENCES`, `### CHARACTER PROFILES`, `### SCENE INSTRUCTIONS`, `### TIMELINE`) "
+    f"optimized for Gemini Omni Flash 1.1 ({settings.omni_model_id}).\n\n"
     f"{GEMINI_OMNI_FLASH_INSTR}"
 )
 
@@ -26,7 +27,7 @@ STORYBOARD_COMPILER_DEFAULT_INSTRUCTION = (
 SHOT_EXECUTION_WORKER_DEFAULT_INSTRUCTION = (
     "You are the Shot Execution Worker Agent for OmniMash. "
     "Your responsibility is to execute video generation calls for shot #{shot_idx} "
-    "using Gemini Omni Flash (gemini-omni-flash-preview) based on compiled 6-part prompt specifications."
+    f"using Gemini Omni Flash 1.1 ({settings.omni_model_id}) based on compiled 4-Block Meta-Prompt specifications."
 )
 
 FINAL_CUT_STITCHER_DEFAULT_INSTRUCTION = (
@@ -38,7 +39,7 @@ FINAL_CUT_STITCHER_DEFAULT_INSTRUCTION = (
 
 def create_script_deconstructor_agent(
     name: str = "script_deconstructor",
-    model: str = "gemini-omni-flash-preview",
+    model: str | None = None,
     instruction: str | None = None,
     tools: list | None = None,
 ) -> Agent:
@@ -46,7 +47,7 @@ def create_script_deconstructor_agent(
     effective_instruction = instruction or DECONSTRUCTOR_DEFAULT_INSTRUCTION
     return Agent(
         name=name,
-        model=model,
+        model=model or settings.omni_model_id,
         instruction=effective_instruction,
         tools=tools or [],
     )
@@ -54,7 +55,7 @@ def create_script_deconstructor_agent(
 
 def create_storyboard_compiler_agent(
     name: str = "storyboard_compiler",
-    model: str = "gemini-omni-flash-preview",
+    model: str | None = None,
     instruction: str | None = None,
     tools: list | None = None,
 ) -> Agent:
@@ -62,7 +63,7 @@ def create_storyboard_compiler_agent(
     effective_instruction = instruction or STORYBOARD_COMPILER_DEFAULT_INSTRUCTION
     return Agent(
         name=name,
-        model=model,
+        model=model or settings.omni_model_id,
         instruction=effective_instruction,
         tools=tools or [],
     )
@@ -71,7 +72,7 @@ def create_storyboard_compiler_agent(
 def create_shot_execution_worker(
     shot_idx: int,
     name: str | None = None,
-    model: str = "gemini-omni-flash-preview",
+    model: str | None = None,
     instruction: str | None = None,
     tools: list | None = None,
 ) -> Agent:
@@ -83,7 +84,7 @@ def create_shot_execution_worker(
     )
     return Agent(
         name=effective_name,
-        model=model,
+        model=model or settings.omni_model_id,
         instruction=effective_instruction,
         tools=tools or [],
     )
@@ -91,7 +92,7 @@ def create_shot_execution_worker(
 
 def create_final_cut_stitcher_agent(
     name: str = "final_cut_stitcher",
-    model: str = "gemini-omni-flash-preview",
+    model: str | None = None,
     instruction: str | None = None,
     tools: list | None = None,
 ) -> Agent:
@@ -99,7 +100,7 @@ def create_final_cut_stitcher_agent(
     effective_instruction = instruction or FINAL_CUT_STITCHER_DEFAULT_INSTRUCTION
     return Agent(
         name=name,
-        model=model,
+        model=model or settings.omni_model_id,
         instruction=effective_instruction,
         tools=tools or [],
     )
@@ -150,6 +151,10 @@ def deconstruct_screenplay_with_adk(
     from omnimash.prompts.storyboard_agent import StoryboardAgent
 
     sb_agent = StoryboardAgent()
+    deconstructor_agent = create_script_deconstructor_agent(
+        tools=[sb_agent.expand_vision]
+    )
+    _ = deconstructor_agent
 
     char_objs: list[CharacterRole] | None = None
     if characters:

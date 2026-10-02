@@ -935,35 +935,43 @@ def test_ui_html_syntax_and_tag_balance():
 
     babel_js = match.group(1)
 
-    # 1. Remove string content inside double quotes, single quotes, and backticks
-    clean_js = re.sub(r'"[^"]*"', '""', babel_js)
-    clean_js = re.sub(r"'[^']*'", "''", clean_js)
-    clean_js = re.sub(r'`[^`]*`', '``', clean_js, flags=re.DOTALL)
-    clean_js = re.sub(r'//.*', '', clean_js)
+    # 1. Remove string content inside double quotes, single quotes (excluding prose apostrophes), and backticks
+    clean_js = re.sub(r"`[^`]*`", "``", babel_js, flags=re.DOTALL)
+    clean_js = re.sub(r'"[^"\n]*"', '""', clean_js)
+    clean_js = re.sub(r"(?<![A-Za-z0-9])'[^'\n]*'", "''", clean_js)
+    clean_js = re.sub(r"//.*", "", clean_js)
+    # Neutralize arrow function '=>' so '>' inside attributes does not truncate multi-line tags
+    clean_js = clean_js.replace("=>", "==")
 
-    # 2. Check JSX tag stack
-    tag_pattern = re.compile(r'</?([A-Za-z][A-Za-z0-9.]*)\b[^>]*>')
-    lines = clean_js.split("\n")
+    # 2. Check strict LIFO JSX tag stack across full script (including multi-line tags)
+    tag_pattern = re.compile(r'</?([A-Za-z][A-Za-z0-9.]*)\b[^>]*>', re.DOTALL)
     stack = []
 
-    for line_idx, line in enumerate(lines, 1):
-        for m in tag_pattern.finditer(line):
-            full_tag = m.group(0)
-            tag_name = m.group(1)
+    for m in tag_pattern.finditer(clean_js):
+        full_tag = m.group(0)
+        tag_name = m.group(1)
+        line_idx = clean_js.count("\n", 0, m.start()) + 1
 
-            if full_tag.endswith("/>") or tag_name.lower() in ["img", "input", "br", "hr", "meta", "link"]:
-                continue
+        if full_tag.endswith("/>") or tag_name.lower() in [
+            "img",
+            "input",
+            "br",
+            "hr",
+            "meta",
+            "link",
+        ]:
+            continue
 
-            if full_tag.startswith("</"):
-                if stack and stack[-1][0] == tag_name:
-                    stack.pop()
-                elif stack:
-                    for idx in range(len(stack) - 1, -1, -1):
-                        if stack[idx][0] == tag_name:
-                            stack = stack[:idx]
-                            break
-            else:
-                stack.append((tag_name, line_idx))
+        if full_tag.startswith("</"):
+            assert stack and stack[-1][0] == tag_name, (
+                f"Mismatched closing tag </{tag_name}> at Babel line {line_idx}; "
+                f"expected closing tag for <{stack[-1][0]}> (opened at line {stack[-1][1]})"
+                if stack
+                else f"Unexpected closing tag </{tag_name}> at Babel line {line_idx} with empty stack"
+            )
+            stack.pop()
+        else:
+            stack.append((tag_name, line_idx))
 
     assert len(stack) == 0, f"Unclosed JSX tags remaining on stack at end of UI_HTML: {stack}"
 
