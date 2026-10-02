@@ -10,8 +10,9 @@ This directory documents non-obvious knowledge, session notes, and operational q
 ---
 
 ## 🗂️ Key Project Files
+- [AGENTS.md](../../AGENTS.md) – Master AI agent context, tech stack, and workflow rules.
 - [CODE_STANDARDS.md](../../CODE_STANDARDS.md) – Mandatory coding standards, tooling rules, and git practices.
-- [GEMINI.md](../../GEMINI.md) – Agent context and workflow rules.
+- [GEMINI.md](../../GEMINI.md) – Agent context pointer to `AGENTS.md`.
 - [pyproject.toml](../../pyproject.toml) – Build configuration and dependencies (`uv`).
 - [main.py](../../main.py) – Application entrypoint.
 - [tests/test_main.py](../../tests/test_main.py) – Pytest test suite.
@@ -23,6 +24,8 @@ This directory documents non-obvious knowledge, session notes, and operational q
 
 | Topic | Note File | Description |
 | :--- | :--- | :--- |
+| Architecture Audit & Remediation Plan | [code_review.md](code_review.md) | Comprehensive architectural bottleneck, logical bug, and security audit across all 4 remediation phases |
+| PR #128 Architectural Benefits Analysis | [pr_128_architectural_benefits_analysis.md](pr_128_architectural_benefits_analysis.md) | Analysis of Gemini Enterprise OpenTelemetry GenAI semantic conventions and guardrail error guidance |
 | Digital Director's Studio (3-Act Flow) | [digital_directors_studio_3_act_workflow.md](digital_directors_studio_3_act_workflow.md) | 3-Act progressive linear studio (The Clash, The Fine-Tune, The Director's Chair) with Gemini Parody Research |
 | Guided Mode vs. Screenplay Mode & Studio Flow | [screenplay_vs_guided_directing.md](screenplay_vs_guided_directing.md) | Detailed guide for Guided Form Mode vs Screenplay Scripting, multi-scene sequence API flow, and 4-Stage Studio comparisons |
 | Session Naming & Resilient Rendering | [session_naming_and_resilient_video_rendering.md](session_naming_and_resilient_video_rendering.md) | Custom UI session name mapping to GCS folders, container font packages, and procedural visualizer fallback |
@@ -44,4 +47,3 @@ This directory documents non-obvious knowledge, session notes, and operational q
 | Storyboard UI Screenshots Plan | [storyboard_workflow_ui_documentation.md](storyboard_workflow_ui_documentation.md) | Plan for capturing and updating README.md with 4-Stage Storyboard Journey UI screenshots |
 | Safety Guardrails & Real-Person Likeness | [gemini_omni_flash_safety_guardrails.md](gemini_omni_flash_safety_guardrails.md) | Google Gemini Omni Flash 400 Safety Guardrails, real-person likeness policies, trademark abstractions, and `REAL_NAME_MAPPINGS` |
 | Gemini Enterprise Telemetry & Guardrail Guidance | [gemini_enterprise_telemetry_and_guardrail_guidance.md](gemini_enterprise_telemetry_and_guardrail_guidance.md) | OpenTelemetry GenAI semantic conventions v1.37.0+, Cloud Trace span formatting, GCS telemetry JSONL exports, and UI guardrail error guidance architecture |
-
