@@ -19,8 +19,8 @@ WORKDIR /app
 # Copy pyproject.toml and lock file
 COPY pyproject.toml uv.lock ./
 
-# Install production dependencies from lockfile using uv
-RUN uv sync --frozen --no-dev
+# Re-resolve index URLs against public PyPI (when lockfile contains internal mirror URLs) and install locked production dependencies
+RUN uv lock --default-index https://pypi.org/simple && uv sync --frozen --no-dev
 
 # Copy source code and static assets
 COPY . .
