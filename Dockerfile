@@ -17,15 +17,16 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 
 # Copy pyproject.toml and lock file
-COPY pyproject.toml .
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies using uv
-RUN uv pip install --system -r pyproject.toml
+# Install production dependencies from lockfile using uv
+RUN uv sync --frozen --no-dev
 
 # Copy source code and static assets
 COPY . .
 
 # Set environment variables
+ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV PYTHONPATH=/app/src

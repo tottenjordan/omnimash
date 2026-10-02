@@ -11,33 +11,37 @@ from omnimash.agent.adk_pipeline import (
 
 
 def test_adk_deconstructor_and_storyboard_agents_instantiation():
+    from omnimash.config import settings
+
     deconstructor = create_script_deconstructor_agent()
     storyboard_compiler = create_storyboard_compiler_agent()
 
     assert isinstance(deconstructor, Agent)
     assert deconstructor.name == "script_deconstructor"
-    assert deconstructor.model == "gemini-omni-flash-preview"
+    assert deconstructor.model == settings.omni_model_id
     assert "Script Deconstructor Agent" in deconstructor.instruction
 
     assert isinstance(storyboard_compiler, Agent)
     assert storyboard_compiler.name == "storyboard_compiler"
-    assert storyboard_compiler.model == "gemini-omni-flash-preview"
+    assert storyboard_compiler.model == settings.omni_model_id
     assert "Storyboard Compiler Agent" in storyboard_compiler.instruction
 
 
 def test_adk_shot_execution_and_stitcher_agents():
+    from omnimash.config import settings
+
     shot_worker = create_shot_execution_worker(shot_idx=1)
     stitcher = create_final_cut_stitcher_agent()
 
     assert isinstance(shot_worker, Agent)
     assert shot_worker.name == "shot_execution_worker_1"
-    assert shot_worker.model == "gemini-omni-flash-preview"
+    assert shot_worker.model == settings.omni_model_id
     assert "Shot Execution Worker Agent" in shot_worker.instruction
     assert "shot #1" in shot_worker.instruction
 
     assert isinstance(stitcher, Agent)
     assert stitcher.name == "final_cut_stitcher"
-    assert stitcher.model == "gemini-omni-flash-preview"
+    assert stitcher.model == settings.omni_model_id
     assert "Final Cut Stitcher Agent" in stitcher.instruction
 
 
@@ -79,22 +83,42 @@ def test_adk_pipeline_instructions_include_omni_flash_guidance_and_agent_tools()
     assert all(isinstance(t, AgentTool) for t in tools)
 
 
+def test_adk_agents_use_configured_models_and_4_block_instructions():
+    from omnimash.agent.adk_pipeline import (
+        SHOT_EXECUTION_WORKER_DEFAULT_INSTRUCTION,
+        STORYBOARD_COMPILER_DEFAULT_INSTRUCTION,
+    )
+    from omnimash.config import settings
+
+    assert "[SUBJECT ANCHOR]" not in STORYBOARD_COMPILER_DEFAULT_INSTRUCTION
+    assert "4-Block Meta-Prompt" in STORYBOARD_COMPILER_DEFAULT_INSTRUCTION
+    assert "4-Block Meta-Prompt" in SHOT_EXECUTION_WORKER_DEFAULT_INSTRUCTION
+    assert settings.omni_model_id == "gemini-omni-1.1-flash-preview"
+
+
 def test_adk_script_deconstructor_expands_storyboard():
-    from omnimash.agent.adk_pipeline import deconstruct_screenplay_with_adk
+    from unittest.mock import patch
+    from omnimash.agent import adk_pipeline
     from omnimash.prompts.storyboard_agent import StoryboardShot
 
-    shots = deconstruct_screenplay_with_adk(
-        concept="Cyberpunk battle",
-        style_tone="Cinematic Trap Parody",
-        target_duration=30.0,
-        screenplay_script="[00:00-00:05] Intro shot: Neon street\n[00:05-00:10] Action: Duel begins",
-    )
+    with patch(
+        "omnimash.agent.adk_pipeline.create_script_deconstructor_agent",
+        wraps=adk_pipeline.create_script_deconstructor_agent,
+    ) as spy_deconstructor:
+        shots = adk_pipeline.deconstruct_screenplay_with_adk(
+            concept="Cyberpunk battle",
+            style_tone="Cinematic Trap Parody",
+            target_duration=30.0,
+            screenplay_script="[00:00-00:05] Intro shot: Neon street\n[00:05-00:10] Action: Duel begins",
+        )
+        assert spy_deconstructor.call_count == 1
     assert isinstance(shots, list)
     assert len(shots) == 2
     assert isinstance(shots[0], StoryboardShot)
     assert shots[0].shot_index == 1
     assert shots[0].duration_seconds == 5.0
     assert "Neon street" in shots[0].summary or "Neon street" in shots[0].action
+
 
 
 
