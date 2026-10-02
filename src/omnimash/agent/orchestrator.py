@@ -1,5 +1,6 @@
 import math
 import re
+import threading
 import urllib.parse
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -29,6 +30,7 @@ class AgentTurnResponse:
     success: bool
     status_event: str
     video_url: str | None = None
+    gcs_uri: str | None = None
     error_message: str | None = None
     generation_mode: str = "LIVE_OMNI_FLASH"
     turn_id: str | None = None
@@ -192,6 +194,18 @@ class OmniMashAgent:
         self.stitcher = VideoStitcher(mock_mode=mock_mode)
         self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
         self.journey3_tracker = Journey3StateTracker()
+        self._turn_lock = threading.Lock()
+        self._session_turn_counters: dict[str, int] = {}
+
+    def _allocate_turn_index(self, session: Any) -> int:
+        with self._turn_lock:
+            sid = session.session_id
+            current = max(
+                self._session_turn_counters.get(sid, 0),
+                len(session.turns),
+            )
+            self._session_turn_counters[sid] = current + 1
+            return current
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         return self.taxonomy.deconstruct_concept(concept)
@@ -320,6 +334,7 @@ class OmniMashAgent:
         parent_turn_id: str | None = None,
         duration_seconds: float = 10.0,
         is_conversational_edit: bool = False,
+        is_chunk_continuation: bool = False,
         reference_url: str | None = None,
         audio_stem: str | None = None,
         voiceover: str | None = None,
@@ -364,6 +379,8 @@ class OmniMashAgent:
                     clip_index=clip_index,
                     parent_turn_id=curr_parent_turn_id,
                     duration_seconds=10.0,
+                    is_conversational_edit=(is_conversational_edit if c_idx == 0 else False),
+                    is_chunk_continuation=(c_idx > 0),
                     reference_url=reference_url,
                     audio_stem=audio_stem,
                     voiceover=voiceover,
@@ -378,6 +395,7 @@ class OmniMashAgent:
                     environment_tag=environment_tag,
                     vocal_delivery=vocal_delivery,
                     optimize_prompt=optimize_prompt,
+                    keyframe_image_url=(keyframe_image_url if c_idx == 0 else None),
                     enable_sanitization=enable_sanitization,
                     aspect_ratio=aspect_ratio,
                     resolution=resolution,
@@ -404,6 +422,7 @@ class OmniMashAgent:
                     success=True,
                     status_event="COMPLETED",
                     video_url=proxy_url,
+                    gcs_uri=gcs_uri,
                     turn_id=last_resp.turn_id if last_resp else None,
                     generation_mode=last_resp.generation_mode if last_resp else "LIVE_OMNI_FLASH",
                 )
@@ -491,7 +510,7 @@ class OmniMashAgent:
                         )
                     )
 
-        turn_index = len(session.turns)
+        turn_index = self._allocate_turn_index(session)
         parent_turn = session.turns.get(parent_turn_id) if parent_turn_id else None
         parent_thread_id = parent_turn.interaction_thread_id if parent_turn else parent_turn_id
 
@@ -590,7 +609,11 @@ class OmniMashAgent:
             self.storage.save_session_prompt(
                 session.session_id, turn_index, meta_prompt
             )
-            effective_thread_id = parent_thread_id if is_conversational_edit else None
+            effective_thread_id = (
+                parent_thread_id
+                if (is_conversational_edit or is_chunk_continuation)
+                else None
+            )
             gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
                 turn_index=turn_index,
@@ -616,8 +639,9 @@ class OmniMashAgent:
                 raw_compiled_prompt=raw_compiled_prompt,
                 reference_analysis=reference_analysis,
             )
+        gcs_uri_val = getattr(gen_res, "gcs_uri", None)
         proxy_video_url = self._get_media_proxy_video_url(
-            getattr(gen_res, "gcs_uri", None), gen_res.video_url
+            gcs_uri_val, gen_res.video_url
         )
         turn_node = self.session_manager.add_turn(
             session_id=session.session_id,
@@ -636,6 +660,7 @@ class OmniMashAgent:
             success=True,
             status_event=status_event,
             video_url=proxy_video_url,
+            gcs_uri=gcs_uri_val,
             error_message=gen_res.error_message,
             generation_mode=gen_res.generation_mode,
             turn_id=turn_node.turn_id,

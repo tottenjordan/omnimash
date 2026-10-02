@@ -416,4 +416,45 @@ def test_storyboard_shot_generation_calls_generate_clip(monkeypatch):
     assert len(apply_diff_calls) == 0
 
 
+def test_process_user_turn_multi_chunk_chains_previous_interaction_id(monkeypatch):
+    """Verify duration_seconds > 10.0 chains Chunk 2+ via apply_interaction_diff with Chunk 1's interaction_thread_id."""
+    agent = OmniMashAgent(mock_mode=True)
 
+    generate_clip_calls = []
+    apply_diff_calls = []
+
+    orig_generate_clip = agent.omni_client.generate_clip
+    orig_apply_diff = agent.omni_client.apply_interaction_diff
+
+    def mock_generate_clip(*args, **kwargs):
+        generate_clip_calls.append((args, kwargs))
+        return orig_generate_clip(*args, **kwargs)
+
+    def mock_apply_interaction_diff(*args, **kwargs):
+        apply_diff_calls.append((args, kwargs))
+        return orig_apply_diff(*args, **kwargs)
+
+    monkeypatch.setattr(agent.omni_client, "generate_clip", mock_generate_clip)
+    monkeypatch.setattr(
+        agent.omni_client, "apply_interaction_diff", mock_apply_interaction_diff
+    )
+
+    res = agent.process_user_turn(
+        user_id="u_chunk",
+        project_id="p_chunk",
+        prompt="Wide shot of wizard DJ, camera pans slowly across neon cauldron",
+        clip_index=1,
+        duration_seconds=20.0,
+        resolution="1080p",
+        aspect_ratio="9:16",
+        session_name="multi_chunk_chain_session",
+    )
+
+    assert res.success is True
+    # Chunk 1 must call generate_clip; Chunk 2 must call apply_interaction_diff chained to Chunk 1's thread
+    assert len(generate_clip_calls) == 1
+    assert len(apply_diff_calls) == 1
+    assert generate_clip_calls[0][1].get("resolution") == "1080p"
+    assert generate_clip_calls[0][1].get("aspect_ratio") == "9:16"
+    assert apply_diff_calls[0][1].get("resolution") == "1080p"
+    assert apply_diff_calls[0][1].get("aspect_ratio") == "9:16"
