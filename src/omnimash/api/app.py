@@ -9869,6 +9869,19 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
         aesthetic_tags = [t for t in [style_lighting_val or req.style_lighting, framing_motion_val] if t and t.strip()]
 
+        # Option A: Auto-generate keyframe image first if missing so video and compiled prompt always have starting image seed and tone anchor
+        if not keyframe_url and (action_val or sanitized_directive):
+            try:
+                keyframe_url = agent.omni_client.generate_keyframe_image(
+                    action_val or sanitized_directive,
+                    style_tone=req.style_lighting or style_lighting_val,
+                    reference_image_urls=ref_urls,
+                    characters=req.characters,
+                    aspect_ratio=req.aspect_ratio,
+                )
+            except Exception as exc:
+                logger.warning("Auto keyframe image generation before video generation failed: %s", exc)
+
         compiled_prompt = agent.taxonomy.compiler.compile_storyboard(
             concept=action_val,
             characters=char_objs,
@@ -9883,19 +9896,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             aspect_ratio=req.aspect_ratio,
             style_preset=req.style_lighting or style_lighting_val,
         )
-
-        # Option A: Auto-generate keyframe image first if missing so video always has starting image seed and tone anchor
-        if not keyframe_url and (action_val or sanitized_directive):
-            try:
-                keyframe_url = agent.omni_client.generate_keyframe_image(
-                    action_val or sanitized_directive,
-                    style_tone=req.style_lighting or style_lighting_val,
-                    reference_image_urls=ref_urls,
-                    characters=req.characters,
-                    aspect_ratio=req.aspect_ratio,
-                )
-            except Exception as exc:
-                logger.warning("Auto keyframe image generation before video generation failed: %s", exc)
 
         agent_turn = agent.process_user_turn(
             user_id="usr_default",
@@ -10244,6 +10244,20 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
         cum_state = agent.journey3_tracker.get_cumulative_state(session_id)
 
+        keyframe_url = req.keyframe_image_url
+        if not keyframe_url and req.action_directive:
+            try:
+                keyframe_url = agent.omni_client.generate_keyframe_image(
+                    req.action_directive,
+                    aspect_ratio=req.aspect_ratio,
+                    characters=char_objs if char_objs else None,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Keyframe image generation failed in journey3_generate_shot: %s",
+                    exc,
+                )
+
         if req.compiled_override:
             compiled_prompt = req.compiled_override
         else:
@@ -10261,23 +10275,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 narrator_voice=req.narrator_voice,
                 style_preset=req.style_preset or req.model_style,
                 last_frame_image_url=req.last_frame_image_url,
-                keyframe_image_url=req.keyframe_image_url,
+                keyframe_image_url=keyframe_url,
                 is_seamless_loop=req.is_seamless_loop,
             )
-
-        keyframe_url = req.keyframe_image_url
-        if not keyframe_url and req.action_directive:
-            try:
-                keyframe_url = agent.omni_client.generate_keyframe_image(
-                    req.action_directive,
-                    aspect_ratio=req.aspect_ratio,
-                    characters=char_objs if char_objs else None,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Keyframe image generation failed in journey3_generate_shot: %s",
-                    exc,
-                )
 
         try:
             agent_turn = agent.process_user_turn(
@@ -10374,37 +10374,46 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/storyboard/draft-batch", response_model=DraftBatchResponse)
     def generate_draft_batch(req: DraftBatchRequest) -> DraftBatchResponse:
+        from concurrent.futures import ThreadPoolExecutor
+
         session_name = req.session_name or "draft_batch_session"
-        drafts: list[DraftBatchItem] = []
-        for shot in req.shots:
-            for var_idx in range(req.variations_per_shot):
-                directive = shot.action
-                if shot.style_lighting:
-                    directive = f"{directive}, style: {shot.style_lighting}"
-                turn = agent.process_user_turn(
-                    user_id="usr_default",
-                    project_id="prj_draft_room",
-                    prompt=directive,
-                    keyframe_image_url=shot.keyframe_image_url,
-                    audio_stem=shot.audio,
-                    resolution=req.resolution or "360p",
-                    aspect_ratio=req.aspect_ratio,
-                    clip_index=shot.shot_index,
-                    session_name=session_name,
-                )
-                drafts.append(
-                    DraftBatchItem(
-                        shot_index=shot.shot_index,
-                        variation_index=var_idx,
-                        action=shot.action,
-                        resolution=req.resolution or "360p",
-                        status="COMPLETED" if turn.success else "FAILED",
-                        video_url=turn.video_url,
-                        gcs_uri=getattr(turn, "gcs_uri", None),
-                        turn_id=turn.turn_id,
-                        keyframe_image_url=shot.keyframe_image_url,
-                    )
-                )
+        tasks: list[tuple[DraftBatchShotItem, int]] = [
+            (shot, var_idx)
+            for shot in req.shots
+            for var_idx in range(req.variations_per_shot)
+        ]
+
+        def _run_draft(item: tuple[DraftBatchShotItem, int]) -> DraftBatchItem:
+            shot, var_idx = item
+            directive = shot.action
+            if shot.style_lighting:
+                directive = f"{directive}, style: {shot.style_lighting}"
+            turn = agent.process_user_turn(
+                user_id="usr_default",
+                project_id="prj_draft_room",
+                prompt=directive,
+                keyframe_image_url=shot.keyframe_image_url,
+                audio_stem=shot.audio,
+                resolution=req.resolution or "360p",
+                aspect_ratio=req.aspect_ratio,
+                clip_index=shot.shot_index,
+                session_name=session_name,
+            )
+            return DraftBatchItem(
+                shot_index=shot.shot_index,
+                variation_index=var_idx,
+                action=shot.action,
+                resolution=req.resolution or "360p",
+                status="COMPLETED" if turn.success else "FAILED",
+                video_url=turn.video_url,
+                gcs_uri=getattr(turn, "gcs_uri", None),
+                turn_id=turn.turn_id,
+                keyframe_image_url=shot.keyframe_image_url,
+            )
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            drafts = list(executor.map(_run_draft, tasks))
+
         return DraftBatchResponse(
             success=True,
             session_name=session_name,

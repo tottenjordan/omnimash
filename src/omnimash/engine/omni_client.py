@@ -1666,7 +1666,16 @@ class OmniFlashClient:
             if turn_index is not None
             else f"{thread_id}_turn0.mp4"
         )
-        url = f"/static/rendered/{filename}"
+        safe_sess = (
+            re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
+            if session_id and session_id.strip()
+            else ""
+        )
+        url = (
+            f"/static/rendered/{safe_sess}/{filename}"
+            if safe_sess
+            else f"/static/rendered/{filename}"
+        )
         rel_path = url.lstrip("/")
 
         # 1. Primary: Gemini Omni Flash via Interactions API (Native Video + Audio + Reasoning)
@@ -1738,7 +1747,16 @@ class OmniFlashClient:
             if turn_index is not None
             else f"{interaction_thread_id}_turn_diff.mp4"
         )
-        url = f"/static/rendered/{filename}"
+        safe_sess = (
+            re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
+            if session_id and session_id.strip()
+            else ""
+        )
+        url = (
+            f"/static/rendered/{safe_sess}/{filename}"
+            if safe_sess
+            else f"/static/rendered/{filename}"
+        )
         rel_path = url.lstrip("/")
 
         # 1. Primary: Gemini Omni Flash stateful conversational diff via previous_interaction_id & keyframe seed anchor
