@@ -968,21 +968,35 @@ def test_ui_html_syntax_and_tag_balance():
     assert len(stack) == 0, f"Unclosed JSX tags remaining on stack at end of UI_HTML: {stack}"
 
 
-def test_ui_html_renders_in_browser_without_syntax_error():
-    import subprocess
+def test_ui_html_renders_in_browser_without_syntax_error(tmp_path):
     import os
+    import subprocess
     skill_dir = "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill"
-    test_script = "/usr/local/google/home/jordantotten/.gemini/jetski/brain/3e6e0805-9daf-47da-ae1a-2c3ac07b54e9/scratch/playwright_test_darkblue.js"
-
-    if os.path.exists(skill_dir) and os.path.exists(test_script):
+    if os.path.exists(skill_dir):
+        html_file = tmp_path / "ui_check.html"
+        html_file.write_text(UI_HTML, encoding="utf-8")
+        inline_js = (
+            "const { chromium } = require('playwright');"
+            "(async () => {"
+            "  const browser = await chromium.launch({ headless: true });"
+            "  const page = await browser.newPage();"
+            "  page.on('pageerror', err => console.log('BROWSER ERROR:', err.message));"
+            f"  await page.goto('file://{html_file}', {{ waitUntil: 'networkidle' }});"
+            "  const html = await page.innerHTML('#__next');"
+            "  if (html && html.length > 1000) console.log('INNER_HTML_OK');"
+            "  await browser.close();"
+            "})();"
+        )
         res = subprocess.run(
-            ["node", "run.js", test_script],
+            ["node", "-e", inline_js],
             cwd=skill_dir,
             capture_output=True,
-            text=True
+            text=True,
         )
         output = res.stdout + res.stderr
+        assert res.returncode == 0, f"Playwright execution failed: {output}"
         assert "BROWSER ERROR:" not in output, f"Browser JavaScript compilation error detected: {output}"
+        assert "INNER_HTML_OK" in output, f"React failed to mount into #__next: {output}"
 
 
 def test_ui_html_journey3_comprehensive_enhancements():
