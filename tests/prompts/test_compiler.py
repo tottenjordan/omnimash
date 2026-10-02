@@ -23,10 +23,7 @@ def test_prompt_compiler_anchor_and_inject():
     )
     assert isinstance(parts, CompiledPromptParts)
     assert "gaunt" in parts.subject_anchor or "hooked nose" in parts.subject_anchor
-    assert (
-        "puffer jacket" in parts.aesthetic_injection
-        or "Cuban link" in parts.aesthetic_injection
-    )
+    assert "puffer jacket" in parts.aesthetic_injection or "Cuban link" in parts.aesthetic_injection
     assert "dungeon" in parts.environment
     assert "fisheye lens" in parts.camera_lighting
     assert "10-second" in parts.motion or "bopping" in parts.motion
@@ -60,10 +57,7 @@ def test_prompt_compiler_voiceover_and_dialogue():
         voiceover="Gaunt wizard speaking with a deep sarcastic British drawl",
     )
     full_vo = parts_vo.to_full_prompt()
-    assert (
-        "Voiceover: Gaunt wizard speaking with a deep sarcastic British drawl."
-        in full_vo
-    )
+    assert "Voiceover: Gaunt wizard speaking with a deep sarcastic British drawl." in full_vo
 
     # 2. Multi-Subject Dialogue
     parts_diag = compiler.compile(
@@ -102,9 +96,7 @@ def test_prompt_compiler_lock_and_isolate_delta():
 
 def test_compiler_applies_audio_ducking_when_voiceover_present():
     compiler = PromptCompiler()
-    parts = compiler.compile(
-        "Snape rap", voiceover="Gaunt wizard speaking: Potter explain"
-    )
+    parts = compiler.compile("Snape rap", voiceover="Gaunt wizard speaking: Potter explain")
     prompt = parts.to_full_prompt()
     assert "ducked" in prompt.lower() or "foreground" in prompt.lower()
     assert "Voiceover:" in prompt or "Dialogue between subjects:" in prompt
@@ -136,11 +128,7 @@ def test_character_role_specific_aesthetic_tags():
             aesthetic_tags=["Red Gucci Tracksuit", "Cartier Glasses"],
         )
     ]
-    scenes = [
-        SceneDirective(
-            scene_number=1, active_roles=["Role A"], action="Cooking potions"
-        )
-    ]
+    scenes = [SceneDirective(scene_number=1, active_roles=["Role A"], action="Cooking potions")]
     prompt = compiler.compile_storyboard(
         concept="Harry Trap",
         characters=chars,
@@ -235,9 +223,7 @@ def test_deconstruct_concept_3_tier_fallback():
     assert compiler_mock._pro_global_client is None
     assert compiler_mock._flash_regional_client is None
 
-    tags_mock = compiler_mock.deconstruct_concept(
-        "Harry Potter vs Draco Malfoy rap battle"
-    )
+    tags_mock = compiler_mock.deconstruct_concept("Harry Potter vs Draco Malfoy rap battle")
     assert isinstance(tags_mock, MetaPromptTags)
     assert len(tags_mock.characters) >= 2
 
@@ -294,14 +280,10 @@ def test_deconstruct_concept_3_tier_fallback():
 
         # 4. Test Tier 1 failure -> Tier 2 fallback success
         mock_pro_client.models.generate_content.reset_mock()
-        mock_pro_client.models.generate_content.side_effect = RuntimeError(
-            "Quota exceeded on Pro"
-        )
+        mock_pro_client.models.generate_content.side_effect = RuntimeError("Quota exceeded on Pro")
 
         mock_flash_response = MagicMock()
-        mock_flash_response.text = json_payload.replace(
-            "Hogwarts dungeon", "Flash regional stage"
-        )
+        mock_flash_response.text = json_payload.replace("Hogwarts dungeon", "Flash regional stage")
         mock_flash_client.models.generate_content.return_value = mock_flash_response
 
         tags_t2 = compiler.deconstruct_concept("Harry Potter in trap video")
@@ -310,25 +292,17 @@ def test_deconstruct_concept_3_tier_fallback():
 
         # 5. Test Tier 1 failure & Tier 2 failure -> Tier 3 fallback
         mock_pro_client.models.generate_content.side_effect = RuntimeError("Pro error")
-        mock_flash_client.models.generate_content.side_effect = RuntimeError(
-            "Flash error"
-        )
+        mock_flash_client.models.generate_content.side_effect = RuntimeError("Flash error")
 
-        tags_t3 = compiler.deconstruct_concept(
-            "Harry Potter vs Draco Malfoy rap battle"
-        )
+        tags_t3 = compiler.deconstruct_concept("Harry Potter vs Draco Malfoy rap battle")
         assert isinstance(tags_t3, MetaPromptTags)
         assert len(tags_t3.characters) >= 2
 
 
 def test_parse_screenplay_script():
     characters = [
-        CharacterRole(
-            role_id="Role A", name="Severus Snape", description="Gaunt wizard"
-        ),
-        CharacterRole(
-            role_id="Role B", name="Harry Potter", description="Young wizard"
-        ),
+        CharacterRole(role_id="Role A", name="Severus Snape", description="Gaunt wizard"),
+        CharacterRole(role_id="Role B", name="Harry Potter", description="Young wizard"),
     ]
 
     script_text = (
@@ -353,16 +327,10 @@ def test_parse_screenplay_script():
     assert "Bopping head" in result["action"]
 
     # Parenthetical audio cues extraction
-    assert (
-        "thunder" in result["audio_cues"].lower()
-        or "beat" in result["audio_cues"].lower()
-    )
+    assert "thunder" in result["audio_cues"].lower() or "beat" in result["audio_cues"].lower()
 
     # Spoken dialogue extraction and formatting
-    assert (
-        f'{get_character_identifier(characters[0])}: "Silence, Potter!"'
-        in result["dialogue"]
-    )
+    assert f'{get_character_identifier(characters[0])}: "Silence, Potter!"' in result["dialogue"]
     assert (
         f'{get_character_identifier(characters[1])}: "It was the beat, professor!"'
         in result["dialogue"]
@@ -371,11 +339,7 @@ def test_parse_screenplay_script():
 
 def test_compile_prompt_with_screenplay_text():
     compiler = PromptCompiler()
-    characters = [
-        CharacterRole(
-            role_id="Role A", name="Severus Snape", description="Gaunt wizard"
-        )
-    ]
+    characters = [CharacterRole(role_id="Role A", name="Severus Snape", description="Gaunt wizard")]
     scene = SceneDirective(
         scene_number=1,
         active_roles=["Role A"],
@@ -479,7 +443,10 @@ def test_compile_multi_role_prompt_with_screenplay_text():
         '  Role A - Gothic Potion Master Fam [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence] says: (Standing in the dungeon. Low bass rumble.) "Silence, Spectacled Wizard Bruv!"'
         in prompt
     )
-    assert '  Role B - Spectacled Wizard Bruv [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence] says: (Bopping head to 120 BPM beat.) "No!"' in prompt
+    assert (
+        '  Role B - Spectacled Wizard Bruv [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence] says: (Bopping head to 120 BPM beat.) "No!"'
+        in prompt
+    )
     assert "Scene 1 Audio Cues:" in prompt
 
 
@@ -500,16 +467,15 @@ def test_parse_screenplay_script_bracketed_roles_and_parentheticals_before_colon
     result = parse_screenplay_script(script, characters=chars)
     assert result["active_roles"] == ["Role A", "Role B", "Role C"]
     assert f'{get_character_identifier(chars[0])}: "Ah, blood!"' in result["dialogue"]
-    assert (
-        f'{get_character_identifier(chars[1])}: "You got that real gas?"'
-        in result["dialogue"]
-    )
+    assert f'{get_character_identifier(chars[1])}: "You got that real gas?"' in result["dialogue"]
     assert f'{get_character_identifier(chars[2])}: "don t play"' in result["dialogue"]
     assert f'{get_character_identifier(chars[0])}: "type shit"' in result["dialogue"]
 
 
 def test_parse_screenplay_script_supports_timecoded_syntax():
-    script_timecoded = '[0-5s] Action: Harry waves wand. Audio: Whoosh sfx. Dialogue: Harry: "Expelliarmus!"'
+    script_timecoded = (
+        '[0-5s] Action: Harry waves wand. Audio: Whoosh sfx. Dialogue: Harry: "Expelliarmus!"'
+    )
     result = parse_screenplay_script(script_timecoded)
     assert result["action"] == "Harry waves wand."
     assert result["audio_cues"] == "Whoosh sfx."
@@ -522,10 +488,7 @@ def test_parse_screenplay_script_supports_timecoded_syntax():
     result_chars = parse_screenplay_script(script_timecoded, characters=chars)
     assert result_chars["action"] == "Harry waves wand."
     assert result_chars["audio_cues"] == "Whoosh sfx."
-    assert (
-        result_chars["dialogue"]
-        == f'{get_character_identifier(chars[0])}: "Expelliarmus!"'
-    )
+    assert result_chars["dialogue"] == f'{get_character_identifier(chars[0])}: "Expelliarmus!"'
     assert result_chars["active_roles"] == ["Role B"]
 
     script_theatrical_timecoded = (
@@ -558,12 +521,8 @@ def test_compile_prompt_extracts_dialogue_directive_from_raw_prompt():
 
 def test_parse_timecoded_script():
     chars = [
-        CharacterRole(
-            role_id="Role A", name="Severus Snape", description="Gaunt wizard"
-        ),
-        CharacterRole(
-            role_id="Role B", name="Harry Potter", description="Young wizard"
-        ),
+        CharacterRole(role_id="Role A", name="Severus Snape", description="Gaunt wizard"),
+        CharacterRole(role_id="Role B", name="Harry Potter", description="Young wizard"),
     ]
     script = (
         '[0-3s] Snape: (Standing in dark dungeon. Heavy thunder rumbles.) "Silence, Potter!"\n'
@@ -576,10 +535,7 @@ def test_parse_timecoded_script():
     assert blocks[0]["active_roles"] == ["Role A"]
     assert "Standing in dark dungeon" in blocks[0]["action"]
     assert "thunder" in blocks[0]["audio_cues"].lower()
-    assert (
-        f'{get_character_identifier(chars[0])}: "Silence, Potter!"'
-        in blocks[0]["dialogue"]
-    )
+    assert f'{get_character_identifier(chars[0])}: "Silence, Potter!"' in blocks[0]["dialogue"]
 
     assert blocks[1]["timecode"] == "[3-6s]"
     assert blocks[1]["active_roles"] == ["Role B"]
@@ -789,9 +745,7 @@ def test_four_block_character_identifier_symmetry():
     full_prompt = parts.to_full_prompt()
 
     assert "[# References <IMAGE_REF_0>@Image1]" in full_prompt
-    assert (
-        f"- {expected_id} <IMAGE_REF_0>: Young wizard with round glasses" in full_prompt
-    )
+    assert f"- {expected_id} <IMAGE_REF_0>: Young wizard with round glasses" in full_prompt
     assert 'Harry <IMAGE_REF_0>: "Expelliarmus!"' in full_prompt
 
 
@@ -853,18 +807,9 @@ def test_four_block_official_image_ref_tags():
     assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in full_prompt
 
     # Verify character profile binding format
-    assert (
-        "- Role A <IMAGE_REF_0>: Gaunt potion master wizard"
-        in full_prompt
-    )
-    assert (
-        "- Role B <IMAGE_REF_1>: Young wizard with round wire-rim glasses"
-        in full_prompt
-    )
-    assert (
-        "- Role C <FIRST_FRAME>: Starting frame of stone dungeon corridor"
-        in full_prompt
-    )
+    assert "- Role A <IMAGE_REF_0>: Gaunt potion master wizard" in full_prompt
+    assert "- Role B <IMAGE_REF_1>: Young wizard with round wire-rim glasses" in full_prompt
+    assert "- Role C <FIRST_FRAME>: Starting frame of stone dungeon corridor" in full_prompt
 
     # Verify timeline actions include <IMAGE_REF_N> tags
     assert "<IMAGE_REF_0>" in full_prompt
@@ -874,10 +819,7 @@ def test_four_block_official_image_ref_tags():
 def test_sanitize_real_names_pop_culture_keywords():
     text = "Snape Dawg, Draco, Voldemort, and Hogwarts."
     sanitized = sanitize_real_names(text)
-    assert (
-        sanitized
-        == "Potion Master Dawg, Rival Wizard, Dark Sorcerer, and Gothic Academy."
-    )
+    assert sanitized == "Potion Master Dawg, Rival Wizard, Dark Sorcerer, and Gothic Academy."
 
 
 def test_sanitize_real_names_street_slang_trademarks_tattoos():
@@ -891,7 +833,9 @@ def test_sanitize_real_names_street_slang_trademarks_tattoos():
 
 
 def test_sanitize_real_names_trademarked_item_abstractions():
-    text = "Catching the Golden Snitch while playing Quidditch with a Lightsaber inside the Batmobile."
+    text = (
+        "Catching the Golden Snitch while playing Quidditch with a Lightsaber inside the Batmobile."
+    )
     sanitized = sanitize_real_names(text)
     assert "glowing golden flying orb" in sanitized
     assert "aerial magical sport" in sanitized
@@ -904,7 +848,6 @@ def test_sanitize_real_names_totti():
     assert sanitize_real_names("Yo Totti") == "a tatted wizard"
     assert sanitize_real_names("Francesco Totti") == "a tatted wizard"
     assert sanitize_real_names("Totti") == "a tatted wizard"
-
 
 
 def test_build_character_image_ref_tags_extracts_base_names_and_tokens():
@@ -1113,7 +1056,8 @@ def test_compile_storyboard_multi_speaker_dialogue_tag_binding():
         scenes=[scene],
     )
     assert (
-        'Role A - a high-fashion wizard headmaster <IMAGE_REF_0> [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence] says: "Welcome to Dripwarts!"' in compiled
+        'Role A - a high-fashion wizard headmaster <IMAGE_REF_0> [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence] says: "Welcome to Dripwarts!"'
+        in compiled
     )
     assert (
         'Role B - Potion Master Dawg <IMAGE_REF_1> [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence] says: "Potions class is in session!"'
@@ -1149,7 +1093,10 @@ def test_compile_storyboard_screenplay_script_injects_character_tags():
         scenes=[scene],
     )
     assert "### TIMELINE" in compiled
-    assert 'Role A - a tatted wizard <IMAGE_REF_0> [Voice Style: Smooth Atlanta rap flow with distinct rhythmic trap cadence] says: "let’s see..."' in compiled
+    assert (
+        'Role A - a tatted wizard <IMAGE_REF_0> [Voice Style: Smooth Atlanta rap flow with distinct rhythmic trap cadence] says: "let’s see..."'
+        in compiled
+    )
 
 
 def test_compile_storyboard_with_conversational_edit_directive():
@@ -1166,7 +1113,7 @@ def test_compile_storyboard_with_conversational_edit_directive():
         scene_number=1,
         active_roles=["Role A"],
         action="Yo Totti stands in the studio.",
-        dialogue="Yo Totti: \"Let's go.\"",
+        dialogue='Yo Totti: "Let\'s go."',
     )
     compiled = compiler.compile_storyboard(
         concept="Test conversational edit directive",
@@ -1177,8 +1124,7 @@ def test_compile_storyboard_with_conversational_edit_directive():
     assert "### CONVERSATIONAL EDIT DIRECTIVE" in compiled
     assert "Original Scene Baseline:" in compiled
     assert (
-        'Required Change: Modify only the following aspect: "make him wear sunglasses"'
-        in compiled
+        'Required Change: Modify only the following aspect: "make him wear sunglasses"' in compiled
     )
 
 
@@ -1232,7 +1178,9 @@ def test_timeline_dialogue_includes_parenthetical_voice_style():
         scenes=scenes,
     )
     assert "### TIMELINE" in compiled
-    assert 'Role A - Potion Master [Voice Style: british accent] says: "Turn to page 394."' in compiled
+    assert (
+        'Role A - Potion Master [Voice Style: british accent] says: "Turn to page 394."' in compiled
+    )
 
 
 def test_scene_instructions_vocal_delivery_priority():
@@ -1487,8 +1435,14 @@ def test_compile_journey3_shot_prompt_timeline_separates_dialogue_and_visual_act
 
     assert "### TIMELINE" in prompt
     assert "- Visual Action: Potion Master reaches carefully for the beaker" in prompt
-    assert '- Spoken Dialogue (Role A) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Silence, Spectacled Wizard Bruv!"' in prompt
-    assert '- Spoken Dialogue (Role B) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Never!"' in prompt
+    assert (
+        '- Spoken Dialogue (Role A) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Silence, Spectacled Wizard Bruv!"'
+        in prompt
+    )
+    assert (
+        '- Spoken Dialogue (Role B) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Never!"'
+        in prompt
+    )
 
 
 def test_deconstruct_concept_extracts_intuitive_vision_defaults():
@@ -1509,11 +1463,15 @@ def test_deconstruct_concept_extracts_intuitive_vision_defaults():
         or "castle" in gothic_tags.environment_tag.lower()
         or "candlelight" in gothic_tags.environment_tag.lower()
     )
-    assert gothic_tags.camera_lighting_tag, "Camera motion, aspect ratio, & lighting must be populated"
+    assert gothic_tags.camera_lighting_tag, (
+        "Camera motion, aspect ratio, & lighting must be populated"
+    )
     assert (
         "16:9" in gothic_tags.camera_lighting_tag
         or "widescreen" in gothic_tags.camera_lighting_tag
-        or "tracking" in gothic_lighting_tag if (gothic_lighting_tag := gothic_tags.camera_lighting_tag.lower()) else True
+        or "tracking" in gothic_lighting_tag
+        if (gothic_lighting_tag := gothic_tags.camera_lighting_tag.lower())
+        else True
     )
     assert gothic_tags.audio_beat, "Audio beat & soundscape must be populated"
     assert "bpm" in gothic_tags.audio_beat.lower()
@@ -1554,8 +1512,14 @@ def test_compile_journey3_shot_prompt_formatting_title_cards_and_narrator():
         narrator_voice="Deep Cinematic Announcer",
         audio_stem="Deep cinematic trailer braam horn riser",
     )
-    assert '- On-Screen Displayed Text / Title Card: "IN A WORLD OF SHADOWS..." (Subtitle: "AN ALL-NEW CINEMATIC EXPERIENCE")' in prompt
-    assert '- Offscreen Narrator (Deep Cinematic Announcer): "In a world where ancient magic meets high-tech cybernetics..."' in prompt
+    assert (
+        '- On-Screen Displayed Text / Title Card: "IN A WORLD OF SHADOWS..." (Subtitle: "AN ALL-NEW CINEMATIC EXPERIENCE")'
+        in prompt
+    )
+    assert (
+        '- Offscreen Narrator (Deep Cinematic Announcer): "In a world where ancient magic meets high-tech cybernetics..."'
+        in prompt
+    )
     assert "- Visual Action: Dramatic camera slow push-in over ominous foggy skyline" in prompt
     assert "Audio: Deep cinematic trailer braam horn riser" in prompt
 
@@ -1564,7 +1528,10 @@ def test_gemini_omni_flash_instruction_constant_exists():
     from omnimash.prompts.compiler import GEMINI_OMNI_FLASH_INSTR
 
     assert isinstance(GEMINI_OMNI_FLASH_INSTR, str)
-    assert "4-Block Meta-Prompt" in GEMINI_OMNI_FLASH_INSTR or "4-Block Anchor & Inject" in GEMINI_OMNI_FLASH_INSTR
+    assert (
+        "4-Block Meta-Prompt" in GEMINI_OMNI_FLASH_INSTR
+        or "4-Block Anchor & Inject" in GEMINI_OMNI_FLASH_INSTR
+    )
     assert "### INPUT ROLES & REFERENCES" in GEMINI_OMNI_FLASH_INSTR
     assert "@Image1" in GEMINI_OMNI_FLASH_INSTR
     assert "@KeyframeSeed" in GEMINI_OMNI_FLASH_INSTR
@@ -1637,8 +1604,14 @@ def test_compile_journey3_shot_prompt_uses_role_ids_for_all_character_references
     assert "YoTotti" not in prompt
     assert "DumbleDior" not in prompt
     # Verify timeline uses Role A and Role B for dialogue
-    assert '- Spoken Dialogue (Role A) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Fifty bands for pure finesse!"' in prompt
-    assert '- Spoken Dialogue (Role B) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Type shit, on God!"' in prompt
+    assert (
+        '- Spoken Dialogue (Role A) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Fifty bands for pure finesse!"'
+        in prompt
+    )
+    assert (
+        '- Spoken Dialogue (Role B) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Type shit, on God!"'
+        in prompt
+    )
 
 
 def test_sanitize_real_names_handles_camelcase_and_concatenated_names():
@@ -1670,13 +1643,13 @@ def test_conversational_edit_voice_style_directive():
     ]
     prompt = compile_journey3_shot_prompt(
         shot_number=1,
-        action_directive='Make Role C have a thick Scottish accent',
+        action_directive="Make Role C have a thick Scottish accent",
         characters=chars,
         timeline_dialogue='YoTotti: "They said my diamonds hurt they feelings, fam?"',
     )
     assert "thick Scottish accent" in prompt
     assert "Voice Style (Role C): thick Scottish accent" in prompt
-    assert '[Voice Style: thick Scottish accent]' in prompt
+    assert "[Voice Style: thick Scottish accent]" in prompt
 
 
 def test_compile_journey3_shot_prompt_enforces_style_preset_medium_continuity():
@@ -1693,8 +1666,14 @@ def test_compile_journey3_shot_prompt_enforces_style_preset_medium_continuity():
         characters=chars,
         style_preset="Claymation Stop-Motion",
     )
-    assert "Medium & Aesthetic Style: Shot strictly in the exact artistic medium of Attached Image #1 (<FIRST_FRAME>@KeyframeSeed): Claymation Stop-Motion" in prompt
-    assert "rendering all movement, characters, and environment strictly in Claymation Stop-Motion with zero photorealistic texture bleeding" in prompt
+    assert (
+        "Medium & Aesthetic Style: Shot strictly in the exact artistic medium of Attached Image #1 (<FIRST_FRAME>@KeyframeSeed): Claymation Stop-Motion"
+        in prompt
+    )
+    assert (
+        "rendering all movement, characters, and environment strictly in Claymation Stop-Motion with zero photorealistic texture bleeding"
+        in prompt
+    )
 
 
 def test_compile_journey3_shot_prompt_seamless_loop():
@@ -1715,8 +1694,7 @@ def test_compile_journey3_shot_prompt_seamless_loop():
     assert "<FIRST_FRAME>@KeyframeSeed" in prompt
     assert "<LAST_FRAME>@KeyframeSeed" in prompt
     assert "Seamless Infinite Loop Mode" in prompt
-    assert "Seamless continuous infinite loop directive" in prompt or "seamless continuous infinite loop" in prompt.lower()
-
-
-
-
+    assert (
+        "Seamless continuous infinite loop directive" in prompt
+        or "seamless continuous infinite loop" in prompt.lower()
+    )

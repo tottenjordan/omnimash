@@ -8,9 +8,7 @@ def test_omnimash_settings_defaults():
 
 
 def test_omnimash_settings_custom_project():
-    s = OmniMashSettings(
-        google_cloud_project="custom-corp-ai", omnimash_gcs_bucket=None
-    )
+    s = OmniMashSettings(google_cloud_project="custom-corp-ai", omnimash_gcs_bucket=None)
     assert s.gcs_bucket_name == "omnimash-media-custom-corp-ai"
 
 

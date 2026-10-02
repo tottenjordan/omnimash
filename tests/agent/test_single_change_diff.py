@@ -96,6 +96,4 @@ def test_process_user_turn_compound_multi_change_rejection():
     )
     assert r2.success is False
     assert r2.status_event == "MULTI_CHANGE_REJECTED"
-    assert "Gemini Omni Flash performs best with one edit per turn" in (
-        r2.error_message or ""
-    )
+    assert "Gemini Omni Flash performs best with one edit per turn" in (r2.error_message or "")

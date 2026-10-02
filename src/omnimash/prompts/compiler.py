@@ -187,11 +187,13 @@ def sort_characters_by_role_id(characters: list[Any] | None) -> list[Any]:
         if img_role in ("Ending Frame", "Keyframe Last Anchor"):
             return (0, 1, "")
 
-        r_id = str(
-            getattr(c, "role_id", "")
-            if not isinstance(c, dict)
-            else c.get("role_id", "") or ""
-        ).strip().upper()
+        r_id = (
+            str(
+                getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "") or ""
+            )
+            .strip()
+            .upper()
+        )
         m = re.search(r"ROLE\s*([A-Z0-9]+)", r_id)
         if m:
             val = m.group(1)
@@ -245,9 +247,7 @@ def build_character_image_ref_tags(
             else char.get("role_id", "") or ""
         ).strip()
         name = str(
-            getattr(char, "name", "")
-            if not isinstance(char, dict)
-            else char.get("name", "") or ""
+            getattr(char, "name", "") if not isinstance(char, dict) else char.get("name", "") or ""
         ).strip()
         img_role = (
             getattr(char, "image_role", "Character Reference")
@@ -268,7 +268,11 @@ def build_character_image_ref_tags(
 
         name_clean = (sanitize_real_names(name) if name else "") if enable_sanitization else name
         base_name = re.sub(r"\s*\(.*?\)", "", name).strip() if name else ""
-        base_name_clean = (sanitize_real_names(base_name) if base_name else "") if enable_sanitization else base_name
+        base_name_clean = (
+            (sanitize_real_names(base_name) if base_name else "")
+            if enable_sanitization
+            else base_name
+        )
 
         candidate_keys: set[str] = set()
         for k in (char_id, role_id, name, name_clean, base_name, base_name_clean):
@@ -293,14 +297,12 @@ def build_character_image_ref_tags(
 
         img_idx += 1
 
-    has_first_frame = has_keyframe_seed or any(
-        s.startswith("<FIRST_FRAME>") for s in sources_items
-    )
-    has_last_frame = any(
-        s.startswith("<LAST_FRAME>") for s in sources_items
-    )
+    has_first_frame = has_keyframe_seed or any(s.startswith("<FIRST_FRAME>") for s in sources_items)
+    has_last_frame = any(s.startswith("<LAST_FRAME>") for s in sources_items)
     if has_last_frame and not has_first_frame:
-        raise ValueError("<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor in prompt payload.")
+        raise ValueError(
+            "<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor in prompt payload."
+        )
 
     return sources_items, references_items, char_tag_map
 
@@ -319,13 +321,17 @@ def replace_character_in_text_image_tags(
         if not tag or not key or len(key.strip()) < 2:
             continue
         pattern = r"\b" + re.escape(key) + r"\b"
+
         def _repl(match: re.Match) -> str:
             matched_text = match.group(0)
             end_pos = match.end()
             remaining = result[end_pos:]
-            if re.match(r"\s*\(" + re.escape(tag) + r"\)", remaining) or re.match(r"\s*" + re.escape(tag), remaining):
+            if re.match(r"\s*\(" + re.escape(tag) + r"\)", remaining) or re.match(
+                r"\s*" + re.escape(tag), remaining
+            ):
                 return matched_text
             return f"{matched_text} ({tag})"
+
         result = re.sub(pattern, _repl, result)
     return result
 
@@ -366,9 +372,7 @@ class CompiledPromptParts:
             camera_header = cam_clean
 
         # 1. ### INPUT ROLES
-        input_roles_str = (
-            "\n".join(self.input_roles).strip() if self.input_roles else ""
-        )
+        input_roles_str = "\n".join(self.input_roles).strip() if self.input_roles else ""
         if not input_roles_str and self.character_references:
             input_roles_str = "\n".join(self.character_references).strip()
         if not input_roles_str:
@@ -377,9 +381,7 @@ class CompiledPromptParts:
 
         # 2. ### CHARACTER PROFILES
         char_profiles_str = (
-            "\n".join(self.character_profiles).strip()
-            if self.character_profiles
-            else ""
+            "\n".join(self.character_profiles).strip() if self.character_profiles else ""
         )
         if not char_profiles_str:
             char_profiles_str = "None."
@@ -467,8 +469,7 @@ class CompiledDeltaPrompt:
 
     def to_delta_prompt(self) -> str:
         return (
-            f"[PRESERVATION LOCK]: {self.preservation_lock} | "
-            f"[ISOLATED DIFF]: {self.isolated_diff}"
+            f"[PRESERVATION LOCK]: {self.preservation_lock} | [ISOLATED DIFF]: {self.isolated_diff}"
         )
 
 
@@ -485,7 +486,6 @@ class SceneDirective:
     title_card_text: str | None = None
     title_card_subtitle: str | None = None
     narrator_text: str | None = None
-
 
 
 @dataclass
@@ -616,9 +616,7 @@ def parse_screenplay_script(
             for i, match in enumerate(kw_matches):
                 kw_name = match.group(1).lower()
                 start_idx = match.end()
-                end_idx = (
-                    kw_matches[i + 1].start() if i + 1 < len(kw_matches) else len(line)
-                )
+                end_idx = kw_matches[i + 1].start() if i + 1 < len(kw_matches) else len(line)
                 val = line[start_idx:end_idx].strip()
                 if not val:
                     continue
@@ -640,9 +638,7 @@ def parse_screenplay_script(
                     )
                     if colon_idx != -1 and (quote_idx == -1 or colon_idx < quote_idx):
                         paren_idx = val.find("(")
-                        end_spk = min(
-                            idx for idx in [colon_idx, paren_idx] if idx != -1
-                        )
+                        end_spk = min(idx for idx in [colon_idx, paren_idx] if idx != -1)
                         candidate_clean = re.sub(
                             r"^[\[\(\s]+|[\]\)\:\s]+$", "", val[:end_spk]
                         ).strip()
@@ -673,9 +669,7 @@ def parse_screenplay_script(
                                     matched_role_name = char.name
                                     break
 
-                        role_to_add = (
-                            matched_role_id if matched_role_id else speaker_raw
-                        )
+                        role_to_add = matched_role_id if matched_role_id else speaker_raw
                         if role_to_add not in active_roles:
                             active_roles.append(role_to_add)
 
@@ -716,9 +710,7 @@ def parse_screenplay_script(
         smart_quote_idx = line.find("“")
 
         delim_indices = [
-            idx
-            for idx in [colon_idx, paren_idx, quote_idx, smart_quote_idx]
-            if idx != -1
+            idx for idx in [colon_idx, paren_idx, quote_idx, smart_quote_idx] if idx != -1
         ]
         if delim_indices:
             first_idx = min(delim_indices)
@@ -846,20 +838,55 @@ def parse_screenplay_script(
 
 def ensure_character_voice_style(char: CharacterRole | dict, concept: str = "") -> str:
     """Ensures every character has a clear, explicit accent and vocal delivery prompt instruction."""
-    v_style = (getattr(char, "voice_style", None) if not isinstance(char, dict) else char.get("voice_style")) or ""
-    v_profile = (getattr(char, "voice_profile", None) if not isinstance(char, dict) else char.get("voice_profile")) or ""
+    v_style = (
+        getattr(char, "voice_style", None)
+        if not isinstance(char, dict)
+        else char.get("voice_style")
+    ) or ""
+    v_profile = (
+        getattr(char, "voice_profile", None)
+        if not isinstance(char, dict)
+        else char.get("voice_profile")
+    ) or ""
     v_str = str(v_style or v_profile or "").strip()
     if v_str and v_str != "Cinematic theatrical voice with distinct expressive delivery":
         return v_str
 
-    name = str(getattr(char, "name", "") if not isinstance(char, dict) else char.get("name", "") or "").lower()
-    desc = str(getattr(char, "description", "") if not isinstance(char, dict) else char.get("description", "") or "").lower()
-    role = str(getattr(char, "role_id", "") if not isinstance(char, dict) else char.get("role_id", "") or "").lower()
+    name = str(
+        getattr(char, "name", "") if not isinstance(char, dict) else char.get("name", "") or ""
+    ).lower()
+    desc = str(
+        getattr(char, "description", "")
+        if not isinstance(char, dict)
+        else char.get("description", "") or ""
+    ).lower()
+    role = str(
+        getattr(char, "role_id", "")
+        if not isinstance(char, dict)
+        else char.get("role_id", "") or ""
+    ).lower()
     combined = f"{name} {desc} {role} {concept.lower()}".strip()
 
-    if any(k in combined for k in ("dumbledore", "dior", "headmaster", "snape", "harry", "draco", "wizard", "gothic", "british", "potter", "malfoy")):
+    if any(
+        k in combined
+        for k in (
+            "dumbledore",
+            "dior",
+            "headmaster",
+            "snape",
+            "harry",
+            "draco",
+            "wizard",
+            "gothic",
+            "british",
+            "potter",
+            "malfoy",
+        )
+    ):
         return "Pompous Queen's English British drawl with theatrical cadence"
-    elif any(k in combined for k in ("totti", "yototti", "trap", "rap", "hip-hop", "808", "atlanta")):
+    elif any(
+        k in combined for k in ("totti", "yototti", "trap", "rap", "hip-hop", "808", "atlanta")
+    ):
         return "Smooth Atlanta rap flow with distinct rhythmic trap cadence"
     elif any(k in combined for k in ("ramsay", "chef")):
         return "Fiery intense British accent with rapid explosive delivery"
@@ -869,7 +896,9 @@ def ensure_character_voice_style(char: CharacterRole | dict, concept: str = "") 
         return "Distinct cinematic voice with clear regional accent delivery"
 
 
-def apply_conversational_voice_edits(directive_text: str, characters: list[CharacterRole] | list[dict] | None) -> None:
+def apply_conversational_voice_edits(
+    directive_text: str, characters: list[CharacterRole] | list[dict] | None
+) -> None:
     """Parses conversational edit directives like 'Make Role C have a thick Scottish accent'
 
     and updates the targeted character's voice_style attribute in place.
@@ -886,8 +915,20 @@ def apply_conversational_voice_edits(directive_text: str, characters: list[Chara
         new_voice = match.group(2).strip()
 
         for c in characters:
-            c_name = str(getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "") or "").strip().lower()
-            c_role = str(getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "") or "").strip().lower()
+            c_name = (
+                str(getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "") or "")
+                .strip()
+                .lower()
+            )
+            c_role = (
+                str(
+                    getattr(c, "role_id", "")
+                    if not isinstance(c, dict)
+                    else c.get("role_id", "") or ""
+                )
+                .strip()
+                .lower()
+            )
             c_id = get_character_identifier(c, use_role_id=True).lower()
 
             if raw_target in (c_name, c_role, c_id) or c_role in raw_target or c_id in raw_target:
@@ -913,7 +954,11 @@ def enrich_timeline_dialogue_speakers(
     """
     if not diag_raw or not isinstance(diag_raw, str) or not diag_raw.strip():
         return diag_raw, False
-    has_narrator = bool(re.search(r"\bNarrator\s*(?:\(Voiceover\)|\(VO\))?\s*(?:says)?\s*:", diag_raw, re.IGNORECASE))
+    has_narrator = bool(
+        re.search(
+            r"\bNarrator\s*(?:\(Voiceover\)|\(VO\))?\s*(?:says)?\s*:", diag_raw, re.IGNORECASE
+        )
+    )
     if not characters:
         if has_narrator:
             enriched = re.sub(
@@ -929,25 +974,17 @@ def enrich_timeline_dialogue_speakers(
     for c in characters:
         c_id = get_character_identifier(c)
         c_name = str(
-            getattr(c, "name", "")
-            if not isinstance(c, dict)
-            else c.get("name", "") or ""
+            getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "") or ""
         ).strip()
         c_role = str(
-            getattr(c, "role_id", "")
-            if not isinstance(c, dict)
-            else c.get("role_id", "") or ""
+            getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "") or ""
         ).strip()
         c_voice_style = ensure_character_voice_style(c)
 
         tag_map = char_tag_map or {}
         tag = tag_map.get(c_id)
         if not tag:
-            tag = (
-                tag_map.get(c_id.lower())
-                or tag_map.get(c_name)
-                or tag_map.get(c_name.lower())
-            )
+            tag = tag_map.get(c_id.lower()) or tag_map.get(c_name) or tag_map.get(c_name.lower())
 
         if c_role and c_name:
             target_char_id = f"{c_role} - {c_name}"
@@ -1005,7 +1042,11 @@ def enrich_timeline_dialogue_speakers(
         return diag_raw, False
 
     pattern = re.compile(
-        r"(?:\[(" + "|".join(pattern_parts) + r")\]|(?:\b)(" + "|".join(pattern_parts) + r")(?:\s*says)?\s*:)",
+        r"(?:\[("
+        + "|".join(pattern_parts)
+        + r")\]|(?:\b)("
+        + "|".join(pattern_parts)
+        + r")(?:\s*says)?\s*:)",
         flags=re.IGNORECASE,
     )
 
@@ -1075,14 +1116,10 @@ def parse_timecoded_script(
             tc_str = f"[{match.group(1)}-{match.group(2)}s]"
 
             block_start_idx = match.end()
-            block_end_idx = (
-                matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
-            )
+            block_end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
             block_content = script_text[block_start_idx:block_end_idx].strip()
 
-            if any(
-                k in block_content.upper() for k in ("ACTION:", "DIALOGUE:", "AUDIO:")
-            ):
+            if any(k in block_content.upper() for k in ("ACTION:", "DIALOGUE:", "AUDIO:")):
                 action_match = re.search(
                     r"ACTION:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)",
                     block_content,
@@ -1099,21 +1136,9 @@ def parse_timecoded_script(
                     re.IGNORECASE | re.DOTALL,
                 )
 
-                act = (
-                    action_match.group(1).strip().replace("\n", " ")
-                    if action_match
-                    else ""
-                )
-                diag = (
-                    dialogue_match.group(1).strip().replace("\n", " ")
-                    if dialogue_match
-                    else ""
-                )
-                aud = (
-                    audio_match.group(1).strip().replace("\n", " ")
-                    if audio_match
-                    else ""
-                )
+                act = action_match.group(1).strip().replace("\n", " ") if action_match else ""
+                diag = dialogue_match.group(1).strip().replace("\n", " ") if dialogue_match else ""
+                aud = audio_match.group(1).strip().replace("\n", " ") if audio_match else ""
 
                 roles: list[str] = []
                 if diag and ":" in diag:
@@ -1161,9 +1186,7 @@ def parse_timecoded_script(
 
         for idx, line in enumerate(lines):
             tc_info = default_tcs[min(idx, len(default_tcs) - 1)]
-            parsed = parse_screenplay_script(
-                line, characters=characters, char_tag_map=char_tag_map
-            )
+            parsed = parse_screenplay_script(line, characters=characters, char_tag_map=char_tag_map)
             blocks.append(
                 {
                     "timecode": tc_info[0],
@@ -1236,18 +1259,14 @@ class PromptCompiler:
         from omnimash.config import settings
 
         self.mock_mode = (
-            mock_mode
-            if mock_mode is not None
-            else getattr(settings, "mock_mode", False)
+            mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
         self._pro_global_client: Any = None
         self._flash_regional_client: Any = None
         if not self.mock_mode:
             self._init_deconstructor_clients()
 
-    def optimize_prompt_for_omni_flash(
-        self, compiled_prompt: str, use_llm: bool = False
-    ) -> str:
+    def optimize_prompt_for_omni_flash(self, compiled_prompt: str, use_llm: bool = False) -> str:
         """Optimizes a compiled prompt string for Gemini Omni Flash generation."""
         optimizer = PromptOptimizer(compiler=self)
         return optimizer.optimize(compiled_prompt, use_llm=use_llm)
@@ -1384,7 +1403,7 @@ class PromptCompiler:
 
                         chars.append(
                             CharacterRole(
-                                role_id=c_data.get("role_id", f"Role {chr(65+idx)}"),
+                                role_id=c_data.get("role_id", f"Role {chr(65 + idx)}"),
                                 name=c_data.get(
                                     "name",
                                     fb_char.name if fb_char else "Lead Subject",
@@ -1401,20 +1420,11 @@ class PromptCompiler:
                             )
                         )
 
-                aesthetic_tags = (
-                    data.get("aesthetic_tags") or fallback_tags.aesthetic_tags
-                )
-                env_tag = (
-                    data.get("environment_tag") or fallback_tags.environment_tag
-                )
-                cam_tag = (
-                    data.get("camera_lighting_tag")
-                    or fallback_tags.camera_lighting_tag
-                )
+                aesthetic_tags = data.get("aesthetic_tags") or fallback_tags.aesthetic_tags
+                env_tag = data.get("environment_tag") or fallback_tags.environment_tag
+                cam_tag = data.get("camera_lighting_tag") or fallback_tags.camera_lighting_tag
                 audio_beat = data.get("audio_beat") or fallback_tags.audio_beat
-                vocal_delivery = (
-                    data.get("vocal_delivery") or fallback_tags.vocal_delivery
-                )
+                vocal_delivery = data.get("vocal_delivery") or fallback_tags.vocal_delivery
 
                 return MetaPromptTags(
                     characters=chars,
@@ -1458,9 +1468,7 @@ class PromptCompiler:
                 break
 
         # 2. Resolve Style Signifiers
-        preset_key = str(
-            style_preset.value if hasattr(style_preset, "value") else style_preset
-        )
+        preset_key = str(style_preset.value if hasattr(style_preset, "value") else style_preset)
         style_info = AESTHETIC_SIGNIFIERS.get(
             preset_key,
             AESTHETIC_SIGNIFIERS["90s_rap_video"],
@@ -1571,9 +1579,7 @@ class PromptCompiler:
 
         raw_prompt_clean = raw_prompt
         extracted_raw_dialogue: str | None = None
-        if raw_prompt and (
-            "dialogue" in raw_prompt.lower() or "voiceover" in raw_prompt.lower()
-        ):
+        if raw_prompt and ("dialogue" in raw_prompt.lower() or "voiceover" in raw_prompt.lower()):
             match = re.search(
                 r"-\s*(?:Dialogue\s*/\s*Text\s*Overlay|Dialogue|Voiceover):\s*(.*)",
                 raw_prompt,
@@ -1604,9 +1610,7 @@ class PromptCompiler:
         )
 
         audio_components = [
-            comp
-            for comp in [audio_stem, scene_audio, parsed_audio]
-            if comp and comp.strip()
+            comp for comp in [audio_stem, scene_audio, parsed_audio] if comp and comp.strip()
         ]
         effective_audio_stem = ". ".join(audio_components) if audio_components else None
 
@@ -1620,9 +1624,7 @@ class PromptCompiler:
             ]
             if comp and comp.strip()
         ]
-        effective_voiceover = (
-            " / ".join(dialogue_components) if dialogue_components else None
-        )
+        effective_voiceover = " / ".join(dialogue_components) if dialogue_components else None
 
         parts = self.compile(
             raw_prompt=effective_raw_prompt,
@@ -1667,13 +1669,9 @@ class PromptCompiler:
                     )
                 else:
                     style_str = (
-                        f" [Style: {', '.join(char.aesthetic_tags)}]"
-                        if char.aesthetic_tags
-                        else ""
+                        f" [Style: {', '.join(char.aesthetic_tags)}]" if char.aesthetic_tags else ""
                     )
-                    char_profiles.append(
-                        f"- {char_id}{tag_str}: {char.description}{style_str}"
-                    )
+                    char_profiles.append(f"- {char_id}{tag_str}: {char.description}{style_str}")
 
         parts.input_roles = input_roles
         parts.character_profiles = char_profiles
@@ -1708,9 +1706,7 @@ class PromptCompiler:
                 aud_cue = pb["audio_cues"] or effective_audio_stem or sound_desc
                 diag = pb["dialogue"]
 
-                audio_str = (
-                    f" Audio: {aud_cue}." if aud_cue else f" Audio: {sound_desc}."
-                )
+                audio_str = f" Audio: {aud_cue}." if aud_cue else f" Audio: {sound_desc}."
                 diag_str = ""
                 if diag:
                     if "narrator" in diag.lower():
@@ -1820,7 +1816,9 @@ class PromptCompiler:
 
         char_profiles: list[str] = []
         for char in characters:
-            char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
+            char_id = get_character_identifier(
+                char, enable_sanitization=enable_sanitization, use_role_id=True
+            )
             tag = char_tag_map.get(char_id)
             tag_str = f" {tag}" if tag else ""
 
@@ -1830,26 +1828,18 @@ class PromptCompiler:
                 )
             else:
                 style_str = (
-                    f" [Style: {', '.join(char.aesthetic_tags)}]"
-                    if char.aesthetic_tags
-                    else ""
+                    f" [Style: {', '.join(char.aesthetic_tags)}]" if char.aesthetic_tags else ""
                 )
                 if enable_sanitization:
-                    desc_clean = (
-                        sanitize_real_names(char.description) if char.description else ""
-                    )
+                    desc_clean = sanitize_real_names(char.description) if char.description else ""
                 else:
                     desc_clean = char.description or ""
                 v_style = ensure_character_voice_style(char, concept)
                 voice_str = f" [Voice Style: {v_style.strip()}]"
-                char_profiles.append(
-                    f"- {char_id}{tag_str}: {desc_clean}{style_str}{voice_str}"
-                )
+                char_profiles.append(f"- {char_id}{tag_str}: {desc_clean}{style_str}{voice_str}")
 
         input_roles_str = "\n".join(input_roles).strip() if input_roles else "None."
-        char_profiles_str = (
-            "\n".join(char_profiles).strip() if char_profiles else "None."
-        )
+        char_profiles_str = "\n".join(char_profiles).strip() if char_profiles else "None."
 
         scene_inst_parts: list[str] = []
         if concept and concept.strip():
@@ -1867,9 +1857,7 @@ class PromptCompiler:
                 f"- Medium & Aesthetic Style: Shot strictly in the exact artistic medium of Attached Image #1 (<FIRST_FRAME>@KeyframeSeed): {sp_clean}. Maintain 100% visual texture and animation medium continuity with <FIRST_FRAME>@KeyframeSeed, rendering all movement, characters, and environment strictly in {sp_clean} with zero photorealistic texture bleeding."
             )
 
-        scene_inst_parts.append(
-            "Camera & Lighting: In a single continuous shot. No scene cuts."
-        )
+        scene_inst_parts.append("Camera & Lighting: In a single continuous shot. No scene cuts.")
         if aspect_ratio and aspect_ratio.strip():
             scene_inst_parts.append(f"- Aspect Ratio: {aspect_ratio.strip()}")
 
@@ -1916,11 +1904,7 @@ class PromptCompiler:
             )
             if match:
                 raw_extracted = (
-                    match.group(1)
-                    or match.group(2)
-                    or match.group(3)
-                    or match.group(4)
-                    or ""
+                    match.group(1) or match.group(2) or match.group(3) or match.group(4) or ""
                 ).strip()
                 if raw_extracted:
                     custom_audio_soundscape = raw_extracted
@@ -1956,13 +1940,13 @@ class PromptCompiler:
 
         for char in characters:
             if not getattr(char, "is_offscreen_narrator", False):
-                char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
+                char_id = get_character_identifier(
+                    char, enable_sanitization=enable_sanitization, use_role_id=True
+                )
                 tag = char_tag_map.get(char_id)
                 tag_str = f" {tag}" if tag else ""
                 v_style = ensure_character_voice_style(char, concept)
-                scene_inst_parts.append(
-                    f"Voice Style ({char_id}{tag_str}): {v_style.strip()}"
-                )
+                scene_inst_parts.append(f"Voice Style ({char_id}{tag_str}): {v_style.strip()}")
         if vocal_delivery and vocal_delivery.strip():
             scene_inst_parts.append(
                 f"Global Vocal Delivery: {vocal_delivery.strip()} (Note: Individual character Voice Styles take precedence over global delivery)."
@@ -1972,9 +1956,7 @@ class PromptCompiler:
         )
 
         scene_instructions_str = (
-            "\n".join(scene_inst_parts)
-            if scene_inst_parts
-            else "Default Scene Instructions."
+            "\n".join(scene_inst_parts) if scene_inst_parts else "Default Scene Instructions."
         )
 
         timeline_lines: list[str] = []
@@ -1997,7 +1979,9 @@ class PromptCompiler:
                     for c in characters:
                         c_role = getattr(c, "role_id", "")
                         c_name = getattr(c, "name", "")
-                        c_id = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
+                        c_id = get_character_identifier(
+                            c, enable_sanitization=enable_sanitization, use_role_id=True
+                        )
                         if r_str.lower() in (
                             c_role.lower(),
                             c_name.lower(),
@@ -2006,7 +1990,9 @@ class PromptCompiler:
                             matched_c = c
                             break
                 if matched_c:
-                    c_id = get_character_identifier(matched_c, enable_sanitization=enable_sanitization, use_role_id=True)
+                    c_id = get_character_identifier(
+                        matched_c, enable_sanitization=enable_sanitization, use_role_id=True
+                    )
                     tag = char_tag_map.get(c_id)
                     tag_str = f" {tag}" if tag else ""
                     roles_list.append(f"{c_id}{tag_str}")
@@ -2036,9 +2022,7 @@ class PromptCompiler:
             timecode_prefix = ""
             if tc_val and str(tc_val).strip():
                 tc_clean = str(tc_val).strip()
-                timecode_prefix = (
-                    f"{tc_clean} " if tc_clean.startswith("[") else f"[{tc_clean}] "
-                )
+                timecode_prefix = f"{tc_clean} " if tc_clean.startswith("[") else f"[{tc_clean}] "
             elif len(scenes) == 1:
                 dur_int = (
                     int(dur_val)
@@ -2052,11 +2036,12 @@ class PromptCompiler:
                     sp_text, characters=characters, char_tag_map=char_tag_map
                 )
                 if parsed.get("audio_cues"):
-                    timeline_lines.append(
-                        f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}"
-                    )
+                    timeline_lines.append(f"Scene {scene_num} Audio Cues: {parsed['audio_cues']}")
                 enriched_sp_text, _ = enrich_timeline_dialogue_speakers(
-                    sp_text.strip(), characters, char_tag_map, enable_sanitization=enable_sanitization
+                    sp_text.strip(),
+                    characters,
+                    char_tag_map,
+                    enable_sanitization=enable_sanitization,
                 )
                 indented_script = "\n".join(
                     f"  {line}" for line in enriched_sp_text.strip().splitlines()
@@ -2119,13 +2104,11 @@ class PromptCompiler:
                         ).strip()
                         diag_parts.append(f'Narrator (VO) says: "{clean_d}"')
                     else:
-                        enriched_diag, replaced_speakers = (
-                            enrich_timeline_dialogue_speakers(
-                                diag_raw=diag_raw,
-                                characters=characters,
-                                char_tag_map=char_tag_map,
-                                enable_sanitization=enable_sanitization,
-                            )
+                        enriched_diag, replaced_speakers = enrich_timeline_dialogue_speakers(
+                            diag_raw=diag_raw,
+                            characters=characters,
+                            char_tag_map=char_tag_map,
+                            enable_sanitization=enable_sanitization,
                         )
                         if replaced_speakers:
                             diag_parts.append(enriched_diag)
@@ -2182,7 +2165,12 @@ class PromptCompiler:
             else:
                 characters = list(characters)
             has_last = any(
-                (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", "")) in ("Ending Frame", "Keyframe Last Anchor")
+                (
+                    getattr(c, "image_role", "")
+                    if not isinstance(c, dict)
+                    else c.get("image_role", "")
+                )
+                in ("Ending Frame", "Keyframe Last Anchor")
                 for c in characters
             )
             if not has_last:
@@ -2368,9 +2356,7 @@ class PromptCompiler:
                     "samurai": "Stoic disciplined hip-hop cadence with sharp precision",
                     "ninja": "Fast whisper-rap flow with rhythmic syncopation",
                 }
-                return voice_map.get(
-                    k, "Fast-paced rhythmic rap cadence with confident delivery"
-                )
+                return voice_map.get(k, "Fast-paced rhythmic rap cadence with confident delivery")
             elif any(
                 t in lower
                 for t in (
@@ -2409,9 +2395,7 @@ class PromptCompiler:
                     "samurai": "Deep honorable warrior voice with classic anime dub inflection",
                     "ninja": "Quiet masked assassin voice with sharp dramatic whispers",
                 }
-                return voice_map.get(
-                    k, "Expressive retro anime dub voice with dramatic flair"
-                )
+                return voice_map.get(k, "Expressive retro anime dub voice with dramatic flair")
             elif any(
                 t in lower
                 for t in (
@@ -2553,12 +2537,7 @@ class PromptCompiler:
             vocal_delivery = "High-energy back-and-forth rap battle delivery with synchronized lip-sync and punchy cadence"
             env_tag = (
                 "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze"
-                if (
-                    "harry" in lower
-                    or "draco" in lower
-                    or "hogwarts" in lower
-                    or "snape" in lower
-                )
+                if ("harry" in lower or "draco" in lower or "hogwarts" in lower or "snape" in lower)
                 else "Urban street alley with neon stage lights and atmospheric fog"
             )
             cam_tag = "Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights"
@@ -2578,15 +2557,12 @@ class PromptCompiler:
                 "Anamorphic Lens Flare",
             ]
             audio_beat = "110 BPM Cyberpunk Synthwave Groove"
-            vocal_delivery = "Futuristic vocoded dialogue with sharp synthesized delivery and spatial reverb"
+            vocal_delivery = (
+                "Futuristic vocoded dialogue with sharp synthesized delivery and spatial reverb"
+            )
             env_tag = (
                 "Futuristic neon kitchen colosseum with holographic spectator screens"
-                if (
-                    "chef" in lower
-                    or "ramsay" in lower
-                    or "julia" in lower
-                    or "kitchen" in lower
-                )
+                if ("chef" in lower or "ramsay" in lower or "julia" in lower or "kitchen" in lower)
                 else "Neon-lit cyberpunk arcade showdown arena"
             )
             cam_tag = "Anamorphic widescreen tracking shot with high-gloss neon reflections and holographic bloom"
@@ -2600,9 +2576,7 @@ class PromptCompiler:
             audio_beat = "85 BPM VHS Lo-Fi City Pop"
             vocal_delivery = "Expressive 80s anime dub voiceover with dramatic dynamic range and emotional emphasis"
             env_tag = "Retro 80s anime cityscape bathed in sunset pastel lighting"
-            cam_tag = (
-                "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
-            )
+            cam_tag = "Retro 4:3 VHS tape framing with chromatic aberration and warm bloom"
         elif any(
             t in lower
             for t in (
@@ -2621,8 +2595,12 @@ class PromptCompiler:
                 "Atmospheric Haze",
             ]
             audio_beat = "90 BPM Dark Atmospheric Ambient Synth"
-            vocal_delivery = "Low brooding resonant delivery with solemn theatrical pauses and dark echo"
-            env_tag = "Ancient stone castle chamber illuminated by flickering candlelight and moonlit fog"
+            vocal_delivery = (
+                "Low brooding resonant delivery with solemn theatrical pauses and dark echo"
+            )
+            env_tag = (
+                "Ancient stone castle chamber illuminated by flickering candlelight and moonlit fog"
+            )
             cam_tag = "Cinematic 16:9 slow push-in tracking shot with high-contrast shadows and moody rim lighting"
         elif any(t in lower for t in ("western", "cowboy", "outlaw", "saloon")):
             aesthetic_tags = [
@@ -2633,8 +2611,12 @@ class PromptCompiler:
             ]
             audio_beat = "100 BPM Spaghetti Western Guitar & Whistle"
             vocal_delivery = "Grit-textured drawl with quiet intense projection and slow cadence"
-            env_tag = "Sun-scorched frontier desert town with dusty wooden storefronts and harsh sunlight"
-            cam_tag = "Widescreen 2.39:1 low-angle tracking shot with intense sun flares and heat shimmer"
+            env_tag = (
+                "Sun-scorched frontier desert town with dusty wooden storefronts and harsh sunlight"
+            )
+            cam_tag = (
+                "Widescreen 2.39:1 low-angle tracking shot with intense sun flares and heat shimmer"
+            )
         elif any(t in lower for t in ("noir", "detective", "mystery")):
             aesthetic_tags = [
                 "1940s Classic Film Noir",
@@ -2706,7 +2688,9 @@ class CumulativeShotState:
 def validate_compiled_prompt(prompt_text: str) -> None:
     """Validates that prompt text payload adheres to Gemini Omni Flash anchor rules."""
     if "<LAST_FRAME>" in prompt_text and "<FIRST_FRAME>" not in prompt_text:
-        raise ValueError("<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor in prompt payload.")
+        raise ValueError(
+            "<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor in prompt payload."
+        )
 
 
 def compile_journey3_shot_prompt(
@@ -2717,7 +2701,7 @@ def compile_journey3_shot_prompt(
     character_roster: str = "",
     timeline_dialogue: str = "",
     enable_sanitization: bool = True,
-    characters: list[CharacterRole] | list[dict[str, Any]] | None = None,
+    characters: list[Any] | None = None,
     audio_mode: str = "global",
     audio_stem: str | None = None,
     global_audio_beat: str | None = None,
@@ -2745,21 +2729,22 @@ def compile_journey3_shot_prompt(
         last_frame_image_url = keyframe_image_url.strip()
 
     if last_frame_image_url and last_frame_image_url.strip():
-        if characters is None:
-            characters = []
-        else:
-            characters = list(characters)
+        char_list: list[Any] = list(characters) if characters is not None else []
         has_last = any(
-            (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", "")) in ("Ending Frame", "Keyframe Last Anchor")
-            for c in characters
+            (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", ""))
+            in ("Ending Frame", "Keyframe Last Anchor")
+            for c in char_list
         )
         if not has_last:
-            characters.append({
-                "name": "Ending Frame Anchor",
-                "role_id": "Ending Frame",
-                "image_role": "Ending Frame",
-                "reference_url": last_frame_image_url.strip(),
-            })
+            char_list.append(
+                {
+                    "name": "Ending Frame Anchor",
+                    "role_id": "Ending Frame",
+                    "image_role": "Ending Frame",
+                    "reference_url": last_frame_image_url.strip(),
+                }
+            )
+        characters = char_list
 
     if characters:
         apply_conversational_voice_edits(action_directive, characters)
@@ -2767,7 +2752,9 @@ def compile_journey3_shot_prompt(
             char_lines: list[str] = []
         ref_idx = 1
         for char in characters:
-            char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
+            char_id = get_character_identifier(
+                char, enable_sanitization=enable_sanitization, use_role_id=True
+            )
             ref_url = (
                 getattr(char, "reference_url", None)
                 if not isinstance(char, dict)
@@ -2794,9 +2781,7 @@ def compile_journey3_shot_prompt(
             style_val = ""
             if aesthetic_tags:
                 if isinstance(aesthetic_tags, list):
-                    style_val = ", ".join(
-                        str(t).strip() for t in aesthetic_tags if str(t).strip()
-                    )
+                    style_val = ", ".join(str(t).strip() for t in aesthetic_tags if str(t).strip())
                 else:
                     style_val = str(aesthetic_tags).strip()
             style_str = f" [Style: {style_val}]" if style_val else ""
@@ -2847,7 +2832,6 @@ def compile_journey3_shot_prompt(
         roster_str = prefix_sources + (roster_str if roster_str != "None." else "")
         roster_str = roster_str.strip()
 
-
     action_str = action_directive.strip()
     if enable_sanitization and action_str:
         action_str = sanitize_real_names(action_str)
@@ -2864,7 +2848,9 @@ def compile_journey3_shot_prompt(
             if ref_url and isinstance(ref_url, str) and ref_url.strip():
                 tag = f"@Image{img_idx}"
                 img_idx += 1
-                char_id = get_character_identifier(char, enable_sanitization=enable_sanitization, use_role_id=True)
+                char_id = get_character_identifier(
+                    char, enable_sanitization=enable_sanitization, use_role_id=True
+                )
                 role_id = str(
                     getattr(char, "role_id", "")
                     if not isinstance(char, dict)
@@ -2876,9 +2862,15 @@ def compile_journey3_shot_prompt(
                     else char.get("name", "") or ""
                 ).strip()
 
-                name_clean = (sanitize_real_names(name) if name else "") if enable_sanitization else name
+                name_clean = (
+                    (sanitize_real_names(name) if name else "") if enable_sanitization else name
+                )
                 base_name = re.sub(r"\s*\(.*?\)", "", name).strip() if name else ""
-                base_name_clean = (sanitize_real_names(base_name) if base_name else "") if enable_sanitization else base_name
+                base_name_clean = (
+                    (sanitize_real_names(base_name) if base_name else "")
+                    if enable_sanitization
+                    else base_name
+                )
 
                 for k in (char_id, role_id, name, name_clean, base_name, base_name_clean):
                     if k and k.strip():
@@ -2922,12 +2914,20 @@ def compile_journey3_shot_prompt(
         tc_val = title_card_text.strip()
         if enable_sanitization:
             tc_val = sanitize_real_names(tc_val)
-        sub_str = f' (Subtitle: "{sanitize_real_names(title_card_subtitle.strip()) if enable_sanitization else title_card_subtitle.strip()}")' if title_card_subtitle and title_card_subtitle.strip() else ""
+        sub_str = (
+            f' (Subtitle: "{sanitize_real_names(title_card_subtitle.strip()) if enable_sanitization else title_card_subtitle.strip()}")'
+            if title_card_subtitle and title_card_subtitle.strip()
+            else ""
+        )
         timeline_items.append(f'- On-Screen Displayed Text / Title Card: "{tc_val}"{sub_str}')
 
     if narrator_text and narrator_text.strip():
         n_val = narrator_text.strip()
-        v_val = narrator_voice.strip() if narrator_voice and narrator_voice.strip() else "Deep Cinematic Voice"
+        v_val = (
+            narrator_voice.strip()
+            if narrator_voice and narrator_voice.strip()
+            else "Deep Cinematic Voice"
+        )
         if enable_sanitization:
             n_val = sanitize_real_names(n_val)
             v_val = sanitize_real_names(v_val)
@@ -2943,20 +2943,30 @@ def compile_journey3_shot_prompt(
             if sd_match:
                 spk = sd_match.group(1).strip()
                 txt = sd_match.group(2).strip()
-                txt_clean = txt.strip('"').strip("'").strip('“').strip('”')
+                txt_clean = txt.strip('"').strip("'").strip("“").strip("”")
                 matched_spk: str | None = None
                 matched_char_obj = None
                 if characters:
                     spk_lower = spk.lower()
                     for c in characters:
-                        c_name = str(getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "") or "").strip()
-                        c_role = str(getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "") or "").strip()
+                        c_name = str(
+                            getattr(c, "name", "")
+                            if not isinstance(c, dict)
+                            else c.get("name", "") or ""
+                        ).strip()
+                        c_role = str(
+                            getattr(c, "role_id", "")
+                            if not isinstance(c, dict)
+                            else c.get("role_id", "") or ""
+                        ).strip()
                         if (
                             spk_lower in (c_name.lower(), c_role.lower())
                             or (c_name and c_name.lower() in spk_lower)
                             or (c_role and c_role.lower() in spk_lower)
                         ):
-                            matched_spk = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
+                            matched_spk = get_character_identifier(
+                                c, enable_sanitization=enable_sanitization, use_role_id=True
+                            )
                             matched_char_obj = c
                             break
                 if not matched_spk:
@@ -2966,11 +2976,15 @@ def compile_journey3_shot_prompt(
 
                 voice_tag = ""
                 if matched_char_obj:
-                    v_style = ensure_character_voice_style(matched_char_obj, concept=action_directive)
+                    v_style = ensure_character_voice_style(
+                        matched_char_obj, concept=action_directive
+                    )
                     v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
                     voice_tag = f" [Voice Style: {v_clean}]"
 
-                timeline_items.append(f'- Spoken Dialogue ({matched_spk}){voice_tag}: "{txt_clean}"')
+                timeline_items.append(
+                    f'- Spoken Dialogue ({matched_spk}){voice_tag}: "{txt_clean}"'
+                )
                 continue
 
             match = re.match(r"^(?:-\s*)?([^:]+):\s*[\"“]?(.*?)[\"”]?$", chunk)
@@ -2978,7 +2992,7 @@ def compile_journey3_shot_prompt(
                 spk = match.group(1).strip()
                 txt = match.group(2).strip()
                 spk = re.sub(r"\s+says$", "", spk, flags=re.IGNORECASE).strip()
-                txt_clean = txt.strip('"').strip("'").strip('“').strip('”')
+                txt_clean = txt.strip('"').strip("'").strip("“").strip("”")
 
                 matched_char_id: str | None = None
                 matched_char_obj = None
@@ -3014,15 +3028,21 @@ def compile_journey3_shot_prompt(
 
                 voice_tag = ""
                 if matched_char_obj:
-                    v_style = ensure_character_voice_style(matched_char_obj, concept=action_directive)
+                    v_style = ensure_character_voice_style(
+                        matched_char_obj, concept=action_directive
+                    )
                     v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
                     voice_tag = f" [Voice Style: {v_clean}]"
 
-                timeline_items.append(f'- Spoken Dialogue ({matched_char_id}){voice_tag}: "{txt_clean}"')
+                timeline_items.append(
+                    f'- Spoken Dialogue ({matched_char_id}){voice_tag}: "{txt_clean}"'
+                )
             else:
-                txt_clean = chunk.strip('"').strip("'").strip('“').strip('”')
+                txt_clean = chunk.strip('"').strip("'").strip("“").strip("”")
                 if characters and len(characters) == 1:
-                    spk_id = get_character_identifier(characters[0], enable_sanitization=enable_sanitization)
+                    spk_id = get_character_identifier(
+                        characters[0], enable_sanitization=enable_sanitization
+                    )
                     v_style = ensure_character_voice_style(characters[0], concept=action_directive)
                     v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
                     voice_tag = f" [Voice Style: {v_clean}]"
@@ -3036,7 +3056,9 @@ def compile_journey3_shot_prompt(
     if resolved_audio:
         if resolved_audio.startswith("Silent video") or resolved_audio.startswith("Audio:"):
             timeline_items.append(
-                resolved_audio if resolved_audio.startswith("Audio:") else f"Audio: {resolved_audio}"
+                resolved_audio
+                if resolved_audio.startswith("Audio:")
+                else f"Audio: {resolved_audio}"
             )
         else:
             timeline_items.append(f"Audio: {resolved_audio}")
@@ -3062,7 +3084,9 @@ def compile_journey3_shot_prompt(
     if characters:
         for c in characters:
             v_style = ensure_character_voice_style(c, concept=action_directive)
-            c_id = get_character_identifier(c, enable_sanitization=enable_sanitization, use_role_id=True)
+            c_id = get_character_identifier(
+                c, enable_sanitization=enable_sanitization, use_role_id=True
+            )
             v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
             scene_inst_items.append(f"- Voice Style ({c_id}): {v_clean}")
 
@@ -3085,5 +3109,3 @@ def compile_journey3_shot_prompt(
     res = f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
     validate_compiled_prompt(res)
     return res
-
-

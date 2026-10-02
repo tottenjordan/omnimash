@@ -139,7 +139,7 @@ def _extract_character_dialogue(text: str) -> tuple[str, str | None, str | None]
                     )
                     if audio_match:
                         audio_part = audio_match.group(1).strip()
-                        paren_action = parenthetical_content[:audio_match.start()].strip()
+                        paren_action = parenthetical_content[: audio_match.start()].strip()
                     else:
                         paren_action = parenthetical_content
 
@@ -188,11 +188,13 @@ def parse_timecoded_script(
             text_start = m.end()
             text_end = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
             block = script_text[text_start:text_end].strip()
-            raw_blocks.append({
-                "start_t": start_t,
-                "end_t": end_t,
-                "block": block,
-            })
+            raw_blocks.append(
+                {
+                    "start_t": start_t,
+                    "end_t": end_t,
+                    "block": block,
+                }
+            )
     else:
         clean_text = re.sub(
             r"\[\s*DIRECTOR['’]?S\s+NOTES\s*\][\s\S]*?(?=\[\s*\d|\Z)",
@@ -201,11 +203,13 @@ def parse_timecoded_script(
             flags=re.IGNORECASE,
         ).strip()
         if clean_text:
-            raw_blocks.append({
-                "start_t": 0.0,
-                "end_t": float(default_duration),
-                "block": clean_text,
-            })
+            raw_blocks.append(
+                {
+                    "start_t": 0.0,
+                    "end_t": float(default_duration),
+                    "block": clean_text,
+                }
+            )
 
     if not raw_blocks:
         return []
@@ -376,9 +380,7 @@ def parse_timecoded_script(
     return results
 
 
-def _format_character_references(
-    text: str, characters: list[CharacterRole] | None
-) -> str:
+def _format_character_references(text: str, characters: list[CharacterRole] | None) -> str:
     """Ensures character roles are referenced as Role A (Name) in directives."""
     if not text or not characters:
         return text
@@ -405,9 +407,7 @@ def _ensure_continuous_shot(framing_motion: str) -> str:
     if "in a single continuous shot" in framing_motion.lower():
         return framing_motion.replace(
             "In a single continuous shot", "In a single continuous shot. No scene cuts"
-        ).replace(
-            "in a single continuous shot", "in a single continuous shot. No scene cuts"
-        )
+        ).replace("in a single continuous shot", "in a single continuous shot. No scene cuts")
     return f"In a single continuous shot. No scene cuts. {framing_motion}"
 
 
@@ -427,7 +427,9 @@ class StoryboardShot:
     narrative_stage: str = "Rising Action"
     preceding_context: str = ""
     camera_transition: str = "Continuous match cut"
-    character_continuity: str = "Maintain subject outfit, posture, and facial expression from preceding shot"
+    character_continuity: str = (
+        "Maintain subject outfit, posture, and facial expression from preceding shot"
+    )
     audio_mode: str = "global"
     soundscape: str | None = None
 
@@ -454,6 +456,7 @@ class StoryboardShot:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StoryboardShot:
+        end_sec_val = data.get("end_seconds")
         return cls(
             shot_index=int(data.get("shot_index", 1)),
             duration_seconds=float(data.get("duration_seconds", 10.0)),
@@ -465,7 +468,7 @@ class StoryboardShot:
             summary=str(data.get("summary", "")),
             dialogue=str(data.get("dialogue", "")),
             start_seconds=float(data.get("start_seconds", 0.0)),
-            end_seconds=float(data.get("end_seconds")) if data.get("end_seconds") is not None else None,
+            end_seconds=float(end_sec_val) if end_sec_val is not None else None,
             narrative_stage=str(data.get("narrative_stage", "Rising Action")),
             preceding_context=str(data.get("preceding_context", "")),
             camera_transition=str(data.get("camera_transition", "Continuous match cut")),
@@ -521,7 +524,9 @@ class StoryboardAgent:
     def __init__(self, mock_mode: bool | None = None) -> None:
         from omnimash.config import settings
 
-        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
+        self.mock_mode = (
+            mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
+        )
         self._genai_client: Any = None
         if not self.mock_mode:
             self._init_genai_client()
@@ -549,9 +554,7 @@ class StoryboardAgent:
                     location="us-central1",
                 )
         except Exception as exc:
-            logger.warning(
-                "StoryboardAgent failed to initialize GenAI client: %s", exc
-            )
+            logger.warning("StoryboardAgent failed to initialize GenAI client: %s", exc)
             self._genai_client = None
 
     def _generate_mock_shots(
@@ -713,17 +716,22 @@ class StoryboardAgent:
         """Expands a vision concept into 3-6 distinct <=10s shot directives formatted in Gemini Omni Flash timing blocks."""
         shots: list[StoryboardShot] = []
         from omnimash.prompts.compiler import PromptCompiler
+
         derived = PromptCompiler().deconstruct_concept(concept) if concept else None
-        env_default = (derived.environment_tag if derived and getattr(derived, "environment_tag", None) else None) or f"{concept} setting"
+        env_default = (
+            derived.environment_tag
+            if derived and getattr(derived, "environment_tag", None)
+            else None
+        ) or f"{concept} setting"
         lighting_default = (
-            (derived.camera_lighting_tag if derived and getattr(derived, "camera_lighting_tag", None) else None)
-            or f"{style_tone}, cinematic high-contrast lighting"
-        )
+            derived.camera_lighting_tag
+            if derived and getattr(derived, "camera_lighting_tag", None)
+            else None
+        ) or f"{style_tone}, cinematic high-contrast lighting"
         framing_default = "Static medium shot with subtle handheld drift"
         audio_default = (
-            (derived.audio_beat if derived and getattr(derived, "audio_beat", None) else None)
-            or "Slow heavy 808 trap beat with sub-bass"
-        )
+            derived.audio_beat if derived and getattr(derived, "audio_beat", None) else None
+        ) or "Slow heavy 808 trap beat with sub-bass"
 
         if screenplay_script and screenplay_script.strip():
             parsed_timecodes = parse_timecoded_script(
@@ -770,11 +778,7 @@ class StoryboardAgent:
                     formatted_audio = _format_character_references(audio_text, characters)
 
                     framing = _ensure_continuous_shot(tmpl[3])
-                    preceding_ctx = (
-                        shots[i - 1].summary or shots[i - 1].action
-                        if i > 0
-                        else ""
-                    )
+                    preceding_ctx = shots[i - 1].summary or shots[i - 1].action if i > 0 else ""
 
                     shots.append(
                         StoryboardShot(
@@ -810,9 +814,7 @@ class StoryboardAgent:
             num_shots = max(3, min(6, int(math.ceil(target_duration / 10.0))))
             char_info = ""
             if characters:
-                char_lines = [
-                    f"- {c.role_id} ({c.name}): {c.description}" for c in characters
-                ]
+                char_lines = [f"- {c.role_id} ({c.name}): {c.description}" for c in characters]
                 char_info = (
                     "\nCharacters:\n"
                     + "\n".join(char_lines)
@@ -899,15 +901,32 @@ class StoryboardAgent:
                             summary=sanitize_real_names(formatted_summary),
                             action=sanitize_real_names(formatted_action),
                             location=sanitize_real_names(formatted_location),
-                            style_lighting=sanitize_real_names(str(item.get("style_lighting", style_tone))),
+                            style_lighting=sanitize_real_names(
+                                str(item.get("style_lighting", style_tone))
+                            ),
                             framing_motion=sanitize_real_names(raw_framing),
                             audio=sanitize_real_names(str(item.get("audio", ""))),
-                            narrative_stage=sanitize_real_names(str(item.get("narrative_stage", "Rising Action"))),
-                            preceding_context=sanitize_real_names(str(item.get("preceding_context", ""))),
-                            camera_transition=sanitize_real_names(str(item.get("camera_transition", "Continuous match cut"))),
-                            character_continuity=sanitize_real_names(str(item.get("character_continuity", "Maintain subject outfit, posture, and facial expression from preceding shot"))),
+                            narrative_stage=sanitize_real_names(
+                                str(item.get("narrative_stage", "Rising Action"))
+                            ),
+                            preceding_context=sanitize_real_names(
+                                str(item.get("preceding_context", ""))
+                            ),
+                            camera_transition=sanitize_real_names(
+                                str(item.get("camera_transition", "Continuous match cut"))
+                            ),
+                            character_continuity=sanitize_real_names(
+                                str(
+                                    item.get(
+                                        "character_continuity",
+                                        "Maintain subject outfit, posture, and facial expression from preceding shot",
+                                    )
+                                )
+                            ),
                             audio_mode=str(item.get("audio_mode", "global")),
-                            soundscape=str(item.get("soundscape")) if item.get("soundscape") else None,
+                            soundscape=str(item.get("soundscape"))
+                            if item.get("soundscape")
+                            else None,
                         )
                     )
                 for shot in shots:
@@ -922,5 +941,3 @@ class StoryboardAgent:
         for shot in shots:
             shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
         return shots
-
-

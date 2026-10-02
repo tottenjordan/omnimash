@@ -54,7 +54,9 @@ def test_last_frame_without_first_frame_raises_value_error():
         ),
     ]
 
-    with pytest.raises(ValueError, match="<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor"):
+    with pytest.raises(
+        ValueError, match="<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor"
+    ):
         build_character_image_ref_tags(characters=chars, starting_index=1)
 
 
@@ -73,7 +75,9 @@ def test_validate_compiled_prompt_pairing_rule():
         "### SCENE INSTRUCTIONS\nEnvironment: Studio\n\n"
         "### TIMELINE\n[0-3s] Action: Transition."
     )
-    with pytest.raises(ValueError, match="<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor"):
+    with pytest.raises(
+        ValueError, match="<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor"
+    ):
         validate_compiled_prompt(invalid_prompt)
 
 
@@ -187,7 +191,9 @@ def test_compile_storyboard_with_last_frame_url():
             reference_url="http://example.com/hero.png",
         )
     ]
-    scenes = [SceneDirective(scene_number=1, active_roles=["Role A"], action="Start transformation")]
+    scenes = [
+        SceneDirective(scene_number=1, active_roles=["Role A"], action="Start transformation")
+    ]
 
     prompt = compiler.compile_storyboard(
         concept="Hero transforms",
@@ -198,4 +204,3 @@ def test_compile_storyboard_with_last_frame_url():
 
     assert "<FIRST_FRAME>@Image1" in prompt
     assert "<LAST_FRAME>@Image2" in prompt
-

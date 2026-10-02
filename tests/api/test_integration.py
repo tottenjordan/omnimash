@@ -377,8 +377,7 @@ def test_dashboard_ui_html_features() -> None:
     )
     assert "Shot Director (10-Second Video Clips)" in html
     assert (
-        "Direct individual 10-second video shots using Guided Mode or Screenplay Scripting."
-        in html
+        "Direct individual 10-second video shots using Guided Mode or Screenplay Scripting." in html
     )
     assert "Screenplay Mode" in html
     assert 'Character: (Action) "Dialogue"' in html

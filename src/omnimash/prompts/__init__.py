@@ -21,4 +21,3 @@ __all__ = [
     "StylePreset",
     "parse_screenplay_script",
 ]
-

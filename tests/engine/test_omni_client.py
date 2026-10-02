@@ -167,16 +167,12 @@ def test_dynamic_audio_synthesizer_genres() -> None:
     wav_path = "/tmp/test_dynamic_beat.wav"
 
     # 1. 140 BPM Drill
-    bpm_drill = _generate_dynamic_audio_wav(
-        wav_path, prompt="140 BPM UK Drill 808s", duration=1
-    )
+    bpm_drill = _generate_dynamic_audio_wav(wav_path, prompt="140 BPM UK Drill 808s", duration=1)
     assert bpm_drill == 140
     assert os.path.exists(wav_path)
 
     # 2. 85 BPM Anime Lo-Fi
-    bpm_anime = _generate_dynamic_audio_wav(
-        wav_path, prompt="VHS anime lo-fi city pop", duration=1
-    )
+    bpm_anime = _generate_dynamic_audio_wav(wav_path, prompt="VHS anime lo-fi city pop", duration=1)
     assert bpm_anime == 85
 
     # 3. 110 BPM Cyberpunk
@@ -214,9 +210,7 @@ def test_ensure_rendered_video_procedural_visualizer_fallback() -> None:
 def test_dynamic_audio_wav_ducks_instrumental_when_voiceover_present() -> None:
     wav_no_vo = "temp_beat_no_vo.wav"
     wav_vo = "temp_beat_vo.wav"
-    _generate_dynamic_audio_wav(
-        wav_no_vo, prompt="120 BPM boom-bap", voiceover=None, duration=1
-    )
+    _generate_dynamic_audio_wav(wav_no_vo, prompt="120 BPM boom-bap", voiceover=None, duration=1)
     _generate_dynamic_audio_wav(
         wav_vo, prompt="120 BPM boom-bap", voiceover="Gaunt wizard speaking", duration=1
     )
@@ -565,9 +559,7 @@ def test_load_reference_images_as_input_returns_base64_objects() -> None:
         client.storage,
         "download_blob_bytes",
         side_effect=lambda url: (
-            (b"fake_png_data", "image/png")
-            if "png" in url
-            else (b"fake_jpg_data", "image/jpeg")
+            (b"fake_png_data", "image/png") if "png" in url else (b"fake_jpg_data", "image/jpeg")
         ),
     ):
         imgs, char_map = client._load_reference_images_as_input(
@@ -639,8 +631,6 @@ def test_build_multimodal_contents_supports_video_keyframe_seed() -> None:
     assert user_content[0]["mime_type"] == "video/mp4"
 
 
-
-
 def test_fetch_image_bytes_handles_gcs_https_urls() -> None:
     """Verify _fetch_image_bytes converts https://storage.googleapis.com URLs to gs:// URIs and uses authenticated GCS download."""
     client = OmniFlashClient(mock_mode=True)
@@ -655,7 +645,9 @@ def test_fetch_image_bytes_handles_gcs_https_urls() -> None:
 
     assert bytes_out == b"fake_yo_totti_png_bytes"
     assert mime_out == "image/png"
-    mock_download.assert_called_once_with("gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/courtside_hype_v6/character_sheets/yo_totti_sheet_v1.png")
+    mock_download.assert_called_once_with(
+        "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/courtside_hype_v6/character_sheets/yo_totti_sheet_v1.png"
+    )
 
 
 def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
@@ -774,11 +766,14 @@ def test_apply_interaction_diff_with_keyframe_starting_image_seed(
     )
     client._genai_client = MagicMock(interactions=mock_interactions)
 
-    with patch.object(
-        client.storage,
-        "download_blob_bytes",
-        return_value=(b"fake_keyframe_bytes", "image/png"),
-    ), patch.object(client.storage, "upload_file"):
+    with (
+        patch.object(
+            client.storage,
+            "download_blob_bytes",
+            return_value=(b"fake_keyframe_bytes", "image/png"),
+        ),
+        patch.object(client.storage, "upload_file"),
+    ):
         gen_res = client.apply_interaction_diff(
             interaction_thread_id="inter_parent_111",
             diff_prompt="Change lighting to neon green",
@@ -806,9 +801,7 @@ def test_generate_keyframe_image_with_character_roster() -> None:
     mock_candidate = MagicMock(
         content=MagicMock(
             parts=[
-                MagicMock(
-                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
-                )
+                MagicMock(inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8")))
             ]
         )
     )
@@ -825,8 +818,9 @@ def test_generate_keyframe_image_with_character_roster() -> None:
         aesthetic_tags=["Cartier Glasses", "Oversized Tee"],
     )
 
-    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
-        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    with (
+        patch("google.genai.Client", return_value=mock_genai_client),
+        patch.object(client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")),
     ):
         res_url = client.generate_keyframe_image(
             prompt="Harry Potter in potion class",
@@ -856,9 +850,7 @@ def test_generate_keyframe_image_generic_prompt_retains_roster_references() -> N
     mock_candidate = MagicMock(
         content=MagicMock(
             parts=[
-                MagicMock(
-                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
-                )
+                MagicMock(inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8")))
             ]
         )
     )
@@ -880,8 +872,9 @@ def test_generate_keyframe_image_generic_prompt_retains_roster_references() -> N
         reference_url="gs://test-bucket/snape_ref.png",
     )
 
-    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
-        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    with (
+        patch("google.genai.Client", return_value=mock_genai_client),
+        patch.object(client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")),
     ):
         res_url = client.generate_keyframe_image(
             prompt="Everyone is just chillin'",
@@ -911,9 +904,7 @@ def test_generate_keyframe_image_with_anchor_seed() -> None:
     mock_candidate = MagicMock(
         content=MagicMock(
             parts=[
-                MagicMock(
-                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
-                )
+                MagicMock(inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8")))
             ]
         )
     )
@@ -936,8 +927,9 @@ def test_generate_keyframe_image_with_anchor_seed() -> None:
             return (b"char_bytes", "image/png")
         return (b"", "image/png")
 
-    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
-        client, "_fetch_image_bytes", side_effect=mock_fetch_bytes
+    with (
+        patch("google.genai.Client", return_value=mock_genai_client),
+        patch.object(client, "_fetch_image_bytes", side_effect=mock_fetch_bytes),
     ):
         res_url = client.generate_keyframe_image(
             prompt="Harry running through hallway",
@@ -952,7 +944,10 @@ def test_generate_keyframe_image_with_anchor_seed() -> None:
     contents = call_kwargs["contents"]
     assert len(contents) == 3
     prompt_str = contents[2]
-    assert "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@KeyframeSeed while rendering the new action/angle." in prompt_str
+    assert (
+        "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@KeyframeSeed while rendering the new action/angle."
+        in prompt_str
+    )
 
 
 def test_generate_keyframe_image_keyframe_seed_indexing() -> None:
@@ -962,7 +957,9 @@ def test_generate_keyframe_image_keyframe_seed_indexing() -> None:
     mock_genai_client = MagicMock()
     mock_models = MagicMock()
     mock_genai_client.models = mock_models
-    mock_models.generate_content.return_value = MagicMock(text="https://storage.googleapis.com/test-bucket/keyframe_res.png")
+    mock_models.generate_content.return_value = MagicMock(
+        text="https://storage.googleapis.com/test-bucket/keyframe_res.png"
+    )
 
     client = OmniFlashClient(mock_mode=False)
 
@@ -982,8 +979,9 @@ def test_generate_keyframe_image_keyframe_seed_indexing() -> None:
     def mock_fetch_bytes(url: str):
         return (b"fake_bytes", "image/png")
 
-    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
-        client, "_fetch_image_bytes", side_effect=mock_fetch_bytes
+    with (
+        patch("google.genai.Client", return_value=mock_genai_client),
+        patch.object(client, "_fetch_image_bytes", side_effect=mock_fetch_bytes),
     ):
         res_url, prompt_str = client.generate_keyframe_image(
             prompt="Harry and Snape in potion class",
@@ -1032,9 +1030,7 @@ def test_load_reference_images_logs_diagnostics(
         return b"", ""
 
     with caplog.at_level(logging.INFO, logger="omnimash.engine"):
-        with patch.object(
-            client.storage, "download_blob_bytes", side_effect=mock_download
-        ):
+        with patch.object(client.storage, "download_blob_bytes", side_effect=mock_download):
             imgs, char_map = client._load_reference_images_as_input(
                 session_id="session_123", characters=[char1, char2, char3]
             )
@@ -1055,9 +1051,7 @@ def test_load_reference_images_logs_diagnostics(
 
     target_file = str(tmp_path / "test_diag_out.mp4")
     with caplog.at_level(logging.INFO, logger="omnimash.engine"):
-        with patch.object(
-            client.storage, "download_blob_bytes", side_effect=mock_download
-        ):
+        with patch.object(client.storage, "download_blob_bytes", side_effect=mock_download):
             client._generate_live_omni_flash_video(
                 prompt="Harry in rap battle",
                 target_rel_path=target_file,
@@ -1145,7 +1139,6 @@ def test_abstract_prompt_sanitizes_street_slang_trademarks_tattoos() -> None:
     assert "gold" in res
 
 
-
 def test_generate_keyframe_image_mock_mode() -> None:
     """Verify generate_keyframe_image returns a valid base64 SVG data URI in mock mode."""
     client = OmniFlashClient(mock_mode=True)
@@ -1154,6 +1147,7 @@ def test_generate_keyframe_image_mock_mode() -> None:
     )
     assert uri.startswith("data:image/svg+xml;base64,")
     import base64
+
     decoded = base64.b64decode(uri.split("base64,")[1]).decode("utf-8")
     assert "KEYFRAME PREVIEW DIRECTIVE" in decoded
     assert "dramatic wizard duel" in decoded
@@ -1181,9 +1175,7 @@ def test_generate_keyframe_image_verifies_gemini_flash_location(
         client = OmniFlashClient(mock_mode=False)
         created_clients.clear()
 
-        uri = client.generate_keyframe_image(
-            prompt="Cyberpunk street keyframe", style_tone="neon"
-        )
+        uri = client.generate_keyframe_image(prompt="Cyberpunk street keyframe", style_tone="neon")
 
         assert len(created_clients) == 1
         client_init = created_clients[0].init_kwargs
@@ -1213,6 +1205,7 @@ def test_generate_keyframe_image_fallback_on_failure(
         uri = client.generate_keyframe_image("Failing prompt", style_tone="dark")
         assert uri.startswith("data:image/svg+xml;base64,")
         import base64
+
         decoded = base64.b64decode(uri.split("base64,")[1]).decode("utf-8")
         assert "Failing prompt" in decoded
 
@@ -1293,16 +1286,16 @@ def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_pres
     mock_candidate = MagicMock(
         content=MagicMock(
             parts=[
-                MagicMock(
-                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
-                )
+                MagicMock(inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8")))
             ]
         )
     )
     mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
     mock_genai_client.models = mock_models
     client.storage = MagicMock()
-    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/keyframe_wardrobe_test.png"
+    client.storage.get_gcs_uri.return_value = (
+        "gs://test-bucket/keyframes/keyframe_wardrobe_test.png"
+    )
 
     char1 = CharacterRole(
         role_id="Role A",
@@ -1321,8 +1314,9 @@ def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_pres
         wardrobe="Slytherin Tracksuit and Gucci Slides",
     )
 
-    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
-        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    with (
+        patch("google.genai.Client", return_value=mock_genai_client),
+        patch.object(client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")),
     ):
         res_url = client.generate_keyframe_image(
             prompt="Snape and Draco brewing a potion in a rap video",
@@ -1341,7 +1335,10 @@ def test_generate_keyframe_image_includes_wardrobe_aesthetic_tags_and_style_pres
     # Verify character roster formatting: char1 (reference) uses (Reference Image: @Image1), char2 (no reference) lists description & wardrobe & style
     assert "# Character Roster & Visual Directives:" in prompt_str
     assert f"- {get_character_identifier(char1)}: (Reference Image: @Image1)" in prompt_str
-    assert f"- {get_character_identifier(char2)}: Platinum rival wizard [Wardrobe: Slytherin Tracksuit and Gucci Slides] [Style: Platinum Hair, Emerald Ring]" in prompt_str
+    assert (
+        f"- {get_character_identifier(char2)}: Platinum rival wizard [Wardrobe: Slytherin Tracksuit and Gucci Slides] [Style: Platinum Hair, Emerald Ring]"
+        in prompt_str
+    )
 
     # Verify style preset context header
     assert "# Style Preset (90s_rap_video):" in prompt_str
@@ -1361,9 +1358,7 @@ def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
     mock_candidate = MagicMock(
         content=MagicMock(
             parts=[
-                MagicMock(
-                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
-                )
+                MagicMock(inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8")))
             ]
         )
     )
@@ -1381,8 +1376,9 @@ def test_generate_keyframe_image_with_dict_characters_wardrobe() -> None:
         "wardrobe": "Slytherin Tracksuit and Gucci Slides",
     }
 
-    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
-        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    with (
+        patch("google.genai.Client", return_value=mock_genai_client),
+        patch.object(client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")),
     ):
         res_url = client.generate_keyframe_image(
             prompt="Draco in potion laboratory",
@@ -1482,8 +1478,14 @@ def test_build_multimodal_contents_omni_flash_native_multimodal() -> None:
 
     # Check character roster bindings
     assert "# Character Roster & Visual Directives:" in text_val
-    assert f"- {get_character_identifier(char1)} <IMAGE_REF_0>: Spectacled wizard student [Style: Cartier Glasses]" in text_val
-    assert f"- {get_character_identifier(char2)} <IMAGE_REF_1>: Gothic potion master [Style: Dark Robes]" in text_val
+    assert (
+        f"- {get_character_identifier(char1)} <IMAGE_REF_0>: Spectacled wizard student [Style: Cartier Glasses]"
+        in text_val
+    )
+    assert (
+        f"- {get_character_identifier(char2)} <IMAGE_REF_1>: Gothic potion master [Style: Dark Robes]"
+        in text_val
+    )
 
     # Check timecoded prompt content (with sanitized names and bound image ref tags)
     assert "<IMAGE_REF_0>" in text_val
@@ -1551,7 +1553,9 @@ def test_build_multimodal_contents_four_block_omni_flash() -> None:
 
     # 2. Verify explicit image role tags matching CharacterRole.image_role
     assert "[# Sources <FIRST_FRAME>@Image1]" in text_val
-    assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3 <IMAGE_REF_2>@Image4]" in text_val
+    assert (
+        "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3 <IMAGE_REF_2>@Image4]" in text_val
+    )
 
 
 def test_four_block_character_identifier_symmetry() -> None:
@@ -1697,9 +1701,7 @@ def test_safety_retry_preserves_multimodal_reference_images(
     mock_interactions = MagicMock()
     fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
     mock_output_video = MagicMock(data=fake_video_bytes)
-    success_interaction = MagicMock(
-        id="inter_test_retry_123", output_video=mock_output_video
-    )
+    success_interaction = MagicMock(id="inter_test_retry_123", output_video=mock_output_video)
 
     mock_interactions.create.side_effect = [
         Exception("400 prohibited content guidelines violated"),
@@ -1742,23 +1744,15 @@ def test_safety_retry_preserves_multimodal_reference_images(
     assert second_input[0]["type"] == "user_input"
 
     content = second_input[0]["content"]
-    image_parts = [
-        p
-        for p in content
-        if isinstance(p, dict) and p.get("type") == "image"
-    ]
-    text_parts = [
-        p
-        for p in content
-        if isinstance(p, dict) and p.get("type") == "text"
-    ]
+    image_parts = [p for p in content if isinstance(p, dict) and p.get("type") == "image"]
+    text_parts = [p for p in content if isinstance(p, dict) and p.get("type") == "text"]
 
-    assert (
-        len(image_parts) == 1
-    ), "Expected reference image part ('type': 'image') in retry payload content"
-    assert (
-        len(text_parts) == 1
-    ), "Expected fallback text part ('type': 'text') in retry payload content"
+    assert len(image_parts) == 1, (
+        "Expected reference image part ('type': 'image') in retry payload content"
+    )
+    assert len(text_parts) == 1, (
+        "Expected fallback text part ('type': 'text') in retry payload content"
+    )
     assert "parody" in text_parts[0].get("text", "").lower()
 
 
@@ -1777,9 +1771,7 @@ def test_omni_client_skips_safety_retry_abstraction_when_disabled(tmp_path):
 
     fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
     mock_output_video = MagicMock(data=fake_video_bytes)
-    mock_res = MagicMock(
-        id="inter_test_no_abstraction", output_video=mock_output_video
-    )
+    mock_res = MagicMock(id="inter_test_no_abstraction", output_video=mock_output_video)
 
     mock_interactions.create.side_effect = [
         Exception(err_resp.text),
@@ -1859,7 +1851,9 @@ def test_generate_character_reference_sheet_genai_call() -> None:
         content=MagicMock(
             parts=[
                 MagicMock(
-                    inline_data=MagicMock(data=base64.b64encode(b"fake_ref_sheet_png").decode("utf-8"))
+                    inline_data=MagicMock(
+                        data=base64.b64encode(b"fake_ref_sheet_png").decode("utf-8")
+                    )
                 )
             ]
         )
@@ -1869,8 +1863,11 @@ def test_generate_character_reference_sheet_genai_call() -> None:
     client.storage = MagicMock()
     client.storage.get_gcs_uri.return_value = "gs://test-bucket/ref_sheets/sheet1.png"
 
-    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
-        client, "_fetch_image_bytes", return_value=(b"fake_source_bytes", "image/png")
+    with (
+        patch("google.genai.Client", return_value=mock_genai_client),
+        patch.object(
+            client, "_fetch_image_bytes", return_value=(b"fake_source_bytes", "image/png")
+        ),
     ):
         res_url = client.generate_character_reference_sheet(
             source_image_url="gs://test-bucket/source.png",
@@ -1940,9 +1937,7 @@ def test_gcs_storage_project_and_session_scoped_paths() -> None:
     pub_url, gcs_uri = gcs.save_character(
         char_data, project_id="project_alpha", session_id="sess_100"
     )
-    assert (
-        "projects/project_alpha/saved_characters/gucci_wizard.json" in gcs_uri
-    )
+    assert "projects/project_alpha/saved_characters/gucci_wizard.json" in gcs_uri
 
     pub_url_p, gcs_uri_p = gcs.save_character(
         char_data, project_id="project_alpha", session_id=None
@@ -1960,9 +1955,7 @@ def test_gcs_storage_project_and_session_scoped_paths() -> None:
 
     # 4. save_product with project_id
     product_data = {"name": "Magic Potion", "price": 100}
-    pub_url_prod, gcs_uri_prod = gcs.save_product(
-        product_data, project_id="project_alpha"
-    )
+    pub_url_prod, gcs_uri_prod = gcs.save_product(product_data, project_id="project_alpha")
     assert "projects/project_alpha/saved_products/magic_potion.json" in gcs_uri_prod
 
     # 5. save_video_clip with project_id and session_id
@@ -1998,7 +1991,9 @@ def test_gcs_storage_project_and_session_listing_methods() -> None:
     gcs.save_character({"name": "Beta Char"}, project_id="project_beta")
     gcs.save_product({"name": "Beta Wand"}, project_id="project_beta")
     gcs.save_character_sheet(b"bytes", custom_name="sheet_beta", project_id="project_beta")
-    gcs.save_video_clip(b"clip", filename="clip.mp4", project_id="project_beta", session_id="beta_sess_1")
+    gcs.save_video_clip(
+        b"clip", filename="clip.mp4", project_id="project_beta", session_id="beta_sess_1"
+    )
 
     # Verify project listing
     projects_updated = gcs.list_projects()
@@ -2035,16 +2030,16 @@ def test_generate_keyframe_image_retains_wardrobe_and_description_with_ref_url()
     mock_candidate = MagicMock(
         content=MagicMock(
             parts=[
-                MagicMock(
-                    inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8"))
-                )
+                MagicMock(inline_data=MagicMock(data=base64.b64encode(b"fake_png").decode("utf-8")))
             ]
         )
     )
     mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
     mock_genai_client.models = mock_models
     client.storage = MagicMock()
-    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/keyframe_wardrobe_test.png"
+    client.storage.get_gcs_uri.return_value = (
+        "gs://test-bucket/keyframes/keyframe_wardrobe_test.png"
+    )
 
     char = CharacterRole(
         role_id="Role A",
@@ -2055,8 +2050,9 @@ def test_generate_keyframe_image_retains_wardrobe_and_description_with_ref_url()
         aesthetic_tags=["Gothic", "High-Contrast"],
     )
 
-    with patch("google.genai.Client", return_value=mock_genai_client), patch.object(
-        client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")
+    with (
+        patch("google.genai.Client", return_value=mock_genai_client),
+        patch.object(client, "_fetch_image_bytes", return_value=(b"fake_ref_bytes", "image/png")),
     ):
         res_url, compiled_prompt = client.generate_keyframe_image(
             prompt="Snape brewing potion",
@@ -2079,7 +2075,9 @@ def test_parse_guardrail_error_guidance_returns_actionable_suggestions() -> None
         description="Software engineer",
         reference_url="https://example.com/jordan_photo.jpg",
     )
-    error_msg = "400 Policy violation: Prompt or input image violated real_people_likeness safety policy."
+    error_msg = (
+        "400 Policy violation: Prompt or input image violated real_people_likeness safety policy."
+    )
     prompt_text = "Jordan Totten standing with a Lightsaber"
 
     guidance = parse_guardrail_error_guidance(
@@ -2098,7 +2096,10 @@ def test_parse_guardrail_error_guidance_returns_actionable_suggestions() -> None
     assert "real_people_photo" in triggers
     assert "third_party_content" in triggers
 
-    assert "real-person likeness" in guidance["user_guidance"].lower() or "avoid" in guidance["user_guidance"].lower()
+    assert (
+        "real-person likeness" in guidance["user_guidance"].lower()
+        or "avoid" in guidance["user_guidance"].lower()
+    )
 
     actions = [a["action"] for a in guidance["suggested_actions"]]
     assert "sanitize_real_names" in actions
@@ -2114,12 +2115,14 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
     client = OmniFlashClient(mock_mode=True, bucket_name="test-telemetry-bucket")
 
     mock_span = MagicMock()
-    with patch.object(
-        client.telemetry, "start_inference_span", return_value=mock_span
-    ) as mock_start_span, patch.object(
-        client.storage, "upload_bytes", wraps=client.storage.upload_bytes
-    ) as mock_upload_bytes:
-
+    with (
+        patch.object(
+            client.telemetry, "start_inference_span", return_value=mock_span
+        ) as mock_start_span,
+        patch.object(
+            client.storage, "upload_bytes", wraps=client.storage.upload_bytes
+        ) as mock_upload_bytes,
+    ):
         char1 = CharacterRole(
             role_id="Role A",
             name="Harry",
@@ -2143,11 +2146,17 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
         assert mock_span.end.called
 
         kf_input_calls = [
-            call for call in mock_upload_bytes.call_args_list
+            call
+            for call in mock_upload_bytes.call_args_list
             if "telemetry/sess_telemetry_test_keyframe_input.jsonl" in str(call)
         ]
         assert len(kf_input_calls) == 1
-        kf_input_bytes = kf_input_calls[0].args[0] if kf_input_calls[0].args else kf_input_calls[0].kwargs.get("content")
+        kf_input_bytes = (
+            kf_input_calls[0].args[0]
+            if kf_input_calls[0].args
+            else kf_input_calls[0].kwargs.get("content")
+        )
+        assert kf_input_bytes is not None
         kf_record = json.loads(kf_input_bytes.decode("utf-8"))
         assert "reference_image_uris" in kf_record
         assert "gs://test-bucket/harry_ref.png" in kf_record["reference_image_uris"]
@@ -2157,8 +2166,12 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
             call.args[1] if len(call.args) > 1 else call.kwargs.get("destination_blob_name")
             for call in mock_upload_bytes.call_args_list
         ]
-        assert any("telemetry/sess_telemetry_test_keyframe_input.jsonl" in str(b) for b in uploaded_blobs)
-        assert any("telemetry/sess_telemetry_test_keyframe_output.jsonl" in str(b) for b in uploaded_blobs)
+        assert any(
+            "telemetry/sess_telemetry_test_keyframe_input.jsonl" in str(b) for b in uploaded_blobs
+        )
+        assert any(
+            "telemetry/sess_telemetry_test_keyframe_output.jsonl" in str(b) for b in uploaded_blobs
+        )
 
         mock_start_span.reset_mock()
         mock_span.reset_mock()
@@ -2187,11 +2200,17 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
         assert mock_span.end.called
 
         clip_input_calls = [
-            call for call in mock_upload_bytes.call_args_list
+            call
+            for call in mock_upload_bytes.call_args_list
             if "telemetry/sess_telemetry_test_video_clip_input.jsonl" in str(call)
         ]
         assert len(clip_input_calls) == 1
-        clip_input_bytes = clip_input_calls[0].args[0] if clip_input_calls[0].args else clip_input_calls[0].kwargs.get("content")
+        clip_input_bytes = (
+            clip_input_calls[0].args[0]
+            if clip_input_calls[0].args
+            else clip_input_calls[0].kwargs.get("content")
+        )
+        assert clip_input_bytes is not None
         clip_record = json.loads(clip_input_bytes.decode("utf-8"))
         assert "reference_image_uris" in clip_record
         assert "gs://test-bucket/harry_turnaround.png" in clip_record["reference_image_uris"]
@@ -2201,8 +2220,13 @@ def test_omni_client_records_multimodal_telemetry_jsonl_logs() -> None:
             call.args[1] if len(call.args) > 1 else call.kwargs.get("destination_blob_name")
             for call in mock_upload_bytes.call_args_list
         ]
-        assert any("telemetry/sess_telemetry_test_video_clip_input.jsonl" in str(b) for b in uploaded_blobs)
-        assert any("telemetry/sess_telemetry_test_video_clip_output.jsonl" in str(b) for b in uploaded_blobs)
+        assert any(
+            "telemetry/sess_telemetry_test_video_clip_input.jsonl" in str(b) for b in uploaded_blobs
+        )
+        assert any(
+            "telemetry/sess_telemetry_test_video_clip_output.jsonl" in str(b)
+            for b in uploaded_blobs
+        )
 
 
 def test_generate_keyframe_image_preserves_character_reference_image_order() -> None:
@@ -2366,7 +2390,9 @@ def test_poll_and_download_file_uri_mock(tmp_path: Any) -> None:
     mock_files = MagicMock()
 
     file_processing = MagicMock(state="PROCESSING")
-    file_active = MagicMock(state="ACTIVE", uri="https://generativelanguage.googleapis.com/v1beta/files/test_vid_123")
+    file_active = MagicMock(
+        state="ACTIVE", uri="https://generativelanguage.googleapis.com/v1beta/files/test_vid_123"
+    )
     mock_files.get.side_effect = [file_processing, file_active]
     mock_files.download.return_value = b"downloaded_high_res_mp4_bytes"
 
@@ -2429,9 +2455,14 @@ def test_start_thread_from_video_regenerate_audio_strips_audio(tmp_path: Any) ->
     with open(input_video, "wb") as f:
         f.write(b"fake_mp4_bytes")
 
-    with patch("subprocess.run") as mock_run, patch.object(
-        client, "_generate_live_omni_flash_video", return_value=(True, "reanchor_thread_123", None)
-    ) as mock_gen:
+    with (
+        patch("subprocess.run") as mock_run,
+        patch.object(
+            client,
+            "_generate_live_omni_flash_video",
+            return_value=(True, "reanchor_thread_123", None),
+        ) as mock_gen,
+    ):
         mock_run.return_value = MagicMock(returncode=0)
 
         res = client.start_thread_from_video(
@@ -2454,26 +2485,7 @@ def test_start_thread_from_video_regenerate_audio_strips_audio(tmp_path: Any) ->
         # Verify the stripped video path was passed to generation
         mock_gen.assert_called_once()
         call_kwargs = mock_gen.call_args.kwargs
-        assert call_kwargs.get("keyframe_image_url") is not None
-        assert call_kwargs.get("keyframe_image_url") != input_video
-        assert "stripped" in call_kwargs.get("keyframe_image_url") or "silent" in call_kwargs.get("keyframe_image_url")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        kf_url = str(call_kwargs.get("keyframe_image_url") or "")
+        assert kf_url != ""
+        assert kf_url != input_video
+        assert "stripped" in kf_url or "silent" in kf_url

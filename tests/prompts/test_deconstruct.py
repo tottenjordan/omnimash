@@ -16,10 +16,7 @@ def test_deconstruct_concept_shorthand():
 
     assert len(tags.aesthetic_tags) > 0
     assert any("Cyberpunk" in tag or "Neon" in tag for tag in tags.aesthetic_tags)
-    assert (
-        "kitchen" in tags.environment_tag.lower()
-        or "colosseum" in tags.environment_tag.lower()
-    )
+    assert "kitchen" in tags.environment_tag.lower() or "colosseum" in tags.environment_tag.lower()
     assert len(tags.camera_lighting_tag) > 0
     assert "BPM" in tags.audio_beat or len(tags.audio_beat) > 0
 
@@ -39,10 +36,7 @@ def test_deconstruct_concept_rap_battle():
     assert len(harry_char.description) > 20
 
     assert any("Trap" in tag or "Streetwear" in tag for tag in tags.aesthetic_tags)
-    assert (
-        "Hogwarts" in tags.environment_tag
-        or "courtyard" in tags.environment_tag.lower()
-    )
+    assert "Hogwarts" in tags.environment_tag or "courtyard" in tags.environment_tag.lower()
     assert len(tags.camera_lighting_tag) > 0
     assert "Trap" in tags.audio_beat or "808" in tags.audio_beat
 
@@ -55,9 +49,7 @@ def test_taxonomy_engine_deconstruct_concept():
     assert isinstance(tags, MetaPromptTags)
     assert len(tags.characters) >= 1
     assert tags.characters[0].role_id == "Role A"
-    assert (
-        "Snape" in tags.characters[0].name or "Snape" in tags.characters[0].description
-    )
+    assert "Snape" in tags.characters[0].name or "Snape" in tags.characters[0].description
     assert len(tags.aesthetic_tags) > 0
     assert len(tags.environment_tag) > 0
     assert len(tags.camera_lighting_tag) > 0
@@ -85,7 +77,6 @@ def test_deconstruct_concept_populates_voice_styles():
     )
     assert len(tags.characters) >= 2
     assert any(
-        "trap" in c.voice_style.lower() or "rap" in c.voice_style.lower()
-        for c in tags.characters
+        "trap" in c.voice_style.lower() or "rap" in c.voice_style.lower() for c in tags.characters
     )
     assert tags.vocal_delivery != ""

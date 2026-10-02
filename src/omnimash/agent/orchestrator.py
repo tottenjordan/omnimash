@@ -83,7 +83,9 @@ class Journey3StateTracker:
 
         # 1. Removal / un-setting
         for verb in removal_verbs:
-            pattern = r"\b" + re.escape(verb) + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_\s]+)"
+            pattern = (
+                r"\b" + re.escape(verb) + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_\s]+)"
+            )
             for m in re.finditer(pattern, combined_text, re.IGNORECASE):
                 target = m.group(1).strip().lower()
                 target_words = [
@@ -148,7 +150,9 @@ class Journey3StateTracker:
             "equipped with",
         ]
         for verb in addition_verbs:
-            pattern = r"\b" + re.escape(verb) + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_\s]+)"
+            pattern = (
+                r"\b" + re.escape(verb) + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_\s]+)"
+            )
             for m in re.finditer(pattern, combined_text, re.IGNORECASE):
                 item_desc = m.group(1).strip()
                 item_desc = re.split(r"[,;.]", item_desc)[0].strip()
@@ -184,7 +188,9 @@ class Journey3StateTracker:
 
 class OmniMashAgent:
     def __init__(self, mock_mode: bool | None = None):
-        self.mock_mode = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
+        self.mock_mode = (
+            mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
+        )
         self.guardrail = ModelArmorGuardrail(mock_mode=mock_mode)
         self.session_manager = SessionManager()
         self.omni_client = OmniFlashClient(mock_mode=mock_mode)
@@ -371,7 +377,9 @@ class OmniMashAgent:
             last_resp: AgentTurnResponse | None = None
 
             for c_idx in range(num_chunks):
-                c_prompt = prompt if num_chunks == 1 else f"{prompt} (Part {c_idx + 1}/{num_chunks})"
+                c_prompt = (
+                    prompt if num_chunks == 1 else f"{prompt} (Part {c_idx + 1}/{num_chunks})"
+                )
                 turn_resp = self.process_user_turn(
                     user_id=user_id,
                     project_id=project_id,
@@ -430,9 +438,7 @@ class OmniMashAgent:
         # Step 0: Process reference URL if provided
         reference_analysis = None
         if reference_url:
-            self.media_extractor.process_youtube_url(
-                reference_url, session_id=session.session_id
-            )
+            self.media_extractor.process_youtube_url(reference_url, session_id=session.session_id)
             report = self.media_extractor.analyze_youtube_reference(
                 reference_url, session_id=session.session_id
             )
@@ -515,9 +521,7 @@ class OmniMashAgent:
         parent_thread_id = parent_turn.interaction_thread_id if parent_turn else parent_turn_id
 
         if is_conversational_edit and (parent_turn or parent_thread_id):
-            is_valid, edit_err = self.validate_conversational_edit(
-                guard_res.sanitized_prompt
-            )
+            is_valid, edit_err = self.validate_conversational_edit(guard_res.sanitized_prompt)
             if not is_valid:
                 return AgentTurnResponse(
                     success=False,
@@ -530,9 +534,7 @@ class OmniMashAgent:
                 override_prompt=compiled_override,
             )
             raw_compiled_prompt = delta_prompt
-            self.storage.save_session_prompt(
-                session.session_id, turn_index, delta_prompt
-            )
+            self.storage.save_session_prompt(session.session_id, turn_index, delta_prompt)
             effective_keyframe = keyframe_image_url or (
                 getattr(parent_turn, "video_url", None) if parent_turn else None
             )
@@ -566,7 +568,9 @@ class OmniMashAgent:
                                     active_roles=s.get("active_roles", []),
                                     action=s.get("action", ""),
                                     dialogue=s.get("dialogue", ""),
-                                    screenplay_text=sp_script if isinstance(sp_script, str) else None,
+                                    screenplay_text=sp_script
+                                    if isinstance(sp_script, str)
+                                    else None,
                                     audio_cues=s.get("audio_cues", ""),
                                     title_card_text=s.get("title_card_text"),
                                     title_card_subtitle=s.get("title_card_subtitle"),
@@ -585,9 +589,7 @@ class OmniMashAgent:
                     enable_sanitization=enable_sanitization,
                     aspect_ratio=aspect_ratio,
                 )
-                meta_prompt = (
-                    compiled_override if compiled_override else storyboard_prompt
-                )
+                meta_prompt = compiled_override if compiled_override else storyboard_prompt
             else:
                 meta_prompt = self.taxonomy.build_initial_prompt(
                     base_character=guard_res.sanitized_prompt,
@@ -606,13 +608,9 @@ class OmniMashAgent:
             if enable_sanitization:
                 meta_prompt = sanitize_real_names(meta_prompt)
             raw_compiled_prompt = meta_prompt
-            self.storage.save_session_prompt(
-                session.session_id, turn_index, meta_prompt
-            )
+            self.storage.save_session_prompt(session.session_id, turn_index, meta_prompt)
             effective_thread_id = (
-                parent_thread_id
-                if (is_conversational_edit or is_chunk_continuation)
-                else None
+                parent_thread_id if (is_conversational_edit or is_chunk_continuation) else None
             )
             gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
@@ -640,9 +638,7 @@ class OmniMashAgent:
                 reference_analysis=reference_analysis,
             )
         gcs_uri_val = getattr(gen_res, "gcs_uri", None)
-        proxy_video_url = self._get_media_proxy_video_url(
-            gcs_uri_val, gen_res.video_url
-        )
+        proxy_video_url = self._get_media_proxy_video_url(gcs_uri_val, gen_res.video_url)
         turn_node = self.session_manager.add_turn(
             session_id=session.session_id,
             clip_index=clip_index,
@@ -652,9 +648,7 @@ class OmniMashAgent:
             parent_turn_id=parent_turn_id,
         )
 
-        status_event = (
-            "COMMIT_RECOMMENDED" if turn_node.edit_depth_in_thread >= 3 else "COMPLETED"
-        )
+        status_event = "COMMIT_RECOMMENDED" if turn_node.edit_depth_in_thread >= 3 else "COMPLETED"
 
         return AgentTurnResponse(
             success=True,

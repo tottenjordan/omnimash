@@ -23,13 +23,9 @@ class VideoStitcher:
         from omnimash.config import settings
 
         self.mock_mode = (
-            mock_mode
-            if mock_mode is not None
-            else getattr(settings, "mock_mode", False)
+            mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
-        self.storage = GcsStorageManager(
-            bucket_name=bucket_name, mock_mode=self.mock_mode
-        )
+        self.storage = GcsStorageManager(bucket_name=bucket_name, mock_mode=self.mock_mode)
 
     def concatenate_clips(
         self,
@@ -83,9 +79,7 @@ class VideoStitcher:
 
                 resolved_audio: str | None = None
                 if master_audio_path:
-                    norm_audio = self.storage._normalize_media_source_path(
-                        master_audio_path
-                    )
+                    norm_audio = self.storage._normalize_media_source_path(master_audio_path)
                     if os.path.exists(norm_audio):
                         resolved_audio = os.path.abspath(norm_audio)
                     elif norm_audio.startswith("/static/"):
@@ -121,9 +115,7 @@ class VideoStitcher:
                             temp_cleanup_paths.append(tmp_audio_path)
                             resolved_audio = tmp_audio_path
                         except Exception as exc:
-                            logger.warning(
-                                "Failed to download HTTP master audio URL: %s", exc
-                            )
+                            logger.warning("Failed to download HTTP master audio URL: %s", exc)
                             resolved_audio = norm_audio
                     else:
                         resolved_audio = norm_audio
@@ -256,9 +248,7 @@ class VideoStitcher:
             return out_path
 
         if not HAS_PIL:
-            logger.warning(
-                "Pillow library not available, returning fallback title card clip."
-            )
+            logger.warning("Pillow library not available, returning fallback title card clip.")
             with open(out_path, "w") as f:
                 f.write("fallback title card video content")
             return out_path
@@ -418,20 +408,14 @@ class VideoStitcher:
                 ordered_clips.insert(idx, card_clip_path)
 
         master_audio = background_music_path
-        if (
-            background_music_path
-            and narrator_audio_paths
-            and len(narrator_audio_paths) > 0
-        ):
+        if background_music_path and narrator_audio_paths and len(narrator_audio_paths) > 0:
             master_audio = apply_dialogue_audio_ducking(
                 music_path=background_music_path,
                 dialogue_path=narrator_audio_paths[0],
                 output_dir=output_dir,
                 mock_mode=self.mock_mode,
             )
-        elif (
-            not master_audio and narrator_audio_paths and len(narrator_audio_paths) > 0
-        ):
+        elif not master_audio and narrator_audio_paths and len(narrator_audio_paths) > 0:
             master_audio = narrator_audio_paths[0]
 
         return self.concatenate_clips(

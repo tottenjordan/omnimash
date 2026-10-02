@@ -149,5 +149,3 @@ def test_character_role_image_role_and_narrator():
         )
         assert char_valid.image_role == valid_role
         assert char_valid.is_offscreen_narrator is True
-
-

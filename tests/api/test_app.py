@@ -137,14 +137,8 @@ def test_api_generate_and_extend_scene_with_vocal_delivery_and_voice_style():
     assert gen_res.status_code == 200
     gen_data = gen_res.json()
     assert gen_data["success"] is True
-    assert (
-        "Voice Style (Role A): Melodic autotune trap flow"
-        in gen_data["raw_compiled_prompt"]
-    )
-    assert (
-        "Vocal Delivery: Dynamic studio vocal projection"
-        in gen_data["raw_compiled_prompt"]
-    )
+    assert "Voice Style (Role A): Melodic autotune trap flow" in gen_data["raw_compiled_prompt"]
+    assert "Vocal Delivery: Dynamic studio vocal projection" in gen_data["raw_compiled_prompt"]
 
     turn_id = gen_data["turn_id"]
     res_extend = client.post(
@@ -220,9 +214,7 @@ def test_api_stitch_selected_clips():
         },
     )
     assert res_empty.status_code == 400
-    assert (
-        res_empty.json()["detail"] == "At least one clip URL is required for stitching."
-    )
+    assert res_empty.json()["detail"] == "At least one clip URL is required for stitching."
 
     res_valid = client.post(
         "/api/stitch-clips",
@@ -467,10 +459,7 @@ def test_api_generate_shot_extracts_dialogue_and_voiceover(monkeypatch):
     data = res.json()
     assert data["success"] is True
     assert data["turn_id"] is not None
-    assert (
-        captured_kwargs.get("voiceover")
-        == "I been cooking potions since first year. Burrr!"
-    )
+    assert captured_kwargs.get("voiceover") == "I been cooking potions since first year. Burrr!"
 
 
 def test_generate_shot_preserves_keyframe_image_url(monkeypatch):
@@ -714,10 +703,14 @@ def test_api_aspect_ratio_request_models_and_endpoints():
     res_gen = client.post("/api/generate", json={"prompt": "Aspect Test", "aspect_ratio": "9:16"})
     assert res_gen.status_code == 200
 
-    res_shot = client.post("/api/generate-shot", json={"shot_directive": "Shot aspect test", "aspect_ratio": "1:1"})
+    res_shot = client.post(
+        "/api/generate-shot", json={"shot_directive": "Shot aspect test", "aspect_ratio": "1:1"}
+    )
     assert res_shot.status_code == 200
 
-    res_stitch = client.post("/api/storyboard/stitch_master", json={"session_id": "test_s", "aspect_ratio": "21:9"})
+    res_stitch = client.post(
+        "/api/storyboard/stitch_master", json={"session_id": "test_s", "aspect_ratio": "21:9"}
+    )
     assert res_stitch.status_code == 200
     assert res_stitch.json()["status"] == "ok"
 
@@ -930,6 +923,7 @@ def test_ui_html_contains_mode3_turn_history_carousel_and_keyframe_lock():
 
 def test_ui_html_syntax_and_tag_balance():
     import re
+
     match = re.search(r'<script type="text/babel">(.*?)</script>', UI_HTML, re.DOTALL)
     assert match is not None, "UI_HTML must contain a <script type='text/babel'> block"
 
@@ -944,7 +938,7 @@ def test_ui_html_syntax_and_tag_balance():
     clean_js = clean_js.replace("=>", "==")
 
     # 2. Check strict LIFO JSX tag stack across full script (including multi-line tags)
-    tag_pattern = re.compile(r'</?([A-Za-z][A-Za-z0-9.]*)\b[^>]*>', re.DOTALL)
+    tag_pattern = re.compile(r"</?([A-Za-z][A-Za-z0-9.]*)\b[^>]*>", re.DOTALL)
     stack = []
 
     for m in tag_pattern.finditer(clean_js):
@@ -979,6 +973,7 @@ def test_ui_html_syntax_and_tag_balance():
 def test_ui_html_renders_in_browser_without_syntax_error(tmp_path):
     import os
     import subprocess
+
     skill_dir = "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill"
     if os.path.exists(skill_dir):
         html_file = tmp_path / "ui_check.html"
@@ -1003,12 +998,15 @@ def test_ui_html_renders_in_browser_without_syntax_error(tmp_path):
         )
         output = res.stdout + res.stderr
         assert res.returncode == 0, f"Playwright execution failed: {output}"
-        assert "BROWSER ERROR:" not in output, f"Browser JavaScript compilation error detected: {output}"
+        assert "BROWSER ERROR:" not in output, (
+            f"Browser JavaScript compilation error detected: {output}"
+        )
         assert "INNER_HTML_OK" in output, f"React failed to mount into #__next: {output}"
 
 
 def test_ui_html_journey3_comprehensive_enhancements():
     from omnimash.api.app import UI_HTML
+
     assert "compileJourney3ShotPromptPreview" in UI_HTML
     assert "lightboxImageUrl" in UI_HTML
     assert "Final Video Generation Prompt (Live 4-Block Compiler)" in UI_HTML
@@ -1022,6 +1020,7 @@ def test_ui_html_journey3_comprehensive_enhancements():
 
 def test_ui_html_contains_character_reference_sheet_controls():
     from omnimash.api.app import UI_HTML
+
     assert "Generate Character Reference Sheet" in UI_HTML
     assert "/api/characters/generate-sheet" in UI_HTML
     assert "/api/characters/save-sheet" in UI_HTML
@@ -1031,6 +1030,7 @@ def test_ui_html_contains_character_reference_sheet_controls():
 
 def test_ui_html_contains_mode2_batch_render_and_card_controls():
     from omnimash.api.app import UI_HTML
+
     assert "Render All Shots (Batch)" in UI_HTML
     assert "handleRenderAllShots" in UI_HTML
     assert "➕ Add Shot" in UI_HTML or "Add Shot" in UI_HTML
@@ -1054,8 +1054,8 @@ def test_journey3_keyframe_api_accepts_model_style_and_reference_urls():
             "aspect_ratio": "16:9",
             "reference_image_urls": ["https://storage.googleapis.com/test/char.jpg"],
             "style_preset": "Cinematic Trap Parody",
-            "image_model": "gemini-3-pro-image"
-        }
+            "image_model": "gemini-3-pro-image",
+        },
     )
     assert res.status_code == 200
     data = res.json()
@@ -1084,7 +1084,10 @@ def test_generate_character_sheet_endpoint():
     assert data["success"] is True
     assert "keyframe_image_url" in data
     assert "raw_compiled_prompt" in data
-    assert "Harry Potter" in data["raw_compiled_prompt"] or "Red Gucci Tracksuit" in data["raw_compiled_prompt"]
+    assert (
+        "Harry Potter" in data["raw_compiled_prompt"]
+        or "Red Gucci Tracksuit" in data["raw_compiled_prompt"]
+    )
     assert "(Reference Image: @Image1)" in data["raw_compiled_prompt"]
 
 
@@ -1199,8 +1202,16 @@ def test_journey3_keyframe_excluded_character_reference_url_filtering(monkeypatc
     )
 
     chars = [
-        {"role_id": "Role A", "name": "Harry", "reference_url": "https://storage.googleapis.com/test/refA.jpg"},
-        {"role_id": "Role B", "name": "Draco", "reference_url": "https://storage.googleapis.com/test/refB.jpg"},
+        {
+            "role_id": "Role A",
+            "name": "Harry",
+            "reference_url": "https://storage.googleapis.com/test/refA.jpg",
+        },
+        {
+            "role_id": "Role B",
+            "name": "Draco",
+            "reference_url": "https://storage.googleapis.com/test/refB.jpg",
+        },
     ]
 
     res = client.post(
@@ -1401,7 +1412,9 @@ def test_project_and_session_management_api_endpoints():
     res_def = client.post("/api/characters/save", json=char_default_payload)
     assert res_def.status_code == 200
     assert res_def.json()["success"] is True
-    assert "projects/default_project/saved_characters/default_hero.json" in res_def.json()["gcs_uri"]
+    assert (
+        "projects/default_project/saved_characters/default_hero.json" in res_def.json()["gcs_uri"]
+    )
 
     # 6. POST /api/characters/save-sheet with project_name & GET /api/projects/alpha_project/reference-sheets
     dummy_img = base64.b64encode(b"fake_image_bytes").decode("utf-8")
@@ -1472,7 +1485,11 @@ def test_journey3_setup_session_manifest_persistence() -> None:
     client = TestClient(app)
     chars = [
         {"role_id": "Role A", "name": "Neo", "reference_url": "https://example.com/neo.jpg"},
-        {"role_id": "Role B", "name": "Trinity", "reference_url": "https://example.com/trinity.jpg"},
+        {
+            "role_id": "Role B",
+            "name": "Trinity",
+            "reference_url": "https://example.com/trinity.jpg",
+        },
     ]
     res = client.post(
         "/api/journey3/setup",
@@ -1564,15 +1581,21 @@ def test_ui_html_contains_detach_reference_image_and_anchor_badge() -> None:
     assert "(Click ❌ Detach to clear for fresh visuals)" in UI_HTML
 
 
-def test_journey3_keyframe_error_returns_guardrail_guidance(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_journey3_keyframe_error_returns_guardrail_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify /api/journey3/keyframe returns HTTP 400 and guardrail_guidance dictionary when 400 occurs."""
     app = create_app(mock_mode=True)
     client = TestClient(app)
 
     def mock_generate_keyframe_failing(*args: Any, **kwargs: Any) -> Any:
-        raise ValueError("400 Policy violation: Input prompt or reference image violated real_people_likeness safety guidelines.")
+        raise ValueError(
+            "400 Policy violation: Input prompt or reference image violated real_people_likeness safety guidelines."
+        )
 
-    monkeypatch.setattr(app.state.agent.omni_client, "generate_keyframe_image", mock_generate_keyframe_failing)
+    monkeypatch.setattr(
+        app.state.agent.omni_client, "generate_keyframe_image", mock_generate_keyframe_failing
+    )
 
     res = client.post(
         "/api/journey3/keyframe",
@@ -1598,7 +1621,9 @@ def test_journey3_keyframe_error_returns_guardrail_guidance(monkeypatch: pytest.
     assert "suggested_actions" in guidance
 
 
-def test_storyboard_keyframe_image_uses_custom_image_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_storyboard_keyframe_image_uses_custom_image_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify /api/storyboard/keyframe-image prioritizes explicit image_prompt parameter over auto-generated string."""
     app = create_app(mock_mode=True)
     client = TestClient(app)
@@ -1700,9 +1725,18 @@ def test_ui_html_contains_unified_3mode_switcher_and_headers() -> None:
     assert "Conversational Diff Target" in UI_HTML
 
     # Mode 1 Header Banner
-    assert "Step 1: Set Visual Concept &amp; Cast" in UI_HTML or "Step 1: Set Visual Concept & Cast" in UI_HTML
-    assert "Step 2: Fine-Tune Audio &amp; Beat" in UI_HTML or "Step 2: Fine-Tune Audio & Beat" in UI_HTML
-    assert "Step 3: Render &amp; Refine Single Video" in UI_HTML or "Step 3: Render & Refine Single Video" in UI_HTML
+    assert (
+        "Step 1: Set Visual Concept &amp; Cast" in UI_HTML
+        or "Step 1: Set Visual Concept & Cast" in UI_HTML
+    )
+    assert (
+        "Step 2: Fine-Tune Audio &amp; Beat" in UI_HTML
+        or "Step 2: Fine-Tune Audio & Beat" in UI_HTML
+    )
+    assert (
+        "Step 3: Render &amp; Refine Single Video" in UI_HTML
+        or "Step 3: Render & Refine Single Video" in UI_HTML
+    )
 
     # Mode 2 Header Banner
     assert "Step 1: Global Production Context" in UI_HTML
@@ -1710,9 +1744,17 @@ def test_ui_html_contains_unified_3mode_switcher_and_headers() -> None:
     assert "Step 3: Concatenate Master Screening Room" in UI_HTML
 
     # Mode 3 Header Banner
-    assert "Step 1: Master Setup &amp; Roster" in UI_HTML or "Step 1: Master Setup & Roster" in UI_HTML
-    assert "Step 2: Sequential Shot Generation &amp; Keyframe Anchors" in UI_HTML or "Step 2: Sequential Shot Generation & Keyframe Anchors" in UI_HTML
-    assert "Step 3: Turn History &amp; Conversational Diffing" in UI_HTML or "Step 3: Turn History & Conversational Diffing" in UI_HTML
+    assert (
+        "Step 1: Master Setup &amp; Roster" in UI_HTML or "Step 1: Master Setup & Roster" in UI_HTML
+    )
+    assert (
+        "Step 2: Sequential Shot Generation &amp; Keyframe Anchors" in UI_HTML
+        or "Step 2: Sequential Shot Generation & Keyframe Anchors" in UI_HTML
+    )
+    assert (
+        "Step 3: Turn History &amp; Conversational Diffing" in UI_HTML
+        or "Step 3: Turn History & Conversational Diffing" in UI_HTML
+    )
 
 
 def test_ui_html_contains_symmetric_card_grids_and_controls() -> None:
@@ -1729,8 +1771,14 @@ def test_ui_html_contains_symmetric_card_grids_and_controls() -> None:
     assert "border-l-4 border-indigo-500 pl-3" in UI_HTML
 
     # Unified Button Styling (Primary & Secondary)
-    assert "bg-gradient-to-r from-blue-600 to-indigo-600 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2" in UI_HTML
-    assert "bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5" in UI_HTML
+    assert (
+        "bg-gradient-to-r from-blue-600 to-indigo-600 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2"
+        in UI_HTML
+    )
+    assert (
+        "bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs py-2 px-3 rounded-xl flex items-center gap-1.5"
+        in UI_HTML
+    )
 
 
 def test_ui_html_contains_vision_prompt_sync_controls_across_modes() -> None:
@@ -1969,17 +2017,17 @@ def test_ui_html_contains_1080p_studio_tier_and_seamless_loop_controls() -> None
 
     # 1080p Studio Tier in resolution selectors
     assert '<option value="1080p">💎 1080p (Studio Full HD)</option>' in UI_HTML
-    assert UI_HTML.count('value="1080p"') >= 5, "Expected 1080p option in all Mode 1, Mode 2, and Draft Room selectors"
+    assert UI_HTML.count('value="1080p"') >= 5, (
+        "Expected 1080p option in all Mode 1, Mode 2, and Draft Room selectors"
+    )
 
     # Seamless loop controls in Stage 2 Workstation and Inspector Drawer
     assert "is_seamless_loop" in UI_HTML
     assert "🔁 Seamless Infinite Loop" in UI_HTML
-    assert 'checked={!!shot.is_seamless_loop}' in UI_HTML
+    assert "checked={!!shot.is_seamless_loop}" in UI_HTML
     assert 'updateStageShot(idx, "is_seamless_loop", e.target.checked)' in UI_HTML
     assert "ACTIVE (Loops to Seed Frame) ✓" in UI_HTML
 
     # Seamless loop and resolution binding in handleGenerateShotVideo payload
     assert "resolution: omniResolution" in UI_HTML
     assert "is_seamless_loop: !!shot.is_seamless_loop" in UI_HTML
-
-
