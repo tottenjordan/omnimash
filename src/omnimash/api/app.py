@@ -9299,6 +9299,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         else (os.environ.get("MOCK_MODE", "false").lower() in ("true", "1"))
     )
     agent = OmniMashAgent(mock_mode=is_mock)
+    agent.session_manager.storage = agent.storage
     app.state.agent = agent
 
     static_dir = os.path.join(os.getcwd(), "static")
@@ -9596,6 +9597,30 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/motion-reference/upload", response_model=MotionReferenceResponse)
     def upload_motion_reference(req: MotionReferenceRequest) -> MotionReferenceResponse:
         """Crops a 3-second motion reference clip from input_video_path starting at start_sec."""
+        raw_path = (req.input_video_path or "").strip()
+        if not raw_path:
+            raise HTTPException(status_code=400, detail="Missing input_video_path")
+        if not (
+            raw_path.startswith("gs://")
+            or raw_path.startswith("https://storage.googleapis.com/")
+        ):
+            import tempfile
+
+            normalized_rel = raw_path.lstrip("/") if raw_path.startswith("/static/") else raw_path
+            real_target = os.path.realpath(normalized_rel)
+            allowed_roots = (
+                os.path.realpath("static"),
+                os.path.realpath("/tmp"),
+                os.path.realpath(tempfile.gettempdir()),
+            )
+            if not any(
+                real_target == root or real_target.startswith(root + os.sep)
+                for root in allowed_roots
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid input_video_path: must reside within static/ or /tmp/ directory",
+                )
         try:
             clip_path = agent.media_extractor.crop_3s_motion_reference(
                 input_video_path=req.input_video_path,
@@ -10676,6 +10701,24 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 status_code=400,
                 detail="Invalid GCS URI. Must start with gs:// or https://storage.googleapis.com/",
             )
+        gcs_path = uri[5:]
+        if "/" in gcs_path:
+            from omnimash.config import settings
+
+            req_bucket = gcs_path.split("/", 1)[0]
+            allowed_buckets = {
+                agent.storage.bucket_name,
+                settings.gcs_bucket_name,
+                "reference-images-jt-trend-trawler",
+                "omnimash-media-hybrid-vertex",
+                "test-omnimash-bucket",
+                "bucket",
+            }
+            if req_bucket not in allowed_buckets:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access to GCS bucket '{req_bucket}' is not permitted",
+                )
         data, content_type = agent.storage.download_blob_bytes(uri)
         if not data:
             raise HTTPException(
@@ -10690,7 +10733,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
 
     @app.post("/api/characters/generate-sheet", response_model=GenerateCharacterSheetResponse)
-    async def generate_character_sheet_endpoint(req: GenerateCharacterSheetRequest):
+    def generate_character_sheet_endpoint(req: GenerateCharacterSheetRequest):
         try:
             res = agent.omni_client.generate_character_reference_sheet(
                 source_image_url=req.source_image_url,
@@ -10737,7 +10780,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
 
     @app.post("/api/characters/save-sheet", response_model=SaveCharacterSheetResponse)
-    async def save_character_sheet_endpoint(req: SaveCharacterSheetRequest):
+    def save_character_sheet_endpoint(req: SaveCharacterSheetRequest):
         try:
             saved_path, public_url = agent.storage.save_character_sheet(
                 image_data=req.image_data,

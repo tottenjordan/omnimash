@@ -1907,6 +1907,24 @@ class OmniFlashClient:
                 logger.warning("Failed to decode data URI image: %s", e)
         if ref_url.startswith("http://") or ref_url.startswith("https://"):
             try:
+                import ipaddress
+
+                parsed_url = urlparse(ref_url)
+                hostname = (parsed_url.hostname or "").strip().lower()
+                if not hostname or hostname in (
+                    "localhost",
+                    "metadata.google.internal",
+                ):
+                    logger.warning("Blocked disallowed HTTP host in _fetch_image_bytes: %s", hostname)
+                    return b"", "image/png"
+                try:
+                    ip = ipaddress.ip_address(hostname)
+                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                        logger.warning("Blocked private/loopback IP in _fetch_image_bytes: %s", hostname)
+                        return b"", "image/png"
+                except ValueError:
+                    pass
+
                 req = urllib.request.Request(ref_url, headers={"User-Agent": "Mozilla/5.0"})
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     ct = resp.headers.get("Content-Type", "image/png")
@@ -1915,12 +1933,29 @@ class OmniFlashClient:
                 logger.warning("Failed to download HTTP image from %s: %s", ref_url, err)
         if os.path.exists(ref_url) and os.path.isfile(ref_url):
             try:
+                import tempfile
+
+                real_target = os.path.realpath(ref_url)
+                allowed_roots = (
+                    os.path.realpath("static"),
+                    os.path.realpath("/tmp"),
+                    os.path.realpath(tempfile.gettempdir()),
+                )
+                if not any(
+                    real_target == root or real_target.startswith(root + os.sep)
+                    for root in allowed_roots
+                ):
+                    logger.warning(
+                        "Blocked local file read outside allowed directories: %s",
+                        ref_url,
+                    )
+                    return b"", "image/png"
                 mime_type = "image/png"
                 if ref_url.lower().endswith(".mp4"):
                     mime_type = "video/mp4"
                 elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
                     mime_type = "image/jpeg"
-                with open(ref_url, "rb") as f:
+                with open(real_target, "rb") as f:
                     return f.read(), mime_type
             except Exception as err:
                 logger.warning("Failed to read local image file %s: %s", ref_url, err)

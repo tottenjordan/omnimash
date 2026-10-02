@@ -405,3 +405,37 @@ def test_list_project_characters_with_legacy_fallback():
     assert "Hero" in names
     assert "Villain" in names
 
+
+def test_get_session_manifest_reads_from_gcs_bucket_when_not_cached():
+    import json
+    from unittest.mock import MagicMock
+
+    storage = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=False)
+    mock_bucket = MagicMock()
+    storage._bucket = mock_bucket
+
+    manifest_payload = {
+        "session_id": "cold_start_sess",
+        "project_id": "p1",
+        "turns": {"t1": {"turn_id": "t1", "video_url": "/static/rendered/clip.mp4"}},
+    }
+    mock_blob = MagicMock()
+    mock_blob.exists.return_value = True
+    mock_blob.download_as_text.return_value = json.dumps(manifest_payload)
+
+    def get_blob(blob_path: str):
+        if (
+            blob_path
+            == "projects/p1/sessions/cold_start_sess/prompts/session_manifest.json"
+        ):
+            return mock_blob
+        fallback_blob = MagicMock()
+        fallback_blob.exists.return_value = False
+        return fallback_blob
+
+    mock_bucket.blob.side_effect = get_blob
+
+    loaded = storage.get_session_manifest("cold_start_sess", project_id="p1")
+    assert loaded is not None
+    assert loaded["session_id"] == "cold_start_sess"
+    assert "t1" in loaded["turns"]
