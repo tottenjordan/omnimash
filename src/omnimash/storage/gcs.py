@@ -337,6 +337,35 @@ class GcsStorageManager:
             return self._mock_session_manifests[key]
         if session_id in self._mock_session_manifests:
             return self._mock_session_manifests[session_id]
+
+        if not self.mock_mode and self._bucket:
+            candidate_paths = []
+            if project_id:
+                candidate_paths.append(
+                    self.build_session_blob_path(
+                        session_id,
+                        "prompts",
+                        "session_manifest.json",
+                        project_id=project_id,
+                    ).lstrip("/")
+                )
+            candidate_paths.append(
+                self.build_session_blob_path(
+                    session_id, "prompts", "session_manifest.json"
+                ).lstrip("/")
+            )
+            for blob_path in candidate_paths:
+                try:
+                    blob = self._bucket.blob(blob_path)
+                    if blob.exists():
+                        data = blob.download_as_text()
+                        res: dict[str, Any] = json.loads(data)
+                        self._mock_session_manifests[key] = res
+                        self._mock_session_manifests[session_id] = res
+                        return res
+                except Exception:
+                    pass
+
         return None
 
     def save_reference_analysis(
@@ -604,7 +633,9 @@ class GcsStorageManager:
         slug = self._slugify(name)
         if project_id:
             if session_id:
-                blob_path = f"projects/{project_id}/sessions/{session_id}/products/{slug}.json"
+                blob_path = (
+                    f"projects/{project_id}/sessions/{session_id}/products/{slug}.json"
+                )
             else:
                 blob_path = f"projects/{project_id}/saved_products/{slug}.json"
         elif session_id:
@@ -701,8 +732,12 @@ class GcsStorageManager:
         session_id: str | None = None,
     ) -> tuple[str, str]:
         """Saves a keyframe image artifact to GCS under project and/or session path."""
-        fname = filename or f"keyframe_{int(datetime.now(timezone.utc).timestamp())}.png"
-        if not (fname.endswith(".png") or fname.endswith(".jpg") or fname.endswith(".jpeg")):
+        fname = (
+            filename or f"keyframe_{int(datetime.now(timezone.utc).timestamp())}.png"
+        )
+        if not (
+            fname.endswith(".png") or fname.endswith(".jpg") or fname.endswith(".jpeg")
+        ):
             fname = f"{fname}.png"
 
         blob_path = self.build_session_blob_path(
@@ -1063,7 +1098,9 @@ class GcsStorageManager:
                     sid = parts[0]
                     updated = getattr(b, "updated", None)
                     if sid not in session_latest or (
-                        updated and session_latest[sid] and updated > session_latest[sid]
+                        updated
+                        and session_latest[sid]
+                        and updated > session_latest[sid]
                     ):
                         session_latest[sid] = updated
                     elif sid not in session_latest:
@@ -1072,7 +1109,9 @@ class GcsStorageManager:
             if session_latest:
                 sorted_sessions = sorted(
                     session_latest.keys(),
-                    key=lambda k: session_latest[k] if session_latest[k] is not None else "",
+                    key=lambda k: (
+                        session_latest[k] if session_latest[k] is not None else ""
+                    ),
                     reverse=True,
                 )
                 return sorted_sessions

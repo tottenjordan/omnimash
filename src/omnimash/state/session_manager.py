@@ -1,4 +1,5 @@
 import re
+from typing import Any
 import uuid
 from pydantic import BaseModel, Field
 
@@ -30,8 +31,20 @@ class ProjectSession(BaseModel):
 
 
 class SessionManager:
-    def __init__(self):
+    def __init__(self, storage: Any | None = None):
         self._sessions: dict[str, ProjectSession] = {}
+        self.storage = storage
+
+    def _persist_session(self, session: ProjectSession) -> None:
+        if self.storage is not None and hasattr(self.storage, "save_session_manifest"):
+            try:
+                self.storage.save_session_manifest(
+                    session_id=session.session_id,
+                    manifest_data=session.model_dump(),
+                    project_id=session.project_id,
+                )
+            except Exception:
+                pass
 
     def get_or_create_session(
         self, user_id: str, project_id: str, session_name: str | None = None
@@ -41,6 +54,20 @@ class SessionManager:
         else:
             session_key = f"{user_id}:{project_id}"
         if session_key not in self._sessions:
+            if self.storage is not None and hasattr(
+                self.storage, "get_session_manifest"
+            ):
+                try:
+                    manifest = self.storage.get_session_manifest(
+                        session_key, project_id=project_id
+                    )
+                    if isinstance(manifest, dict) and "turns" in manifest:
+                        self._sessions[session_key] = ProjectSession.model_validate(
+                            manifest
+                        )
+                        return self._sessions[session_key]
+                except Exception:
+                    pass
             self._sessions[session_key] = ProjectSession(
                 session_id=session_key, user_id=user_id, project_id=project_id
             )
@@ -95,6 +122,7 @@ class SessionManager:
                     interaction_thread_id=interaction_thread_id,
                 )
             )
+        self._persist_session(session)
         return turn
 
     def commit_turn(self, session_id: str, turn_id: str) -> TurnNode:
@@ -103,4 +131,5 @@ class SessionManager:
             raise KeyError(f"Turn {turn_id} not found in session {session_id}")
         node = session.turns[turn_id]
         node.is_committed = True
+        self._persist_session(session)
         return node

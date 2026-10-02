@@ -38,3 +38,8 @@ package-lock.json
 .DS_Store
 .idea/
 .vscode/
+
+# ADK local session database
+.adk/
+*.db
+
