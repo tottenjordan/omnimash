@@ -53,6 +53,7 @@ def test_concatenate_clips_with_master_audio_exists(tmp_path):
         mock_subproc.assert_called_once()
         cmd = mock_subproc.call_args[0][0]
         expected_audio_path = os.path.abspath(str(audio_file))
+        assert os.path.basename(cmd[7]).startswith("concat_list_")
         assert cmd[:-1] == [
             "ffmpeg",
             "-y",
@@ -61,7 +62,7 @@ def test_concatenate_clips_with_master_audio_exists(tmp_path):
             "-safe",
             "0",
             "-i",
-            str(tmp_path / "concat_list.txt"),
+            cmd[7],
             "-i",
             expected_audio_path,
             "-c:v",
@@ -129,6 +130,7 @@ def test_concatenate_clips_with_master_audio_reencode_fallback(tmp_path):
         assert mock_subproc.call_count == 2
         second_cmd = mock_subproc.call_args_list[1][0][0]
         expected_audio_path = os.path.abspath(str(audio_file))
+        assert os.path.basename(second_cmd[7]).startswith("concat_list_")
         assert second_cmd[:-1] == [
             "ffmpeg",
             "-y",
@@ -137,7 +139,7 @@ def test_concatenate_clips_with_master_audio_reencode_fallback(tmp_path):
             "-safe",
             "0",
             "-i",
-            str(tmp_path / "concat_list.txt"),
+            second_cmd[7],
             "-i",
             expected_audio_path,
             "-c:v",
@@ -176,8 +178,14 @@ def test_orchestrator_stitch_session_master_passes_audio_path():
     master_audio = "/tmp/test_master.mp3"
 
     with (
-        patch.object(agent.stitcher, "concatenate_clips", return_value="/tmp/master_stitched.mp4") as mock_concat,
-        patch.object(agent.storage, "save_final_master", return_value=("gs://bucket/master.mp4", "https://master.url")) as mock_save,
+        patch.object(
+            agent.stitcher, "concatenate_clips", return_value="/tmp/master_stitched.mp4"
+        ) as mock_concat,
+        patch.object(
+            agent.storage,
+            "save_final_master",
+            return_value=("gs://bucket/master.mp4", "https://master.url"),
+        ) as mock_save,
     ):
         gcs_uri, url = agent.stitch_session_master(
             session_name="test_session",
@@ -293,7 +301,9 @@ def test_stitch_storyboard_master_wires_audio_ducking(tmp_path):
             "omnimash.stitching.stitcher.apply_dialogue_audio_ducking",
             return_value=str(tmp_path / "ducked.aac"),
         ) as mock_ducking,
-        patch.object(stitcher, "concatenate_clips", return_value=str(tmp_path / "master.mp4")) as mock_concat,
+        patch.object(
+            stitcher, "concatenate_clips", return_value=str(tmp_path / "master.mp4")
+        ) as mock_concat,
     ):
         result = stitcher.stitch_storyboard_master(
             shot_clips=[],
@@ -315,5 +325,3 @@ def test_stitch_storyboard_master_wires_audio_ducking(tmp_path):
             master_audio_path=str(tmp_path / "ducked.aac"),
         )
         assert result == str(tmp_path / "master.mp4")
-
-
