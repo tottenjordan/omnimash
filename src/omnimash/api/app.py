@@ -509,18 +509,37 @@ UI_HTML = r"""<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OmniMash • Digital Director's Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        };
+    </script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #0b0f19; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #1f293d; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #374151; }
+        .studio-glass { background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        .studio-panel { background: #0d121f; border: 1px solid rgba(255, 255, 255, 0.08); }
     </style>
 </head>
-<body class="bg-gray-950 text-white font-sans antialiased min-h-screen">
+<body class="bg-gray-950 text-white font-sans antialiased min-h-screen selection:bg-blue-600 selection:text-white">
     <div id="__next"></div>
 
     <script type="text/babel">
@@ -3280,83 +3299,87 @@ UI_HTML = r"""<!DOCTYPE html>
                     )}
 
                     {/* Top Application Header & Toolbar */}
-                    <header className="border-b border-gray-800 bg-gray-900/90 backdrop-blur sticky top-0 z-40 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+                    <header className="border-b border-gray-800 bg-gray-900/95 backdrop-blur sticky top-0 z-40 px-6 py-3 flex flex-wrap items-center justify-between gap-4">
                         <div className="flex items-center space-x-4">
-                            <div className="flex items-center space-x-2">
-                                <span className="text-2xl">🎬</span>
+                            <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold text-sm shadow-inner">
+                                    🎬
+                                </div>
                                 <div>
-                                    <h1 className="text-lg font-extrabold bg-gradient-to-r from-purple-400 via-pink-400 to-amber-400 bg-clip-text text-transparent">
-                                        OMNIMASH • DIGITAL DIRECTOR'S STUDIO
-                                    </h1>
-                                    <p className="text-[11px] text-gray-400">Gemini Omni Flash 30–60s Parody &amp; Storyboard Studio</p>
+                                    <div className="flex items-center gap-2">
+                                        <h1 className="text-sm font-bold tracking-tight text-white uppercase font-mono">
+                                            OMNIMASH STUDIO
+                                        </h1>
+                                        <span className="text-[10px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold">
+                                            Gemini Omni 1.1 Flash
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400">Professional Video &amp; Storyboard Director's Suite</p>
                                 </div>
                             </div>
                         </div>
 
                         {/* Studio Mode Switcher Toggle */}
-                        <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
+                        <div className="flex items-center bg-gray-950/80 border border-gray-800 rounded-xl p-1 shadow-inner">
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 w-full">
                                 <button
                                     type="button"
                                     onClick={() => { setStudioMode("stages"); setActiveTab("stages"); }}
-                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between gap-2 ${
+                                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-between gap-2.5 ${
                                         (studioMode === "stages" && activeTab !== "journey3")
-                                            ? "bg-amber-500 text-black shadow shadow-amber-900/50 font-extrabold"
-                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                                            ? "bg-amber-500/20 text-amber-200 border border-amber-500/40 shadow-sm font-bold"
+                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/80 border border-transparent"
                                     }`}
                                 >
                                     <span className="flex items-center gap-1.5">
-                                        <span>⚡</span>
-                                        <span>⚡ Mode 1: Guided Fine-Tune</span>
+                                        <span>Mode 1: Guided Fine-Tune</span>
                                     </span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold ${
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium ${
                                         (studioMode === "stages" && activeTab !== "journey3")
-                                            ? "bg-amber-950/40 text-amber-950 border border-amber-900/40"
+                                            ? "bg-amber-950/80 text-amber-300 border border-amber-800/60"
                                             : "bg-gray-900 text-gray-400 border border-gray-800"
                                     }`}>
-                                        🎯 Single Video Target
+                                        Single Video Target
                                     </span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => { setStudioMode("acts"); setActiveTab("acts"); }}
-                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between gap-2 ${
+                                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-between gap-2.5 ${
                                         (studioMode === "acts" && activeTab !== "journey3")
-                                            ? "bg-purple-600 text-white shadow shadow-purple-900/50"
-                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                                            ? "bg-blue-600/20 text-blue-200 border border-blue-500/40 shadow-sm font-bold"
+                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/80 border border-transparent"
                                     }`}
                                 >
                                     <span className="flex items-center gap-1.5">
-                                        <span>🎬</span>
-                                        <span>🎬 Mode 2: Screenplay Storyboard</span>
+                                        <span>Mode 2: Screenplay Storyboard</span>
                                     </span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold ${
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium ${
                                         (studioMode === "acts" && activeTab !== "journey3")
-                                            ? "bg-purple-950/60 text-purple-200 border border-purple-800/60"
+                                            ? "bg-blue-950/80 text-blue-300 border border-blue-800/60"
                                             : "bg-gray-900 text-gray-400 border border-gray-800"
                                     }`}>
-                                        🎬 Multi-Scene Master Target
+                                        Multi-Scene Master Target
                                     </span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => { setActiveTab("journey3"); setStudioMode("journey3"); }}
-                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between gap-2 ${
+                                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-between gap-2.5 ${
                                         (activeTab === "journey3" || studioMode === "journey3")
-                                            ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow shadow-blue-900/50 font-extrabold"
-                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                                            ? "bg-emerald-600/20 text-emerald-200 border border-emerald-500/40 shadow-sm font-bold"
+                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/80 border border-transparent"
                                     }`}
                                 >
                                     <span className="flex items-center gap-1.5">
-                                        <span>🚀</span>
-                                        <span>🚀 Mode 3: Continuity Studio</span>
+                                        <span>Mode 3: Continuity Studio</span>
                                     </span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold ${
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium ${
                                         (activeTab === "journey3" || studioMode === "journey3")
-                                            ? "bg-blue-950/60 text-blue-200 border border-blue-800/60"
+                                            ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
                                             : "bg-gray-900 text-gray-400 border border-gray-800"
                                     }`}>
-                                        🔄 Conversational Diff Target
+                                        Conversational Diff Target
                                     </span>
                                 </button>
                             </div>
@@ -3367,13 +3390,13 @@ UI_HTML = r"""<!DOCTYPE html>
                             <button
                                 type="button"
                                 onClick={() => setShowBestPracticesModal(true)}
-                                className="bg-gradient-to-r from-purple-900/80 to-pink-900/80 hover:from-purple-800 hover:to-pink-800 text-purple-200 border border-purple-600/60 rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                                className="bg-gray-800/80 hover:bg-gray-700 text-gray-200 border border-gray-700/80 rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
                             >
                                 <span>💡 Prompt Best Practices &amp; Examples</span>
                             </button>
                             <button
                                 onClick={handleResetStudio}
-                                className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                                className="bg-gray-800/80 hover:bg-gray-700 text-gray-200 border border-gray-700/80 rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
                             >
                                 <span>🔄 New Project / Start Over</span>
                             </button>
@@ -3631,19 +3654,18 @@ UI_HTML = r"""<!DOCTYPE html>
                         {studioMode === "acts" && (
                             <div className="space-y-6">
                                 {/* Mode 2 Standardized Mode Header Card */}
-                                <div className="bg-gradient-to-r from-purple-950/40 via-gray-900 to-purple-950/40 border border-purple-800/50 rounded-2xl p-5 shadow-xl space-y-4">
+                                <div className="studio-panel rounded-2xl p-5 shadow-xl space-y-4">
                                     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
                                         <div>
                                             <div className="flex items-center gap-3">
-                                                <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
-                                                    <span>🎬</span>
-                                                    <span>🎬 Mode 2: Screenplay Storyboard</span>
+                                                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                                                    <span>Mode 2: Screenplay Storyboard</span>
                                                 </h2>
-                                                <span className="bg-purple-950/80 text-purple-300 border border-purple-800/60 px-2.5 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-1 shadow-sm">
-                                                    <span>🎬 Multi-Scene Master Target</span>
+                                                <span className="bg-blue-950/80 text-blue-300 border border-blue-800/60 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium flex items-center gap-1 shadow-sm">
+                                                    <span>Multi-Scene Master Target</span>
                                                 </span>
                                             </div>
-                                            <p className="text-xs text-gray-300 mt-1.5 max-w-3xl">
+                                            <p className="text-xs text-gray-400 mt-1 max-w-3xl">
                                                 Multi-scene screenplay director for crafting structured multi-shot storyboards with concatenated master video output.
                                             </p>
                                         </div>
@@ -3654,13 +3676,17 @@ UI_HTML = r"""<!DOCTYPE html>
                                             onClick={() => setActiveAct(1)}
                                             className={`text-left rounded-xl p-3 flex items-center gap-3 transition cursor-pointer border ${
                                                 activeAct === 1
-                                                    ? "bg-purple-900/40 border-purple-500 shadow-md shadow-purple-900/30"
-                                                    : "bg-gray-950/60 border-gray-800 hover:border-purple-600/60 hover:bg-gray-900/60"
+                                                    ? "bg-blue-600/15 border-blue-500/80 shadow-md shadow-blue-950/30 text-white"
+                                                    : "bg-gray-950/60 border-gray-800 hover:border-gray-700 hover:bg-gray-900/60 text-gray-300"
                                             }`}
                                         >
-                                            <span className="bg-purple-500/20 text-purple-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-purple-500/30 shrink-0">1</span>
+                                            <span className={`font-mono font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${
+                                                activeAct === 1
+                                                    ? "bg-blue-600 text-white border-blue-400"
+                                                    : "bg-gray-900 text-gray-400 border-gray-700"
+                                            }`}>1</span>
                                             <div>
-                                                <span className="text-xs font-bold text-gray-200 block">Step 1: Global Production Context</span>
+                                                <span className="text-xs font-semibold block">Step 1: Global Production Context</span>
                                                 <span className="text-[11px] text-gray-400">Set character likeness, outfits &amp; shared scene parameters</span>
                                             </div>
                                         </button>
@@ -3669,13 +3695,17 @@ UI_HTML = r"""<!DOCTYPE html>
                                             onClick={() => setActiveAct(2)}
                                             className={`text-left rounded-xl p-3 flex items-center gap-3 transition cursor-pointer border ${
                                                 activeAct === 2
-                                                    ? "bg-pink-900/40 border-pink-500 shadow-md shadow-pink-900/30"
-                                                    : "bg-gray-950/60 border-gray-800 hover:border-pink-600/60 hover:bg-gray-900/60"
+                                                    ? "bg-blue-600/15 border-blue-500/80 shadow-md shadow-blue-950/30 text-white"
+                                                    : "bg-gray-950/60 border-gray-800 hover:border-gray-700 hover:bg-gray-900/60 text-gray-300"
                                             }`}
                                         >
-                                            <span className="bg-pink-500/20 text-pink-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-pink-500/30 shrink-0">2</span>
+                                            <span className={`font-mono font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${
+                                                activeAct === 2
+                                                    ? "bg-blue-600 text-white border-blue-400"
+                                                    : "bg-gray-900 text-gray-400 border-gray-700"
+                                            }`}>2</span>
                                             <div>
-                                                <span className="text-xs font-bold text-gray-200 block">Step 2: Multi-Scene Storyboard Directing</span>
+                                                <span className="text-xs font-semibold block">Step 2: Multi-Scene Storyboard Directing</span>
                                                 <span className="text-[11px] text-gray-400">Auto-expand screenplay into shot cards &amp; render batch clips</span>
                                             </div>
                                         </button>
@@ -3684,13 +3714,17 @@ UI_HTML = r"""<!DOCTYPE html>
                                             onClick={() => setActiveAct(3)}
                                             className={`text-left rounded-xl p-3 flex items-center gap-3 transition cursor-pointer border ${
                                                 activeAct === 3
-                                                    ? "bg-amber-900/40 border-amber-500 shadow-md shadow-amber-900/30"
-                                                    : "bg-gray-950/60 border-gray-800 hover:border-amber-600/60 hover:bg-gray-900/60"
+                                                    ? "bg-blue-600/15 border-blue-500/80 shadow-md shadow-blue-950/30 text-white"
+                                                    : "bg-gray-950/60 border-gray-800 hover:border-gray-700 hover:bg-gray-900/60 text-gray-300"
                                             }`}
                                         >
-                                            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-amber-500/30 shrink-0">3</span>
+                                            <span className={`font-mono font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${
+                                                activeAct === 3
+                                                    ? "bg-blue-600 text-white border-blue-400"
+                                                    : "bg-gray-900 text-gray-400 border-gray-700"
+                                            }`}>3</span>
                                             <div>
-                                                <span className="text-xs font-bold text-gray-200 block">Step 3: Concatenate Master Screening Room</span>
+                                                <span className="text-xs font-semibold block">Step 3: Concatenate Master Screening Room</span>
                                                 <span className="text-[11px] text-gray-400">Preview, arrange &amp; concatenate clips into seamless master video</span>
                                             </div>
                                         </button>
@@ -3699,9 +3733,9 @@ UI_HTML = r"""<!DOCTYPE html>
 
                                 {activeAct === 1 && (
                             <div className="space-y-6">
-                                <div className="bg-gradient-to-r from-purple-950/40 to-pink-950/40 border border-purple-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+                                <div className="studio-panel rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
                                     <div>
-                                        <h2 className="text-base font-bold text-purple-200 flex items-center gap-2">
+                                        <h2 className="text-sm font-semibold text-white flex items-center gap-2 tracking-tight">
                                             <span>🎭</span>
                                             <span>Act 1: Global Production Context (Applies to All Shots)</span>
                                         </h2>
@@ -3709,13 +3743,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                             Set character likeness, outfits, voice styles, and global parody environment once. Shared across all 10s video clips.
                                         </p>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
-                                            <span className="text-gray-300">📐 Aspect Ratio</span>
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:border-blue-500/40 transition select-none">
+                                            <span className="text-gray-400">📐 Aspect Ratio</span>
                                             <select
                                                 value={aspectRatio}
                                                 onChange={(e) => setAspectRatio(e.target.value)}
-                                                className="bg-gray-900 text-purple-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-purple-500 cursor-pointer"
+                                                className="bg-gray-900 text-blue-300 border border-gray-800 rounded px-2 py-0.5 text-xs font-mono font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
                                             >
                                                 <option value="16:9">16:9 Widescreen</option>
                                                 <option value="9:16">9:16 Portrait / Shorts</option>
@@ -3723,12 +3757,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <option value="21:9">21:9 Ultrawide</option>
                                             </select>
                                         </div>
-                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none shadow-inner">
-                                            <span className="text-gray-300">⚡ Resolution</span>
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:border-blue-500/40 transition select-none">
+                                            <span className="text-gray-400">⚡ Resolution</span>
                                             <select
                                                 value={omniResolution}
                                                 onChange={(e) => setOmniResolution(e.target.value)}
-                                                className="bg-gray-900 text-purple-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-purple-500 cursor-pointer"
+                                                className="bg-gray-900 text-blue-300 border border-gray-800 rounded px-2 py-0.5 text-xs font-mono font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
                                             >
                                                 <option value="360p">⚡ 360p Fast Preview</option>
                                                 <option value="720p">🎥 720p Standard</option>
@@ -3736,13 +3770,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                                 <option value="4k">🏆 4K Master Export</option>
                                             </select>
                                         </div>
-                                        <label className="flex items-center gap-2 cursor-pointer bg-gray-900/90 border border-gray-700/80 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-purple-500 transition select-none">
+                                        <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:border-blue-500/40 transition select-none">
                                             <span>🛡️ Safety Sanitization</span>
                                             <input
                                                 type="checkbox"
                                                 checked={enableSafetySanitization}
                                                 onChange={(e) => setEnableSafetySanitization(e.target.checked)}
-                                                className="w-4 h-4 accent-purple-600 rounded cursor-pointer"
+                                                className="w-3.5 h-3.5 accent-blue-500 rounded cursor-pointer"
                                             />
                                         </label>
                                     </div>
@@ -4795,42 +4829,42 @@ UI_HTML = r"""<!DOCTYPE html>
                         {studioMode === "stages" && (
                             <div className="space-y-6">
                                 {/* Mode 1 Standardized Mode Header Card */}
-                                <div className="bg-gradient-to-r from-amber-950/30 via-gray-900 to-amber-950/30 border border-amber-800/50 rounded-2xl p-5 shadow-xl space-y-4">
+                                <div className="studio-panel rounded-xl p-5 space-y-4">
                                     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
                                         <div>
                                             <div className="flex items-center gap-3">
-                                                <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                                                <h2 className="text-base font-bold text-white flex items-center gap-2 tracking-tight">
                                                     <span>⚡</span>
-                                                    <span>⚡ Mode 1: Guided Fine-Tune</span>
+                                                    <span>Mode 1: Guided Fine-Tune</span>
                                                 </h2>
-                                                <span className="bg-amber-950/80 text-amber-300 border border-amber-800/60 px-2.5 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-1 shadow-sm">
+                                                <span className="bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-md text-[11px] font-mono font-semibold flex items-center gap-1">
                                                     <span>🎯 Single Video Target</span>
                                                 </span>
                                             </div>
-                                            <p className="text-xs text-gray-300 mt-1.5 max-w-3xl">
+                                            <p className="text-xs text-gray-400 mt-1.5 max-w-3xl">
                                                 Step-by-step guided workflow for creating individual video clips with precise prompt fine-tuning and visual control.
                                             </p>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
-                                            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-amber-500/30 shrink-0">1</span>
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                        <div className="bg-gray-950/70 border border-gray-800/90 rounded-lg p-3 flex items-center gap-3">
+                                            <span className="bg-amber-500/15 text-amber-400 font-mono font-semibold text-xs w-6 h-6 rounded-md flex items-center justify-center border border-amber-500/30 shrink-0">1</span>
                                             <div>
-                                                <span className="text-xs font-bold text-gray-200 block">Step 1: Set Visual Concept &amp; Cast</span>
+                                                <span className="text-xs font-semibold text-gray-200 block">Step 1: Set Visual Concept &amp; Cast</span>
                                                 <span className="text-[11px] text-gray-400">Define single video concept, style tags &amp; character roster</span>
                                             </div>
                                         </div>
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
-                                            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-amber-500/30 shrink-0">2</span>
+                                        <div className="bg-gray-950/70 border border-gray-800/90 rounded-lg p-3 flex items-center gap-3">
+                                            <span className="bg-amber-500/15 text-amber-400 font-mono font-semibold text-xs w-6 h-6 rounded-md flex items-center justify-center border border-amber-500/30 shrink-0">2</span>
                                             <div>
-                                                <span className="text-xs font-bold text-gray-200 block">Step 2: Fine-Tune Audio &amp; Beat</span>
+                                                <span className="text-xs font-semibold text-gray-200 block">Step 2: Fine-Tune Audio &amp; Beat</span>
                                                 <span className="text-[11px] text-gray-400">Select vocal delivery, trap beat &amp; background ambience</span>
                                             </div>
                                         </div>
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
-                                            <span className="bg-amber-500/20 text-amber-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-amber-500/30 shrink-0">3</span>
+                                        <div className="bg-gray-950/70 border border-gray-800/90 rounded-lg p-3 flex items-center gap-3">
+                                            <span className="bg-amber-500/15 text-amber-400 font-mono font-semibold text-xs w-6 h-6 rounded-md flex items-center justify-center border border-amber-500/30 shrink-0">3</span>
                                             <div>
-                                                <span className="text-xs font-bold text-gray-200 block">Step 3: Render &amp; Refine Single Video</span>
+                                                <span className="text-xs font-semibold text-gray-200 block">Step 3: Render &amp; Refine Single Video</span>
                                                 <span className="text-[11px] text-gray-400">Generate, re-anchor prompt diffs &amp; export single video</span>
                                             </div>
                                         </div>
@@ -4840,10 +4874,10 @@ UI_HTML = r"""<!DOCTYPE html>
                                 {/* STAGE 1: VISION & STYLE SETUP */}
                                 {activeStage === 1 && (
                                     <div className="space-y-6">
-                                        <div className="bg-gradient-to-r from-amber-950/40 via-orange-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 shadow-xl">
+                                        <div className="studio-panel rounded-xl p-5">
                                             <div className="flex flex-wrap items-center justify-between gap-4">
                                                 <div>
-                                                    <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
+                                                    <h2 className="text-sm font-semibold text-white flex items-center gap-2 tracking-tight">
                                                         <span>💡</span>
                                                         <span>Step 1: Visual Concept & Characters</span>
                                                     </h2>
@@ -4851,13 +4885,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                                         Open-ended NLP input, reference images, auto-generate N shots. Define your overall 30–60s video concept, select style &amp; tone presets, and upload reference image and audio assets.
                                                     </p>
                                                 </div>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-amber-500 transition select-none shadow-inner">
-                                                        <span className="text-gray-300">📐 Aspect Ratio</span>
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:border-amber-500/40 transition select-none">
+                                                        <span className="text-gray-400">📐 Aspect Ratio</span>
                                                         <select
                                                             value={aspectRatio}
                                                             onChange={(e) => setAspectRatio(e.target.value)}
-                                                            className="bg-gray-900 text-amber-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
+                                                            className="bg-gray-900 text-amber-300 border border-gray-800 rounded px-2 py-0.5 text-xs font-mono font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
                                                         >
                                                             <option value="16:9">16:9 Widescreen</option>
                                                             <option value="9:16">9:16 Portrait / Shorts</option>
@@ -4865,12 +4899,12 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <option value="21:9">21:9 Ultrawide</option>
                                                         </select>
                                                     </div>
-                                                    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-amber-500 transition select-none shadow-inner">
-                                                        <span className="text-gray-300">⚡ Resolution</span>
+                                                    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:border-amber-500/40 transition select-none">
+                                                        <span className="text-gray-400">⚡ Resolution</span>
                                                         <select
                                                             value={omniResolution}
                                                             onChange={(e) => setOmniResolution(e.target.value)}
-                                                            className="bg-gray-900 text-amber-300 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
+                                                            className="bg-gray-900 text-amber-300 border border-gray-800 rounded px-2 py-0.5 text-xs font-mono font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
                                                         >
                                                             <option value="360p">⚡ 360p Fast Preview</option>
                                                             <option value="720p">🎥 720p Standard</option>
@@ -4878,13 +4912,13 @@ UI_HTML = r"""<!DOCTYPE html>
                                                             <option value="4k">🏆 4K Master Export</option>
                                                         </select>
                                                     </div>
-                                                    <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-200 hover:border-amber-500 transition select-none shadow-inner">
+                                                    <label className="flex items-center gap-2 cursor-pointer bg-gray-950 border border-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:border-amber-500/40 transition select-none">
                                                         <span>🛡️ Safety Sanitization</span>
                                                         <input
                                                             type="checkbox"
                                                             checked={enableSafetySanitization}
                                                             onChange={(e) => setEnableSafetySanitization(e.target.checked)}
-                                                            className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                                                            className="w-3.5 h-3.5 accent-amber-500 rounded cursor-pointer"
                                                         />
                                                     </label>
                                                     <div className="flex items-center bg-gray-950 border border-gray-800 rounded-xl p-1 shadow-inner">
