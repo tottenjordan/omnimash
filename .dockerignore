@@ -1,0 +1,37 @@
+# Git & VCS
+.git
+.gitignore
+
+# Virtual environments & caches
+.venv
+__pycache__/
+*.py[oc]
+.pytest_cache/
+.ruff_cache/
+.adk/
+*.db
+
+# Secrets & local env
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+adc.json
+
+# Non-runtime assets & test/scratch directories
+docs/
+imgs/
+outputs/
+scratch/
+tests/
+code_review.md
+static/rendered/*
+!static/rendered/.gitkeep
+static/sessions/*
+!static/sessions/.gitkeep
+*.mp4
+*.wav
+*.mov
+*.webm
