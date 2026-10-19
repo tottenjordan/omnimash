@@ -4,7 +4,7 @@ import re
 import uuid
 from typing import Any
 from urllib.parse import quote_plus
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -1138,7 +1138,7 @@ UI_HTML = r"""<!DOCTYPE html>
             const [activeBranchTurnId, setActiveBranchTurnId] = useState("turn_00");
             const [isVisualContinuityLocked, setIsVisualContinuityLocked] = useState(true);
             const [keyframeSeedAnchor, setKeyframeSeedAnchor] = useState("KeyframeSeed");
-            const [j3DiffPrompt, setJ3DiffPrompt] = useState("Make background darker with glowing blue neon, Add heavy 808 bass drop audio cue");
+            const [j3DiffPrompt, setJ3DiffPrompt] = useState("Make background darker with glowing blue neon"); // Alternative preset: Add heavy 808 bass drop audio cue
             const [j3DiffLoading, setJ3DiffLoading] = useState(false);
 
             // The Draft Room State Hooks & Handlers
@@ -1455,7 +1455,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             master_description: j3MasterDescription,
                             aspect_ratio: aspectRatio,
                             enable_safety_sanitization: enableSafetySanitization,
-                            characters: j3Characters.map(c => ({ role_id: c.role_id, name: c.name, reference_url: c.reference_url })),
+                            characters: j3Characters,
                             products: [{ name: "Product 1", reference_url: j3ProductRef }],
                             style_presets: [j3StylePreset],
                             style_preset: j3StylePreset,
@@ -1467,8 +1467,12 @@ UI_HTML = r"""<!DOCTYPE html>
                         setGuardrailGuidance(data.guardrail_guidance || null);
                     }
                     if (data && data.characters && Array.isArray(data.characters)) {
-                        setCharacters(data.characters);
-                        setJ3Characters(data.characters);
+                        const mergedChars = data.characters.map((dc, idx) => {
+                            const existing = (j3Characters || []).find(ec => ec && ec.role_id === dc.role_id) || (j3Characters || [])[idx] || {};
+                            return { ...existing, ...dc };
+                        });
+                        setCharacters(mergedChars);
+                        setJ3Characters(mergedChars);
                     }
                     if (data && data.shot_cards && data.shot_cards.length > 0) {
                         const defaultCharIds = ((data.characters && Array.isArray(data.characters) ? data.characters : j3Characters) || []).map(c => c.role_id);
@@ -1571,6 +1575,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             resolution: omniResolution,
                             aspect_ratio: aspectRatio,
                             enable_safety_sanitization: enableSafetySanitization,
+                            characters: j3Characters,
                             compiled_override: card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card),
                             included_character_ids: card.included_character_ids
                         })
@@ -1581,12 +1586,27 @@ UI_HTML = r"""<!DOCTYPE html>
                     }
                     if (data && data.video_url) {
                         setGuardrailGuidance(null);
+                        if (data.turn_id) {
+                            setActiveBranchTurnId(data.turn_id);
+                            setJ3TurnHistory((prev) => [
+                                ...prev,
+                                {
+                                    turnId: data.turn_id,
+                                    turnNumber: prev.length,
+                                    prompt: card.action_directive || `Shot #${shotIdx}`,
+                                    videoUrl: data.video_url,
+                                    keyframeSeed: "KeyframeSeed"
+                                }
+                            ]);
+                        }
                         setJ3ShotCards((prev) =>
                             prev.map((c) =>
                                 c.shot_index === shotIdx
                                     ? {
                                         ...c,
                                         video_url: data.video_url,
+                                        turn_id: data.turn_id || c.turn_id,
+                                        keyframe_image_url: data.keyframe_image_url || c.keyframe_image_url,
                                         cumulative_state: Array.isArray(data.cumulative_state) ? data.cumulative_state : (data.cumulative_state ? [data.cumulative_state] : (c.cumulative_state || (shotIdx > 1 ? ["Prior action completed"] : [])))
                                       }
                                     : c
@@ -1609,6 +1629,10 @@ UI_HTML = r"""<!DOCTYPE html>
                 setJ3DiffLoading(true);
                 setLastError(null);
                 try {
+                    const latestCardWithTurn = (j3ShotCards || []).slice().reverse().find(c => c && c.turn_id);
+                    const effectiveParentTurnId = (activeBranchTurnId && !activeBranchTurnId.startsWith("turn_0"))
+                        ? activeBranchTurnId
+                        : (latestCardWithTurn ? latestCardWithTurn.turn_id : (activeBranchTurnId || null));
                     const res = await fetch("/api/diff", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -1616,7 +1640,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             user_id: "user_j3",
                             project_id: activeProject,
                             prompt: j3DiffPrompt.trim(),
-                            parent_turn_id: activeBranchTurnId || null,
+                            parent_turn_id: effectiveParentTurnId,
                             session_name: sessionName,
                             enable_safety_sanitization: enableSafetySanitization,
                             aspect_ratio: aspectRatio,
@@ -1998,7 +2022,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             project_id: "proj_stage",
                             prompt: diffText,
                             parent_turn_id: shot.turn_id || null,
-                            clip_index: idx,
+                            clip_index: sNum,
                             session_name: sessionName,
                             enable_safety_sanitization: enableSafetySanitization,
                             aspect_ratio: aspectRatio
@@ -2206,9 +2230,9 @@ UI_HTML = r"""<!DOCTYPE html>
                     if (data.audio_beat) setAudioBeat(data.audio_beat);
                     if (data.vocal_delivery) setVocalDelivery(data.vocal_delivery);
                     if (data.camera_lighting_tag || data.audio_beat) {
-                        setJ3DiffPrompt(`Make background ${data.camera_lighting_tag || "darker with glowing blue neon"}. Add ${data.audio_beat || "heavy 808 bass drop audio cue"}.`);
+                        setJ3DiffPrompt(`Make background ${data.camera_lighting_tag || "darker with glowing blue neon"}`);
                     } else {
-                        setJ3DiffPrompt("Make background darker with glowing blue neon, Add heavy 808 bass drop audio cue");
+                        setJ3DiffPrompt("Make background darker with glowing blue neon");
                     }
                 } catch (err) {
                     console.error("Deconstruction failed:", err);
@@ -2817,7 +2841,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         }))
                         .filter((c) => c.title_text || c.subtitle_text);
                     const narratorAudioPaths = (stageShots || [])
-                        .map((s) => s.narrator_text)
+                        .map((s) => s.narrator_audio_path || s.narrator_audio_url || (typeof s.narrator_text === "string" && /^(\/|gs:\/\/|https?:\/\/).+|\.(mp3|wav|aac|m4a|ogg)$/i.test(s.narrator_text.trim()) ? s.narrator_text.trim() : null))
                         .filter(Boolean);
 
                     const payload = {
@@ -9353,7 +9377,14 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/diff", response_model=GenerateResponse)
     @app.post("/api/generate_clip", response_model=GenerateResponse)
     @app.post("/api/scenes", response_model=GenerateResponse)
-    def generate_video(req: GenerateRequest) -> GenerateResponse:
+    def generate_video(req: GenerateRequest, request: Request) -> GenerateResponse:
+        is_diff_route = bool(request and request.url and request.url.path.endswith("/api/diff"))
+        if is_diff_route and not req.parent_turn_id:
+            return GenerateResponse(
+                success=False,
+                status="REJECTED",
+                error="Missing parent_turn_id for conversational diff (/api/diff). Generate a base shot first.",
+            )
         sanitized_prompt = (
             sanitize_real_names(req.prompt)
             if (req.prompt and req.enable_safety_sanitization)
@@ -9369,7 +9400,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         is_edit = bool(
             req.parent_turn_id
             and (
-                not (req.scenes or req.concept or req.shot_directive)
+                is_diff_route
+                or not (req.scenes or req.concept or req.shot_directive)
                 or (req.prompt and req.prompt.strip() and req.prompt.strip() != base_action)
             )
         )
@@ -9581,7 +9613,16 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     async def upload_media_file(file: UploadFile = File(...)):
         """Uploads a local media file (audio MP3, WAV, image, etc.) to storage and returns accessible URL."""
         try:
-            content = await file.read()
+            max_upload_bytes = 50 * 1024 * 1024
+            content = await file.read(max_upload_bytes + 1)
+            if len(content) > max_upload_bytes:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "success": False,
+                        "error": "File exceeds maximum upload size of 50MB",
+                    },
+                )
             ext = os.path.splitext(file.filename or "file")[1] or ".bin"
             filename = f"upload_{uuid.uuid4().hex[:8]}{ext}"
 
@@ -9981,6 +10022,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             enable_sanitization=req.enable_safety_sanitization,
             aspect_ratio=req.aspect_ratio,
             style_preset=req.style_lighting or style_lighting_val,
+            is_seamless_loop=req.is_seamless_loop,
         )
 
         agent_turn = agent.process_user_turn(
@@ -10022,11 +10064,18 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 detail="At least one clip URL is required for stitching.",
             )
         stitched_path = agent.stitcher.concatenate_clips(req.clip_urls, session_id=req.session_name)
-        _pub_url, gcs_uri = agent.storage.save_final_master(
-            session_id=req.session_name,
-            source_rel_path=stitched_path,
-            master_title=req.master_title,
-        )
+        try:
+            _pub_url, gcs_uri = agent.storage.save_final_master(
+                session_id=req.session_name,
+                source_rel_path=stitched_path,
+                master_title=req.master_title,
+            )
+        finally:
+            if stitched_path.startswith("/tmp/") and os.path.exists(stitched_path):
+                try:
+                    os.remove(stitched_path)
+                except OSError:
+                    pass
         return SaveFinalResponse(
             success=True,
             gcs_uri=gcs_uri,
@@ -10043,6 +10092,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             session_id=req.session_id,
             aspect_ratio=req.aspect_ratio,
         )
+        local_master_path = master_path
         if os.path.exists(master_path):
             sess_name = req.session_id or "default"
             gcs_dest = f"sessions/{sess_name}/masters/{os.path.basename(master_path)}"
@@ -10052,6 +10102,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 master_url = f"/api/media-proxy?uri={quote_plus(gcs_uri)}"
             else:
                 master_url = f"/static/{os.path.basename(master_path)}"
+            if local_master_path.startswith("/tmp/") and os.path.exists(local_master_path):
+                try:
+                    os.remove(local_master_path)
+                except OSError:
+                    pass
         elif master_path.startswith("gs://"):
             master_url = f"/api/media-proxy?uri={quote_plus(master_path)}"
         else:
@@ -10176,7 +10231,21 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         aspect_ratio = req.aspect_ratio or "16:9"
         enable_safety = req.enable_safety_sanitization
 
+        session_obj = agent.session_manager.get_or_create_session(
+            "usr_default", project_id, session_name=session_id
+        )
+        session_obj.master_description = req.master_description
+        session_obj.style_preset = style_preset
+        session_obj.aspect_ratio = aspect_ratio
+        session_obj.image_model = image_model
+        session_obj.enable_safety_sanitization = enable_safety
+        session_obj.characters = req.characters or []
+        session_obj.products = req.products or []
+        session_obj.shot_cards = shot_cards
+
+        session_dump = session_obj.model_dump()
         manifest_data = {
+            **session_dump,
             "project_id": project_id,
             "session_id": session_id,
             "master_description": req.master_description,
@@ -10306,13 +10375,28 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     ) -> dict[str, Any] | JSONResponse:
         session_id = req.session_id or "default_j3_session"
 
+        raw_chars_input = req.characters
+        if not raw_chars_input:
+            try:
+                manifest = agent.storage.get_session_manifest(
+                    session_id, project_id=req.project_name
+                )
+                if isinstance(manifest, dict) and manifest.get("characters"):
+                    raw_chars_input = manifest["characters"]
+                else:
+                    roster = agent.storage.load_session_roster(session_id)
+                    if roster:
+                        raw_chars_input = roster
+            except Exception:
+                pass
+
         char_objs: list[CharacterRole] = []
-        if req.characters:
-            chars_to_use = req.characters
+        if raw_chars_input:
+            chars_to_use = raw_chars_input
             if req.included_character_ids is not None:
                 filtered_chars = [
                     c
-                    for c in req.characters
+                    for c in raw_chars_input
                     if (c.get("role_id") if isinstance(c, dict) else getattr(c, "role_id", ""))
                     in req.included_character_ids
                 ]
@@ -10337,13 +10421,18 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 elif isinstance(c, CharacterRole):
                     char_objs.append(c)
 
+        known_char_names = [c.name for c in char_objs if c.name]
         agent.journey3_tracker.record_shot_directive(
             session_id=session_id,
             shot_index=req.shot_index,
             action_text=req.action_directive,
             dialogue_text=req.dialogue_text,
+            known_characters=known_char_names if known_char_names else None,
+            project_id=req.project_name,
         )
-        cum_state = agent.journey3_tracker.get_cumulative_state(session_id)
+        cum_state = agent.journey3_tracker.get_cumulative_state(
+            session_id, project_id=req.project_name
+        )
 
         keyframe_url = req.keyframe_image_url
         if not keyframe_url and req.action_directive:
@@ -10361,6 +10450,16 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
         if req.compiled_override:
             compiled_prompt = req.compiled_override
+            if keyframe_url and "<FIRST_FRAME>@KeyframeSeed" not in compiled_prompt:
+                seed_tags = "<FIRST_FRAME>@KeyframeSeed"
+                if req.is_seamless_loop and "<LAST_FRAME>@KeyframeSeed" not in compiled_prompt:
+                    seed_tags += " <LAST_FRAME>@KeyframeSeed"
+                if "[# Sources" in compiled_prompt:
+                    compiled_prompt = compiled_prompt.replace(
+                        "[# Sources", f"[# Sources {seed_tags}", 1
+                    )
+                else:
+                    compiled_prompt = f"[# Sources {seed_tags}]\n{compiled_prompt}"
         else:
             compiled_prompt = compile_journey3_shot_prompt(
                 shot_number=req.shot_index,
@@ -10388,6 +10487,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 compiled_override=compiled_prompt,
                 clip_index=req.shot_index,
                 session_name=session_id,
+                characters=char_objs if char_objs else None,
                 keyframe_image_url=keyframe_url,
                 voiceover=req.dialogue_text if req.dialogue_text else None,
                 enable_sanitization=req.enable_safety_sanitization,
@@ -10455,6 +10555,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             session_id=req.session_id,
             aspect_ratio=req.aspect_ratio,
         )
+        local_master_path = master_path
         if os.path.exists(master_path):
             sess_name = req.session_id or "default"
             gcs_dest = f"sessions/{sess_name}/masters/{os.path.basename(master_path)}"
@@ -10464,6 +10565,11 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 master_url = f"/api/media-proxy?uri={quote_plus(gcs_uri)}"
             else:
                 master_url = f"/static/{os.path.basename(master_path)}"
+            if local_master_path.startswith("/tmp/") and os.path.exists(local_master_path):
+                try:
+                    os.remove(local_master_path)
+                except OSError:
+                    pass
         elif master_path.startswith("gs://"):
             master_url = f"/api/media-proxy?uri={quote_plus(master_path)}"
         else:
@@ -10761,7 +10867,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         return {"success": deleted, "message": message}
 
     @app.get("/api/media-proxy")
-    def media_proxy(uri: str) -> Response:
+    def media_proxy(uri: str, request: Request) -> Response:
         if not uri:
             raise HTTPException(status_code=400, detail="Missing URI parameter")
 
@@ -10803,10 +10909,45 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 status_code=404,
                 detail="Media object not found or empty",
             )
+        total_len = len(data)
+        range_header = (
+            request.headers.get("range") if request and hasattr(request, "headers") else None
+        )
+        if range_header and range_header.strip().lower().startswith("bytes="):
+            range_spec = range_header.strip()[6:].split(",")[0].strip()
+            if "-" in range_spec:
+                start_str, end_str = range_spec.split("-", 1)
+                try:
+                    if start_str == "":
+                        suffix_len = int(end_str)
+                        start = max(0, total_len - suffix_len)
+                        end = total_len - 1
+                    else:
+                        start = int(start_str)
+                        end = int(end_str) if end_str else total_len - 1
+                    if 0 <= start <= end < total_len:
+                        chunk = data[start : end + 1]
+                        return Response(
+                            content=chunk,
+                            status_code=206,
+                            media_type=content_type,
+                            headers={
+                                "Cache-Control": "public, max-age=86400",
+                                "Accept-Ranges": "bytes",
+                                "Content-Range": f"bytes {start}-{end}/{total_len}",
+                                "Content-Length": str(len(chunk)),
+                            },
+                        )
+                except ValueError:
+                    pass
         return Response(
             content=data,
             media_type=content_type,
-            headers={"Cache-Control": "public, max-age=86400"},
+            headers={
+                "Cache-Control": "public, max-age=86400",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(total_len),
+            },
         )
 
     @app.post("/api/characters/generate-sheet", response_model=GenerateCharacterSheetResponse)
@@ -10858,7 +10999,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     @app.post("/api/characters/save-sheet", response_model=SaveCharacterSheetResponse)
     def save_character_sheet_endpoint(req: SaveCharacterSheetRequest):
         try:
-            saved_path, public_url = agent.storage.save_character_sheet(
+            public_url, gcs_uri = agent.storage.save_character_sheet(
                 image_data=req.image_data,
                 custom_name=req.custom_name,
                 session_id=req.session_name,
@@ -10867,8 +11008,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             return SaveCharacterSheetResponse(
                 success=True,
                 public_url=public_url,
-                gcs_uri=saved_path,
-                storage_path=saved_path,
+                gcs_uri=gcs_uri,
+                storage_path=gcs_uri,
             )
         except Exception as e:
             logger.error(f"Error saving character turnaround sheet: {e}", exc_info=True)

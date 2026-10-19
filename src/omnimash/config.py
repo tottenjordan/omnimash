@@ -13,6 +13,9 @@ class OmniMashSettings(BaseSettings):
     google_api_key: str | None = None
     gemini_api_key: str | None = None
     omni_model_id: str = "gemini-omni-1.1-flash-preview"
+    pro_model_id: str = "gemini-3.1-pro-preview"
+    flash_model_id: str = "gemini-2.5-flash"
+    image_model_id: str = "gemini-3.1-flash-image-preview"
     default_resolution: str = "720p"
     draft_resolution: str = "360p"
     studio_resolution: str = "1080p"

@@ -551,7 +551,7 @@ class StoryboardAgent:
                 self._genai_client = genai.Client(
                     vertexai=True,
                     project=project,
-                    location="us-central1",
+                    location=getattr(settings, "gemini_location", "global"),
                 )
         except Exception as exc:
             logger.warning("StoryboardAgent failed to initialize GenAI client: %s", exc)
@@ -685,7 +685,7 @@ class StoryboardAgent:
                 safety_settings=get_relaxed_safety_settings(),
             )
             response = self._genai_client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=getattr(settings, "flash_model_id", "gemini-2.5-flash"),
                 contents=prompt,
                 config=config,
             )
@@ -859,13 +859,13 @@ class StoryboardAgent:
                     safety_settings=get_relaxed_safety_settings(),
                 )
                 response = self._genai_client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model=getattr(settings, "flash_model_id", "gemini-2.5-flash"),
                     contents=prompt,
                     config=config,
                 )
             except Exception:
                 response = self._genai_client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model=getattr(settings, "flash_model_id", "gemini-2.5-flash"),
                     contents=prompt,
                 )
 

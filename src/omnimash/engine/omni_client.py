@@ -1669,6 +1669,7 @@ class OmniFlashClient:
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
         motion_reference_clip: str | None = None,
+        project_id: str | None = None,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -1721,7 +1722,7 @@ class OmniFlashClient:
 
         # Persist media artifact to Google Cloud Storage under session subfolder
         gcs_blob = self.storage.build_session_blob_path(
-            session_id, "intermediate", os.path.basename(rel_path)
+            session_id, "intermediate", os.path.basename(rel_path), project_id=project_id
         )
         self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
         gcs_uri = self.storage.get_gcs_uri(gcs_blob)
@@ -1749,6 +1750,7 @@ class OmniFlashClient:
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
         motion_reference_clip: str | None = None,
+        project_id: str | None = None,
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -1804,7 +1806,7 @@ class OmniFlashClient:
 
         # Persist media artifact to Google Cloud Storage under session subfolder
         gcs_blob = self.storage.build_session_blob_path(
-            session_id, "intermediate", os.path.basename(rel_path)
+            session_id, "intermediate", os.path.basename(rel_path), project_id=project_id
         )
         self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
         gcs_uri = self.storage.get_gcs_uri(gcs_blob)
@@ -1830,6 +1832,7 @@ class OmniFlashClient:
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
         regenerate_audio: bool = False,
+        project_id: str | None = None,
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
@@ -1871,18 +1874,27 @@ class OmniFlashClient:
         )
         generation_mode = "LIVE_OMNI_FLASH"
         if not success:
-            generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
-            ensure_rendered_video(
-                url,
-                prompt=prompt,
-                voiceover=voiceover,
-                is_silent=is_silent,
-                audio_stem=audio_stem,
-            )
+            if self.mock_mode:
+                generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
+                ensure_rendered_video(
+                    url,
+                    prompt=prompt,
+                    voiceover=voiceover,
+                    is_silent=is_silent,
+                    audio_stem=audio_stem,
+                )
+            else:
+                return GenerationResult(
+                    interaction_thread_id=inter_id or thread_id,
+                    video_url="",
+                    gcs_uri=None,
+                    error_message=error_message or "Gemini Omni Flash video re-anchoring failed",
+                    generation_mode="LIVE_OMNI_FLASH",
+                )
 
         # Persist media artifact to Google Cloud Storage under session subfolder
         gcs_blob = self.storage.build_session_blob_path(
-            session_id, "intermediate", os.path.basename(rel_path)
+            session_id, "intermediate", os.path.basename(rel_path), project_id=project_id
         )
         self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
         gcs_uri = self.storage.get_gcs_uri(gcs_blob)
@@ -1895,15 +1907,44 @@ class OmniFlashClient:
             generation_mode=generation_mode,
         )
 
+    @staticmethod
+    def _render_svg_to_png_bytes(svg_bytes: bytes | None = None) -> bytes:
+        try:
+            import io
+            from PIL import Image, ImageDraw
+
+            img = Image.new("RGB", (640, 360), color=(24, 24, 38))
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([(16, 16), (624, 344)], outline=(0, 210, 255), width=2)
+            label = "OmniMash Reference Frame"
+            if svg_bytes:
+                svg_text = svg_bytes.decode("utf-8", errors="ignore")
+                text_matches = re.findall(r"<text[^>]*>(.*?)</text>", svg_text, re.IGNORECASE)
+                if text_matches:
+                    label = " | ".join(t.strip() for t in text_matches if t.strip())[:120]
+            draw.text((32, 168), label, fill=(240, 240, 255))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception:
+            return (
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
+                b"\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x03\x00\x05\xfe\x02\xfe\xa7\x9a\x9a\xaa\x00\x00\x00\x00IEND\xaeB`\x82"
+            )
+
     def _fetch_image_bytes(self, ref_url: str) -> tuple[bytes, str]:
         if not ref_url or not isinstance(ref_url, str):
             return b"", "image/png"
         if ref_url.lower().endswith(".svg"):
-            raster_png_fallback = (
-                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
-                b"\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x03\x00\x05\xfe\x02\xfe\xa7\x9a\x9a\xaa\x00\x00\x00\x00IEND\xaeB`\x82"
-            )
-            return raster_png_fallback, "image/png"
+            svg_raw = b""
+            loc_path = os.path.join(os.getcwd(), ref_url.lstrip("/"))
+            if os.path.exists(loc_path):
+                try:
+                    with open(loc_path, "rb") as sf:
+                        svg_raw = sf.read()
+                except OSError:
+                    pass
+            return self._render_svg_to_png_bytes(svg_raw), "image/png"
         if ref_url.startswith("gs://"):
             return self.storage.download_blob_bytes(ref_url)
         if ref_url.startswith("https://storage.googleapis.com/"):
@@ -1925,12 +1966,12 @@ class OmniFlashClient:
                 header, encoded = ref_url.split(",", 1)
                 mime = header.split(";")[0].split(":")[1] if ":" in header else "image/png"
                 if "svg" in mime.lower():
-                    # Minimal 1x1 32-bit RGBA raster PNG bytes fallback for SVG inputs so multimodal payload is never dropped
-                    raster_png_fallback = (
-                        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
-                        b"\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x03\x00\x05\xfe\x02\xfe\xa7\x9a\x9a\xaa\x00\x00\x00\x00IEND\xaeB`\x82"
-                    )
-                    return raster_png_fallback, "image/png"
+                    svg_decoded = b""
+                    try:
+                        svg_decoded = base64.b64decode(encoded)
+                    except Exception:
+                        pass
+                    return self._render_svg_to_png_bytes(svg_decoded), "image/png"
                 return base64.b64decode(encoded), mime
             except Exception as e:
                 logger.warning("Failed to decode data URI image: %s", e)

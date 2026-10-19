@@ -1,4 +1,5 @@
 import math
+import os
 import re
 import threading
 import urllib.parse
@@ -42,17 +43,70 @@ class AgentTurnResponse:
 class Journey3StateTracker:
     """Tracks cumulative character and scene state modifications across shot directives for Journey 3."""
 
-    def __init__(self) -> None:
+    def __init__(self, storage: Any | None = None) -> None:
         self._session_states: dict[str, CumulativeShotState] = {}
+        self.storage = storage
 
-    def get_cumulative_state(self, session_id: str) -> CumulativeShotState:
+    def _persist_state(
+        self,
+        session_id: str,
+        state: CumulativeShotState,
+        project_id: str | None = None,
+    ) -> None:
+        if self.storage is not None and hasattr(self.storage, "save_session_manifest"):
+            try:
+                raw_manifest = (
+                    self.storage.get_session_manifest(session_id, project_id=project_id)
+                    if hasattr(self.storage, "get_session_manifest")
+                    else None
+                )
+                manifest: dict[str, Any] = (
+                    dict(raw_manifest)
+                    if isinstance(raw_manifest, dict)
+                    else {"session_id": session_id}
+                )
+                effective_project_id = project_id or manifest.get("project_id")
+                if effective_project_id:
+                    manifest["project_id"] = effective_project_id
+                manifest["cumulative_state"] = {
+                    "character_states": dict(state.character_states),
+                    "scene_states": list(state.scene_states),
+                }
+                self.storage.save_session_manifest(
+                    session_id=session_id,
+                    manifest_data=manifest,
+                    project_id=effective_project_id,
+                )
+            except Exception:
+                pass
+
+    def get_cumulative_state(
+        self, session_id: str, project_id: str | None = None
+    ) -> CumulativeShotState:
         if session_id not in self._session_states:
-            self._session_states[session_id] = CumulativeShotState()
+            hydrated_state = CumulativeShotState()
+            if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
+                try:
+                    manifest = self.storage.get_session_manifest(session_id, project_id=project_id)
+                    if isinstance(manifest, dict) and isinstance(
+                        manifest.get("cumulative_state"), dict
+                    ):
+                        cs = manifest["cumulative_state"]
+                        if isinstance(cs.get("character_states"), dict):
+                            for k, v in cs["character_states"].items():
+                                if isinstance(v, list):
+                                    hydrated_state.character_states[str(k)] = [str(x) for x in v]
+                        if isinstance(cs.get("scene_states"), list):
+                            hydrated_state.scene_states = [str(x) for x in cs["scene_states"]]
+                except Exception:
+                    pass
+            self._session_states[session_id] = hydrated_state
         return self._session_states[session_id]
 
-    def clear_session(self, session_id: str) -> None:
+    def clear_session(self, session_id: str, project_id: str | None = None) -> None:
         if session_id in self._session_states:
             del self._session_states[session_id]
+        self._persist_state(session_id, CumulativeShotState(), project_id=project_id)
 
     def record_shot_directive(
         self,
@@ -60,8 +114,10 @@ class Journey3StateTracker:
         shot_index: int,
         action_text: str,
         dialogue_text: str = "",
+        known_characters: list[str] | None = None,
+        project_id: str | None = None,
     ) -> None:
-        state = self.get_cumulative_state(session_id)
+        state = self.get_cumulative_state(session_id, project_id=project_id)
         combined_text = f"{action_text or ''} {dialogue_text or ''}".strip()
         if not combined_text:
             return
@@ -131,13 +187,54 @@ class Journey3StateTracker:
             "Shot",
             "And",
             "Or",
+            "Camera",
+            "Wide",
+            "Close",
+            "Closeup",
+            "Medium",
+            "Low",
+            "High",
+            "Slow",
+            "Fast",
+            "Static",
+            "Dynamic",
+            "Tracking",
+            "Dolly",
+            "Pan",
+            "Zoom",
+            "Cut",
+            "Scene",
+            "Interior",
+            "Exterior",
+            "Establishing",
+            "Dramatic",
+            "Cinematic",
+            "Glowing",
+            "Dark",
+            "Bright",
+            "Neon",
+            "Overhead",
+            "Extreme",
+            "Angle",
+            "Frame",
+            "Lighting",
         }
         char_name: str | None = None
-        for w in combined_text.split():
-            clean_w = re.sub(r"[^\w]", "", w)
-            if clean_w and clean_w[0].isupper() and clean_w not in stop_words:
-                char_name = clean_w
+        candidate_known = list(known_characters or []) + list(state.character_states.keys())
+        for kc in candidate_known:
+            kc_clean = str(kc).strip()
+            if kc_clean and re.search(
+                r"\b" + re.escape(kc_clean) + r"\b", combined_text, re.IGNORECASE
+            ):
+                char_name = kc_clean
                 break
+
+        if not char_name:
+            for w in combined_text.split():
+                clean_w = re.sub(r"[^\w]", "", w)
+                if clean_w and clean_w[0].isupper() and clean_w not in stop_words:
+                    char_name = clean_w
+                    break
 
         addition_verbs = [
             "puts on",
@@ -155,7 +252,11 @@ class Journey3StateTracker:
             )
             for m in re.finditer(pattern, combined_text, re.IGNORECASE):
                 item_desc = m.group(1).strip()
-                item_desc = re.split(r"[,;.]", item_desc)[0].strip()
+                item_desc = re.split(
+                    r"[,;.]|\b(?:while|as|and|then|in|on|at|under|into|through|across|towards|from|with|surrounded)\b",
+                    item_desc,
+                    flags=re.IGNORECASE,
+                )[0].strip()
                 if item_desc:
                     full_desc = (
                         f"{verb} {item_desc}" if verb in ("wearing", "holding") else item_desc
@@ -185,6 +286,8 @@ class Journey3StateTracker:
                         else:
                             state.add_scene_state(kw)
 
+        self._persist_state(session_id, state, project_id=project_id)
+
 
 class OmniMashAgent:
     def __init__(self, mock_mode: bool | None = None):
@@ -192,23 +295,30 @@ class OmniMashAgent:
             mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
         self.guardrail = ModelArmorGuardrail(mock_mode=mock_mode)
-        self.session_manager = SessionManager()
+        self.storage = GcsStorageManager(mock_mode=mock_mode)
+        self.session_manager = SessionManager(storage=self.storage)
         self.omni_client = OmniFlashClient(mock_mode=mock_mode)
         self.taxonomy = PromptTaxonomyEngine(mock_mode=mock_mode)
         self.media_extractor = MediaExtractor(mock_mode=mock_mode)
-        self.storage = GcsStorageManager(mock_mode=mock_mode)
         self.stitcher = VideoStitcher(mock_mode=mock_mode)
         self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
-        self.journey3_tracker = Journey3StateTracker()
+        self.journey3_tracker = Journey3StateTracker(storage=self.storage)
         self._turn_lock = threading.Lock()
         self._session_turn_counters: dict[str, int] = {}
 
     def _allocate_turn_index(self, session: Any) -> int:
         with self._turn_lock:
             sid = session.session_id
+            max_existing = -1
+            for t in getattr(session, "turns", {}).values():
+                v_url = getattr(t, "video_url", "") or ""
+                m = re.search(r"turn_(\d+)_video\.mp4", v_url)
+                if m:
+                    max_existing = max(max_existing, int(m.group(1)))
             current = max(
                 self._session_turn_counters.get(sid, 0),
                 len(session.turns),
+                max_existing + 1,
             )
             self._session_turn_counters[sid] = current + 1
             return current
@@ -420,11 +530,22 @@ class OmniMashAgent:
                 stitched_path = self.stitcher.concatenate_clips(
                     chunk_urls, session_id=session.session_id
                 )
-                _pub_url, gcs_uri = self.storage.save_final_master(
-                    session_id=session.session_id,
-                    source_rel_path=stitched_path,
-                    master_title=f"shot_{clip_index}_{int(duration_seconds)}s",
-                )
+                try:
+                    _pub_url, gcs_uri = self.storage.save_final_master(
+                        session_id=session.session_id,
+                        source_rel_path=stitched_path,
+                        master_title=f"shot_{clip_index}_{int(duration_seconds)}s",
+                    )
+                finally:
+                    if (
+                        stitched_path
+                        and stitched_path.startswith("/tmp/")
+                        and os.path.exists(stitched_path)
+                    ):
+                        try:
+                            os.remove(stitched_path)
+                        except OSError:
+                            pass
                 proxy_url = self._get_media_proxy_video_url(gcs_uri, _pub_url)
                 return AgentTurnResponse(
                     success=True,
@@ -552,6 +673,7 @@ class OmniMashAgent:
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
                 motion_reference_clip=motion_reference_clip,
+                project_id=session.project_id,
             )
         else:
             if characters or scenes:
@@ -626,6 +748,7 @@ class OmniMashAgent:
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
                 motion_reference_clip=motion_reference_clip,
+                project_id=session.project_id,
             )
 
         if gen_res.error_message and not gen_res.video_url:
@@ -694,7 +817,15 @@ class OmniMashAgent:
             base_video_url=committed_turn.video_url,
             initial_prompt=guard_res.sanitized_prompt,
             session_id=session.session_id,
+            project_id=session.project_id,
         )
+        if gen_res.error_message and not gen_res.video_url:
+            return AgentTurnResponse(
+                success=False,
+                status_event="GENERATION_FAILED",
+                error_message=gen_res.error_message,
+                generation_mode=gen_res.generation_mode,
+            )
         proxy_video_url = self._get_media_proxy_video_url(
             getattr(gen_res, "gcs_uri", None), gen_res.video_url
         )
@@ -737,6 +868,7 @@ class OmniMashAgent:
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
         motion_reference_clip: str | None = None,
+        project_id: str | None = None,
     ) -> Any:
         if parent_thread_id:
             return self.omni_client.apply_interaction_diff(
@@ -753,6 +885,7 @@ class OmniMashAgent:
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
                 motion_reference_clip=motion_reference_clip,
+                project_id=project_id,
             )
         return self.omni_client.generate_clip(
             prompt,
@@ -767,6 +900,7 @@ class OmniMashAgent:
             aspect_ratio=aspect_ratio,
             resolution=resolution,
             motion_reference_clip=motion_reference_clip,
+            project_id=project_id,
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:
@@ -780,7 +914,35 @@ class OmniMashAgent:
         for session in self.session_manager._sessions.values():
             if session.session_id in (session_id, sanitized):
                 return session
+        if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
+            try:
+                manifest = self.storage.get_session_manifest(sanitized)
+                if isinstance(manifest, dict) and manifest:
+                    return self.session_manager.get_or_create_session(
+                        user_id=str(manifest.get("user_id") or "usr_default"),
+                        project_id=str(manifest.get("project_id") or sanitized),
+                        session_name=sanitized,
+                    )
+            except Exception:
+                pass
         return None
+
+    @staticmethod
+    def _resolve_active_session_clips(session: Any) -> list[str]:
+        if not session:
+            return []
+        clip_paths: list[str] = []
+        timeline = getattr(session, "timeline", None)
+        turns = getattr(session, "turns", {}) or {}
+        if timeline:
+            for seg in sorted(timeline, key=lambda s: getattr(s, "clip_index", 0)):
+                active_tid = getattr(seg, "active_turn_id", None)
+                turn = turns.get(active_tid) if active_tid else None
+                if turn and getattr(turn, "video_url", None):
+                    clip_paths.append(turn.video_url)
+        if not clip_paths and turns:
+            clip_paths = [t.video_url for t in turns.values() if getattr(t, "video_url", None)]
+        return clip_paths
 
     def stitch_session_master(
         self,
@@ -789,22 +951,33 @@ class OmniMashAgent:
         raw_compiled_prompt: str | None = None,
         master_audio_path: str | None = None,
     ) -> tuple[str, str]:
+        import os
+
         session = self._get_session(session_name)
-        clip_paths: list[str] = []
-        if session and session.turns:
-            clip_paths = [t.video_url for t in session.turns.values() if t.video_url]
+        clip_paths = self._resolve_active_session_clips(session)
 
         stitched_path = self.stitcher.concatenate_clips(
             clip_paths,
             session_id=session_name,
             master_audio_path=master_audio_path,
         )
-        return self.storage.save_final_master(
-            session_id=session_name,
-            source_rel_path=stitched_path,
-            master_title=master_title,
-            prompt_data=raw_compiled_prompt,
-        )
+        try:
+            return self.storage.save_final_master(
+                session_id=session_name,
+                source_rel_path=stitched_path,
+                master_title=master_title,
+                prompt_data=raw_compiled_prompt,
+            )
+        finally:
+            if (
+                stitched_path
+                and stitched_path.startswith("/tmp/")
+                and os.path.exists(stitched_path)
+            ):
+                try:
+                    os.remove(stitched_path)
+                except OSError:
+                    pass
 
     def save_final_master(
         self,
@@ -818,8 +991,8 @@ class OmniMashAgent:
         s_id = session_id if session_id is not None else session_name
         session = self._get_session(s_id)
         if session:
-            video_nodes = [t for t in session.turns.values() if t.video_url]
-            if len(video_nodes) > 1:
+            active_clips = self._resolve_active_session_clips(session)
+            if len(active_clips) > 1:
                 return self.stitch_session_master(
                     session_name=s_id,
                     master_title=master_title,
