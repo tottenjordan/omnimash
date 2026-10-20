@@ -91,6 +91,18 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bLightsaber\b": "laser sword",
     r"\bLight Saber\b": "laser sword",
     r"\bBatmobile\b": "armored tactical vehicle",
+    r"\bGuy Fieri\b": "Spiky Blonde Flavortown Chef",
+    r"\bAnthony Bourdain\b": "World-Weary Culinary Traveler",
+    r"\bWolfgang Puck\b": "Master Haute Cuisine Chef",
+    r"\bMarco Pierre White\b": "Intense Michelin Master Chef",
+    r"\bHermes\b": "luxury leather designer",
+    r"\bHermès\b": "luxury leather designer",
+    r"\bFendi\b": "luxury fashion designer",
+    r"\bGivenchy\b": "couture fashion designer",
+    r"\bSaint Laurent\b": "sleek couture designer",
+    r"\bYSL\b": "sleek couture designer",
+    r"\bPatek Philippe\b": "heirloom luxury timepiece",
+    r"\bAudemars Piguet\b": "octagonal luxury chronograph",
 }
 
 REAL_NAME_MAPPINGS = REAL_NAME_PARODY_MAP
