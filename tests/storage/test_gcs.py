@@ -435,7 +435,6 @@ def test_get_session_manifest_reads_from_gcs_bucket_when_not_cached():
 
 
 def test_gcs_lazy_client_initialization_does_not_call_storage_client_on_init():
-    import threading
     from unittest.mock import patch
 
     with patch("omnimash.storage.gcs.storage") as mock_storage:
@@ -454,7 +453,10 @@ def test_gcs_shared_clients_thread_safety():
         mock_storage.Client.side_effect = lambda project=None: object()
         # Clear shared clients cache for clean test
         GcsStorageManager._SHARED_CLIENTS.clear()
-        instances = [GcsStorageManager(project_id="test-thread-safety-proj", mock_mode=False) for _ in range(10)]
+        instances = [
+            GcsStorageManager(project_id="test-thread-safety-proj", mock_mode=False)
+            for _ in range(10)
+        ]
         results = []
 
         def worker(mgr):
@@ -473,6 +475,7 @@ def test_gcs_shared_clients_thread_safety():
 
 def test_save_character_sheet_blocks_ssrf_urls():
     from unittest.mock import patch
+
     storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=False)
     disallowed_urls = [
         "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
@@ -491,6 +494,7 @@ def test_save_character_sheet_blocks_ssrf_urls():
 
 def test_save_final_master_blocks_path_traversal():
     from unittest.mock import MagicMock
+
     storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=False)
     mock_bucket = MagicMock()
     storage._bucket = mock_bucket
@@ -536,6 +540,3 @@ def test_gcs_operations_pass_timeout_and_log_warnings(caplog):
                 b"data", content_type="application/json", timeout=30.0
             )
             assert "upload_bytes failed on test/path.json" in caplog.text
-
-
-

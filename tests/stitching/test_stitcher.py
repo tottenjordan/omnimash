@@ -315,6 +315,7 @@ def test_concatenate_clips_cleans_up_temp_downloaded_files_and_uses_unique_manif
     fake_blob.download_to_filename.side_effect = fake_download
     fake_bucket.blob.return_value = fake_blob
     stitcher.storage._bucket = fake_bucket
+    stitcher.storage._client = MagicMock()
     stitcher.storage.bucket_name = "test-bucket"
 
     captured_cmds = []

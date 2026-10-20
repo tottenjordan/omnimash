@@ -27,4 +27,3 @@ def test_omnimash_settings_gcs_timeout():
     assert s.gcs_timeout_seconds == 45.0
     default_s = OmniMashSettings()
     assert default_s.gcs_timeout_seconds == 30.0
-

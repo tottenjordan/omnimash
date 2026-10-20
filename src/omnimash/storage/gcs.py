@@ -9,7 +9,6 @@ import os
 import re
 import threading
 from typing import TYPE_CHECKING, Any
-import urllib.request
 from urllib.parse import parse_qs, unquote, urlparse
 
 from omnimash.config import settings
@@ -245,9 +244,7 @@ class GcsStorageManager:
                     content_type = "application/json"
 
             blob = self._bucket.blob(destination_blob_name)
-            blob.upload_from_filename(
-                local_path, content_type=content_type, timeout=self.timeout
-            )
+            blob.upload_from_filename(local_path, content_type=content_type, timeout=self.timeout)
             return self.get_public_url(destination_blob_name)
         except Exception as exc:
             logger.warning("upload_file failed on %s: %s", destination_blob_name, exc)
@@ -295,13 +292,19 @@ class GcsStorageManager:
         if self.mock_mode:
             return (b"mock_image_bytes", "image/jpeg")
 
-        if not self._client:
-            return (b"", "image/jpeg")
-
         try:
-            bucket = self._client.bucket(bucket_name)
+            if self._bucket_instance is not None and getattr(
+                self._bucket_instance, "name", None
+            ) in (bucket_name, None, ""):
+                bucket = self._bucket_instance
+            elif self.client:
+                bucket = self.client.bucket(bucket_name)
+            else:
+                return (b"", "image/jpeg")
+
             blob = bucket.blob(blob_path)
-            data = blob.download_as_bytes(timeout=self.timeout)
+            raw_data = blob.download_as_bytes(timeout=self.timeout)
+            data = raw_data if isinstance(raw_data, (bytes, bytearray)) else b""
             content_type = getattr(blob, "content_type", None)
             if not content_type:
                 if blob_path.endswith(".mp4"):
@@ -343,7 +346,15 @@ class GcsStorageManager:
             return None
 
         try:
-            bucket = self._client.bucket(bucket_name)
+            if self._bucket_instance is not None and getattr(
+                self._bucket_instance, "name", None
+            ) in (bucket_name, None, ""):
+                bucket = self._bucket_instance
+            elif self.client:
+                bucket = self.client.bucket(bucket_name)
+            else:
+                return None
+
             blob = bucket.blob(blob_path)
             blob.reload(timeout=self.timeout)
             total_len = int(blob.size or 0)
@@ -1060,9 +1071,7 @@ class GcsStorageManager:
                             }
                         )
             except Exception as exc:
-                logger.warning(
-                    "list_project_reference_sheets failed on prefix %s: %s", prefix, exc
-                )
+                logger.warning("list_project_reference_sheets failed on prefix %s: %s", prefix, exc)
 
         if sheets:
             return sheets
