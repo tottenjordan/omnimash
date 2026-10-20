@@ -1,4 +1,5 @@
 import os
+from typing import Any
 from unittest.mock import MagicMock
 
 from omnimash.engine.telemetry import (
@@ -136,3 +137,62 @@ def test_telemetry_inference_span_records_resolution_and_tokens() -> None:
         name="gen_ai.client.inference", attributes=expected_labels
     )
     assert span == mock_span
+
+
+def test_setup_opentelemetry_genai_logging_preserves_existing_env_vars(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv("OTEL_SEMCONV_STABILITY_OPT_IN", "custom_semconv_value")
+    monkeypatch.setenv("OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT", "custom_format")
+
+    setup_opentelemetry_genai_logging(bucket_name="test-bucket")
+
+    assert os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] == "custom_semconv_value"
+    assert os.environ["OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT"] == "custom_format"
+
+
+def test_start_inference_span_with_start_time_and_latency() -> None:
+    telemetry_logger = GenAITelemetryLogger(bucket_name="my-omnimash-bucket")
+    mock_tracer = MagicMock()
+    mock_span = MagicMock()
+    mock_tracer.start_span.return_value = mock_span
+    telemetry_logger.tracer = mock_tracer
+
+    span = telemetry_logger.start_inference_span(
+        session_id="sess_timed",
+        start_time_ns=1_700_000_000_000_000_000,
+        latency_ms=142.5,
+    )
+
+    assert span == mock_span
+    call_kwargs = mock_tracer.start_span.call_args.kwargs
+    assert call_kwargs["start_time"] == 1_700_000_000_000_000_000
+    assert call_kwargs["attributes"]["gen_ai.client.inference.duration_ms"] == "142.50"
+
+
+def test_extract_telemetry_prompt_and_uris_handles_str_dict_and_list() -> None:
+    from omnimash.engine.telemetry import extract_telemetry_prompt_and_uris
+
+    sys_instr, prompt_text, uris = extract_telemetry_prompt_and_uris(
+        input_prompt=[
+            {
+                "type": "user_input",
+                "content": [
+                    {"type": "image", "uri": "gs://bucket/img1.png"},
+                    {"type": "text", "text": "Scene at https://example.com/ref.png"},
+                ],
+            }
+        ],
+        characters=[{"name": "Hero", "reference_url": "gs://bucket/hero.png"}],
+        keyframe_image_url="gs://bucket/kf.png",
+        reference_image_uris=["gs://bucket/extra.png"],
+    )
+    assert sys_instr == "Omnimash Engine Multimodal Generation"
+    assert "Scene at https://example.com/ref.png" in prompt_text
+    assert uris == [
+        "gs://bucket/extra.png",
+        "gs://bucket/hero.png",
+        "gs://bucket/img1.png",
+        "gs://bucket/kf.png",
+        "https://example.com/ref.png",
+    ]
