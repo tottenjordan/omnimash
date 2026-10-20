@@ -8,7 +8,7 @@ import urllib.parse
 
 from omnimash.engine.media_loader import validate_remote_media_url
 
-_SAFE_SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+_SAFE_SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_:\-]+$")
 _ALLOWED_YOUTUBE_HOSTS = frozenset(
     {
         "youtube.com",
