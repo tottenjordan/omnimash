@@ -348,3 +348,37 @@ def test_concatenate_clips_cleans_up_temp_downloaded_files_and_uses_unique_manif
     remaining_files = [p.name for p in tmp_path.iterdir()]
     assert not any(name.startswith("clip_") for name in remaining_files)
     assert not any(name.startswith("concat_list_") for name in remaining_files)
+
+
+def test_concatenate_clips_empty_clip_paths_raises_value_error(tmp_path):
+    import pytest
+
+    stitcher = VideoStitcher(mock_mode=False)
+    with pytest.raises(ValueError, match="at least one clip path"):
+        stitcher.concatenate_clips([], output_dir=str(tmp_path))
+
+
+def test_concatenate_clips_escapes_single_quotes_in_manifest(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    clip_with_quote = tmp_path / "director's_cut.mp4"
+    clip_with_quote.write_bytes(b"dummy clip")
+
+    captured_concat_lines = []
+
+    def fake_subproc(cmd, *args, **kwargs):
+        concat_path = cmd[cmd.index("-i") + 1]
+        with open(concat_path, "r") as f:
+            captured_concat_lines.extend(f.read().splitlines())
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        return mock_res
+
+    with (
+        patch("subprocess.run", side_effect=fake_subproc),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        stitcher.concatenate_clips([str(clip_with_quote)], output_dir=str(tmp_path))
+
+    expected_escaped = os.path.abspath(str(clip_with_quote)).replace("'", "'\\''")
+    assert captured_concat_lines == [f"file '{expected_escaped}'"]
+

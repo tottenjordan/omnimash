@@ -45,6 +45,9 @@ class VideoStitcher:
         master_filename = f"master_{uuid.uuid4().hex[:8]}_stitched.mp4"
         out_path = os.path.join(output_dir, master_filename)
 
+        if not self.mock_mode and not clip_paths:
+            raise ValueError("concatenate_clips requires at least one clip path.")
+
         if self.mock_mode:
             if clip_paths and os.path.exists(clip_paths[0]):
                 shutil.copyfile(clip_paths[0], out_path)
@@ -134,7 +137,8 @@ class VideoStitcher:
                     temp_cleanup_paths.append(concat_list_path)
                     with open(concat_list_path, "w") as f:
                         for clip_file in resolved_clips:
-                            f.write(f"file '{clip_file}'\n")
+                            escaped_clip = clip_file.replace("'", "'\\''")
+                            f.write(f"file '{escaped_clip}'\n")
 
                     if resolved_audio and os.path.exists(resolved_audio):
                         try:
