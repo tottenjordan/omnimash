@@ -369,6 +369,50 @@ class GcsStorageManager:
 
         return (b"", "image/jpeg")
 
+    def _upload_json_payload(
+        self,
+        blob_path: str,
+        payload: Any,
+        mock_cache_dict: dict[str, Any] | None = None,
+        mock_cache_key: str | None = None,
+    ) -> tuple[str, str]:
+        """Encapsulates JSON serialization, GCS upload, and synchronized in-memory caching."""
+        clean_path = blob_path.lstrip("/")
+        if mock_cache_dict is not None and mock_cache_key is not None:
+            mock_cache_dict[mock_cache_key] = payload
+
+        content = json.dumps(payload, indent=2)
+        self.upload_bytes(
+            content.encode("utf-8"),
+            clean_path,
+            content_type="application/json",
+        )
+        return self.get_public_url(clean_path), self.get_gcs_uri(clean_path)
+
+    def _download_json_payload(
+        self,
+        blob_path: str,
+        mock_cache_dict: dict[str, Any] | None = None,
+        mock_cache_key: str | None = None,
+    ) -> Any | None:
+        """Encapsulates JSON download, decoding, and fallback to synchronized cache."""
+        clean_path = blob_path.lstrip("/")
+        if not self.mock_mode and self._bucket:
+            try:
+                blob = self._bucket.blob(clean_path)
+                if blob.exists(timeout=self.timeout):
+                    content = blob.download_as_text(timeout=self.timeout)
+                    parsed = json.loads(content)
+                    if mock_cache_dict is not None and mock_cache_key is not None:
+                        mock_cache_dict[mock_cache_key] = parsed
+                    return parsed
+            except Exception as exc:
+                logger.warning("Failed to download JSON from %s: %s", clean_path, exc)
+
+        if self.mock_mode and mock_cache_dict is not None and mock_cache_key is not None:
+            return mock_cache_dict.get(mock_cache_key)
+        return None
+
     def save_session_prompt(
         self,
         session_id: str,
@@ -378,14 +422,9 @@ class GcsStorageManager:
         """Persists compiled prompts (5-part Anchor/Inject or 2-part Lock/Isolate) to sessions/{session_id}/prompts/."""
         filename = f"turn_{turn_index}_prompt.json"
         blob_path = self.build_session_blob_path(session_id, "prompts", filename)
-        content = (
-            json.dumps(prompt_data, indent=2)
-            if isinstance(prompt_data, dict)
-            else json.dumps({"prompt": prompt_data}, indent=2)
-        )
-        return self.upload_bytes(
-            content.encode("utf-8"), blob_path, content_type="application/json"
-        )
+        payload = prompt_data if isinstance(prompt_data, dict) else {"prompt": prompt_data}
+        pub_url, _ = self._upload_json_payload(blob_path, payload)
+        return pub_url
 
     def save_session_manifest(
         self,
@@ -396,16 +435,17 @@ class GcsStorageManager:
         """Persists session manifest to projects/{project_id}/sessions/{session_id}/prompts/session_manifest.json in GCS."""
         pid = project_id or "default_project"
         key = f"{pid}/{session_id}"
-        self._mock_session_manifests[key] = manifest_data
-        self._mock_session_manifests[session_id] = manifest_data
-
         blob_path = self.build_session_blob_path(
             session_id, "prompts", "session_manifest.json", project_id=project_id
         )
-        content = json.dumps(manifest_data, indent=2)
-        return self.upload_bytes(
-            content.encode("utf-8"), blob_path, content_type="application/json"
+        pub_url, _ = self._upload_json_payload(
+            blob_path,
+            manifest_data,
+            mock_cache_dict=self._mock_session_manifests,
+            mock_cache_key=key,
         )
+        self._mock_session_manifests[session_id] = manifest_data
+        return pub_url
 
     def get_session_manifest(
         self,
@@ -419,33 +459,28 @@ class GcsStorageManager:
         if session_id in self._mock_session_manifests:
             return self._mock_session_manifests[session_id]
 
-        if not self.mock_mode and self._bucket:
-            candidate_paths = []
-            if project_id:
-                candidate_paths.append(
-                    self.build_session_blob_path(
-                        session_id,
-                        "prompts",
-                        "session_manifest.json",
-                        project_id=project_id,
-                    ).lstrip("/")
-                )
+        candidate_paths = []
+        if project_id:
             candidate_paths.append(
-                self.build_session_blob_path(session_id, "prompts", "session_manifest.json").lstrip(
-                    "/"
+                self.build_session_blob_path(
+                    session_id,
+                    "prompts",
+                    "session_manifest.json",
+                    project_id=project_id,
                 )
             )
-            for blob_path in candidate_paths:
-                try:
-                    blob = self._bucket.blob(blob_path)
-                    if blob.exists(timeout=self.timeout):
-                        data = blob.download_as_text(timeout=self.timeout)
-                        res: dict[str, Any] = json.loads(data)
-                        self._mock_session_manifests[key] = res
-                        self._mock_session_manifests[session_id] = res
-                        return res
-                except Exception as exc:
-                    logger.warning("Failed to fetch session manifest from %s: %s", blob_path, exc)
+        candidate_paths.append(
+            self.build_session_blob_path(session_id, "prompts", "session_manifest.json")
+        )
+        for blob_path in candidate_paths:
+            res = self._download_json_payload(
+                blob_path,
+                mock_cache_dict=self._mock_session_manifests,
+                mock_cache_key=key,
+            )
+            if res is not None:
+                self._mock_session_manifests[session_id] = res
+                return res
 
         return None
 
@@ -463,35 +498,29 @@ class GcsStorageManager:
         else:
             report_dict = {}
 
-        self._mock_analyses[session_id] = report_dict
-
         filename = "reference_analysis.json"
         blob_path = self.build_session_blob_path(session_id, "references", filename)
-        content = json.dumps(report_dict, indent=2)
-        return self.upload_bytes(
-            content.encode("utf-8"), blob_path, content_type="application/json"
+        pub_url, _ = self._upload_json_payload(
+            blob_path,
+            report_dict,
+            mock_cache_dict=self._mock_analyses,
+            mock_cache_key=session_id,
         )
+        return pub_url
 
     def get_reference_analysis(self, session_id: str) -> dict[str, Any] | None:
         """Retrieves reference video acoustic and visual analysis metadata for a session."""
         if session_id in self._mock_analyses:
             return self._mock_analyses[session_id]
 
-        if not self.mock_mode and self._bucket:
-            blob_path = self.build_session_blob_path(
-                session_id, "references", "reference_analysis.json"
-            ).lstrip("/")
-            try:
-                blob = self._bucket.blob(blob_path)
-                if blob.exists(timeout=self.timeout):
-                    data = blob.download_as_text(timeout=self.timeout)
-                    res: dict[str, Any] = json.loads(data)
-                    self._mock_analyses[session_id] = res
-                    return res
-            except Exception as exc:
-                logger.warning("Failed to fetch reference analysis from %s: %s", blob_path, exc)
-
-        return None
+        blob_path = self.build_session_blob_path(
+            session_id, "references", "reference_analysis.json"
+        )
+        return self._download_json_payload(
+            blob_path,
+            mock_cache_dict=self._mock_analyses,
+            mock_cache_key=session_id,
+        )
 
     def _normalize_media_source_path(self, src: str) -> str:
         """Normalizes proxy URLs, GCS URIs, or relative paths to a raw GCS URI or local path."""
@@ -609,13 +638,12 @@ class GcsStorageManager:
         else:
             blob_path = f"sessions/{session_id}/characters/{slug}.json"
 
-        content = json.dumps(character, indent=2)
-        self.upload_bytes(
-            content.encode("utf-8"),
+        pub_url, gcs_uri = self._upload_json_payload(
             blob_path,
-            content_type="application/json",
+            character,
+            mock_cache_dict=self._mock_characters,
+            mock_cache_key=slug,
         )
-        self._mock_characters[slug] = character
 
         if project_id:
             if project_id not in self._mock_projects:
@@ -630,7 +658,7 @@ class GcsStorageManager:
             existing.append(character)
             self._mock_project_characters[project_id] = existing
 
-        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
+        return pub_url, gcs_uri
 
     def save_character_sheet(
         self,
@@ -1077,22 +1105,19 @@ class GcsStorageManager:
         """Fetches character dict for a given slug from session scope, library scope, or mock cache."""
         clean_slug = self._slugify(slug)
 
-        if not self.mock_mode and self._bucket:
-            try:
-                paths_to_try: list[str] = []
-                if session_id:
-                    paths_to_try.append(f"sessions/{session_id}/characters/{clean_slug}.json")
-                paths_to_try.append(f"library/characters/{clean_slug}.json")
+        paths_to_try: list[str] = []
+        if session_id:
+            paths_to_try.append(f"sessions/{session_id}/characters/{clean_slug}.json")
+        paths_to_try.append(f"library/characters/{clean_slug}.json")
 
-                for blob_path in paths_to_try:
-                    blob = self._bucket.blob(blob_path)
-                    if blob.exists(timeout=self.timeout):
-                        data = json.loads(blob.download_as_text(timeout=self.timeout))
-                        if isinstance(data, dict):
-                            self._mock_characters[clean_slug] = data
-                            return data
-            except Exception as exc:
-                logger.warning("load_character failed for %s: %s", clean_slug, exc)
+        for blob_path in paths_to_try:
+            data = self._download_json_payload(
+                blob_path,
+                mock_cache_dict=self._mock_characters,
+                mock_cache_key=clean_slug,
+            )
+            if isinstance(data, dict):
+                return data
 
         if slug in self._mock_characters:
             return self._mock_characters[slug]
@@ -1116,31 +1141,26 @@ class GcsStorageManager:
     ) -> tuple[str, str]:
         """Saves session cast roster to sessions/{session_id}/characters/roster.json."""
         blob_path = f"sessions/{session_id}/characters/roster.json"
-        content = json.dumps(characters, indent=2)
-        self.upload_bytes(
-            content.encode("utf-8"),
+        return self._upload_json_payload(
             blob_path,
-            content_type="application/json",
+            characters,
+            mock_cache_dict=self._mock_rosters,
+            mock_cache_key=session_id,
         )
-        self._mock_rosters[session_id] = characters
-        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
 
     def load_session_roster(
         self,
         session_id: str,
     ) -> list[dict[str, Any]] | None:
         """Loads session cast roster JSON for a given session ID."""
-        if not self.mock_mode and self._bucket:
-            try:
-                blob_path = f"sessions/{session_id}/characters/roster.json"
-                blob = self._bucket.blob(blob_path)
-                if blob.exists(timeout=self.timeout):
-                    data = json.loads(blob.download_as_text(timeout=self.timeout))
-                    if isinstance(data, list):
-                        self._mock_rosters[session_id] = data
-                        return data
-            except Exception as exc:
-                logger.warning("load_session_roster failed for %s: %s", session_id, exc)
+        blob_path = f"sessions/{session_id}/characters/roster.json"
+        data = self._download_json_payload(
+            blob_path,
+            mock_cache_dict=self._mock_rosters,
+            mock_cache_key=session_id,
+        )
+        if isinstance(data, list):
+            return data
 
         return self._mock_rosters.get(session_id)
 
@@ -1215,14 +1235,12 @@ class GcsStorageManager:
         payload["slug"] = slug
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-        content = json.dumps(payload, indent=2)
-        self.upload_bytes(
-            content.encode("utf-8"),
+        return self._upload_json_payload(
             blob_path,
-            content_type="application/json",
+            payload,
+            mock_cache_dict=self._mock_storyboards,
+            mock_cache_key=slug,
         )
-        self._mock_storyboards[slug] = payload
-        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
 
     def list_storyboards(
         self,
@@ -1279,22 +1297,19 @@ class GcsStorageManager:
         """Loads a storyboard payload by slug from session scope, library scope, or mock cache."""
         clean_slug = self._slugify(slug)
 
-        if not self.mock_mode and self._bucket:
-            try:
-                paths_to_try: list[str] = []
-                if session_id:
-                    paths_to_try.append(f"sessions/{session_id}/storyboards/{clean_slug}.json")
-                paths_to_try.append(f"library/storyboards/{clean_slug}.json")
+        paths_to_try: list[str] = []
+        if session_id:
+            paths_to_try.append(f"sessions/{session_id}/storyboards/{clean_slug}.json")
+        paths_to_try.append(f"library/storyboards/{clean_slug}.json")
 
-                for blob_path in paths_to_try:
-                    blob = self._bucket.blob(blob_path)
-                    if blob.exists(timeout=self.timeout):
-                        data = json.loads(blob.download_as_text(timeout=self.timeout))
-                        if isinstance(data, dict):
-                            self._mock_storyboards[clean_slug] = data
-                            return data
-            except Exception as exc:
-                logger.warning("load_storyboard failed for %s: %s", clean_slug, exc)
+        for blob_path in paths_to_try:
+            data = self._download_json_payload(
+                blob_path,
+                mock_cache_dict=self._mock_storyboards,
+                mock_cache_key=clean_slug,
+            )
+            if isinstance(data, dict):
+                return data
 
         if slug in self._mock_storyboards:
             return self._mock_storyboards[slug]

@@ -567,3 +567,26 @@ def test_guess_content_type():
     ]
     for path, expected_mime in test_cases:
         assert _guess_content_type(path) == expected_mime
+
+
+def test_json_payload_helpers_and_mock_synchronization():
+    from omnimash.storage.gcs import GcsStorageManager
+
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=True)
+    payload = {"title": "Scene 1", "duration": 5.0}
+    path = "sessions/s1/storyboards/scene_1.json"
+    pub_url, gcs_uri = storage._upload_json_payload(
+        path,
+        payload,
+        mock_cache_dict=storage._mock_storyboards,
+        mock_cache_key="s1:scene_1",
+    )
+    assert "scene_1.json" in gcs_uri
+    assert storage._mock_storyboards["s1:scene_1"] == payload
+
+    retrieved = storage._download_json_payload(
+        path,
+        mock_cache_dict=storage._mock_storyboards,
+        mock_cache_key="s1:scene_1",
+    )
+    assert retrieved == payload
