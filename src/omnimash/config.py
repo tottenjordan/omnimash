@@ -24,6 +24,7 @@ class OmniMashSettings(BaseSettings):
     model_armor_fail_closed: bool = False
     model_armor_timeout: float = 5.0
     ffmpeg_timeout_seconds: float = 120.0
+    gcs_timeout_seconds: float = 30.0
     mock_mode: bool = False
     port: int = 8080
     log_level: str = "INFO"
