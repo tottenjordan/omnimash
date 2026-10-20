@@ -610,6 +610,8 @@ class OmniMashAgent:
             reference_analysis = asdict(report)
 
         # Step 1: Model Armor Gate
+        # Pre-generation screening decoupled from video inference prevents the mutual
+        # exclusivity constraint in google-genai between model_armor_config and safety_settings.
         input_prompt = prompt or concept or ""
         guard_res = self.guardrail.validate_prompt(input_prompt)
         if not guard_res.is_approved:
@@ -618,6 +620,9 @@ class OmniMashAgent:
                 status_event="GUARDRAIL_BLOCKED",
                 error_message=guard_res.rejection_reason,
             )
+
+        if guard_res.deidentified and guard_res.sanitized_prompt:
+            input_prompt = guard_res.sanitized_prompt
 
         # Step 2: Check if initial generation or conversational diff
         char_objs: list[CharacterRole] = []
@@ -791,6 +796,9 @@ class OmniMashAgent:
                 status_event="GUARDRAIL_BLOCKED",
                 error_message=guard_res.rejection_reason,
             )
+
+        if guard_res.deidentified and guard_res.sanitized_prompt:
+            prompt = guard_res.sanitized_prompt
 
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name

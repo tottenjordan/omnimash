@@ -1,5 +1,8 @@
+from unittest.mock import MagicMock
+
 from omnimash.agent.orchestrator import OmniMashAgent, build_adk_agent
 from omnimash.prompts.compiler import CharacterRole, get_character_identifier
+from omnimash.security import GuardrailResult
 
 
 def test_agent_initial_creation_flow():
@@ -27,6 +30,26 @@ def test_agent_guardrail_rejection():
     )
     assert res.success is False
     assert "Policy violation" in (res.error_message or "")
+
+
+def test_agent_guardrail_deidentified_propagation():
+    agent = OmniMashAgent(mock_mode=True)
+    mock_guard = MagicMock()
+    mock_guard.validate_prompt.return_value = GuardrailResult(
+        is_approved=True,
+        sanitized_prompt="Snape rap battle in [CITY]",
+        deidentified=True,
+    )
+    agent.guardrail = mock_guard
+
+    res = agent.process_user_turn(
+        user_id="user_1",
+        project_id="proj_1",
+        prompt="Snape rap battle in New York",
+        clip_index=0,
+    )
+    assert res.success is True
+    mock_guard.validate_prompt.assert_called_once()
 
 
 def test_commit_recommended_and_branch_flow():
