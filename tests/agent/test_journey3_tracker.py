@@ -70,3 +70,34 @@ def test_journey3_state_unset_does_not_remove_unrelated_states():
     block2 = state2.format_cumulative_state_block().lower()
     assert "blindfold" not in block2
     assert "ring" in block2
+
+
+def test_cumulative_state_tracker_delegates_to_session_manager():
+    from omnimash.state.session_manager import SessionManager
+    from omnimash.storage.gcs import GcsStorageManager
+
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=True)
+    sm = SessionManager(storage=storage)
+    session = sm.get_or_create_session("u1", "p1", session_name="unified_sync_sess")
+    sm.add_turn(session.session_id, 0, "Initial turn", "thread_1", "/clip0.mp4")
+
+    tracker = Journey3StateTracker(storage=storage, session_manager=sm)
+    tracker.record_shot_directive(
+        session_id=session.session_id,
+        shot_index=0,
+        action_text="Chef Gordon enters holding glowing cyber spatula",
+        project_id="p1",
+    )
+
+    # In-memory session should immediately reflect the cumulative state
+    assert session.cumulative_state != {}
+    assert "Chef" in session.cumulative_state.get("character_states", {})
+
+    # GCS manifest should contain BOTH turns and cumulative state without clobbering
+    manifest = storage.get_session_manifest(session.session_id, project_id="p1")
+    assert manifest is not None
+    assert "turns" in manifest
+    assert len(manifest["turns"]) == 1
+    assert "cumulative_state" in manifest
+    assert "Chef" in manifest["cumulative_state"]["character_states"]
+

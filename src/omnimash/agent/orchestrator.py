@@ -46,9 +46,14 @@ class AgentTurnResponse:
 class CumulativeStateTracker:
     """Tracks cumulative character and scene state modifications across shot directives."""
 
-    def __init__(self, storage: Any | None = None) -> None:
+    def __init__(
+        self,
+        storage: Any | None = None,
+        session_manager: SessionManager | None = None,
+    ) -> None:
         self._session_states: dict[str, CumulativeShotState] = {}
         self.storage = storage
+        self.session_manager = session_manager
 
     def _persist_state(
         self,
@@ -56,6 +61,25 @@ class CumulativeStateTracker:
         state: CumulativeShotState,
         project_id: str | None = None,
     ) -> None:
+        cumulative_dict = {
+            "character_states": dict(state.character_states),
+            "scene_states": list(state.scene_states),
+        }
+        if self.session_manager is not None:
+            try:
+                self.session_manager.update_cumulative_state(
+                    session_id=session_id,
+                    cumulative_state=cumulative_dict,
+                    project_id=project_id,
+                )
+                return
+            except Exception as exc:
+                logger.warning(
+                    "Failed to persist cumulative state via SessionManager for session %s: %s",
+                    session_id,
+                    exc,
+                )
+
         if self.storage is not None and hasattr(self.storage, "save_session_manifest"):
             try:
                 raw_manifest = (
@@ -71,10 +95,7 @@ class CumulativeStateTracker:
                 effective_project_id = project_id or manifest.get("project_id")
                 if effective_project_id:
                     manifest["project_id"] = effective_project_id
-                manifest["cumulative_state"] = {
-                    "character_states": dict(state.character_states),
-                    "scene_states": list(state.scene_states),
-                }
+                manifest["cumulative_state"] = cumulative_dict
                 self.storage.save_session_manifest(
                     session_id=session_id,
                     manifest_data=manifest,
@@ -90,23 +111,42 @@ class CumulativeStateTracker:
     ) -> CumulativeShotState:
         if session_id not in self._session_states:
             hydrated_state = CumulativeShotState()
-            if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
+            cs: dict[str, Any] | None = None
+
+            if self.session_manager is not None:
+                try:
+                    raw_cs = self.session_manager.get_cumulative_state(
+                        session_id, project_id=project_id
+                    )
+                    if isinstance(raw_cs, dict) and raw_cs:
+                        cs = raw_cs
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to get cumulative state from SessionManager for session %s: %s",
+                        session_id,
+                        exc,
+                    )
+
+            if not cs and self.storage is not None and hasattr(self.storage, "get_session_manifest"):
                 try:
                     manifest = self.storage.get_session_manifest(session_id, project_id=project_id)
                     if isinstance(manifest, dict) and isinstance(
                         manifest.get("cumulative_state"), dict
                     ):
                         cs = manifest["cumulative_state"]
-                        if isinstance(cs.get("character_states"), dict):
-                            for k, v in cs["character_states"].items():
-                                if isinstance(v, list):
-                                    hydrated_state.character_states[str(k)] = [str(x) for x in v]
-                        if isinstance(cs.get("scene_states"), list):
-                            hydrated_state.scene_states = [str(x) for x in cs["scene_states"]]
                 except Exception as exc:
                     logger.warning(
                         "Failed to hydrate cumulative state for session %s: %s", session_id, exc
                     )
+
+            if isinstance(cs, dict) and cs:
+                if isinstance(cs.get("character_states"), dict):
+                    for k, v in cs["character_states"].items():
+                        if isinstance(v, list):
+                            hydrated_state.character_states[str(k)] = [str(x) for x in v]
+                if isinstance(cs.get("scene_states"), list):
+                    hydrated_state.scene_states = [str(x) for x in cs["scene_states"]]
+
             self._session_states[session_id] = hydrated_state
         return self._session_states[session_id]
 
@@ -322,7 +362,9 @@ class OmniMashAgent:
         self.media_extractor = MediaExtractor(mock_mode=mock_mode, storage=self.storage)
         self.stitcher = VideoStitcher(mock_mode=mock_mode, storage=self.storage)
         self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
-        self.cumulative_tracker = CumulativeStateTracker(storage=self.storage)
+        self.cumulative_tracker = CumulativeStateTracker(
+            storage=self.storage, session_manager=self.session_manager
+        )
         self.journey3_tracker = self.cumulative_tracker
 
     def _allocate_turn_index(self, session: Any) -> int:
