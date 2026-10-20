@@ -2552,3 +2552,111 @@ def test_image_generation_skips_thought_parts() -> None:
         assert (
             mock_models.generate_content.call_args.kwargs.get("model") == "gemini-nano-banana-2.1"
         )
+
+
+def test_load_reference_images_large_file_uses_upload_file_config() -> None:
+    """Verify >25MB reference media uses files.upload with UploadFileConfig(mime_type=...) on Developer API client and falls back to base64 on Vertex AI client."""
+    from google.genai import types
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_dev_client = MagicMock()
+    mock_dev_client.vertexai = False
+    uploaded_file_obj = MagicMock(name="uploaded_file_ref")
+    mock_dev_client.files.upload.return_value = uploaded_file_obj
+    client._dev_client = mock_dev_client
+    client._genai_client = mock_dev_client
+
+    large_bytes = b"x" * (25 * 1024 * 1024 + 10)
+    char = CharacterRole(
+        role_id="Role A",
+        name="BigVideoRef",
+        description="Large motion clip",
+        reference_url="gs://test-bucket/large_clip.mp4",
+    )
+
+    with patch.object(
+        client,
+        "_fetch_image_bytes",
+        return_value=(large_bytes, "video/mp4"),
+    ):
+        imgs, _ = client._load_reference_images_as_input(
+            session_id="sess_large",
+            characters=[char],
+        )
+
+    assert len(imgs) == 1
+    assert imgs[0] is uploaded_file_obj
+    mock_dev_client.files.upload.assert_called_once()
+    upload_kwargs = mock_dev_client.files.upload.call_args.kwargs
+    assert "mime_type" not in upload_kwargs
+    assert "config" in upload_kwargs
+    cfg = upload_kwargs["config"]
+    assert isinstance(cfg, types.UploadFileConfig)
+    assert cfg.mime_type == "video/mp4"
+
+    # When only Vertex AI client (vertexai=True) is active and no Developer API client exists,
+    # files.upload is unsupported on Vertex AI so it must safely fall back to inline base64.
+    mock_vertex_client = MagicMock()
+    mock_vertex_client.vertexai = True
+    client._dev_client = None
+    client._vertex_client = mock_vertex_client
+    client._genai_client = mock_vertex_client
+
+    with patch.object(
+        client,
+        "_fetch_image_bytes",
+        return_value=(large_bytes, "video/mp4"),
+    ):
+        imgs_vertex, _ = client._load_reference_images_as_input(
+            session_id="sess_large_vertex",
+            characters=[char],
+        )
+
+    assert len(imgs_vertex) == 1
+    assert isinstance(imgs_vertex[0], dict)
+    assert imgs_vertex[0]["type"] == "video"
+    mock_vertex_client.files.upload.assert_not_called()
+
+
+def test_image_generation_passes_image_config_aspect_ratio_and_closes_client() -> None:
+    """Verify generate_keyframe_image and generate_character_reference_sheet pass ImageConfig(aspect_ratio=...) in GenerateContentConfig and close the per-call client."""
+    import base64
+    from google.genai import types
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+    final_part = MagicMock(
+        thought=False,
+        inline_data=MagicMock(data=base64.b64encode(b"final_png").decode("utf-8")),
+    )
+    mock_candidate = MagicMock(content=MagicMock(parts=[final_part]))
+    mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
+    mock_genai_client.models = mock_models
+
+    client.storage = MagicMock()
+    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/final.png"
+
+    with patch("google.genai.Client", return_value=mock_genai_client):
+        client.generate_keyframe_image(
+            prompt="Vertical cyberpunk shot",
+            aspect_ratio="9:16",
+            image_model="gemini-nano-banana-2.1",
+        )
+        kf_config = mock_models.generate_content.call_args.kwargs.get("config")
+        assert isinstance(kf_config, types.GenerateContentConfig)
+        assert isinstance(kf_config.image_config, types.ImageConfig)
+        assert kf_config.image_config.aspect_ratio == "9:16"
+        assert mock_genai_client.close.call_count == 1
+
+        client.generate_character_reference_sheet(
+            character_name="Hero",
+            description="Widescreen sheet",
+            aspect_ratio="16:9",
+            image_model="gemini-3-pro-image",
+        )
+        sheet_config = mock_models.generate_content.call_args.kwargs.get("config")
+        assert isinstance(sheet_config, types.GenerateContentConfig)
+        assert isinstance(sheet_config.image_config, types.ImageConfig)
+        assert sheet_config.image_config.aspect_ratio == "16:9"
+        assert mock_genai_client.close.call_count == 2

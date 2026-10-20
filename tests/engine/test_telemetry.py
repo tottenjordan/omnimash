@@ -101,6 +101,12 @@ def test_start_inference_span() -> None:
         name="custom.gen_ai.span", attributes=expected_labels
     )
     assert span == mock_span
+    mock_span.set_status.assert_called_once()
+    status_arg = mock_span.set_status.call_args.args[0]
+    from opentelemetry.trace import StatusCode
+
+    assert status_arg.status_code == StatusCode.ERROR
+    assert status_arg.description == "429"
 
 
 def test_telemetry_inference_span_records_resolution_and_tokens() -> None:
