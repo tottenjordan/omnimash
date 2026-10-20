@@ -18,6 +18,7 @@ dependencies = [
     "uvicorn>=0.54.0",
     "yt-dlp>=2026.8.19",
     "pillow>=12.3.0",
+    "google-cloud-modelarmor>=0.7.2",
 ]
 
 [dependency-groups]
