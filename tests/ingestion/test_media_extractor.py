@@ -143,13 +143,24 @@ def test_extract_reference_video_clip_ffmpeg_flags_and_subprocess_options(tmp_pa
 
 
 def test_analyze_youtube_reference_uses_yt_dlp_sanitize_info_when_live(monkeypatch):
+    import socket
     import yt_dlp
 
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, port, *a, **kw: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("142.250.190.46", 443))
+        ],
+    )
+
     called_ops: list[str] = []
+    captured_opts: list[dict] = []
 
     class DummyYDL:
         def __init__(self, opts):
             self.opts = opts
+            captured_opts.append(dict(opts))
 
         def __enter__(self):
             called_ops.append("enter")
@@ -181,5 +192,83 @@ def test_analyze_youtube_reference_uses_yt_dlp_sanitize_info_when_live(monkeypat
     assert "extract_info:https://www.youtube.com/watch?v=live_test" in called_ops
     assert "sanitize_info" in called_ops
     assert "exit" in called_ops
+    assert captured_opts[0].get("allowed_extractors") == ["youtube", "youtube:tab"]
     assert report.video_title == "Live Trap Reference Beat"
     assert report.duration_seconds == 215
+
+
+def test_extract_youtube_metadata_blocks_non_youtube_urls_without_calling_yt_dlp(monkeypatch):
+    import yt_dlp
+
+    def fail_ydl(*args, **kwargs):
+        raise AssertionError("yt_dlp.YoutubeDL should not be invoked for non-YouTube URLs")
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", fail_ydl)
+    extractor = MediaExtractor(mock_mode=False)
+    meta = extractor._extract_youtube_metadata("http://169.254.169.254/latest/meta-data/")
+    assert meta["title"] == "Reference Beat & Character Baseline"
+
+
+def test_analyze_youtube_reference_rejects_traversal_session_id_and_skips_tmp_mock_frames(
+    monkeypatch,
+):
+    import pytest
+    import shutil
+
+    copied_targets: list[str] = []
+    orig_copyfile = shutil.copyfile
+
+    def spy_copyfile(src, dst, *args, **kwargs):
+        copied_targets.append(str(dst))
+        return orig_copyfile(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copyfile", spy_copyfile)
+
+    extractor = MediaExtractor(mock_mode=True)
+    with pytest.raises(ValueError, match="Invalid session_id"):
+        extractor.analyze_youtube_reference(
+            "https://www.youtube.com/watch?v=sample", session_id="../../etc"
+        )
+
+    extractor.analyze_youtube_reference(
+        "https://www.youtube.com/watch?v=sample", session_id="sess_clean_no_tmp"
+    )
+    assert not any(dst.startswith("/tmp/mock_frame_") for dst in copied_targets)
+
+
+def test_crop_3s_motion_reference_strips_leading_static_slash():
+    extractor = MediaExtractor(mock_mode=True)
+    os.makedirs("static/uploads", exist_ok=True)
+    local_sample = "static/uploads/test_leading_slash_sample.mp4"
+    with open(local_sample, "wb") as f:
+        f.write(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+
+    try:
+        output_clip = extractor.crop_3s_motion_reference(
+            "/static/uploads/test_leading_slash_sample.mp4", start_sec=0.5
+        )
+        assert output_clip == "static/uploads/test_leading_slash_sample_motion_3s.mp4"
+        assert os.path.exists(output_clip)
+    finally:
+        for p in (local_sample, "static/uploads/test_leading_slash_sample_motion_3s.mp4"):
+            if os.path.exists(p):
+                os.remove(p)
+
+
+def test_ingestion_package_exports_and_custom_parody_research():
+    import omnimash.ingestion as ingestion
+
+    for sym in (
+        "MediaExtractor",
+        "ExtractedReference",
+        "KeyframeAnnotation",
+        "ParodyResearchResult",
+        "ReferenceAnalysisReport",
+    ):
+        assert hasattr(ingestion, sym)
+        assert sym in ingestion.__all__
+
+    extractor = MediaExtractor(mock_mode=True)
+    res = extractor.research_parody_clash("Spider-Man", "90s Boom Bap")
+    assert "Spider-Man" in res.synopsis
+    assert "90s Boom Bap" in res.synopsis
