@@ -1,5 +1,6 @@
 """OmniMash security package."""
 
+from omnimash.security.adk_plugin import get_model_armor_adk_plugin
 from omnimash.security.client import (
     get_model_armor_async_client,
     get_model_armor_client,
@@ -12,6 +13,7 @@ from omnimash.security.models import GuardrailResult
 __all__ = [
     "GuardrailResult",
     "ModelArmorGuardrail",
+    "get_model_armor_adk_plugin",
     "get_model_armor_async_client",
     "get_model_armor_client",
     "is_model_armor_available",
