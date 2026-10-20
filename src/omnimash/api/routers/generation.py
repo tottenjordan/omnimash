@@ -502,19 +502,24 @@ def journey3_generate_shot(
             chars_to_use = filtered_chars
     char_objs = normalize_character_roles(chars_to_use, sanitize=False, default_role_prefix="Role")
 
+    effective_action = req.action_directive or req.prompt or ""
+    parent_turn_id = req.turn_id or req.previous_interaction_id
+    is_stateful_edit = bool(parent_turn_id and req.prompt)
+
     known_char_names = [c.name for c in char_objs if c.name]
-    agent.journey3_tracker.record_shot_directive(
-        session_id=session_id,
-        shot_index=req.shot_index,
-        action_text=req.action_directive,
-        dialogue_text=req.dialogue_text,
-        known_characters=known_char_names if known_char_names else None,
-        project_id=req.project_name,
-    )
+    if not is_stateful_edit:
+        agent.journey3_tracker.record_shot_directive(
+            session_id=session_id,
+            shot_index=req.shot_index,
+            action_text=req.action_directive,
+            dialogue_text=req.dialogue_text,
+            known_characters=known_char_names if known_char_names else None,
+            project_id=req.project_name,
+        )
     cum_state = agent.journey3_tracker.get_cumulative_state(session_id, project_id=req.project_name)
 
     keyframe_url = req.keyframe_image_url
-    if not keyframe_url and req.action_directive:
+    if not keyframe_url and req.action_directive and not is_stateful_edit:
         try:
             keyframe_url = agent.omni_client.generate_keyframe_image(
                 req.action_directive,
@@ -542,12 +547,15 @@ def journey3_generate_shot(
     else:
         compiled_prompt = compile_journey3_shot_prompt(
             shot_number=req.shot_index,
-            action_directive=req.action_directive,
+            action_directive=effective_action,
             cumulative_state=cum_state,
             aspect_ratio=req.aspect_ratio,
             timeline_dialogue=req.dialogue_text,
             enable_sanitization=req.enable_safety_sanitization,
             characters=char_objs if char_objs else None,
+            audio_mode=req.audio_mode,
+            audio_stem=req.audio_stem,
+            global_audio_beat=req.global_audio_beat,
             title_card_text=req.title_card_text,
             title_card_subtitle=req.title_card_subtitle,
             narrator_text=req.narrator_text,
@@ -562,8 +570,10 @@ def journey3_generate_shot(
         agent_turn = agent.process_user_turn(
             user_id="usr_default",
             project_id=req.project_name or "prj_default",
-            prompt=req.action_directive,
-            compiled_override=compiled_prompt,
+            prompt=req.prompt if is_stateful_edit and req.prompt else effective_action,
+            compiled_override=req.prompt if is_stateful_edit and req.prompt else compiled_prompt,
+            parent_turn_id=parent_turn_id,
+            is_conversational_edit=is_stateful_edit,
             clip_index=req.shot_index,
             session_name=session_id,
             characters=char_objs if char_objs else None,

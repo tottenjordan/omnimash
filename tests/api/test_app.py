@@ -2061,3 +2061,161 @@ def test_ui_html_contains_1080p_studio_tier_and_seamless_loop_controls() -> None
     # Seamless loop and resolution binding in handleGenerateShotVideo payload
     assert "resolution: omniResolution" in UI_HTML
     assert "is_seamless_loop: !!shot.is_seamless_loop" in UI_HTML
+
+
+def test_ui_html_act3_screening_room_gated_by_studio_mode() -> None:
+    """Verify Act 3 Screening Room only renders and activates when studioMode === 'acts'."""
+    from omnimash.api.app import UI_HTML
+
+    assert '{studioMode === "acts" && activeAct === 3 && (' in UI_HTML
+    assert "{activeAct === 3 && (" not in UI_HTML
+    assert (
+        'if (studioMode === "acts") {\n                            setActiveAct(3);\n                        }'
+        in UI_HTML
+    )
+
+
+def test_ui_html_authoritative_compilation_and_motion_reference_payloads() -> None:
+    """Verify handleJourney3GenerateShot sends compiled_override: null when unmodified, forwards all shot card fields, and both shot handlers forward motion_reference_clip."""
+    from omnimash.api.app import UI_HTML
+
+    assert (
+        "compiled_override: card.compiled_override !== undefined ? card.compiled_override : null"
+        in UI_HTML
+    )
+    assert (
+        "compiled_override: card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card)"
+        not in UI_HTML
+    )
+    assert "title_card_text: card.title_card_text || null," in UI_HTML
+    assert "title_card_subtitle: card.title_card_subtitle || null," in UI_HTML
+    assert "narrator_text: card.narrator_text || null," in UI_HTML
+    assert "narrator_voice: card.narrator_voice || null," in UI_HTML
+    assert "style_preset: j3StylePreset || null," in UI_HTML
+    assert "is_seamless_loop: !!card.is_seamless_loop," in UI_HTML
+    assert UI_HTML.count("motion_reference_clip: motionReferenceClip || null") >= 2
+
+
+def test_ui_html_stateful_4k_upscale_payload() -> None:
+    """Verify handleUpscaleDraftTo4K passes turn_id/previous_interaction_id, explicit stateful upscale prompt, and updates draftBatchShots & j3ShotCards."""
+    from omnimash.api.app import UI_HTML
+
+    assert "const sourceTurnId = draftItem.turn_id || draftItem.interaction_id || null;" in UI_HTML
+    assert "turn_id: sourceTurnId," in UI_HTML
+    assert "previous_interaction_id: sourceTurnId," in UI_HTML
+    assert 'prompt: "Upscale to master quality. Keep everything else the same.",' in UI_HTML
+    assert 'resolution: "4k", turn_id: data.turn_id || d.turn_id' in UI_HTML
+
+
+def test_ui_html_standardized_4block_compilers_and_zero_wardrobe_redundancy() -> None:
+    """Verify client-side 4-block compilers use canonical headers, zero wardrobe redundancy, instrumental prefix, vocal ducking, and off-screen narrator rules."""
+    from omnimash.api.app import UI_HTML
+
+    assert "const buildLivePromptPreview = compileStoryboardPreview;" in UI_HTML
+    assert "### CUMULATIVE SHOT STATE" not in UI_HTML
+    assert "### VISUAL ACTION & CAMERA" not in UI_HTML
+    assert "### TIMELINE & DIALOGUE" not in UI_HTML
+    assert "Visual identity anchored via ${alias}." in UI_HTML
+    assert "<LAST_FRAME>@EndKeyframe" in UI_HTML
+    assert "- On-Screen Displayed Text / Title Card:" in UI_HTML
+    assert "@Image${cIdx + 1}" not in UI_HTML
+    assert (
+        "Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible."
+        in UI_HTML
+    )
+    assert "(off-screen) — Do not show a narrator speaking on camera." in UI_HTML
+
+
+def test_journey3_compiler_4block_alignment_and_stateful_4k_upscale_endpoint() -> None:
+    """Verify backend 4-block compiler placement of [# Sources]/[# References], zero wardrobe redundancy in Block 2, audio ducking, narrator off-screen tag, and stateful 4K upscale endpoint."""
+    from omnimash.prompts.journey3 import compile_journey3_shot_prompt
+
+    compiled = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="Harry raises his wand in the neon alley",
+        timeline_dialogue="Expelliarmus!",
+        global_audio_beat="808 synth trap beat",
+        narrator_text="Destiny arrives in the dark.",
+        narrator_voice="Deep Trailer Voice",
+        keyframe_image_url="https://storage.googleapis.com/test/seed.png",
+        characters=[
+            {
+                "role_id": "Role A",
+                "name": "Harry",
+                "description": "Young wizard with glasses and cloak",
+                "wardrobe": "Emerald Velvet Cloak",
+                "aesthetic_tags": ["Cyberpunk Neon"],
+                "reference_url": "https://storage.googleapis.com/test/harry.png",
+                "voice_style": "British baritone",
+            }
+        ],
+    )
+
+    block1_part, rest = compiled.split("### CHARACTER PROFILES", 1)
+    block2_part, rest2 = rest.split("### SCENE INSTRUCTIONS", 1)
+    block3_part, block4_part = rest2.split("### TIMELINE", 1)
+
+    assert "### INPUT ROLES & REFERENCES" in block1_part
+    assert "[# Sources <FIRST_FRAME>@KeyframeSeed]" in block1_part
+    assert "[# References <IMAGE_REF_0>@Image1]" in block1_part
+    assert "[Wardrobe: Emerald Velvet Cloak]" in block1_part
+    assert "[# Sources" not in block2_part
+    assert "[# References" not in block2_part
+    assert "Young wizard with glasses and cloak" not in block2_part
+    assert "Emerald Velvet Cloak" not in block2_part
+    assert "Cyberpunk Neon" not in block2_part
+    assert "(Reference Image: @Image1" in block2_part
+    assert "instrumental 808 synth trap beat" in block3_part
+    assert (
+        "Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible."
+        in block3_part
+    )
+    assert "(off-screen) — Do not show a narrator speaking on camera." in block4_part
+
+    # Passing both characters and character_roster must not raise UnboundLocalError
+    compiled_with_roster = compile_journey3_shot_prompt(
+        shot_number=2,
+        action_directive="Harry steps forward",
+        character_roster="- Role A: Custom Roster Override",
+        characters=[{"role_id": "Role A", "name": "Harry", "description": "Wizard"}],
+    )
+    assert "Custom Roster Override" in compiled_with_roster
+
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    with (
+        patch.object(
+            app.state.agent,
+            "process_user_turn",
+            wraps=app.state.agent.process_user_turn,
+        ) as mock_turn,
+        patch.object(
+            app.state.agent.omni_client,
+            "generate_keyframe_image",
+            wraps=app.state.agent.omni_client.generate_keyframe_image,
+        ) as mock_kf,
+    ):
+        res = client.post(
+            "/api/journey3/generate-shot",
+            json={
+                "session_id": "test_upscale_session",
+                "shot_index": 1,
+                "turn_id": "turn_draft_360p",
+                "previous_interaction_id": "turn_draft_360p",
+                "prompt": "Upscale to master quality. Keep everything else the same.",
+                "action_directive": "Gaunt wizard puts on a golden velvet blindfold",
+                "keyframe_image_url": None,
+                "resolution": "4k",
+                "motion_reference_clip": "static/uploads/motion_3s.mp4",
+            },
+        )
+        assert res.status_code == 200
+        assert res.json()["success"] is True
+        mock_kf.assert_not_called()
+        _, kwargs = mock_turn.call_args
+        assert kwargs.get("parent_turn_id") == "turn_draft_360p"
+        assert kwargs.get("is_conversational_edit") is True
+        assert kwargs.get("prompt") == "Upscale to master quality. Keep everything else the same."
+        assert kwargs.get("keyframe_image_url") is None
+        assert kwargs.get("resolution") == "4k"
+        assert kwargs.get("motion_reference_clip") == "static/uploads/motion_3s.mp4"

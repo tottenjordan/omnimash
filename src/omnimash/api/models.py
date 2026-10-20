@@ -434,8 +434,11 @@ class Journey3KeyframePromptEditRequest(BaseModel):
 class Journey3ShotGenerateRequest(BaseModel):
     session_id: str | None = None
     project_name: str | None = None
-    shot_index: int
-    action_directive: str
+    shot_index: int = 1
+    action_directive: str = ""
+    prompt: str | None = None
+    turn_id: str | None = None
+    previous_interaction_id: str | None = None
     dialogue_text: str = ""
     keyframe_image_url: str | None = None
     last_frame_image_url: str | None = None
