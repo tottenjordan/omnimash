@@ -61,9 +61,7 @@ class ModelArmorGuardrail:
         """Returns the fully-qualified resource name of the Model Armor template."""
         if self.template_id.startswith("projects/"):
             return self.template_id
-        return (
-            f"projects/{self.project_id}/locations/{self.location}/templates/{self.template_id}"
-        )
+        return f"projects/{self.project_id}/locations/{self.location}/templates/{self.template_id}"
 
     def validate_prompt(self, prompt: str) -> GuardrailResult:
         """Synchronously validates prompt against Model Armor security guardrails.

@@ -1,6 +1,6 @@
 """Data models for OmniMash security and Model Armor guardrails."""
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
@@ -15,3 +15,12 @@ class GuardrailResult:
     triggers: list[str] = field(default_factory=list)
     filter_results: dict[str, Any] = field(default_factory=dict)
     deidentified: bool = False
+
+    @property
+    def is_blocked(self) -> bool:
+        """Convenience property indicating whether the prompt was rejected by guardrails."""
+        return not self.is_approved
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serializes GuardrailResult into a plain dictionary."""
+        return asdict(self)

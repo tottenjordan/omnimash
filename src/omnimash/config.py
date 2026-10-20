@@ -21,6 +21,8 @@ class OmniMashSettings(BaseSettings):
     studio_resolution: str = "1080p"
     master_resolution: str = "4k"
     model_armor_template_id: str = "omnimash-safety-filter"
+    model_armor_fail_closed: bool = False
+    model_armor_timeout: float = 5.0
     mock_mode: bool = False
     port: int = 8080
     log_level: str = "INFO"
