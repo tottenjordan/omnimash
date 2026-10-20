@@ -1,6 +1,14 @@
 import os
+import pytest
 from omnimash.storage.gcs import GCSStorage, GcsStorageManager
 from omnimash.engine.omni_client import OmniFlashClient
+
+
+@pytest.fixture(autouse=True)
+def _reset_shared_clients():
+    GcsStorageManager._SHARED_CLIENTS.clear()
+    yield
+    GcsStorageManager._SHARED_CLIENTS.clear()
 
 
 def test_gcs_storage_manager_urls():
