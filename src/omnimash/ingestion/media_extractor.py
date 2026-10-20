@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import logging
 import os
+import shutil
+import subprocess
 from dataclasses import dataclass, field
-from omnimash.storage.gcs import GcsStorageManager
+from typing import Any
 
 from PIL import Image, ImageDraw
+
+from omnimash.storage.gcs import GcsStorageManager
+
+logger = logging.getLogger("omnimash.ingestion")
 
 
 @dataclass
@@ -59,32 +66,97 @@ class MediaExtractor:
             bucket_name=bucket_name, mock_mode=self.mock_mode
         )
 
+    def _extract_youtube_metadata(self, url: str) -> dict[str, Any]:
+        """Extracts and sanitizes YouTube metadata using yt-dlp when not in mock mode.
+
+        Source: https://github.com/yt-dlp/yt-dlp#embedding-yt-dlp
+        """
+        default_meta: dict[str, Any] = {
+            "title": "Reference Beat & Character Baseline",
+            "duration": 180,
+            "description": "Extracted 90s hip-hop beat and character portrait keyframes.",
+        }
+        if self.mock_mode or not url:
+            return default_meta
+
+        try:
+            import yt_dlp
+
+            ydl_opts: dict[str, Any] = {
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+                "socket_timeout": 10,
+                "skip_download": True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                sanitized = ydl.sanitize_info(info) if info else {}
+                if isinstance(sanitized, dict):
+                    return {
+                        "title": str(sanitized.get("title") or default_meta["title"]),
+                        "duration": int(sanitized.get("duration") or default_meta["duration"]),
+                        "description": str(
+                            sanitized.get("description") or default_meta["description"]
+                        ),
+                    }
+        except Exception as exc:
+            logger.warning("yt-dlp metadata extraction fallback for %s: %s", url, exc)
+
+        return default_meta
+
     def _generate_keyframe_jpeg(self, path: str, label: str, timestamp: str, color_hex: str) -> str:
-        """Generates a high-quality annotated 1280x720 JPEG keyframe image file on disk."""
+        """Generates a high-quality annotated 1280x720 JPEG keyframe image file on disk.
+
+        Uses Pillow's Image context manager, scalable font_size via ImageDraw.text
+        (backed by ImageFont.load_default(size=...)), and Huffman-optimized JPEG saving.
+        Sources:
+        - https://pillow.readthedocs.io/en/stable/reference/ImageDraw.html#PIL.ImageDraw.ImageDraw.text
+        - https://pillow.readthedocs.io/en/stable/reference/ImageFont.html#PIL.ImageFont.load_default
+        - https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#jpeg
+        """
         if dirname := os.path.dirname(path):
             os.makedirs(dirname, exist_ok=True)
 
-        img = Image.new("RGB", (1280, 720), color="#0F172A")
-        draw = ImageDraw.Draw(img)
-        # Top banner
-        draw.rectangle([0, 0, 1280, 80], fill="#1E293B")
-        draw.rectangle([0, 75, 1280, 80], fill=color_hex)
-        # Main center viewport box
-        draw.rectangle([80, 120, 1200, 620], outline=color_hex, width=4)
-        # Draw labels
-        draw.text((40, 25), "🎬 OMNIMASH REFERENCE FRAME EXTRACTOR", fill="#FFFFFF")
-        draw.text((1050, 25), f"⏱️ {timestamp}", fill="#38BDF8")
-        draw.text((120, 160), label, fill="#F8FAFC")
-        draw.text(
-            (120, 220),
-            f"Conditioning Vector: {color_hex} • 720p HD Anchor",
-            fill="#94A3B8",
-        )
-        img.save(path, "JPEG", quality=90)
+        clean_label = label.encode("ascii", "ignore").decode("ascii").strip() or label
+        with Image.new("RGB", (1280, 720), color="#0F172A") as img:
+            draw = ImageDraw.Draw(img)
+            # Top banner
+            draw.rectangle([0, 0, 1280, 80], fill="#1E293B")
+            draw.rectangle([0, 75, 1280, 80], fill=color_hex)
+            # Main center viewport box
+            draw.rectangle([80, 120, 1200, 620], outline=color_hex, width=4)
+            # Draw labels with explicit scalable font_size (Pillow 10.1.0+ FreeType default font)
+            draw.text(
+                (40, 25),
+                "OMNIMASH REFERENCE FRAME EXTRACTOR",
+                fill="#FFFFFF",
+                font_size=24,
+            )
+            draw.text(
+                (1050, 25),
+                f"T+{timestamp}",
+                fill="#38BDF8",
+                font_size=24,
+            )
+            draw.text(
+                (120, 160),
+                clean_label,
+                fill="#F8FAFC",
+                font_size=28,
+            )
+            draw.text(
+                (120, 220),
+                f"Conditioning Vector: {color_hex} | 720p HD Anchor",
+                fill="#94A3B8",
+                font_size=20,
+            )
+            img.save(path, format="JPEG", quality=90, optimize=True)
         return path
 
     def process_youtube_url(self, url: str, session_id: str | None = None) -> ExtractedReference:
         sid = session_id or "default"
+        meta = self._extract_youtube_metadata(url)
         blob_path = self.storage.build_session_blob_path(
             session_id=sid,
             category="references",
@@ -98,7 +170,7 @@ class MediaExtractor:
                 f"/static/sessions/{sid}/references/frame_2.jpg",
             ],
             audio_track_path=f"/static/sessions/{sid}/references/audio_stem.wav",
-            description="Extracted 90s hip-hop beat and character portrait keyframes.",
+            description=str(meta["description"]),
             gcs_uri=self.storage.get_gcs_uri(blob_path),
         )
 
@@ -106,6 +178,7 @@ class MediaExtractor:
         self, url: str, session_id: str = "default"
     ) -> ReferenceAnalysisReport:
         sid = session_id or "default"
+        meta = self._extract_youtube_metadata(url)
 
         # Generate actual physical keyframe JPEG files on disk
         local_dir = f"static/sessions/{sid}/references"
@@ -135,8 +208,6 @@ class MediaExtractor:
         )
 
         # Also copy to /tmp for backward compatibility
-        import shutil
-
         for src, dst in [
             (f1_path, "/tmp/mock_frame_1.jpg"),
             (f2_path, "/tmp/mock_frame_2.jpg"),
@@ -144,7 +215,7 @@ class MediaExtractor:
         ]:
             try:
                 shutil.copyfile(src, dst)
-            except Exception:
+            except OSError:
                 pass
 
         # Upload all 3 JPEG keyframe files to GCS
@@ -168,8 +239,8 @@ class MediaExtractor:
         )
 
         report = ReferenceAnalysisReport(
-            video_title="Reference Beat & Character Baseline",
-            duration_seconds=180,
+            video_title=str(meta["title"]),
+            duration_seconds=int(meta["duration"]),
             detected_bpm=120,
             dominant_colors=["#1B2A4A", "#0B6623", "#D4AF37"],
             extracted_keyframes=[
@@ -213,7 +284,7 @@ class MediaExtractor:
     def crop_3s_motion_reference(self, input_video_path: str, start_sec: float = 0.0) -> str:
         """Crops a 3-second motion reference clip from input_video_path starting at start_sec using ffmpeg."""
         start_sec = max(0.0, float(start_sec))
-        base_name, ext = os.path.splitext(input_video_path)
+        base_name, _ext = os.path.splitext(input_video_path)
         output_clip_path = f"{base_name}_motion_3s.mp4"
         return self.extract_reference_video_clip(
             source_video_path=input_video_path,
@@ -229,25 +300,29 @@ class MediaExtractor:
         start_time_seconds: float = 0.0,
         duration_seconds: float = 3.0,
     ) -> str:
-        """Crops a 3-second .mp4 video reference clip for motion transfer conditioning using ffmpeg."""
+        """Crops a 3-second .mp4 video reference clip for motion transfer conditioning using ffmpeg.
+
+        Sources:
+        - https://trac.ffmpeg.org/wiki/Encode/H.264#Encodingfordumbplayers (-pix_fmt yuv420p)
+        - https://ffmpeg.org/ffmpeg-formats.html#mov_002c-mp4_002c-ismv (-movflags +faststart)
+        - https://ffmpeg.org/ffmpeg.html#Main-options (-nostdin)
+        - https://docs.python.org/3.12/library/subprocess.html#subprocess.run (capture_output, timeout)
+        """
         start_time_seconds = max(0.0, float(start_time_seconds))
         if dirname := os.path.dirname(output_clip_path):
             os.makedirs(dirname, exist_ok=True)
 
         if self.mock_mode:
             if os.path.exists(source_video_path):
-                import shutil
-
                 shutil.copyfile(source_video_path, output_clip_path)
             else:
                 with open(output_clip_path, "wb") as f:
                     f.write(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
             return output_clip_path
 
-        import subprocess
-
         cmd = [
             "ffmpeg",
+            "-nostdin",
             "-y",
             "-ss",
             str(start_time_seconds),
@@ -259,12 +334,27 @@ class MediaExtractor:
             "make_zero",
             "-c:v",
             "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
             "-an",
             output_clip_path,
         ]
         try:
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except Exception:
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+            logger.warning(
+                "FFmpeg motion reference extraction failed for %s: %s",
+                source_video_path,
+                getattr(exc, "stderr", exc),
+            )
             if not os.path.exists(output_clip_path):
                 with open(output_clip_path, "wb") as f:
                     f.write(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
