@@ -10,13 +10,14 @@ from typing import Final
 from omnimash.security.models import GuardrailResult
 
 # Curated high-precision malicious patterns for local heuristic screening.
-# Uses word boundaries or exact structural markers to avoid false positives on parody text.
+# Uses word boundaries or exact structural markers to avoid false positives on parody text
+# and creative screenplays.
 _MALICIOUS_PROMPT_PATTERNS: Final[tuple[str, ...]] = (
-    r"ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions",
-    r"disregard\s+(?:all\s+)?(?:previous|prior)\s+instructions",
-    r"forget\s+all\s+prior\s+instructions",
-    r"system\s+override\s+prompt",
-    r"system\s*:\s*ignore\s+previous",
+    r"\bignore\s+(?:all\s+)?(?:previous|prior)\s+instructions",
+    r"\bdisregard\s+(?:all\s+)?(?:previous|prior)\s+instructions",
+    r"\bforget\s+all\s+prior\s+instructions",
+    r"\bsystem\s+override\s+prompt",
+    r"\bsystem\s*:\s*ignore\s+previous",
     r"\[system\]",
     r"<\|im_start\|>",
     r"\bdeveloper\s+mode\b",
@@ -24,8 +25,8 @@ _MALICIOUS_PROMPT_PATTERNS: Final[tuple[str, ...]] = (
     r"\bdo\s+anything\s+now\b",
     r"\bbypass\s+safety\s+filter\b",
     r"\breveal\s+system\s+prompt\b",
+    r"\b(?:generate|write|produce|create)\s+(?:overt\s+)?hate\s+speech\b",
     r"\bovert\s+hate\s+speech\b",
-    r"\bhate\s+speech\b",
 )
 
 _MALICIOUS_PROMPT_RE: Final[re.Pattern[str]] = re.compile(

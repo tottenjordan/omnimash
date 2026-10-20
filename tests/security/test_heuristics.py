@@ -26,6 +26,7 @@ def test_heuristics_allows_benign_and_parody_prompts():
         "Create a funny parody diss track about a burnt souffle.",
         "A cyberpunk hacker typing furiously on a holographic keyboard in neon rain.",
         "A knight preparing for an epic potion battle against a dragon.",
+        "Detective Vance: The suspect was previously investigated for hate speech online.",
     ]
     for p in prompts:
         res = validate_prompt_heuristics(p)
