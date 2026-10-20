@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from omnimash.prompts.compiler import (
     AESTHETIC_SIGNIFIERS,
@@ -19,7 +19,9 @@ class PresetContribution:
     sound_design: str
 
 
-class StylePreset(str, Enum):
+# Python 3.12 StrEnum ensures str(member) directly returns the string value
+# Source: https://docs.python.org/3.12/library/enum.html#enum.StrEnum
+class StylePreset(StrEnum):
     NINETIES_RAP_VIDEO = "90s_rap_video"
     TRAP_DISSTRACK = "trap_disstrack"
     CYBERPUNK_DRIFT = "cyberpunk_drift"
@@ -35,7 +37,7 @@ class PromptTaxonomyEngine:
         self.compiler = PromptCompiler(mock_mode=is_mock)
 
     def get_preset_contribution(self, preset: StylePreset | str) -> PresetContribution:
-        preset_key = str(preset.value if hasattr(preset, "value") else preset)
+        preset_key = str(preset)
         style_info = AESTHETIC_SIGNIFIERS.get(
             preset_key,
             AESTHETIC_SIGNIFIERS["90s_rap_video"],

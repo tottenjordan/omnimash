@@ -1707,3 +1707,75 @@ def test_compile_journey3_shot_prompt_seamless_loop():
         "Seamless continuous infinite loop directive" in prompt
         or "seamless continuous infinite loop" in prompt.lower()
     )
+
+
+def test_deconstruct_concept_uses_response_schema_and_parsed_attribute():
+    from unittest.mock import MagicMock
+
+    from omnimash.prompts.compiler import (
+        DeconstructedCharacterSchema,
+        DeconstructedConceptSchema,
+        PromptCompiler,
+    )
+
+    compiler = PromptCompiler(mock_mode=True)
+    mock_client = MagicMock()
+    compiler._pro_global_client = mock_client
+    compiler.mock_mode = False
+
+    parsed_payload = DeconstructedConceptSchema(
+        characters=[
+            DeconstructedCharacterSchema(
+                role_id="Role A",
+                name="Harry Potter",
+                description="Spectacled wizard in streetwear",
+                aesthetic_tags=["High-Fashion Tracksuit"],
+                voice_style="Atlanta trap cadence",
+            )
+        ],
+        aesthetic_tags=["Atlanta Trap"],
+        environment_tag="Gothic courtyard with neon haze",
+        camera_lighting_tag="16:9 low-angle fisheye tracking shot",
+        audio_beat="140 BPM 808 Trap",
+        vocal_delivery="Rhythmic rap battle cadence",
+    )
+    mock_response = MagicMock()
+    mock_response.parsed = parsed_payload
+    mock_response.text = ""
+    mock_client.models.generate_content.return_value = mock_response
+
+    tags = compiler.deconstruct_concept("Harry Potter in trap video")
+    assert tags.environment_tag == "Gothic courtyard with neon haze"
+    assert tags.characters[0].role_id == "Role A"
+    assert tags.characters[0].voice_style == "Atlanta trap cadence"
+
+    call_kwargs = mock_client.models.generate_content.call_args.kwargs
+    config = call_kwargs.get("config")
+    assert config is not None
+    assert config.response_mime_type == "application/json"
+    assert config.response_schema is DeconstructedConceptSchema
+    assert config.system_instruction is not None
+
+
+def test_prompt_optimizer_passes_system_instruction_in_generate_content_config():
+    from unittest.mock import MagicMock
+
+    from omnimash.prompts.compiler import PromptCompiler, PromptOptimizer
+
+    compiler = PromptCompiler(mock_mode=True)
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = "[IMAGE ROLES]\n[ROLE DEFINITIONS]\nOptimized prompt text"
+    mock_client.models.generate_content.return_value = mock_response
+    compiler._flash_regional_client = mock_client
+
+    optimizer = PromptOptimizer(compiler=compiler)
+    result = optimizer.optimize("Original prompt", use_llm=True)
+    assert "[ROLE DEFINITIONS]" in result
+
+    call_kwargs = mock_client.models.generate_content.call_args.kwargs
+    config = call_kwargs.get("config")
+    assert config is not None
+    assert config.system_instruction is not None
+    assert "expert multimodal prompt engineer" in config.system_instruction
+    assert "[PROMPT TO OPTIMIZE]:\nOriginal prompt" == call_kwargs.get("contents")

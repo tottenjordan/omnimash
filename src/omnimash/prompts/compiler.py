@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, Field
+
 from omnimash.config import settings
 from omnimash.prompts.character_roles import CharacterRole
 
@@ -101,6 +103,14 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
 
 REAL_NAME_MAPPINGS = REAL_NAME_PARODY_MAP
 
+# Pre-compile parody sanitization regex patterns at module import time to avoid
+# thrashing Python's 512-entry re._cache on every sanitize_real_names() call.
+# Source: https://docs.python.org/3.12/library/re.html#re.compile
+_COMPILED_PARODY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern, flags=re.IGNORECASE), replacement)
+    for pattern, replacement in REAL_NAME_PARODY_MAP.items()
+)
+
 GEMINI_OMNI_FLASH_INSTR: str = """\
 GEMINI OMNI FLASH PROMPT BEST PRACTICES & COMPILER SPECIFICATION
 
@@ -134,8 +144,8 @@ def sanitize_real_names(text: str) -> str:
     if not text:
         return text
     result = text
-    for pattern, replacement in REAL_NAME_PARODY_MAP.items():
-        result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+    for compiled_pattern, replacement in _COMPILED_PARODY_PATTERNS:
+        result = compiled_pattern.sub(replacement, result)
     return result
 
 
@@ -498,6 +508,32 @@ class MetaPromptTags:
     vocal_delivery: str = ""
 
 
+# Pydantic v2 schemas for google-genai Structured Outputs (response_schema)
+# Source: https://ai.google.dev/gemini-api/docs/structured-output?lang=python
+# Source: https://docs.pydantic.dev/latest/concepts/models/
+class DeconstructedCharacterSchema(BaseModel):
+    role_id: str = Field(default="Role A", description="Positional role ID e.g. Role A, Role B")
+    name: str = Field(default="Lead Subject", description="Character name or parody role title")
+    description: str = Field(
+        default="A distinct cinematic character",
+        description="Visual description of character including wardrobe and aesthetic tags",
+    )
+    reference_url: str | None = Field(default=None, description="Optional reference image URL")
+    aesthetic_tags: list[str] = Field(
+        default_factory=list, description="Character wardrobe and aesthetic tags"
+    )
+    voice_style: str = Field(default="", description="Character voice style and delivery")
+
+
+class DeconstructedConceptSchema(BaseModel):
+    characters: list[DeconstructedCharacterSchema] = Field(default_factory=list)
+    aesthetic_tags: list[str] = Field(default_factory=list)
+    environment_tag: str = Field(default="")
+    camera_lighting_tag: str = Field(default="")
+    audio_beat: str = Field(default="")
+    vocal_delivery: str = Field(default="")
+
+
 CHARACTER_LORE_ANCHORS: dict[str, str] = {
     "snape": "Severus Snape, a gaunt man with a hooked nose, severe cynical expression, and shoulder-length straight greasy black hair",
     "dumbledore": "Albus Dumbledore, an elderly wizard with half-moon spectacles, long flowing silver beard, and ornate wizard robes",
@@ -589,8 +625,6 @@ def parse_screenplay_script(
             "audio_cues": "",
             "dialogue": "",
         }
-
-    import re
 
     active_roles: list[str] = []
     action_parts: list[str] = []
@@ -1231,15 +1265,23 @@ class PromptOptimizer:
             )
             if client:
                 try:
+                    from google.genai import types
+
                     system_instruction = (
                         "You are an expert multimodal prompt engineer for Gemini Omni Flash. "
                         "Refine and condense the following structured storyboard prompt into a clear, "
                         "vivid, single-pass generation directive. "
                         "CRITICAL: Keep all [IMAGE ROLES] and [ROLE DEFINITIONS] blocks intact."
                     )
+                    # Pass system_instruction via types.GenerateContentConfig per google-genai SDK docs
+                    # Source: https://googleapis.github.io/python-genai/genai.html#google.genai.types.GenerateContentConfig
+                    config = types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                    )
                     response = client.models.generate_content(
                         model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
-                        contents=f"{system_instruction}\n\n[PROMPT TO OPTIMIZE]:\n{optimized}",
+                        contents=f"[PROMPT TO OPTIMIZE]:\n{optimized}",
+                        config=config,
                     )
                     if response and getattr(response, "text", None):
                         llm_out = response.text.strip()
@@ -1321,59 +1363,51 @@ class PromptCompiler:
         if not client:
             return None
 
+        system_instruction = (
+            "You are a cinematic video concept deconstructor for Gemini Omni Flash. "
+            "Provide intuitive vision defaults for wardrobe, voice style, environment lighting, "
+            "camera motion, aspect ratio, audio beat, and vocal delivery."
+        )
         prompt_text = (
             f"Deconstruct the following video parody concept into structured prompt tags:\n"
             f'Concept: "{concept}"\n\n'
-            f"Provide intuitive vision defaults for wardrobe, voice style, environment lighting, camera motion, aspect ratio, audio beat, and vocal delivery.\n"
-            f"Return ONLY a valid JSON object matching this exact schema:\n"
-            f"{{\n"
-            f'  "characters": [\n'
-            f"    {{\n"
-            f'      "role_id": "Role A",\n'
-            f'      "name": "Character Name",\n'
-            f'      "description": "Visual description of character including wardrobe and aesthetic tags",\n'
-            f'      "aesthetic_tags": ["wardrobe tag 1", "aesthetic tag 2"],\n'
-            f'      "voice_style": "Voice style description"\n'
-            f"    }}\n"
-            f"  ],\n"
-            f'  "aesthetic_tags": ["overall aesthetic tag 1", "tag 2"],\n'
-            f'  "environment_tag": "Detailed set location and environment lighting description",\n'
-            f'  "camera_lighting_tag": "Camera motion, framing, aspect ratio (e.g. 16:9 or widescreen), and lighting style",\n'
-            f'  "audio_beat": "Audio beat description",\n'
-            f'  "vocal_delivery": "Vocal delivery description"\n'
-            f"}}\n"
+            f"Provide intuitive vision defaults for wardrobe, voice style, environment lighting, camera motion, aspect ratio, audio beat, and vocal delivery."
         )
 
         for attempt in range(1, 4):
             try:
-                try:
-                    from google.genai import types
+                from google.genai import types
 
-                    config = types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                    )
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt_text,
-                        config=config,
-                    )
-                except Exception:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt_text,
-                    )
+                # Enforce Structured Outputs via response_schema and system_instruction
+                # Source: https://ai.google.dev/gemini-api/docs/structured-output?lang=python
+                config = types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json",
+                    response_schema=DeconstructedConceptSchema,
+                )
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt_text,
+                    config=config,
+                )
 
-                raw_text = getattr(response, "text", "") or ""
-                clean_text = raw_text.strip()
-                if clean_text.startswith("```json"):
-                    clean_text = clean_text[7:]
-                if clean_text.startswith("```"):
-                    clean_text = clean_text[3:]
-                if clean_text.endswith("```"):
-                    clean_text = clean_text[:-3]
-                clean_text = clean_text.strip()
-
-                data = json.loads(clean_text)
+                parsed_obj = getattr(response, "parsed", None)
+                if isinstance(parsed_obj, DeconstructedConceptSchema):
+                    data = parsed_obj.model_dump()
+                elif isinstance(parsed_obj, dict):
+                    data = DeconstructedConceptSchema.model_validate(parsed_obj).model_dump()
+                else:
+                    raw_text = getattr(response, "text", "") or ""
+                    clean_text = raw_text.strip()
+                    if clean_text.startswith("```json"):
+                        clean_text = clean_text[7:]
+                    if clean_text.startswith("```"):
+                        clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                    clean_text = clean_text.strip()
+                    raw_dict = json.loads(clean_text)
+                    data = DeconstructedConceptSchema.model_validate(raw_dict).model_dump()
 
                 fallback_tags = self._deconstruct_fallback(concept)
 
@@ -1467,7 +1501,7 @@ class PromptCompiler:
                 break
 
         # 2. Resolve Style Signifiers
-        preset_key = str(style_preset.value if hasattr(style_preset, "value") else style_preset)
+        preset_key = str(style_preset)
         style_info = AESTHETIC_SIGNIFIERS.get(
             preset_key,
             AESTHETIC_SIGNIFIERS["90s_rap_video"],

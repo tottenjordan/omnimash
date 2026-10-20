@@ -5,8 +5,10 @@ import logging
 import math
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
+
+from pydantic import BaseModel, Field, TypeAdapter
 
 from omnimash.config import settings
 from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
@@ -411,6 +413,36 @@ def _ensure_continuous_shot(framing_motion: str) -> str:
     return f"In a single continuous shot. No scene cuts. {framing_motion}"
 
 
+# Pydantic v2 schema for StoryboardShot validation and google-genai Structured Outputs
+# Source: https://ai.google.dev/gemini-api/docs/structured-output?lang=python
+# Source: https://docs.pydantic.dev/latest/concepts/type_adapter/
+class StoryboardShotSchema(BaseModel):
+    shot_index: int = Field(default=1)
+    duration_seconds: float = Field(default=10.0)
+    action: str = Field(default="")
+    location: str = Field(default="")
+    style_lighting: str = Field(default="")
+    framing_motion: str = Field(default="")
+    audio: str = Field(default="")
+    summary: str = Field(default="")
+    dialogue: str = Field(default="")
+    start_seconds: float = Field(default=0.0)
+    end_seconds: float | None = Field(default=None)
+    narrative_stage: str = Field(default="Rising Action")
+    preceding_context: str = Field(default="")
+    camera_transition: str = Field(default="Continuous match cut")
+    character_continuity: str = Field(
+        default="Maintain subject outfit, posture, and facial expression from preceding shot"
+    )
+    audio_mode: str = Field(default="global")
+    soundscape: str | None = Field(default=None)
+
+
+_STORYBOARD_SHOT_LIST_ADAPTER: TypeAdapter[list[StoryboardShotSchema]] = TypeAdapter(
+    list[StoryboardShotSchema]
+)
+
+
 @dataclass
 class StoryboardShot:
     shot_index: int
@@ -434,53 +466,14 @@ class StoryboardShot:
     soundscape: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "shot_index": self.shot_index,
-            "duration_seconds": self.duration_seconds,
-            "action": self.action,
-            "location": self.location,
-            "style_lighting": self.style_lighting,
-            "framing_motion": self.framing_motion,
-            "audio": self.audio,
-            "summary": self.summary,
-            "dialogue": self.dialogue,
-            "start_seconds": self.start_seconds,
-            "end_seconds": self.end_seconds,
-            "narrative_stage": self.narrative_stage,
-            "preceding_context": self.preceding_context,
-            "camera_transition": self.camera_transition,
-            "character_continuity": self.character_continuity,
-            "audio_mode": self.audio_mode,
-            "soundscape": self.soundscape,
-        }
+        # Python 3.12 dataclasses.asdict converts dataclass fields cleanly
+        # Source: https://docs.python.org/3.12/library/dataclasses.html#dataclasses.asdict
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StoryboardShot:
-        end_sec_val = data.get("end_seconds")
-        return cls(
-            shot_index=int(data.get("shot_index", 1)),
-            duration_seconds=float(data.get("duration_seconds", 10.0)),
-            action=str(data.get("action", "")),
-            location=str(data.get("location", "")),
-            style_lighting=str(data.get("style_lighting", "")),
-            framing_motion=str(data.get("framing_motion", "")),
-            audio=str(data.get("audio", "")),
-            summary=str(data.get("summary", "")),
-            dialogue=str(data.get("dialogue", "")),
-            start_seconds=float(data.get("start_seconds", 0.0)),
-            end_seconds=float(end_sec_val) if end_sec_val is not None else None,
-            narrative_stage=str(data.get("narrative_stage", "Rising Action")),
-            preceding_context=str(data.get("preceding_context", "")),
-            camera_transition=str(data.get("camera_transition", "Continuous match cut")),
-            character_continuity=str(
-                data.get(
-                    "character_continuity",
-                    "Maintain subject outfit, posture, and facial expression from preceding shot",
-                )
-            ),
-            audio_mode=str(data.get("audio_mode", "global")),
-            soundscape=data.get("soundscape") if data.get("soundscape") is not None else None,
-        )
+        validated = StoryboardShotSchema.model_validate(data)
+        return cls(**validated.model_dump())
 
     def to_omni_flash_prompt(self, role_mappings: str = "") -> str:
         prompt_parts: list[str] = []
@@ -671,6 +664,12 @@ class StoryboardAgent:
             return sanitize_real_names(enriched)
 
         try:
+            system_instruction = (
+                "You are an expert Hollywood cinematographer. "
+                "Include explicit camera angles, cinematic lighting, and visual atmosphere "
+                "(such as anamorphic lens flares and volumetric light). "
+                "Output ONLY the final concise prompt (max 40 words) without commentary or quotes."
+            )
             prompt = (
                 "You are an expert Hollywood cinematographer. Expand the following brief shot directive into a single concise, vivid cinematic prompt (maximum 40 words) for AI video generation.\n"
                 f'Style & Tone: "{style_tone}"\n'
@@ -680,7 +679,10 @@ class StoryboardAgent:
             from google.genai import types
             from omnimash.engine.omni_client import get_relaxed_safety_settings
 
+            # Pass system_instruction and safety_settings via types.GenerateContentConfig
+            # Source: https://googleapis.github.io/python-genai/genai.html#google.genai.types.GenerateContentConfig
             config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
                 safety_settings=get_relaxed_safety_settings(),
             )
             response = self._genai_client.models.generate_content(
@@ -821,6 +823,13 @@ class StoryboardAgent:
                     + "\nIncorporate these character role references (e.g. 'Role A (Name)') into the action directives.\n"
                 )
 
+            system_instruction = (
+                "You are an expert storyboard director for Gemini Omni Flash. "
+                "CRITICAL SAFETY RULE: Do NOT use real celebrity or public figure full names in the output JSON. "
+                "Replace any real celebrity names with descriptive fictional parody visual roles. "
+                "Each shot MUST be <= 10.0 seconds in duration and structure framing with "
+                "'In a single continuous shot. No scene cuts.'."
+            )
             prompt = (
                 f"Expand the following video concept into exactly {num_shots} storyboard shots for a {target_duration}s video formatted into Gemini Omni Flash timing blocks [X-Ys].\n"
                 f'Concept: "{concept}"\n'
@@ -828,59 +837,50 @@ class StoryboardAgent:
                 f"{char_info}\n"
                 f"CRITICAL SAFETY RULE: Do NOT use real celebrity or public figure full names in the output JSON. Replace any real celebrity names with descriptive fictional parody visual roles (e.g., use 'Fiery Master Chef' instead of 'Gordon Ramsay', 'Atlanta Rap Legend' instead of 'Jeezy', 'Melodic Rap Star' instead of 'Drake').\n\n"
                 f"Each shot MUST be <= 10.0 seconds in duration.\n"
-                f"Structure framing and camera movement directives with continuous shot camera instructions ('In a single continuous shot. No scene cuts.').\n"
-                f"Return ONLY a JSON array of shot objects with schema:\n"
-                f"[\n"
-                f"  {{\n"
-                f'    "shot_index": 1,\n'
-                f'    "start_seconds": 0.0,\n'
-                f'    "end_seconds": 10.0,\n'
-                f'    "duration_seconds": 10.0,\n'
-                f'    "summary": "One-line shot summary",\n'
-                f'    "action": "Visual description of action/subject",\n'
-                f'    "location": "Environment and location details",\n'
-                f'    "style_lighting": "Aesthetic, color grading, and lighting",\n'
-                f'    "framing_motion": "In a single continuous shot. No scene cuts. Camera angle, framing, and movement",\n'
-                f'    "audio": "Sound design, music beat, and vocal cues",\n'
-                f'    "narrative_stage": "Setup | Inciting Incident | Rising Action | Climax | Resolution",\n'
-                f'    "preceding_context": "Recap of preceding shot action or setup",\n'
-                f'    "camera_transition": "Transition instruction e.g. Match cut from previous shot",\n'
-                f'    "character_continuity": "Costume/prop retention directive"\n'
-                f"  }}\n"
-                f"]"
+                f"Structure framing and camera movement directives with continuous shot camera instructions ('In a single continuous shot. No scene cuts.')."
             )
-            try:
-                from google.genai import types
-                from omnimash.engine.omni_client import get_relaxed_safety_settings
+            from google.genai import types
+            from omnimash.engine.omni_client import get_relaxed_safety_settings
 
-                config = types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    safety_settings=get_relaxed_safety_settings(),
-                )
-                response = self._genai_client.models.generate_content(
-                    model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
-                    contents=prompt,
-                    config=config,
-                )
-            except Exception:
-                response = self._genai_client.models.generate_content(
-                    model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
-                    contents=prompt,
+            # Enforce Structured Outputs via response_schema=list[StoryboardShotSchema]
+            # Source: https://ai.google.dev/gemini-api/docs/structured-output?lang=python
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=list[StoryboardShotSchema],
+                safety_settings=get_relaxed_safety_settings(),
+            )
+            response = self._genai_client.models.generate_content(
+                model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
+                contents=prompt,
+                config=config,
+            )
+
+            parsed_shots = getattr(response, "parsed", None)
+            if isinstance(parsed_shots, list) and len(parsed_shots) > 0:
+                validated_items = [
+                    s
+                    if isinstance(s, StoryboardShotSchema)
+                    else StoryboardShotSchema.model_validate(s)
+                    for s in parsed_shots
+                ]
+            else:
+                raw_text = (getattr(response, "text", "") or "").strip()
+                if raw_text.startswith("```json"):
+                    raw_text = raw_text[7:]
+                if raw_text.startswith("```"):
+                    raw_text = raw_text[3:]
+                if raw_text.endswith("```"):
+                    raw_text = raw_text[:-3]
+                raw_text = raw_text.strip()
+                validated_items = _STORYBOARD_SHOT_LIST_ADAPTER.validate_python(
+                    json.loads(raw_text)
                 )
 
-            raw_text = (getattr(response, "text", "") or "").strip()
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.startswith("```"):
-                raw_text = raw_text[3:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-            raw_text = raw_text.strip()
-
-            data = json.loads(raw_text)
-            if isinstance(data, list) and len(data) > 0:
+            if validated_items:
                 shots = []
-                for item in data:
+                for item_model in validated_items:
+                    item = item_model.model_dump()
                     raw_summary = str(item.get("summary", ""))
                     raw_action = str(item.get("action", ""))
                     raw_location = str(item.get("location", ""))

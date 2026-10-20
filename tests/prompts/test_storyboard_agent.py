@@ -485,3 +485,65 @@ def test_storyboard_shot_to_from_dict():
     assert restored.audio_mode == "custom"
     assert restored.soundscape == "Custom bubbling soundscape"
     assert restored.action == "Wizard brewing potion"
+
+
+def test_expand_vision_live_uses_response_schema_and_system_instruction():
+    from unittest.mock import MagicMock
+
+    from omnimash.prompts.storyboard_agent import (
+        StoryboardAgent,
+        StoryboardShotSchema,
+    )
+
+    agent = StoryboardAgent(mock_mode=True)
+    mock_client = MagicMock()
+    agent._genai_client = mock_client
+    agent.mock_mode = False
+
+    expand_resp = MagicMock()
+    expand_resp.parsed = [
+        StoryboardShotSchema(
+            shot_index=1,
+            start_seconds=0.0,
+            end_seconds=10.0,
+            duration_seconds=10.0,
+            summary="Opening dungeon shot",
+            action="Severus Snape stirs cauldron",
+            location="Stone dungeon",
+            style_lighting="Moody green neon",
+            framing_motion="In a single continuous shot. No scene cuts. Medium tracking shot",
+            audio="140 BPM 808 trap beat",
+            narrative_stage="Setup",
+            preceding_context="",
+            camera_transition="Continuous match cut",
+            character_continuity="Maintain dark robes",
+        )
+    ]
+    expand_resp.text = ""
+
+    opt_resp = MagicMock()
+    opt_resp.text = "Low-angle tracking shot of Potion Master stirring cauldron under green neon."
+
+    mock_client.models.generate_content.side_effect = [expand_resp, opt_resp]
+
+    shots = agent.expand_vision(
+        concept="Snape in dungeon",
+        style_tone="Trap Parody",
+        target_duration=10.0,
+    )
+    assert len(shots) == 1
+    assert shots[0].shot_index == 1
+    assert "Potion Master" in shots[0].action
+
+    first_call_kwargs = mock_client.models.generate_content.call_args_list[0].kwargs
+    first_config = first_call_kwargs.get("config")
+    assert first_config is not None
+    assert first_config.response_mime_type == "application/json"
+    assert first_config.response_schema == list[StoryboardShotSchema]
+    assert first_config.system_instruction is not None
+
+    second_call_kwargs = mock_client.models.generate_content.call_args_list[1].kwargs
+    second_config = second_call_kwargs.get("config")
+    assert second_config is not None
+    assert second_config.system_instruction is not None
+    assert "Hollywood cinematographer" in second_config.system_instruction
