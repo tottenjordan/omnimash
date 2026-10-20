@@ -580,6 +580,22 @@ wheels = [
 ]
 
 [[package]]
+name = "google-cloud-modelarmor"
+version = "0.7.2"
+source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/simple/" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/google-cloud-modelarmor/google_cloud_modelarmor-0.7.2.tar.gz", hash = "sha256:31dff476580b7ea2eff3889e1169d6b4521aa51885a7abcc369e522b3ac22abf" }
+wheels = [
+    { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/google-cloud-modelarmor/google_cloud_modelarmor-0.7.2-py3-none-any.whl", hash = "sha256:fa98c39c3847fd653dc0c15662bbfc7ca00d23438d9a62c7c4048911b18c6a03" },
+]
+
+[[package]]
 name = "google-cloud-resource-manager"
 version = "1.19.0"
 source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/simple/" }
@@ -883,6 +899,7 @@ dependencies = [
     { name = "ffmpeg-python" },
     { name = "google-adk" },
     { name = "google-cloud-aiplatform" },
+    { name = "google-cloud-modelarmor" },
     { name = "google-cloud-storage" },
     { name = "google-genai" },
     { name = "pillow" },
@@ -908,6 +925,7 @@ requires-dist = [
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "google-adk", specifier = ">=2.11.0" },
     { name = "google-cloud-aiplatform", specifier = ">=2.5.0" },
+    { name = "google-cloud-modelarmor", specifier = ">=0.7.2" },
     { name = "google-cloud-storage", specifier = ">=3.17.1" },
     { name = "google-genai", specifier = ">=2.31.0" },
     { name = "pillow", specifier = ">=12.3.0" },

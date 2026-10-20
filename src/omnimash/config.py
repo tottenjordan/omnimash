@@ -38,6 +38,28 @@ class OmniMashSettings(BaseSettings):
             return self.omnimash_gcs_bucket
         return f"omnimash-media-{self.google_cloud_project}"
 
+    @property
+    def model_armor_location(self) -> str:
+        """Model Armor is a regional service, defaulting to gcp_region (e.g. us-central1)."""
+        return self.gcp_region
+
+    @property
+    def model_armor_template_name(self) -> str:
+        """Returns the fully-qualified Model Armor template resource name:
+        projects/{project}/locations/{location}/templates/{template}
+        """
+        if self.model_armor_template_id.startswith("projects/"):
+            return self.model_armor_template_id
+        return (
+            f"projects/{self.google_cloud_project}/locations/{self.model_armor_location}/"
+            f"templates/{self.model_armor_template_id}"
+        )
+
+    @property
+    def model_armor_endpoint(self) -> str:
+        """Returns the regional Model Armor API endpoint."""
+        return f"modelarmor.{self.model_armor_location}.rep.googleapis.com"
+
 
 # Global settings singleton instance
 settings = OmniMashSettings()
