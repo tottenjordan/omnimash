@@ -271,9 +271,9 @@ def test_finding_7_generate_shot_seamless_loop_and_1_based_clip_index():
 def test_finding_8_config_model_ids_and_storyboard_agent_location():
     """Verify OmniMashSettings defines pro/flash/image model IDs and StoryboardAgent uses global location."""
     custom_settings = OmniMashSettings()
-    assert custom_settings.pro_model_id == "gemini-3.1-pro-preview"
-    assert custom_settings.flash_model_id == "gemini-2.5-flash"
-    assert custom_settings.image_model_id == "gemini-3.1-flash-image-preview"
+    assert custom_settings.pro_model_id == "gemini-4-argon"
+    assert custom_settings.flash_model_id == "gemini-3.8-flash"
+    assert custom_settings.image_model_id == "gemini-nano-banana-2.1"
     assert settings.gemini_location == "global"
 
     sb_agent = StoryboardAgent(mock_mode=True)

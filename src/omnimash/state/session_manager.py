@@ -1,7 +1,16 @@
 import re
 from typing import Any
 import uuid
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _normalize_image_model(value: Any) -> str:
+    if not isinstance(value, str):
+        return "gemini-nano-banana-2.1"
+    cleaned = value.strip()
+    if not cleaned or cleaned.startswith("gemini-3.1-flash-image"):
+        return "gemini-nano-banana-2.1"
+    return cleaned
 
 
 class TurnNode(BaseModel):
@@ -33,12 +42,17 @@ class ProjectSession(BaseModel):
     master_description: str = ""
     style_preset: str = ""
     aspect_ratio: str = "16:9"
-    image_model: str = "gemini-3.1-flash-image"
+    image_model: str = "gemini-nano-banana-2.1"
     enable_safety_sanitization: bool = True
     characters: list[dict[str, Any]] = Field(default_factory=list)
     products: list[dict[str, Any]] = Field(default_factory=list)
     shot_cards: list[dict[str, Any]] = Field(default_factory=list)
     cumulative_state: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("image_model", mode="before")
+    @classmethod
+    def _validate_image_model(cls, v: Any) -> str:
+        return _normalize_image_model(v)
 
 
 class SessionManager:
@@ -67,8 +81,13 @@ class SessionManager:
                             "cumulative_state",
                         ):
                             if not manifest_data.get(key) and existing.get(key):
-                                manifest_data[key] = existing[key]
-                                setattr(session, key, existing[key])
+                                val = (
+                                    _normalize_image_model(existing[key])
+                                    if key == "image_model"
+                                    else existing[key]
+                                )
+                                manifest_data[key] = val
+                                setattr(session, key, val)
                 self.storage.save_session_manifest(
                     session_id=session.session_id,
                     manifest_data=manifest_data,

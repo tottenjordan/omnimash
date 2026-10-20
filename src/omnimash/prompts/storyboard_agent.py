@@ -681,11 +681,10 @@ class StoryboardAgent:
             from omnimash.engine.omni_client import get_relaxed_safety_settings
 
             config = types.GenerateContentConfig(
-                temperature=0.7,
                 safety_settings=get_relaxed_safety_settings(),
             )
             response = self._genai_client.models.generate_content(
-                model=getattr(settings, "flash_model_id", "gemini-2.5-flash"),
+                model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
                 contents=prompt,
                 config=config,
             )
@@ -717,23 +716,24 @@ class StoryboardAgent:
         shots: list[StoryboardShot] = []
         from omnimash.prompts.compiler import PromptCompiler
 
-        derived = PromptCompiler().deconstruct_concept(concept) if concept else None
-        env_default = (
-            derived.environment_tag
-            if derived and getattr(derived, "environment_tag", None)
-            else None
-        ) or f"{concept} setting"
-        lighting_default = (
-            derived.camera_lighting_tag
-            if derived and getattr(derived, "camera_lighting_tag", None)
-            else None
-        ) or f"{style_tone}, cinematic high-contrast lighting"
-        framing_default = "Static medium shot with subtle handheld drift"
-        audio_default = (
-            derived.audio_beat if derived and getattr(derived, "audio_beat", None) else None
-        ) or "Slow heavy 808 trap beat with sub-bass"
-
         if screenplay_script and screenplay_script.strip():
+            derived = (
+                PromptCompiler(mock_mode=True).deconstruct_concept(concept) if concept else None
+            )
+            env_default = (
+                derived.environment_tag
+                if derived and getattr(derived, "environment_tag", None)
+                else None
+            ) or f"{concept} setting"
+            lighting_default = (
+                derived.camera_lighting_tag
+                if derived and getattr(derived, "camera_lighting_tag", None)
+                else None
+            ) or f"{style_tone}, cinematic high-contrast lighting"
+            framing_default = "Static medium shot with subtle handheld drift"
+            audio_default = (
+                derived.audio_beat if derived and getattr(derived, "audio_beat", None) else None
+            ) or "Slow heavy 808 trap beat with sub-bass"
             parsed_timecodes = parse_timecoded_script(
                 screenplay_script, default_duration=target_duration
             )
@@ -855,17 +855,16 @@ class StoryboardAgent:
 
                 config = types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    temperature=0.7,
                     safety_settings=get_relaxed_safety_settings(),
                 )
                 response = self._genai_client.models.generate_content(
-                    model=getattr(settings, "flash_model_id", "gemini-2.5-flash"),
+                    model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
                     contents=prompt,
                     config=config,
                 )
             except Exception:
                 response = self._genai_client.models.generate_content(
-                    model=getattr(settings, "flash_model_id", "gemini-2.5-flash"),
+                    model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
                     contents=prompt,
                 )
 

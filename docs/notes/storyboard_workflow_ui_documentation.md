@@ -1,7 +1,7 @@
 # Storyboard Workflow UI Screenshots & Documentation Plan
 
 ## 📌 Context
-The 4-Stage Storyboard Journey UI workflow is now fully integrated and deployed on Cloud Run with live concept art keyframe image generation via `gemini-3.1-flash-image` and live video + audio generation via `gemini-omni-flash-preview`.
+The 4-Stage Storyboard Journey UI workflow is now fully integrated and deployed on Cloud Run with live concept art keyframe image generation via `gemini-nano-banana-2.1` and live video + audio generation via `gemini-omni-flash-preview`.
 
 ## 📷 Screenshots & README Update Requirement
 When video generation testing is finalized, update the main top-level [README.md](../../README.md) with visual screenshots/embeds of the **4-Stage Storyboard Journey** UI using the exact real-world inputs from the live session:
@@ -12,7 +12,7 @@ When video generation testing is finalized, update the main top-level [README.md
    - Style & Tone pill selector (`Cinematic Trap Parody`, `Gritty 90s Rap Video`, `Gothic Trap Parody`).
 
 2. **Stage 2 (5-Part Storyboard Grid)**:
-   - Interactive grid of 16:9 keyframe preview image cards generated live via `gemini-3.1-flash-image`.
+   - Interactive grid of 16:9 keyframe preview image cards generated live via `gemini-nano-banana-2.1`.
    - 5-part directive fields (`Action/Subject`, `Location`, `Style & Lighting`, `Framing & Motion`, `Audio`).
    - `🎬 Generate Video for Shot #N` per-shot video triggers.
 

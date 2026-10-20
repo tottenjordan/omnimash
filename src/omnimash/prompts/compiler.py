@@ -1238,7 +1238,7 @@ class PromptOptimizer:
                         "CRITICAL: Keep all [IMAGE ROLES] and [ROLE DEFINITIONS] blocks intact."
                     )
                     response = client.models.generate_content(
-                        model=getattr(settings, "flash_model_id", "gemini-2.5-flash"),
+                        model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
                         contents=f"{system_instruction}\n\n[PROMPT TO OPTIMIZE]:\n{optimized}",
                     )
                     if response and getattr(response, "text", None):
@@ -1310,7 +1310,7 @@ class PromptCompiler:
                 self._flash_regional_client = genai.Client(
                     vertexai=True,
                     project=project,
-                    location="us-central1",
+                    location=getattr(settings, "gemini_location", "global"),
                 )
         except Exception as exc:
             logger.warning("Failed to initialize Tier 2 Flash Regional client: %s", exc)
@@ -1351,7 +1351,6 @@ class PromptCompiler:
 
                     config = types.GenerateContentConfig(
                         response_mime_type="application/json",
-                        temperature=0.7,
                     )
                     response = client.models.generate_content(
                         model=model_name,
@@ -2244,7 +2243,7 @@ class PromptCompiler:
         if self._pro_global_client:
             res = self._try_gemini_deconstruction(
                 client=self._pro_global_client,
-                model_name=getattr(settings, "pro_model_id", "gemini-3.1-pro-preview"),
+                model_name=getattr(settings, "pro_model_id", "gemini-4-argon"),
                 concept=concept,
                 tier_name="Tier 1 Pro Global",
             )
@@ -2254,7 +2253,7 @@ class PromptCompiler:
         if self._flash_regional_client:
             res = self._try_gemini_deconstruction(
                 client=self._flash_regional_client,
-                model_name=getattr(settings, "flash_model_id", "gemini-2.5-flash"),
+                model_name=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
                 concept=concept,
                 tier_name="Tier 2 Flash Regional",
             )

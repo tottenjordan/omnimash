@@ -1015,6 +1015,7 @@ def test_ui_html_journey3_comprehensive_enhancements():
     assert "Storyboard Keyframe Visual Anchor" in UI_HTML
     assert "Click photo to enlarge" in UI_HTML
     assert "j3ImageModel" in UI_HTML
+    assert "gemini-nano-banana-2.1" in UI_HTML
     assert "gemini-3-pro-image" in UI_HTML
 
 
@@ -1499,7 +1500,7 @@ def test_journey3_setup_session_manifest_persistence() -> None:
             "master_description": "Cyberpunk wizard showdown in Tokyo alley",
             "aspect_ratio": "16:9",
             "style_preset": "Gritty 90s Cyberpunk",
-            "image_model": "gemini-3.1-flash-image",
+            "image_model": "gemini-nano-banana-2.1",
             "enable_safety_sanitization": True,
             "characters": chars,
         },
@@ -1509,7 +1510,7 @@ def test_journey3_setup_session_manifest_persistence() -> None:
     assert data["success"] is True
     assert "manifest_url" in data
     assert data["style_preset"] == "Gritty 90s Cyberpunk"
-    assert data["image_model"] == "gemini-3.1-flash-image"
+    assert data["image_model"] == "gemini-nano-banana-2.1"
     assert data["enable_safety_sanitization"] is True
 
     # Inspect stored manifest in mock storage
@@ -1519,11 +1520,34 @@ def test_journey3_setup_session_manifest_persistence() -> None:
     assert manifest["project_id"] == "test_cyber_project"
     assert manifest["session_id"] == "test_cyber_session"
     assert manifest["style_preset"] == "Gritty 90s Cyberpunk"
-    assert manifest["image_model"] == "gemini-3.1-flash-image"
+    assert manifest["image_model"] == "gemini-nano-banana-2.1"
     assert manifest["aspect_ratio"] == "16:9"
     assert manifest["enable_safety_sanitization"] is True
     assert len(manifest["characters"]) == 2
     assert manifest["characters"][0]["name"] == "Neo"
+
+    # Verify legacy "gemini-3.1-flash-image" in persisted manifest or setup request normalizes to "gemini-nano-banana-2.1"
+    storage.save_session_manifest(
+        session_id="legacy_session",
+        manifest_data={"session_id": "legacy_session", "image_model": "gemini-3.1-flash-image"},
+        project_id="test_cyber_project",
+    )
+    hydrated_session = app.state.agent.session_manager.get_or_create_session(
+        "usr_default", "test_cyber_project", session_name="legacy_session"
+    )
+    assert hydrated_session.image_model == "gemini-nano-banana-2.1"
+
+    res_legacy = client.post(
+        "/api/journey3/setup",
+        json={
+            "project_id": "test_cyber_project",
+            "session_id": "legacy_setup_session",
+            "master_description": "Cyberpunk wizard showdown",
+            "image_model": "gemini-3.1-flash-image-preview",
+        },
+    )
+    assert res_legacy.status_code == 200
+    assert res_legacy.json()["image_model"] == "gemini-nano-banana-2.1"
 
 
 def test_ui_html_session_preset_and_character_restoration_hooks() -> None:

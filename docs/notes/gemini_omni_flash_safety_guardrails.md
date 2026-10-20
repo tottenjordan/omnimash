@@ -50,7 +50,7 @@ The 400 safety block is triggered by any of the following four conditions:
 
 ### 2. Character Reference Best Practices
 * **Use 1-Click AI Turnaround Sheet Generation:** Never upload real human photographs as reference image assets.
-* **Workflow:** Generate stylized, non-photorealistic AI character turnaround sheets (e.g., stylized 3D animation keyframes or digital illustration turnaround sheets via `gemini-3.1-flash-image`) from the Project-Level Character Vault instead of uploading real human photos.
+* **Workflow:** Generate stylized, non-photorealistic AI character turnaround sheets (e.g., stylized 3D animation keyframes or digital illustration turnaround sheets via `gemini-nano-banana-2.1`) from the Project-Level Character Vault instead of uploading real human photos.
 
 ---
 

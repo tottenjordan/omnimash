@@ -147,7 +147,7 @@ To overcome the **10-second per-clip single-turn limit** of Gemini Omni Flash an
 
 #### 🏛️ The 3-Stage Hybrid Orchestration Workflow
 
-1. **Stage 1: Upfront NLP Concept Deconstruction (Gemini 3.5 / 3.6 Flash)**
+1. **Stage 1: Upfront NLP Concept Deconstruction (`gemini-4-argon` / `gemini-3.8-flash`)**
    - Deconstructs open-ended prompt shorthand (`POST /api/deconstruct-concept`) into a multi-scene storyboard sequence (`Scene 1`, `Scene 2`, `Scene 3...`).
    - Resolves dynamic `CharacterRole` definitions (`Role A`, `Role B`), global aesthetic tags, environment settings, and continuous background audio parameters (e.g., 140 BPM Heavy 808 Trap beat).
 
@@ -328,7 +328,7 @@ OmniMash provides a canonical **4-Stage Storyboard & Multi-Shot Production Workf
   5. `Audio`: Soundscape, voiceover style, and sound effects.
 
 #### Stage 3: Interactive Sequential Shot Production & Keyframe Chaining (The Visual Chain)
-* **Shot #1 Master Anchor:** Production begins with Shot #1, which acts as the visual cornerstone of the scene sequence. Users first generate a high-resolution concept art keyframe image via **`gemini-3.1-flash-image`**, inspect and approve the composition, and then generate the 10-second 720p video clip via **`gemini-omni-flash-preview`**.
+* **Shot #1 Master Anchor:** Production begins with Shot #1, which acts as the visual cornerstone of the scene sequence. Users first generate a high-resolution concept art keyframe image via **`gemini-nano-banana-2.1`** (or **`gemini-3-pro-image`**), inspect and approve the composition, and then generate the 10-second 720p video clip via **`gemini-omni-flash-preview`**.
 * **Master Keyframe Visual Anchor Chaining (Shots #2+):** To prevent facial drift, wardrobe mutation, and lighting decay across camera cuts, subsequent shot cards (Shot #2, Shot #3, etc.) automatically employ **Master Keyframe Visual Anchor Chaining**. The engine seeds each subsequent shot generation request with Shot #1's approved keyframe image using the `<FIRST_FRAME>@Image1` conditioning syntax. This guarantees 100% character likeness and aesthetic continuity across consecutive scene cuts.
 
 ```mermaid
@@ -340,7 +340,7 @@ graph LR
         Script["Screenplay (Theatrical / Timecoded)"] -->|"🎬 Generate Storyboard Grid"| Cards["5-Part Shot Cards + <IMAGE_REF_N>"]
     end
     subgraph Stage 3: Visual Chain
-        Cards --> Shot1Img["Shot #1 Keyframe (gemini-3.1-flash-image)"]
+        Cards --> Shot1Img["Shot #1 Keyframe (gemini-nano-banana-2.1)"]
         Shot1Img --> Shot1Vid["Shot #1 Video (gemini-omni-flash-preview)"]
         Shot1Img -->|"<FIRST_FRAME>@Image1 Anchor Chaining"| Shot2["Shot #2+ Keyframe & Video Generation"]
     end

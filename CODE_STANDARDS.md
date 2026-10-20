@@ -45,8 +45,8 @@ This document outlines the mandatory engineering standards, tooling rules, and d
 ---
 
 ## 🤖 Gemini Model Locations & Cloud Environment Variables
-- **Gemini 3 Models (`global` location)**: All Gemini 3 generation models (`gemini-3.5-flash`, `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite`, `gemini-omni-flash-preview`) MUST use the `"global"` location for Vertex GenAI and Google GenAI model endpoints.
+- **Gemini 3, 4 & Image Models (`global` location)**: All Gemini 3, Gemini 4, and Gemini Image generation models (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-nano-banana-2.1`, `gemini-3-pro-image`, `gemini-omni-1.1-flash-preview`, `gemini-omni-flash-preview`) MUST use the `"global"` location for Vertex GenAI and Google GenAI model endpoints.
 - **Gemini 2.X Models (Regional location)**: All Gemini 2.X models use a regional location (e.g., `us-central1`).
 - **Environment Variable Conventions**:
-  - `GOOGLE_CLOUD_LOCATION=global`: Specifically designates the Vertex GenAI / Google GenAI model endpoint location for Gemini 3 / Omni models.
+  - `GOOGLE_CLOUD_LOCATION=global`: Specifically designates the Vertex GenAI / Google GenAI model endpoint location for Gemini 3 / 4 / Omni models.
   - `GCP_REGION=us-central1`: Specifically designates the default cloud region for all other Google Cloud infrastructure resources (BigQuery, Cloud Storage, Pub/Sub, Cloud Run Functions, Agent Engine).

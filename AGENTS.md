@@ -25,7 +25,7 @@ Always refer to [CODE_STANDARDS.md](CODE_STANDARDS.md) when writing code, making
 - **Sole Video Model:** Gemini Omni Flash (`gemini-omni-1.1-flash-preview` / `gemini-omni-flash-preview`) is our SOLE video+audio generation model across all scenes, initial clips, and conversational interaction diffs.
 - **PROHIBITED:** NEVER use or reference Veo models (`veo-2.0-generate-001`, `veo-1.0`, etc.) under ANY circumstances — not even for testing or fallback.
 - **Model Locations:**
-  - Gemini 3 & Omni models (`gemini-omni-1.1-flash-preview`, `gemini-3.1-pro-preview`, `gemini-3.1-flash-image-preview`) MUST use the `"global"` endpoint location (`GEMINI_LOCATION=global` / `GOOGLE_CLOUD_LOCATION=global`).
+  - Gemini 3, 4 & Omni models (`gemini-omni-1.1-flash-preview`, `gemini-4-argon`, `gemini-3.8-flash`, `gemini-nano-banana-2.1`, `gemini-3-pro-image`) MUST use the `"global"` endpoint location (`GEMINI_LOCATION=global` / `GOOGLE_CLOUD_LOCATION=global`).
   - General GCP infrastructure resources (Cloud Run, Cloud Storage, Artifact Registry) default to regional `us-central1` (`GCP_REGION=us-central1`).
 
 ---

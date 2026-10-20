@@ -2046,11 +2046,11 @@ class OmniFlashClient:
         wardrobe: str | None = None,
         anchor_keyframe_url: str | None = None,
         aspect_ratio: str = "16:9",
-        image_model: str = "gemini-3.1-flash-image",
+        image_model: str = "gemini-nano-banana-2.1",
         return_compiled_prompt: bool = False,
         session_id: str | None = None,
     ) -> Any:
-        """Generates a visual keyframe image directive using Gemini 3.1 Flash Image.
+        """Generates a visual keyframe image directive using Gemini Nano Banana 2.1 (or Gemini 3 Pro Image).
 
         Supports multimodal character reference image inputs, character roster metadata (wardrobe, aesthetic tags), and style presets.
         """
@@ -2416,8 +2416,11 @@ class OmniFlashClient:
                         safety_settings=_get_relaxed_safety_settings(),
                     )
 
+                clean_model = image_model.strip() if image_model else ""
                 target_model = (
-                    image_model if image_model and image_model.strip() else "gemini-3.1-flash-image"
+                    "gemini-nano-banana-2.1"
+                    if not clean_model or clean_model.startswith("gemini-3.1-flash-image")
+                    else clean_model
                 )
                 response = image_client.models.generate_content(
                     model=target_model,
@@ -2429,6 +2432,8 @@ class OmniFlashClient:
                         content = getattr(candidate, "content", None)
                         parts = getattr(content, "parts", []) if content else []
                         for part in parts:
+                            if getattr(part, "thought", False) is True:
+                                continue
                             inline_data = getattr(part, "inline_data", None)
                             if inline_data and getattr(inline_data, "data", None):
                                 data = inline_data.data
@@ -2442,7 +2447,7 @@ class OmniFlashClient:
                                 gcs_uri = self.storage.get_gcs_uri(blob_name)
                                 return _return(f"/api/media-proxy?uri={quote(gcs_uri, safe='')}")
             except Exception as e:
-                logger.warning("gemini-3.1-flash-image generation failed for keyframe: %s", e)
+                logger.warning("gemini-nano-banana-2.1 generation failed for keyframe: %s", e)
 
             return _return(_get_mock_keyframe())
         except Exception as exc:
@@ -2456,7 +2461,7 @@ class OmniFlashClient:
         description: str = "",
         aesthetic_tags: list[str] | None = None,
         custom_prompt_override: str | None = None,
-        image_model: str = "gemini-3.1-flash-image",
+        image_model: str = "gemini-nano-banana-2.1",
         aspect_ratio: str = "16:9",
         return_compiled_prompt: bool = False,
         session_id: str | None = None,
@@ -2601,8 +2606,11 @@ class OmniFlashClient:
                         safety_settings=_get_relaxed_safety_settings(),
                     )
 
+                clean_model = image_model.strip() if image_model else ""
                 target_model = (
-                    image_model if image_model and image_model.strip() else "gemini-3.1-flash-image"
+                    "gemini-nano-banana-2.1"
+                    if not clean_model or clean_model.startswith("gemini-3.1-flash-image")
+                    else clean_model
                 )
                 response = image_client.models.generate_content(
                     model=target_model,
@@ -2614,6 +2622,8 @@ class OmniFlashClient:
                         content = getattr(candidate, "content", None)
                         parts = getattr(content, "parts", []) if content else []
                         for part in parts:
+                            if getattr(part, "thought", False) is True:
+                                continue
                             inline_data = getattr(part, "inline_data", None)
                             if inline_data and getattr(inline_data, "data", None):
                                 data = inline_data.data
@@ -2628,7 +2638,7 @@ class OmniFlashClient:
                                 return _return(f"/api/media-proxy?uri={quote(gcs_uri, safe='')}")
             except Exception as e:
                 logger.warning(
-                    "gemini-3.1-flash-image generation failed for reference sheet: %s", e
+                    "gemini-nano-banana-2.1 generation failed for reference sheet: %s", e
                 )
 
             return _return(_get_mock_ref_sheet())
@@ -2643,7 +2653,7 @@ class OmniFlashClient:
         description: str = "",
         aesthetic_tags: list[str] | None = None,
         custom_prompt_override: str | None = None,
-        image_model: str = "gemini-3.1-flash-image",
+        image_model: str = "gemini-nano-banana-2.1",
         aspect_ratio: str = "16:9",
         return_compiled_prompt: bool = False,
         session_id: str | None = None,

@@ -31,7 +31,7 @@ class GenerateCharacterSheetRequest(BaseModel):
     source_image_url: str | None = None
     aesthetic_tags: list[str] = Field(default_factory=list)
     aspect_ratio: str = "16:9"
-    model: str = "gemini-3.1-flash-image"
+    model: str = "gemini-nano-banana-2.1"
     custom_prompt: str | None = None
     style_preset: str | None = None
 
@@ -420,7 +420,7 @@ class Journey3SetupRequest(BaseModel):
     products: list[dict[str, Any]] | None = None
     style_presets: list[str] | None = None
     style_preset: str | None = None
-    image_model: str | None = "gemini-3.1-flash-image"
+    image_model: str | None = "gemini-nano-banana-2.1"
     enable_safety_sanitization: bool = True
 
 
@@ -434,7 +434,7 @@ class Journey3KeyframePromptEditRequest(BaseModel):
     characters: list[dict[str, Any]] | None = None
     included_character_ids: list[str] | None = None
     style_preset: str | None = None
-    image_model: str | None = "gemini-3.1-flash-image"
+    image_model: str | None = "gemini-nano-banana-2.1"
 
 
 class Journey3ShotGenerateRequest(BaseModel):
@@ -1033,7 +1033,8 @@ UI_HTML = r"""<!DOCTYPE html>
             }, [j3StylePreset]);
 
             const [j3ImageModel, setJ3ImageModel] = useState(() => {
-                return localStorage.getItem("omnimash_j3_image_model") || "gemini-3.1-flash-image";
+                const saved = localStorage.getItem("omnimash_j3_image_model");
+                return (!saved || saved.startsWith("gemini-3.1-flash-image")) ? "gemini-nano-banana-2.1" : saved;
             });
             useEffect(() => {
                 if (j3ImageModel) {
@@ -2483,7 +2484,7 @@ UI_HTML = r"""<!DOCTYPE html>
                         setCharSheetFileName(prev => ({ ...prev, [idx]: slugName + "_sheet_v1" }));
                     }
                     if (!charSheetModel[idx]) {
-                        setCharSheetModel(prev => ({ ...prev, [idx]: "gemini-3.1-flash-image" }));
+                        setCharSheetModel(prev => ({ ...prev, [idx]: "gemini-nano-banana-2.1" }));
                     }
                     if (!charSheetAspectRatio[idx]) {
                         setCharSheetAspectRatio(prev => ({ ...prev, [idx]: "16:9" }));
@@ -2505,7 +2506,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             source_image_url: char.reference_url,
                             aesthetic_tags: char.aesthetic_tags || [],
                             aspect_ratio: charSheetAspectRatio[idx] || "16:9",
-                            model: charSheetModel[idx] || "gemini-3.1-flash-image",
+                            model: charSheetModel[idx] || "gemini-nano-banana-2.1",
                             custom_prompt: promptToUse,
                             style_preset: styleToUse
                         })
@@ -2541,7 +2542,7 @@ UI_HTML = r"""<!DOCTYPE html>
                             source_image_url: char.reference_url,
                             aesthetic_tags: char.aesthetic_tags || [],
                             aspect_ratio: charSheetAspectRatio[idx] || "16:9",
-                            model: charSheetModel[idx] || "gemini-3.1-flash-image",
+                            model: charSheetModel[idx] || "gemini-nano-banana-2.1",
                             style_preset: styleToUse
                         })
                     });
@@ -4259,11 +4260,11 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                         🤖 Model
                                                                     </label>
                                                                     <select
-                                                                        value={charSheetModel[idx] || "gemini-3.1-flash-image"}
+                                                                        value={charSheetModel[idx] || "gemini-nano-banana-2.1"}
                                                                         onChange={(e) => setCharSheetModel({ ...charSheetModel, [idx]: e.target.value })}
                                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
                                                                     >
-                                                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                                                         <option value="gemini-3-pro-image">gemini-3-pro-image</option>
                                                                     </select>
                                                                 </div>
@@ -5581,11 +5582,11 @@ UI_HTML = r"""<!DOCTYPE html>
                                                                                         🤖 Model
                                                                                     </label>
                                                                                     <select
-                                                                                        value={charSheetModel[cIdx] || "gemini-3.1-flash-image"}
+                                                                                        value={charSheetModel[cIdx] || "gemini-nano-banana-2.1"}
                                                                                         onChange={(e) => setCharSheetModel({ ...charSheetModel, [cIdx]: e.target.value })}
                                                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
                                                                                     >
-                                                                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                                                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                                                                         <option value="gemini-3-pro-image">gemini-3-pro-image</option>
                                                                                     </select>
                                                                                 </div>
@@ -8231,11 +8232,11 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                                                                 🤖 Model
                                                                                             </label>
                                                                                             <select
-                                                                                                value={charSheetModel[idx] || "gemini-3.1-flash-image"}
+                                                                                                value={charSheetModel[idx] || "gemini-nano-banana-2.1"}
                                                                                                 onChange={(e) => setCharSheetModel({ ...charSheetModel, [idx]: e.target.value })}
                                                                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
                                                                                             >
-                                                                                                <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                                                                                <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                                                                                 <option value="gemini-3-pro-image">gemini-3-pro-image</option>
                                                                                             </select>
                                                                                         </div>
@@ -8444,7 +8445,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                         onChange={(e) => setJ3ImageModel(e.target.value)}
                                                         className="bg-gray-950 border border-gray-800 text-xs font-bold text-purple-300 rounded-xl px-3 py-2 font-mono"
                                                     >
-                                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image (Default)</option>
+                                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1 (Default)</option>
                                                         <option value="gemini-3-pro-image">gemini-3-pro-image (Pro Quality)</option>
                                                     </select>
                                                 </div>
@@ -10227,7 +10228,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         style_preset = req.style_preset or (
             req.style_presets[0] if req.style_presets else "Gritty 90s Cyberpunk"
         )
-        image_model = req.image_model or "gemini-3.1-flash-image"
+        raw_image_model = (req.image_model or "").strip()
+        image_model = (
+            "gemini-nano-banana-2.1"
+            if not raw_image_model or raw_image_model.startswith("gemini-3.1-flash-image")
+            else raw_image_model
+        )
         aspect_ratio = req.aspect_ratio or "16:9"
         enable_safety = req.enable_safety_sanitization
 
@@ -10336,6 +10342,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             if excluded_char_ref_urls:
                 ref_urls = [u for u in ref_urls if u not in excluded_char_ref_urls]
 
+        raw_kf_model = (req.image_model or "").strip()
+        effective_kf_model = (
+            "gemini-nano-banana-2.1"
+            if not raw_kf_model or raw_kf_model.startswith("gemini-3.1-flash-image")
+            else raw_kf_model
+        )
         try:
             image_url, compiled_prompt = agent.omni_client.generate_keyframe_image(
                 req.image_prompt,
@@ -10343,7 +10355,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 reference_image_urls=ref_urls,
                 characters=char_objs if char_objs else None,
                 aspect_ratio=req.aspect_ratio,
-                image_model=req.image_model or "gemini-3.1-flash-image",
+                image_model=effective_kf_model,
                 return_compiled_prompt=True,
             )
             return {
@@ -10952,6 +10964,12 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
 
     @app.post("/api/characters/generate-sheet", response_model=GenerateCharacterSheetResponse)
     def generate_character_sheet_endpoint(req: GenerateCharacterSheetRequest):
+        raw_sheet_model = (req.model or "").strip()
+        effective_sheet_model = (
+            "gemini-nano-banana-2.1"
+            if not raw_sheet_model or raw_sheet_model.startswith("gemini-3.1-flash-image")
+            else raw_sheet_model
+        )
         try:
             res = agent.omni_client.generate_character_reference_sheet(
                 source_image_url=req.source_image_url,
@@ -10959,7 +10977,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 description=req.description or "",
                 aesthetic_tags=req.aesthetic_tags,
                 custom_prompt_override=req.custom_prompt,
-                image_model=req.model,
+                image_model=effective_sheet_model,
                 aspect_ratio=req.aspect_ratio,
                 return_compiled_prompt=True,
                 style_preset=req.style_preset,
@@ -10981,7 +10999,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 compiled_prompt=compiled,
                 raw_compiled_prompt=compiled,
                 aspect_ratio=req.aspect_ratio,
-                model=req.model,
+                model=effective_sheet_model,
             )
         except Exception as e:
             logger.error(f"Error generating character turnaround sheet: {e}", exc_info=True)
@@ -10992,7 +11010,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
                 compiled_prompt="",
                 raw_compiled_prompt="",
                 aspect_ratio=req.aspect_ratio,
-                model=req.model,
+                model=effective_sheet_model,
                 details=str(e),
             )
 
