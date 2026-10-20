@@ -48,3 +48,11 @@ def test_taxonomy_engine_provides_preset_contributions():
     assert "fisheye lens" in contrib.camera_lighting
     assert "bopping" in contrib.motion
     assert "boom-bap" in contrib.sound_design
+
+
+def test_style_preset_is_python312_strenum():
+    from enum import StrEnum
+
+    assert issubclass(StylePreset, StrEnum)
+    assert str(StylePreset.NINETIES_RAP_VIDEO) == "90s_rap_video"
+    assert f"{StylePreset.TRAP_DISSTRACK}" == "trap_disstrack"
