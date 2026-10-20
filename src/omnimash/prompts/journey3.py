@@ -114,10 +114,17 @@ def compile_journey3_shot_prompt(
             )
         characters = char_list
 
+    sources_meta: list[str] = []
+    references_meta: list[str] = []
+    if is_seamless_loop and keyframe_image_url and keyframe_image_url.strip():
+        sources_meta.extend(["<FIRST_FRAME>@KeyframeSeed", "<LAST_FRAME>@KeyframeSeed"])
+    elif keyframe_image_url and keyframe_image_url.strip():
+        sources_meta.append("<FIRST_FRAME>@KeyframeSeed")
+
+    block1_role_lines: list[str] = []
+    char_lines: list[str] = []
     if characters:
         apply_conversational_voice_edits(action_directive, characters)
-        if not character_roster:
-            char_lines: list[str] = []
         ref_idx = 1
         for char in characters:
             char_id = get_character_identifier(
@@ -170,8 +177,18 @@ def compile_journey3_shot_prompt(
             voice_str = f" [Voice Style: {str(voice_style).strip()}]"
 
             if ref_url and isinstance(ref_url, str) and ref_url.strip():
+                if img_role in ("Starting Frame", "Keyframe Seed Anchor"):
+                    sources_meta.append(f"<FIRST_FRAME>@Image{ref_idx}")
+                elif img_role in ("Ending Frame", "Keyframe Last Anchor"):
+                    sources_meta.append(f"<LAST_FRAME>@Image{ref_idx}")
+                else:
+                    references_meta.append(f"<IMAGE_REF_{len(references_meta)}>@Image{ref_idx}")
+                block1_role_lines.append(
+                    f"- {char_id} ({img_role}): {ref_url.strip()} (@Image{ref_idx}){wardrobe_str}{style_str}"
+                )
+                # Zero Wardrobe Redundancy Rule in Block 2: omit redundant physical/wardrobe/style text when reference_url is set
                 char_lines.append(
-                    f"- {char_id}: ({ref_desc} - extract character facial likeness and wardrobe, ignore old background environment){wardrobe_str}{style_str}{voice_str}"
+                    f"- {char_id}: ({ref_desc} - extract character facial likeness and wardrobe, ignore old background environment){voice_str}"
                 )
                 ref_idx += 1
             else:
@@ -182,23 +199,35 @@ def compile_journey3_shot_prompt(
                 ) or ""
                 if enable_sanitization and desc:
                     desc = sanitize_real_names(desc)
+                block1_role_lines.append(
+                    f"- {char_id} (Text Role): Unanchored text role{wardrobe_str}"
+                )
                 line_content = f"{desc}{wardrobe_str}{style_str}{voice_str}".strip()
                 char_lines.append(f"- {char_id}: {line_content}")
-        if char_lines:
+        if not character_roster and char_lines:
             character_roster = "\n".join(char_lines)
 
-    prefix_sources = ""
-    if is_seamless_loop and keyframe_image_url and keyframe_image_url.strip():
-        prefix_sources = "[# Sources <FIRST_FRAME>@KeyframeSeed <LAST_FRAME>@KeyframeSeed]\n"
-    elif keyframe_image_url and keyframe_image_url.strip():
-        prefix_sources = "[# Sources <FIRST_FRAME>@KeyframeSeed]\n"
+    block1_meta_lines: list[str] = []
+    if sources_meta:
+        block1_meta_lines.append(f"[# Sources {' '.join(sources_meta)}]")
+    if references_meta:
+        block1_meta_lines.append(f"[# References {', '.join(references_meta)}]")
 
-    roster_str = character_roster.strip() if character_roster else "None."
-    if enable_sanitization and roster_str != "None.":
-        roster_str = sanitize_real_names(roster_str)
-    if prefix_sources:
-        roster_str = prefix_sources + (roster_str if roster_str != "None." else "")
-        roster_str = roster_str.strip()
+    base_roster_str = character_roster.strip() if character_roster else "None."
+    if enable_sanitization and base_roster_str != "None.":
+        base_roster_str = sanitize_real_names(base_roster_str)
+
+    block1_roles_body = (
+        "\n".join(block1_role_lines).strip() if block1_role_lines else base_roster_str
+    )
+    if enable_sanitization and block1_roles_body != "None.":
+        block1_roles_body = sanitize_real_names(block1_roles_body)
+
+    block1_parts = list(block1_meta_lines)
+    if block1_roles_body != "None." or not block1_parts:
+        block1_parts.append(block1_roles_body)
+    block1_roster_str = "\n".join(block1_parts).strip()
+    roster_str = base_roster_str
 
     action_str = action_directive.strip()
     if enable_sanitization and action_str:
@@ -299,7 +328,9 @@ def compile_journey3_shot_prompt(
         if enable_sanitization:
             n_val = sanitize_real_names(n_val)
             v_val = sanitize_real_names(v_val)
-        timeline_items.append(f'- Offscreen Narrator ({v_val}): "{n_val}"')
+        timeline_items.append(
+            f'- Offscreen Narrator ({v_val}): "{n_val}" (off-screen) — Do not show a narrator speaking on camera.'
+        )
 
     if action_str:
         timeline_items.append(f"- Visual Action: {action_str}")
@@ -421,15 +452,40 @@ def compile_journey3_shot_prompt(
                     txt_clean = sanitize_real_names(txt_clean)
                 timeline_items.append(f'- Spoken Dialogue ({spk_id}){voice_tag}: "{txt_clean}"')
 
+    has_spoken_audio = bool(
+        (dialogue_str and dialogue_str.strip()) or (narrator_text and narrator_text.strip())
+    )
+    is_silent_audio = bool(
+        audio_mode == "silent"
+        or is_silent
+        or (resolved_audio and resolved_audio.startswith("Silent video"))
+    )
+
     if resolved_audio:
-        if resolved_audio.startswith("Silent video") or resolved_audio.startswith("Audio:"):
+        if is_silent_audio:
             timeline_items.append(
                 resolved_audio
                 if resolved_audio.startswith("Audio:")
                 else f"Audio: {resolved_audio}"
             )
         else:
-            timeline_items.append(f"Audio: {resolved_audio}")
+            raw_audio_body = re.sub(r"^Audio:\s*", "", resolved_audio, flags=re.IGNORECASE).strip()
+            instr_audio = (
+                raw_audio_body
+                if raw_audio_body.lower().startswith("instrumental")
+                else f"instrumental {raw_audio_body}"
+            )
+            base_audio_line = (
+                resolved_audio
+                if resolved_audio.startswith("Audio:")
+                else f"Audio: {resolved_audio}"
+            )
+            if has_spoken_audio:
+                timeline_items.append(
+                    f"{base_audio_line} ({instr_audio} — Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible.)"
+                )
+            else:
+                timeline_items.append(f"{base_audio_line} ({instr_audio})")
 
     if timeline_items:
         timeline_content = "\n".join(timeline_items)
@@ -458,6 +514,20 @@ def compile_journey3_shot_prompt(
             v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
             scene_inst_items.append(f"- Voice Style ({c_id}): {v_clean}")
 
+    if resolved_audio and not is_silent_audio:
+        raw_audio_body = re.sub(r"^Audio:\s*", "", resolved_audio, flags=re.IGNORECASE).strip()
+        instr_audio = (
+            raw_audio_body
+            if raw_audio_body.lower().startswith("instrumental")
+            else f"instrumental {raw_audio_body}"
+        )
+        if has_spoken_audio:
+            scene_inst_items.append(
+                f"- Audio Beat & Ducking: {instr_audio}. Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible."
+            )
+        else:
+            scene_inst_items.append(f"- Audio Beat: {instr_audio}")
+
     if is_seamless_loop:
         scene_inst_items.append(
             "- Seamless Infinite Loop Mode: Seamless continuous infinite loop directive. Mirror start frame <FIRST_FRAME>@KeyframeSeed and end frame <LAST_FRAME>@KeyframeSeed so the final frame smoothly, imperceptibly loops back to the beginning with identical character posture, camera position, and ambient lighting."
@@ -469,7 +539,7 @@ def compile_journey3_shot_prompt(
             scene_inst_items.append(f"Cumulative Shot State:\n{st_block}")
     scene_inst_str = "\n".join(scene_inst_items)
 
-    block1 = f"### INPUT ROLES & REFERENCES\n{roster_str}"
+    block1 = f"### INPUT ROLES & REFERENCES\n{block1_roster_str}"
     block2 = f"### CHARACTER PROFILES\n{roster_str}"
     block3 = f"### SCENE INSTRUCTIONS\n{scene_inst_str}"
     block4 = f"### TIMELINE\n{timeline_content}"

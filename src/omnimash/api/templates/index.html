@@ -539,56 +539,135 @@
             const [lightboxImageUrl, setLightboxImageUrl] = useState(null);
 
             const compileJourney3ShotPromptPreview = (card, idx) => {
+                const shotNum = (card && card.shot_index) || (typeof idx === "number" ? idx + 1 : 1);
                 const charPool = (j3Characters && j3Characters.length > 0) ? j3Characters : (characters || []);
                 const includedIds = card ? card.included_character_ids : null;
                 const validIncludedChars = (includedIds && Array.isArray(includedIds) && includedIds.length > 0)
                     ? charPool.filter(c => c && includedIds.includes(c.role_id))
                     : [];
                 const activeChars = validIncludedChars.length > 0 ? validIncludedChars : charPool;
-                const rosterLines = activeChars.map((c, i) => {
-                    const refStr = c.reference_url ? ` (@Image${i + 1})` : "";
-                    const tags = (c.aesthetic_tags || []).length > 0 ? `, Wardrobe: ${c.aesthetic_tags.join(", ")}` : "";
+
+                const sourceTags = [];
+                if (card && card.keyframe_image_url) {
+                    sourceTags.push("<FIRST_FRAME>@KeyframeSeed");
+                    if (card.is_seamless_loop) {
+                        sourceTags.push("<LAST_FRAME>@KeyframeSeed");
+                    }
+                }
+                if (card && card.last_frame_image_url && !(card.is_seamless_loop && card.keyframe_image_url)) {
+                    sourceTags.push("<LAST_FRAME>@EndKeyframe");
+                }
+                const sourcesHeader = sourceTags.length > 0 ? `[# Sources ${sourceTags.join(" ")}]\n` : "";
+
+                let refCounter = 0;
+                const refIndexTags = [];
+                const inputRoleLines = [];
+                const nameToTagPairs = [];
+                const charProfileLines = activeChars.map((c) => {
                     const vVal = c.voice_style || c.voice_profile || "";
                     const voice = vVal ? ` [Voice Style: ${vVal}]` : "";
                     const narrator = c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator]" : "";
-                    return `- ${c.role_id} (${c.name || "Character"}${refStr}): ${c.description || "Visual profile"}${tags}${voice}${narrator}`;
-                }).join("\n") || "None.";
+                    if (c.reference_url) {
+                        refCounter += 1;
+                        const alias = `@Image${refCounter}`;
+                        refIndexTags.push(`<IMAGE_REF_${refCounter - 1}>${alias}`);
+                        inputRoleLines.push(`- ${c.role_id} (${c.image_role || "Character Reference"}): ${c.reference_url} (${alias})`);
+                        if (c.name) nameToTagPairs.push([c.name, alias]);
+                        if (c.role_id) nameToTagPairs.push([c.role_id, alias]);
+                        // Zero Wardrobe Redundancy Rule: omit redundant physical/wardrobe text when reference_url is anchored
+                        return `- ${c.role_id} (${c.name || "Character"}) (Reference Image: ${alias}): Visual identity anchored via ${alias}.${voice}${narrator}`;
+                    }
+                    const tags = (c.aesthetic_tags || []).length > 0 ? `, Wardrobe: ${c.aesthetic_tags.join(", ")}` : "";
+                    return `- ${c.role_id} (${c.name || "Character"}): ${c.description || "Visual profile"}${tags}${voice}${narrator}`;
+                });
 
-                const stateLines = (card && card.cumulative_state || []).length > 0
-                    ? card.cumulative_state.map(st => `- ${st}`).join("\n")
-                    : "Initial scene baseline.";
+                const refsHeader = refIndexTags.length > 0 ? `[# References ${refIndexTags.join(", ")}]\n` : "";
+                const inputRolesBody = inputRoleLines.length > 0 ? inputRoleLines.join("\n") : "None.";
 
-                const actionStr = (card && card.action_directive) || `Action sequence for Shot #${card ? card.shot_index : 1}`;
-                const dialogueStr = (card && card.dialogue_text) ? card.dialogue_text : "None (Ambient soundscape).";
-
-                const block1 = `### INPUT ROLES & REFERENCES\n${rosterLines}`;
-                
-                let block1_keyframe = "";
+                let block1Keyframe = "";
                 if (card && card.keyframe_image_url) {
                     if (card.keyframe_role === "Style & Scene Reference") {
-                        block1_keyframe = `\n\n# Visual Style & Scene Reference:\nAttached Image #1 is a visual reference for the background environment and art style. Maintain the scene color palette, lighting scheme, and layout found in Attached Image #1, but generate a new cinematic composition and action according to the prompt. Do not use this as a strict first frame.`;
+                        block1Keyframe = `\n\n# Visual Style & Scene Reference:\nAttached Image #1 is a visual reference for the background environment and art style. Maintain the scene color palette, lighting scheme, and layout found in Attached Image #1, but generate a new cinematic composition and action according to the prompt. Do not use this as a strict first frame.`;
                     } else {
-                        block1_keyframe = `\n\n# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.`;
+                        block1Keyframe = `\n\n# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.`;
                     }
                 }
 
-                const block2 = `### CUMULATIVE SHOT STATE\n${stateLines}`;
-                const block3 = `### VISUAL ACTION & CAMERA\n- Action Directive: ${actionStr}\n- Style & Tone: ${j3StylePreset}\n- Aspect Ratio: ${aspectRatio}`;
+                const block1 = `### INPUT ROLES & REFERENCES\n${sourcesHeader}${refsHeader}${inputRolesBody}${block1Keyframe}`;
+                const block2 = `### CHARACTER PROFILES\n${charProfileLines.join("\n") || "None."}`;
+
+                const stateLines = (card && card.cumulative_state || []).length > 0
+                    ? card.cumulative_state.map(st => `- ${st}`).join("\n")
+                    : "- Initial scene baseline.";
+
+                let actionStr = (card && card.action_directive) || `Action sequence for Shot #${shotNum}`;
+                for (const [token, alias] of nameToTagPairs) {
+                    if (token && actionStr.includes(token) && !actionStr.includes(`(${alias})`)) {
+                        actionStr = actionStr.replace(token, `${token} (${alias})`);
+                    }
+                }
+                const hasDialogue = Boolean((card && card.dialogue_text && card.dialogue_text.trim()) || (card && card.narrator_text && card.narrator_text.trim()));
+
                 let resolvedAudio = "";
                 const mode = card ? (card.audio_mode || "global") : "global";
                 if (mode === "silent") {
                     resolvedAudio = "Silent video. No background music, no audio.";
-                } else if (mode === "custom" && card && card.audio_stem) {
-                    resolvedAudio = card.audio_stem;
-                } else if (audioBeat) {
-                    resolvedAudio = audioBeat;
-                } else if (card && card.audio_stem) {
-                    resolvedAudio = card.audio_stem;
+                } else {
+                    const rawBeat = (mode === "custom" && card && card.audio_stem)
+                        ? card.audio_stem
+                        : (audioBeat || (card && card.audio_stem) || "");
+                    if (rawBeat) {
+                        const instrumentalBeat = rawBeat.toLowerCase().includes("instrumental") ? rawBeat : `instrumental ${rawBeat}`;
+                        resolvedAudio = hasDialogue
+                            ? `${instrumentalBeat}. Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible.`
+                            : instrumentalBeat;
+                    }
                 }
-                const audioLine = resolvedAudio ? `\n- Audio & Beat: ${resolvedAudio}` : "";
-                const block4 = `### TIMELINE & DIALOGUE\n- ${dialogueStr}${audioLine}`;
 
-                return `${block1}${block1_keyframe}\n\n${block2}\n\n${block3}\n\n${block4}`;
+                const block3Lines = [
+                    `- Shot Number: ${shotNum}`,
+                    `- Action Directive: ${actionStr}`,
+                    `- Aspect Ratio: ${aspectRatio}`,
+                    `Camera & Lighting: In a single continuous shot. No scene cuts. ${j3StylePreset}`,
+                ];
+                activeChars.forEach((c) => {
+                    const vVal = c.voice_style || c.voice_profile || "";
+                    if (vVal) {
+                        block3Lines.push(`- Voice Style (${c.role_id}): ${vVal}`);
+                    }
+                });
+                block3Lines.push(`Cumulative Shot State:\n${stateLines}`);
+                if (resolvedAudio) {
+                    block3Lines.push(`Audio: ${resolvedAudio}`);
+                }
+                const block3 = `### SCENE INSTRUCTIONS\n${block3Lines.join("\n")}`;
+
+                const timelineLines = [];
+                if (card && card.title_card_text && card.title_card_text.trim()) {
+                    const subStr = (card.title_card_subtitle && card.title_card_subtitle.trim())
+                        ? ` (Subtitle: "${card.title_card_subtitle.trim()}")`
+                        : "";
+                    timelineLines.push(`- On-Screen Displayed Text / Title Card: "${card.title_card_text.trim()}"${subStr}`);
+                }
+                timelineLines.push(`[00:00 - 00:10] Shot #${shotNum} Visual Action: ${actionStr}`);
+                if (card && card.dialogue_text && card.dialogue_text.trim()) {
+                    const primaryChar = activeChars[0] || { role_id: "Role A" };
+                    const primaryVoice = primaryChar.voice_style || primaryChar.voice_profile || "";
+                    const voiceTag = primaryVoice ? ` [Voice Style: ${primaryVoice}]` : "";
+                    timelineLines.push(`- Spoken Dialogue (${primaryChar.role_id || "Role A"})${voiceTag}: "${card.dialogue_text.trim()}"`);
+                } else {
+                    timelineLines.push(`- Dialogue: None (Ambient soundscape).`);
+                }
+                if (card && card.narrator_text && card.narrator_text.trim()) {
+                    const nVoice = (card.narrator_voice && card.narrator_voice.trim()) || "Cinematic Narrator";
+                    timelineLines.push(`- Offscreen Narrator (${nVoice}) (off-screen) — Do not show a narrator speaking on camera.: "${card.narrator_text.trim()}"`);
+                }
+                if (resolvedAudio) {
+                    timelineLines.push(`- Audio: ${resolvedAudio}`);
+                }
+                const block4 = `### TIMELINE\n${timelineLines.join("\n")}`;
+
+                return `${block1}\n\n${block2}\n\n${block3}\n\n${block4}`;
             };
             const [j3SetupLoading, setJ3SetupLoading] = useState(false);
             const [j3ShotCards, setJ3ShotCards] = useState([
@@ -678,10 +757,16 @@
 
             const handleUpscaleDraftTo4K = async (draftItem) => {
                 try {
+                    const sourceTurnId = draftItem.turn_id || draftItem.interaction_id || null;
+                    const targetShotIdx = draftItem.shot_index || 1;
                     const payload = {
                         session_id: sessionName,
-                        shot_index: draftItem.shot_index || 1,
-                        action_directive: draftItem.action || draftItem.action_directive || draftItem.prompt || "4K Master Export",
+                        project_name: activeProject,
+                        shot_index: targetShotIdx,
+                        turn_id: sourceTurnId,
+                        previous_interaction_id: sourceTurnId,
+                        prompt: "Upscale to master quality. Keep everything else the same.",
+                        action_directive: draftItem.action || draftItem.action_directive || draftItem.prompt || "Upscale to master quality. Keep everything else the same.",
                         keyframe_image_url: draftItem.keyframe_image_url || null,
                         resolution: "4k",
                         aspect_ratio: aspectRatio || "16:9"
@@ -695,6 +780,20 @@
                     if (data && data.success && data.video_url) {
                         setCurrentVideo(data.video_url);
                         setStatus("4K MASTER GENERATED");
+                        setDraftBatchShots((prev) =>
+                            (prev || []).map((d) =>
+                                d === draftItem || (sourceTurnId && (d.turn_id === sourceTurnId || d.interaction_id === sourceTurnId))
+                                    ? { ...d, video_url: data.video_url, resolution: "4k", turn_id: data.turn_id || d.turn_id }
+                                    : d
+                            )
+                        );
+                        setJ3ShotCards((prev) =>
+                            (prev || []).map((c) =>
+                                c.shot_index === targetShotIdx
+                                    ? { ...c, video_url: data.video_url, turn_id: data.turn_id || c.turn_id }
+                                    : c
+                            )
+                        );
                     }
                 } catch (err) {
                     console.error("Failed to upscale draft to 4K:", err);
@@ -1062,6 +1161,12 @@
                             shot_index: shotIdx,
                             action_directive: card.action_directive || "",
                             dialogue_text: card.dialogue_text || "",
+                            title_card_text: card.title_card_text || null,
+                            title_card_subtitle: card.title_card_subtitle || null,
+                            narrator_text: card.narrator_text || null,
+                            narrator_voice: card.narrator_voice || null,
+                            style_preset: j3StylePreset || null,
+                            is_seamless_loop: !!card.is_seamless_loop,
                             audio_mode: card.audio_mode || "global",
                             audio_stem: card.audio_stem || null,
                             global_audio_beat: audioBeat || null,
@@ -1071,8 +1176,9 @@
                             aspect_ratio: aspectRatio,
                             enable_safety_sanitization: enableSafetySanitization,
                             characters: j3Characters,
-                            compiled_override: card.compiled_override !== undefined ? card.compiled_override : compileJourney3ShotPromptPreview(card),
-                            included_character_ids: card.included_character_ids
+                            compiled_override: card.compiled_override !== undefined ? card.compiled_override : null,
+                            included_character_ids: card.included_character_ids,
+                            motion_reference_clip: motionReferenceClip || null
                         })
                     });
                     const data = await res.json();
@@ -1472,7 +1578,8 @@
                             aspect_ratio: aspectRatio,
                             resolution: omniResolution,
                             last_frame_image_url: shot.last_frame_image_url || null,
-                            is_seamless_loop: !!shot.is_seamless_loop
+                            is_seamless_loop: !!shot.is_seamless_loop,
+                            motion_reference_clip: motionReferenceClip || null
                         })
                     });
                     const data = await res.json();
@@ -1653,40 +1760,58 @@
 
             // Helper: Client-side Live Storyboard Prompt Compiler Preview (Four-Block Multimodal Structure)
             const compileStoryboardPreview = () => {
-                const inputRoleLines = characters.filter(c => c.reference_url).map(c => {
-                    const roleType = c.image_role || "Character Reference";
-                    return `- ${c.role_id} (${roleType}): ${c.reference_url}`;
-                });
-                const inputRolesStr = inputRoleLines.length > 0 ? inputRoleLines.join("\n") : "None.";
-
+                let refCounter = 0;
+                const refIndexTags = [];
+                const inputRoleLines = [];
                 const charProfileLines = characters.map(c => {
+                    const vVal = c.voice_style || c.voice_profile || "";
+                    const voice = vVal ? ` [Voice Style: ${vVal}]` : "";
+                    const narrator = c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator (off-screen) — Do not show a narrator speaking on camera.]" : "";
+                    if (c.reference_url) {
+                        refCounter += 1;
+                        const alias = `@Image${refCounter}`;
+                        const roleType = c.image_role || "Character Reference";
+                        refIndexTags.push(`<IMAGE_REF_${refCounter - 1}>${alias}`);
+                        inputRoleLines.push(`- ${c.role_id} (${roleType}): ${c.reference_url} (${alias})`);
+                        // Zero Wardrobe Redundancy Rule: omit redundant physical/wardrobe text when reference_url is anchored
+                        return `- ${c.role_id} (${c.name || "Unnamed"}) (Reference Image: ${alias}): Visual identity anchored via ${alias}.${voice}${narrator}`;
+                    }
                     const style = (c.aesthetic_tags && c.aesthetic_tags.length > 0) ? ` [Style: ${c.aesthetic_tags.join(", ")}]` : "";
                     const wardrobe = c.wardrobe ? ` [Wardrobe: ${c.wardrobe}]` : "";
-                    const narrator = c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator]" : "";
-                    const ref = c.reference_url ? ` (Ref: ${c.reference_url})` : "";
-                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${style}${wardrobe}${narrator}${ref}`;
+                    return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "No description"}${style}${wardrobe}${voice}${narrator}`;
                 });
+                const refsHeader = refIndexTags.length > 0 ? `[# References ${refIndexTags.join(", ")}]\n` : "";
+                const inputRolesStr = inputRoleLines.length > 0 ? `${refsHeader}${inputRoleLines.join("\n")}` : "None.";
                 const charProfilesStr = charProfileLines.length > 0 ? charProfileLines.join("\n") : "None.";
 
                 const camHeader = cameraLightingTag || "In a single continuous shot. No scene cuts. High contrast cinematic lighting";
                 const envStr = environmentTag || "Cinematic Studio Setting";
-                const audioStr = audioBeat ? `Sound design: Foreground voiceover dominant. Background beat (${audioBeat}) subtly ducked.` : "Sound design: Standard audio.";
+                const instrumentalBeat = audioBeat
+                    ? (audioBeat.toLowerCase().includes("instrumental") ? audioBeat : `instrumental ${audioBeat}`)
+                    : "";
+                const audioStr = instrumentalBeat
+                    ? `Sound design: ${instrumentalBeat}. Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible.`
+                    : "Sound design: Standard audio.";
                 const sceneInstStr = `Camera & Lighting: ${camHeader}\nEnvironment: ${envStr}\nAudio: ${audioStr}`;
 
+                const narratorRoleIds = new Set(characters.filter(c => c.is_offscreen_narrator).map(c => c.role_id));
                 const sceneLines = scenes.map(s => {
                     const roles = (s.active_roles && s.active_roles.length > 0) ? s.active_roles.join(", ") : "All Roles";
+                    const hasNarratorRole = (s.active_roles || []).some(r => narratorRoleIds.has(r));
+                    const narratorNote = hasNarratorRole ? " (off-screen) — Do not show a narrator speaking on camera." : "";
                     const spScript = s.screenplay_script || s.screenplay_text;
                     if ((s.mode === "screenplay" || spScript) && spScript && spScript.trim()) {
                         const indented = spScript.trim().split("\n").map(l => `  ${l}`).join("\n");
-                        return `- Scene ${s.scene_number} [${roles}] (Screenplay Script):\n${indented}`;
+                        return `- Scene ${s.scene_number} [${roles}]${narratorNote} (Screenplay Script):\n${indented}`;
                     }
                     const diag = (s.dialogue && s.dialogue.trim()) ? ` | Dialogue: "${s.dialogue.trim()}"` : "";
-                    return `- Scene ${s.scene_number} [${roles}]: ${s.action || "Action description"}${diag}`;
+                    return `- Scene ${s.scene_number} [${roles}]${narratorNote}: ${s.action || "Action description"}${diag}`;
                 }).join("\n");
                 const timelineStr = sceneLines || "- No scenes";
 
-                return `### INPUT ROLES\n${inputRolesStr}\n\n### CHARACTER PROFILES\n${charProfilesStr}\n\n### SCENE INSTRUCTIONS\n${sceneInstStr}\n\n### TIMELINE\n${timelineStr}`;
+                return `### INPUT ROLES & REFERENCES\n${inputRolesStr}\n\n### CHARACTER PROFILES\n${charProfilesStr}\n\n### SCENE INSTRUCTIONS\n${sceneInstStr}\n\n### TIMELINE\n${timelineStr}`;
             };
+            const buildLivePromptPreview = compileStoryboardPreview;
 
             // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
             const handleDeconstructConcept = async (conceptOverride) => {
@@ -2182,7 +2307,9 @@
                         setParentTurnId(data.turn_id);
                         setStatus(data.status);
                         setDeltaPrompt("");
-                        setActiveAct(3);
+                        if (studioMode === "acts") {
+                            setActiveAct(3);
+                        }
 
                         if (studioMode === "stages" || activeStage >= 2) {
                             setStageShots((prevShots) => {
@@ -5813,19 +5940,34 @@
                                                                             <div>
                                                                                 <span className="font-bold text-cyan-400 block mb-1 text-[11px]">📜 Formatted Four-Block Prompt Structure (Omni Flash Preview):</span>
                                                                                 <pre className="bg-black/90 p-3 rounded-lg border border-cyan-900/60 text-[10px] text-cyan-200 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed custom-scrollbar">
-{`### INPUT ROLES
-${(characters || []).filter(c => c.reference_url).map(c => `- ${c.role_id} (${c.image_role || "Character Reference"}): ${c.reference_url}`).join("\n") || "None."}
-
-### CHARACTER PROFILES
-${(characters || []).map(c => `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "Visual profile"}${c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator]" : ""}`).join("\n") || "- Role A: Primary Subject"}
-
-### SCENE INSTRUCTIONS
-Camera & Lighting: In a single continuous shot. No scene cuts. ${shot.style_lighting || stageStyleTone}
-Environment: ${shot.location || "Cinematic set"}
-Audio: ${shot.audio || "Atmospheric soundscape"}
-
-### TIMELINE
-${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s] Action: Subject movement.\n[6-10s] Action: Climax resolution."}`}
+{(() => {
+    let refCounter = 0;
+    const refIndexTags = [];
+    const inputRoleLines = [];
+    const charProfileLines = (characters || []).map((c) => {
+        const vVal = c.voice_style || c.voice_profile || "";
+        const voice = vVal ? ` [Voice Style: ${vVal}]` : "";
+        const narrator = c.is_offscreen_narrator ? " [🎙️ Off-Screen Narrator (off-screen) — Do not show a narrator speaking on camera.]" : "";
+        if (c.reference_url) {
+            refCounter += 1;
+            const alias = `@Image${refCounter}`;
+            refIndexTags.push(`<IMAGE_REF_${refCounter - 1}>${alias}`);
+            inputRoleLines.push(`- ${c.role_id} (${c.image_role || "Character Reference"}): ${c.reference_url} (${alias})`);
+            return `- ${c.role_id} (${c.name || "Unnamed"}) (Reference Image: ${alias}): Visual identity anchored via ${alias}.${voice}${narrator}`;
+        }
+        return `- ${c.role_id} (${c.name || "Unnamed"}): ${c.description || "Visual profile"}${voice}${narrator}`;
+    });
+    const sourcesLine = shot.keyframe_image_url
+        ? `[# Sources <FIRST_FRAME>@KeyframeSeed${shot.is_seamless_loop ? " <LAST_FRAME>@KeyframeSeed" : (shot.last_frame_image_url ? " <LAST_FRAME>@EndKeyframe" : "")}]\n`
+        : "";
+    const refsLine = refIndexTags.length > 0 ? `[# References ${refIndexTags.join(", ")}]\n` : "";
+    const block1Body = inputRoleLines.length > 0 ? `${sourcesLine}${refsLine}${inputRoleLines.join("\n")}` : (sourcesLine ? sourcesLine.trim() : "None.");
+    const rawAudio = shot.audio ? (shot.audio.toLowerCase().includes("instrumental") ? shot.audio : `instrumental ${shot.audio}`) : "instrumental Atmospheric soundscape";
+    const audioLine = (shot.dialogue && shot.dialogue.trim())
+        ? `${rawAudio}. Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible.`
+        : rawAudio;
+    return `### INPUT ROLES & REFERENCES\n${block1Body}\n\n### CHARACTER PROFILES\n${charProfileLines.join("\n") || "- Role A: Primary Subject"}\n\n### SCENE INSTRUCTIONS\nCamera & Lighting: In a single continuous shot. No scene cuts. ${shot.style_lighting || stageStyleTone}\nEnvironment: ${shot.location || "Cinematic set"}\nAudio: ${audioLine}\n\n### TIMELINE\n${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s] Action: Subject movement.\n[6-10s] Action: Climax resolution."}`;
+})()}
                                                                                 </pre>
                                                                                 <div className="text-[10px] text-gray-500 italic bg-black/40 p-2 mt-1 rounded border border-gray-800 flex items-center justify-between">
                                                                                     <span>💡 Formatted according to Gemini Omni Flash Four-Block Prompt Specification.</span>
@@ -6474,7 +6616,7 @@ ${shot.action || "[0-3s] Action: Establishing shot. Audio: Rhythmic beat.\n[3-6s
                         {/* ========================================================= */}
                         {/* 🎬 ACT 3: THE SCREENING ROOM & BRANCHING                  */}
                         {/* ========================================================= */}
-                        {activeAct === 3 && (
+                        {studioMode === "acts" && activeAct === 3 && (
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-amber-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
                                     <div>
