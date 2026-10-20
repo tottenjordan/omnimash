@@ -55,7 +55,15 @@ def test_character_sheet_endpoints_are_sync_def_for_threadpool_execution():
     app = create_app(mock_mode=True)
     target_paths = {"/api/characters/generate-sheet", "/api/characters/save-sheet"}
     matched = 0
-    for route in app.routes:
+    all_routes = []
+    for item in app.routes:
+        orig_router = getattr(item, "original_router", None)
+        if orig_router is not None and hasattr(orig_router, "routes"):
+            all_routes.extend(orig_router.routes)
+        else:
+            all_routes.append(item)
+
+    for route in all_routes:
         path = getattr(route, "path", "")
         if path in target_paths:
             matched += 1
