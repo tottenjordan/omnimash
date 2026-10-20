@@ -1,221 +1,231 @@
-# Code Quality Review: `src/omnimash/stitching` Module
+# 5-Axes Code Review: `src/omnimash/storage`
 
-**Review Date:** October 20, 2026  
-**Target Module:** [`src/omnimash/stitching/`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching) (`stitcher.py`, `audio_overlay.py`, `__init__.py`)  
-**Evaluation Framework:** 5-Axes Code Quality (Correctness, Readability, Architecture, Security, Performance)  
-**Approval Standard:** Request Changes (Actionable remediation required prior to production release)
-
----
-
-## Executive Summary
-
-The `src/omnimash/stitching` module is responsible for video timeline assembly, audio stem mixing, dialogue ducking, title card generation, and master artifact delivery to Google Cloud Storage. 
-
-While the core FFmpeg filtergraph design (`sidechaincompress`, `concat` demuxer, `lavfi anullsrc`) demonstrates a solid understanding of multimedia pipelines, the module exhibits critical security vulnerabilities (unbounded SSRF via `urllib.request.urlretrieve` and unconfined `/static/` path resolution), correctness bugs (single quotes breaking the FFmpeg concat demuxer parser, unhandled empty clip lists causing `FileNotFoundError`, and silent failure text files disguised as media clips), and architectural fragmentation (three duplicated, divergent implementations of media path resolution).
+**Module Under Review:** [`src/omnimash/storage/gcs.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py), [`src/omnimash/storage/__init__.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/__init__.py)  
+**Review Methodology:** 5-Axes Framework (Correctness, Readability & Simplicity, Architecture, Security, Performance)  
+**Review Standard:** Strict Google Cloud & Python 3.12 Production Standards  
 
 ---
 
-## 5-Axes Findings Summary
+## Executive Summary & Severity Breakdown
 
-| Axis | Critical | Required | Optional | Nit | Total |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **1. Correctness** | 1 | 3 | 1 | 0 | **5** |
-| **2. Readability & Simplicity** | 0 | 2 | 1 | 1 | **4** |
-| **3. Architecture** | 0 | 3 | 1 | 1 | **5** |
-| **4. Security** | 2 | 1 | 0 | 0 | **3** |
-| **5. Performance** | 0 | 2 | 1 | 0 | **3** |
-| **Total** | **3** | **11** | **4** | **2** | **20** |
+| Severity | Count | Summary of Key Findings |
+|---|:---:|---|
+| **Critical** | 1 | Unvalidated `urllib.request.urlopen` remote media fetch creating Server-Side Request Forgery (SSRF) |
+| **Required** | 10 | Unconfined path traversal, thread-safety race condition in shared client cache, missing GCS timeouts, 35 silent exception swallowing blocks, inconsistent proxy unquoting, eager subprocess initialization, leaky private field access, unsynchronized mock state, God-class bloat, and N+1 synchronous blob downloads |
+| **Optional** | 3 | Incomplete MIME detection in `load_bytes`, hardcoded seed data in driver, and memory-buffered media uploads |
+| **Nit** | 2 | Undocumented alias `GCSStorage` and loose `Any` typing |
 
 ---
 
-## Severity-Labeled Detailed Findings
+## 1. Security (Highest Leverage)
 
-### Axis 1: Correctness
-
-#### `[CORR-01]` Critical: Empty `clip_paths` in `concatenate_clips` Causes Unhandled `FileNotFoundError` on GCS Upload
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L48-L86`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L48-L86), [`L245-L250`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L245-L250)
-- **Problem:** If `clip_paths` is empty (`[]`) in non-mock mode, `resolved_clips` evaluates to `[]`. The `if resolved_clips:` block is skipped entirely, meaning `out_path` is never created. Execution immediately proceeds to line 250: `self.storage.upload_file(out_path, ...)`, raising a fatal `FileNotFoundError`.
-- **Structural Remedy:** Guard against empty inputs at the function entrypoint:
+### `[SEC-01]` Critical: Server-Side Request Forgery (SSRF) in `save_character_sheet` via Unvalidated `urllib.request.urlopen`
+- **Location:** [`src/omnimash/storage/gcs.py#L629-L634`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L629-L634)
+- **Problem:** When `image_data` is an HTTP/HTTPS URL, `save_character_sheet` makes a direct network call:
   ```python
-  if not clip_paths:
-      raise ValueError("concatenate_clips requires at least one clip path.")
+  elif image_data.startswith("http://") or image_data.startswith("https://"):
+      try:
+          req = urllib.request.Request(image_data, headers={"User-Agent": "Mozilla/5.0"})
+          raw_bytes = urllib.request.urlopen(req, timeout=10).read()
+      except Exception:
+          pass
   ```
+  The URL is never validated. An attacker or malicious user can supply `http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token`, internal microservice endpoints, or localhost URLs, enabling instance metadata theft, service account token exfiltration, or intranet port scanning.
+- **Remedy (Named Restructuring: Reuse Canonical Helper):** Remove `urllib.request.urlopen`. Validate using `validate_remote_media_url` and download safely using `fetch_media_bytes` from `omnimash.engine.media_loader`.
 
-#### `[CORR-02]` Required: FFmpeg Concat Demuxer Syntax Error on Unescaped Single Quotes
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L135-L138`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L135-L138)
-- **Problem:** In `concatenate_clips`, file paths are written to the concat manifest using `f"file '{clip_file}'\n"`. Per official FFmpeg concat demuxer documentation, single quotes within file paths must be escaped (`'\''`). If a clip name contains a single quote (e.g. `director's_cut.mp4`), FFmpeg crashes with a manifest syntax error.
-- **Structural Remedy:** Sanitize and escape single quotes before writing:
+---
+
+### `[SEC-02]` Required: Path Traversal Vulnerability in `save_final_master` via Unconfined Local Path
+- **Location:** [`src/omnimash/storage/gcs.py#L496-L503`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L496-L503)
+- **Problem:**
   ```python
-  escaped_path = clip_file.replace("'", "'\\''")
-  f.write(f"file '{escaped_path}'\n")
+  norm_source = self._normalize_media_source_path(source_rel_path)
+  local_path = norm_source
+  if local_path.startswith("/static/"):
+      local_path = os.path.join(os.getcwd(), local_path.lstrip("/"))
+  elif not os.path.isabs(local_path) and os.path.exists(
+      os.path.join(os.getcwd(), local_path)
+  ):
+      local_path = os.path.join(os.getcwd(), local_path)
   ```
-
-#### `[CORR-03]` Required: Silent Failure Writes Plaintext Disguised as Media Files
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L273-L275`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L273-L275), [`L380-L385`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L380-L385), [`src/omnimash/stitching/audio_overlay.py#L121-L126`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L121-L126)
-- **Problem:** When title card generation or audio ducking fails, the code writes ASCII text strings (e.g. `"fallback title card video content"` or `"fallback ducked audio content"`) into files with `.mp4` and `.aac` extensions. In `stitcher.py#L144-L149`, an ad-hoc byte sniffer reads the first 64 bytes to detect this placeholder. Passing these corrupt text files into downstream FFmpeg concat commands causes mysterious downstream rendering crashes.
-- **Structural Remedy:** Replace disguised corrupt text writes with proper structured error raising (`RuntimeError`) or return `None` so the orchestrator can fall back cleanly without byte-sniffing corrupted files.
-
-#### `[CORR-04]` Required: Unchecked Returncode on FFmpeg Re-encode Fallback
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L236`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L236)
-- **Problem:** In `concatenate_clips`, if the fast `-c copy` pass fails (e.g. mismatched codecs/resolutions), it falls back to `cmd_reencode`. However, `subprocess.run(cmd_reencode, capture_output=True, text=True)` does not check `res.returncode` and does not set `check=True`. If the re-encode fails, the error is swallowed and line 250 attempts to upload an incomplete or missing file.
-- **Structural Remedy:** Check `res.returncode != 0`, log `res.stderr`, and raise a descriptive `RuntimeError` if re-encoding fails.
-
-#### `[CORR-05]` Optional: Title Card Insertion Order Inversion on Equal Indices
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L423-L445`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L423-L445)
-- **Problem:** `title_cards` are sorted by `insert_at` in reverse order before insertion. If multiple cards specify identical `insert_at` indices (or invalid strings that fail `int(insert_at)`), their relative sequence is inverted or can trigger unhandled `ValueError`.
-- **Structural Remedy:** Validate `insert_at` with safe integer coercion and preserve stable insertion order.
+  If `source_rel_path` is `/static/../../etc/passwd` or contains directory traversal sequences (`..`), `local_path` escapes the `static/` directory boundary and uploads arbitrary host files to GCS.
+- **Remedy (Named Restructuring: Reuse Canonical Helper):** Validate `local_path` with `validate_local_media_path` from `omnimash.engine.media_loader` to strictly confine reads to designated roots (`static/`, `/tmp`).
 
 ---
 
-### Axis 2: Readability & Simplicity
-
-#### `[READ-01]` Required: Replace Ad-Hoc Temporary File Lists with `tempfile.TemporaryDirectory`
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L55`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L55), [`L237-L244`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L237-L244), [`src/omnimash/stitching/audio_overlay.py#L49`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L49), [`L128-L133`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L128-L133)
-- **Problem:** `temp_cleanup_paths: list[str] = []` and `temp_files: list[str] = []` require manual append calls after every file creation and manual loops in `finally:` blocks. If an unhandled exception or SIGTERM occurs before registration, files leak on disk.
-- **Structural Remedy:** Use `tempfile.TemporaryDirectory()` context manager. All intermediate clips, manifests, and audio stems are placed in the scoped directory and cleaned up automatically in one step.
-
-#### `[READ-02]` Required: Flatten Nested TrueType / Pillow Font Loading Ladder
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L304-L314`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L304-L314)
-- **Problem:** Three levels of deeply nested `try...except` ladders attempt font loading with duplicate magic strings and fallback logic.
-- **Structural Remedy:** Extract a clean helper:
+### `[SEC-03]` Required: Thread-Safety Race Condition in Class-Level Client Cache `_SHARED_CLIENTS`
+- **Location:** [`src/omnimash/storage/gcs.py#L67`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L67), [`#L95-L103`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L95-L103)
+- **Problem:**
   ```python
-  def _get_font(font_name: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-      for candidate in (font_name, "DejaVuSans.ttf", "Arial.ttf"):
-          try:
-              return ImageFont.truetype(candidate, size)
-          except Exception:
-              continue
-      return ImageFont.load_default(size=size)
+  _SHARED_CLIENTS: dict[str, Any] = {}
+  ...
+  client_key = self.project_id or "default"
+  if client_key not in self._SHARED_CLIENTS:
+      self._SHARED_CLIENTS[client_key] = storage.Client(project=self.project_id)
   ```
-
-#### `[READ-03]` Optional: Inlined Dynamic Import of `settings` Inside Methods
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L28`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L28), [`src/omnimash/stitching/audio_overlay.py#L30`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L30)
-- **Problem:** `from omnimash.config import settings` is imported inside method bodies. There are no circular import issues between `config` and `stitching`.
-- **Structural Remedy:** Move `from omnimash.config import settings` to top-level imports.
-
-#### `[READ-04]` Nit: Inconsistent Logging Formats
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L11`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L11), [`src/omnimash/stitching/audio_overlay.py#L6`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L6)
-- **Problem:** Logger naming uses `logging.getLogger(__name__)`, which is standard, but log messages mix f-strings and `%s` arguments inconsistently.
-- **Structural Remedy:** Standardize on lazy formatting `%s` throughout.
+  `_SHARED_CLIENTS` is a shared class attribute mutated across threads without synchronization. In a multi-threaded ASGI server (Uvicorn with worker threads), concurrent requests initializing storage instances simultaneously will cause race conditions, duplicate client allocations, or dictionary corruption.
+- **Remedy (Named Restructuring: Thread-Safe Singleton):** Protect `_SHARED_CLIENTS` access with a `threading.Lock()` using double-checked locking, or extract a thread-safe singleton factory `_get_shared_client(project_id)`.
 
 ---
 
-### Axis 3: Architecture & Design
-
-#### `[ARCH-01]` Required: Unify Triplicated Media Path Resolution into a Canonical Helper
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L58-L86`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L58-L86), [`L88-L129`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L88-L129), [`src/omnimash/stitching/audio_overlay.py#L51-L84`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L51-L84)
-- **Problem:** Media resolution logic is implemented three times with divergent capabilities:
-  1. `stitcher.py` clip loop: does not decode `/api/media-proxy`, does not support HTTP URLs, accesses private `_bucket`.
-  2. `stitcher.py` audio block: supports HTTP URLs via insecure `urlretrieve`, does not decode `/api/media-proxy`.
-  3. `audio_overlay.py` `_resolve_audio_input`: decodes `/api/media-proxy`, downloads GCS blobs via `download_blob_bytes`, but ignores HTTP URLs.
-- **Structural Remedy:** Collapse into a single canonical helper `resolve_media_source_to_local_path(source: str, temp_dir: str, storage: GcsStorageManager) -> str` used by both `VideoStitcher` and `apply_dialogue_audio_ducking`.
-
-#### `[ARCH-02]` Required: Eliminate Direct Private `_bucket` Access and GCS Prefix String Hacks
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L68-L80`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L68-L80)
-- **Problem:** `stitcher.py` accesses `self.storage._bucket` directly and attempts to parse blob names with:
-  `blob_name = norm_clip.replace(f"gs://{self.storage.bucket_name}/", "").lstrip("/")`
-  If `norm_clip` is in another bucket (or an HTTPS GCS URL), this string replacement fails, and `self.storage._bucket.blob(...)` crashes.
-- **Structural Remedy:** Delegate blob retrieval to `self.storage.download_blob_bytes(uri)` or a public `storage.download_to_file(uri, dest_path)`.
-
-#### `[ARCH-03]` Required: Export Public API Symbols in `src/omnimash/stitching/__init__.py`
-- **File & Lines:** [`src/omnimash/stitching/__init__.py#L1`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/__init__.py#L1)
-- **Problem:** `__init__.py` is completely empty. Callers must know internal module filenames (`omnimash.stitching.stitcher`, `omnimash.stitching.audio_overlay`).
-- **Structural Remedy:** Export `VideoStitcher` and `apply_dialogue_audio_ducking` in `__init__.py` with `__all__`.
-
-#### `[ARCH-04]` Optional: Unused Dependency `ffmpeg-python` in `pyproject.toml`
-- **File & Lines:** [`pyproject.toml#L10`](file:///usr/local/google/home/jordantotten/omnimash/pyproject.toml#L10)
-- **Problem:** `ffmpeg-python>=0.2.0` is declared in project dependencies, but is unmaintained and never imported anywhere in the project.
-- **Structural Remedy:** Remove `ffmpeg-python` via `uv remove ffmpeg-python` to eliminate dead weight and security footprint.
-
-#### `[ARCH-05]` Nit: Pass Explicit Aspect Ratio Type or Enum
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L260`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L260), [`L279-L285`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L279-L285)
-- **Problem:** `aspect_ratio: str = "16:9"` uses raw string mapping with an arbitrary dictionary fallback.
-- **Structural Remedy:** Use `Literal["16:9", "9:16", "1:1", "21:9"]` for explicit typing.
+### `[SEC-04]` Required: Missing Explicit Network Timeouts on All GCS SDK Operations
+- **Location:** [`src/omnimash/storage/gcs.py#L111-L113`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L111-L113), [`#L183`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L183), [`#L201`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L201), [`#L243`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L243), [`#L286`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L286), [`#L303`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L303), [`#L411`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L411), [`#L506`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L506), [`#L838`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L838), [`#L899`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L899), [`#L916`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L916), [`#L950`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L950), [`#L980`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L980), [`#L1016`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1016), [`#L1053`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1053), [`#L1100`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1100), [`#L1118`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1118), [`#L1204`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1204), [`#L1249`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1249), [`#L1286`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1286)
+- **Problem:** All calls to `blob.upload_from_filename`, `blob.upload_from_string`, `blob.download_as_bytes`, `blob.download_as_text`, `blob.delete`, and `client.list_blobs` omit the `timeout` parameter. In `google-cloud-storage` v3.x, default timeout behavior can hang indefinite TCP sockets during network interruptions, leading to worker exhaustion.
+- **Remedy (Named Restructuring: Timeout Injection):** Define `DEFAULT_GCS_TIMEOUT = float(getattr(settings, "gcs_timeout_seconds", 30.0))` and pass `timeout=DEFAULT_GCS_TIMEOUT` across all SDK operations.
 
 ---
 
-### Axis 4: Security
+## 2. Correctness
 
-#### `[SEC-01]` Critical: Server-Side Request Forgery (SSRF) via Insecure `urllib.request.urlretrieve`
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L114-L126`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L114-L126)
-- **Problem:** In `concatenate_clips`, when `norm_audio` starts with `http://` or `https://`, it executes `urllib.request.urlretrieve(norm_audio, tmp_audio_path)`.
-  1. No hostname validation (allows requests to `169.254.169.254`, `localhost`, or internal VPC IPs).
-  2. No request timeout (vulnerable to Slowloris DoS).
-  3. No file size ceiling (vulnerable to disk exhaustion via unbounded streams).
-- **Structural Remedy:** Enforce validation using `validate_remote_media_url` and download safely using `safe_fetch_remote_bytes(url, max_bytes=MAX_MEDIA_FETCH_BYTES)` from `omnimash.engine.media_loader`.
-
-#### `[SEC-02]` Critical: Unconfined Path Traversal in `/static/` File Resolution
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L62-L65`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L62-L65), [`L92-L95`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L92-L95), [`src/omnimash/stitching/audio_overlay.py#L63-L66`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L63-L66)
-- **Problem:** In both files, paths starting with `/static/` are resolved via:
-  `loc = os.path.join(os.getcwd(), norm_clip.lstrip("/"))`
-  If a user passes `/static/../../etc/passwd` or `/static/../../../app/.env`, `os.path.join` traverses out of the intended directory.
-- **Structural Remedy:** Enforce directory confinement using `validate_local_media_path` from `omnimash.engine.media_loader`.
-
-#### `[SEC-03]` Required: Missing Subprocess Execution Timeouts (Process Hang / Resource Exhaustion)
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L191`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L191), [`L236`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L236), [`L377`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L377), [`src/omnimash/stitching/audio_overlay.py#L118`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L118)
-- **Problem:** All FFmpeg invocations run `subprocess.run(cmd, ...)` with NO `timeout` parameter. Corrupt video streams or malformed inputs can hang FFmpeg indefinitely, freezing worker processes and exhausting thread pools.
-- **Structural Remedy:** Pass `timeout=settings.ffmpeg_timeout_seconds` (default 120s) and handle `subprocess.TimeoutExpired` with proper error logging and process cleanup.
+### `[CORR-01]` Required: Blanket Silent Exception Swallowing (35 Instances of `except Exception: pass`)
+- **Location:** 35 distinct locations across `gcs.py` (lines 102, 117, 185, 203, 218, 259, 317, 333, 417, 461, 512, 617, 627, 633, 641, 801, 808, 844, 874, 909, 911, 926, 928, 960, 962, 993, 1027, 1031, 1058, 1106, 1140, 1221, 1225, 1255, 1291).
+- **Problem:** When GCS API calls encounter `Forbidden` (403), `NotFound` (404), `Unauthorized` (401), or `GoogleCloudError`, the exception is swallowed without any log message. The methods return empty lists, `None`, or empty strings.
+  - This completely obscures configuration errors, invalid bucket names, expired service account tokens, or quota exhaustion.
+  - Developers and operators have no diagnostic telemetry in Cloud Logging to understand why files are missing or why uploads failed.
+- **Remedy (Named Restructuring: Structured Observability):** Replace silent `pass` blocks with structured `logger.warning("GCS operation '%s' failed on %s: %s", op, blob_path, exc)` or `logger.error(...)`.
 
 ---
 
-### Axis 5: Performance
-
-#### `[PERF-01]` Required: Dialogue Audio Ducking Muffled by FFmpeg `amix` Normalization Default
-- **File & Lines:** [`src/omnimash/stitching/audio_overlay.py#L95-L99`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L95-L99)
-- **Problem:** The filtergraph sets `amix=inputs=2:duration=first[aout]`. In FFmpeg, `amix` defaults to `normalize=true`, which divides the volume of each input stream by 2 (-6dB). Because the background music was already ducked by `sidechaincompress`, attenuating the speech track by -6dB results in muffled dialogue.
-- **Structural Remedy:** Specify `amix=inputs=2:duration=first:dropout_transition=0:normalize=0`.
-
-#### `[PERF-02]` Required: FFmpeg Re-encode Fallback Lacks Framerate Normalization
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L205-L235`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L205-L235)
-- **Problem:** In `cmd_reencode`, `-r 24` is omitted, while `generate_title_card_clip` enforces `-r 24`. Concatenating clips with differing or variable framerates causes video stutter and timestamp drift during re-encoding.
-- **Structural Remedy:** Add `-r 24` and `-pix_fmt yuv420p` to ensure smooth playback and stream alignment.
-
-#### `[PERF-03]` Optional: Synchronous Sequential Clip Downloads from GCS
-- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L58-L86`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L58-L86)
-- **Problem:** Clips stored in GCS are downloaded sequentially in a blocking `for` loop. When stitching 5 to 10 clips for a long master video, network latency compounds.
-- **Structural Remedy:** Download clips concurrently using a `ThreadPoolExecutor` when multiple GCS URIs are detected.
+### `[CORR-02]` Required: Inconsistent `/api/media-proxy` URL Unquoting Across Normalization Sites
+- **Location:** [`src/omnimash/storage/gcs.py#L212-L219`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L212-L219), [`#L470-L475`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L470-L475), [`#L621-L628`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L621-L628)
+- **Problem:**
+  - In `download_blob_bytes` (line 217): `raw_uri = qs["uri"][0]` &rarr; **Not unquoted!** If the URL was percent-encoded (e.g. `uri=gs%3A%2F%2Fbucket%2Fclip.mp4`), `raw_uri.startswith("gs://")` fails and the download returns empty bytes.
+  - In `save_character_sheet` (line 626): `unquote(qs["uri"][0])` &rarr; Unquoted.
+  - In `_normalize_media_source_path` (line 474): `unquote(qs["uri"][0])` &rarr; Unquoted.
+- **Remedy (Named Restructuring: Single Canonical Helper):** Consolidate all media-proxy parameter unpacking into `_normalize_media_source_path`, ensuring `unquote()` is consistently applied everywhere.
 
 ---
 
-## Remediation Plan Blueprint
-
-To ensure clean isolation, thorough testing, and minimal execution time, we propose organizing the fixes into **two parallel PRs**:
-
-```
-                              ┌────────────────────────────────────────┐
-                              │  PR 1: Security & Path Confinement     │
-                              │  - Safe remote media fetch (SSRF fix)  │
-                              │  - Local /static/ path confinement     │
-                              │  - Subprocess timeouts                 │
-                              │  - Concat demuxer quote escaping       │
-                              │  - Empty clip_paths guard              │
-                              └────────────────────────────────────────┘
-                                                 │
-                                                 ▼
-┌───────────────────────────┐ ┌────────────────────────────────────────┐
-│ main (Green: 503 passing) │ │  PR 2: Architecture & Audio Modernize  │
-└───────────────────────────┘ │  - Unified canonical media resolution  │
-                              │  - FFmpeg amix normalize=0 (0dB voice) │
-                              │  - Tempfile.TemporaryDirectory cleanup │
-                              │  - Public __init__.py exports          │
-                              │  - Remove unused ffmpeg-python dep     │
-                              └────────────────────────────────────────┘
-```
-
-### Proposed PR 1: Security, Input Validation & Subprocess Hardening
-- Remediates: `SEC-01`, `SEC-02`, `SEC-03`, `CORR-01`, `CORR-02`, `CORR-04`
-- Estimated Diff: ~120 lines changed
-- Scope: In `stitcher.py` and `audio_overlay.py`, wire SSRF validation, path confinement, subprocess timeouts, and concat single-quote escaping.
-
-### Proposed PR 2: Architecture Unification, Audio Modernization & Cleanup
-- Remediates: `ARCH-01`, `ARCH-02`, `ARCH-03`, `ARCH-04`, `PERF-01`, `PERF-02`, `READ-01`, `READ-02`, `CORR-03`
-- Estimated Diff: ~150 lines changed
-- Scope: Unified media resolver helper, `tempfile.TemporaryDirectory`, `amix normalize=0`, `__init__.py` exports, and removal of unused `ffmpeg-python` dependency.
+### `[CORR-03]` Required: Eager `storage.Client` Initialization in `__init__` Triggers Blocking Subprocesses
+- **Location:** [`src/omnimash/storage/gcs.py#L95-L103`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L95-L103)
+- **Problem:** `GcsStorageManager.__init__` eagerly attempts to construct `storage.Client(project=self.project_id)` whenever `not self.mock_mode and storage`. If `project_id` is None, `storage.Client()` runs `subprocess.run(('gcloud', 'config', 'get', 'project'))`.
+  - In unit tests or environments without ADC credentials, this causes test timeouts or unexpected subprocess execution.
+- **Remedy (Named Restructuring: Lazy Property Initialization):** Defer client construction until the first actual network call via `@property def client(self)` or `_get_client()`.
 
 ---
 
-## Verification Strategy
-- **Unit & Integration Suite:** `uv run pytest tests/stitching/ -v`
-- **Full Test Suite:** `uv run pytest`
-- **Linting:** `uv run ruff check .`
-- **Static Typing:** `uv run ty check`
+### `[CORR-04]` Optional: Incomplete MIME Type Fallback in `load_bytes`
+- **Location:** [`src/omnimash/storage/gcs.py#L331`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L331), [`#L337`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L337)
+- **Problem:**
+  ```python
+  mime = "image/png" if path.lower().endswith(".png") else "image/jpeg"
+  ```
+  Any non-PNG file (such as `.mp4`, `.wav`, `.aac`, `.json`) loaded via `load_bytes` is erroneously labeled `"image/jpeg"`.
+- **Remedy:** Replace with unified `_guess_content_type(path)`.
+
+---
+
+## 3. Readability & Simplicity
+
+### `[READ-01]` Required: Massive 1,313-Line God Class Violating Single Responsibility
+- **Location:** Entire [`src/omnimash/storage/gcs.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py)
+- **Problem:** `GcsStorageManager` contains 38 public/internal methods combining:
+  1. Low-level GCS SDK blob operations (`upload_file`, `upload_bytes`, `download_blob_bytes`, `download_blob_range`, `ensure_bucket_exists`)
+  2. Prompt & session manifest JSON persistence
+  3. Reference analysis persistence
+  4. Storyboard JSON CRUD (`save_storyboard`, `list_storyboards`, `load_storyboard`, `delete_storyboard`)
+  5. Character catalog & cast roster CRUD
+  6. Product catalog CRUD
+  7. Multi-tenant project hierarchy simulation (`list_projects`, `create_project`, `list_sessions`, etc.)
+- **Remedy (Named Restructuring: Logical Partitioning):**
+  - Group methods into clear functional sections with section header blocks.
+  - Extract common repetitive JSON read/write logic into generic helpers `_upload_json_payload` and `_download_json_payload` to eliminate ~250 lines of duplicate JSON dumping, UTF-8 encoding, and error handling.
+
+---
+
+### `[READ-02]` Required: Quadruplicate Hardcoded Content-Type Ladders
+- **Location:** [`src/omnimash/storage/gcs.py#L170-L181`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L170-L181), [`#L246-L257`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L246-L257), [`#L306-L315`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L306-L315), [`#L814-L816`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L814-L816)
+- **Problem:** Four separate 10-line chains checking `.mp4`, `.wav`, `.jpg`, `.jpeg`, `.png`, `.json`.
+- **Remedy (Named Restructuring: Helper Extraction):** Extract `_guess_content_type(path: str, default: str = "application/octet-stream") -> str` using Python's `mimetypes.guess_type()`.
+
+---
+
+### `[READ-03]` Nit: Class Alias `GCSStorage = GcsStorageManager` Lacks Documentation
+- **Location:** [`src/omnimash/storage/gcs.py#L1312-L1313`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1312-L1313)
+- **Problem:** `GCSStorage = GcsStorageManager` is appended at the bottom of the file without docstring context.
+- **Remedy:** Add docstring explaining that `GCSStorage` is an alias preserved for backward compatibility.
+
+---
+
+### `[READ-04]` Nit: Pervasive `Any` Typing and Loose Signatures
+- **Location:** Throughout method parameters and return signatures (`dict[str, Any]`, `_client: Any`, `_bucket: Any`).
+- **Remedy:** Type `_client: storage.Client | None` and `_bucket: storage.Bucket | None` with `TYPE_CHECKING` guards.
+
+---
+
+## 4. Architecture
+
+### `[ARCH-01]` Required: Leaky Abstraction — Callers Accessing Internal `_bucket` Directly
+- **Location:** Multiple call sites across modules and tests directly inspect `self.storage._bucket`.
+- **Problem:** Bypasses encapsulation, making it impossible to substitute alternative storage providers or maintain invariants.
+- **Remedy (Named Restructuring: Public Facade Methods):** Provide public `blob_exists(blob_path: str) -> bool`, `get_blob_metadata(blob_path: str) -> dict[str, Any] | None`, and `delete_blob(blob_path: str) -> bool`.
+
+---
+
+### `[ARCH-02]` Required: Unsynchronized In-Memory Mock State Between Mock Mode and Live Mode
+- **Location:** [`src/omnimash/storage/gcs.py#L80-L93`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L80-L93)
+- **Problem:** Nine separate internal dictionaries (`self._mock_characters`, `self._mock_analyses`, `self._mock_session_manifests`, `self._mock_storyboards`, `self._mock_projects`, `self._mock_project_sessions`, `self._mock_project_characters`, `self._mock_project_products`, `self._mock_project_reference_sheets`) serve as in-memory caches. In live mode, some methods write to them and others don't, causing state divergence.
+- **Remedy (Named Restructuring: Explicit Storage Provider Isolation):** Centralize mock cache updates so that mock mode operates deterministically and live mode interacts cleanly with GCS without leaking stale cache entries.
+
+---
+
+### `[ARCH-03]` Optional: Hardcoded Seed Data (`DEFAULT_CHARACTERS`) in Storage Driver
+- **Location:** [`src/omnimash/storage/gcs.py#L24-L61`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L24-L61)
+- **Problem:** 37 lines of character definitions ("Harry 'Gucci'", "Young Draco 'Jeezy'", "Cyborg Gordon Ramsay", "Neon Julia Child") and external bucket references (`gs://reference-images-jt-trend-trawler/...`) reside inside the generic storage manager file.
+- **Remedy:** Move seed data to a dedicated configuration/defaults module or JSON fixture.
+
+---
+
+## 5. Performance
+
+### `[PERF-01]` Required: Unbounded `list_blobs` Iteration Without Page Size Constraints
+- **Location:** [`src/omnimash/storage/gcs.py#L899`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L899), [`#L916`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L916), [`#L950`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L950), [`#L980`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L980), [`#L1016`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1016), [`#L1118`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1118), [`#L1204`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1204)
+- **Problem:** Methods iterate over `self._bucket.list_blobs(prefix=prefix)` with no `page_size` or limit. In `list_session_ids`:
+  ```python
+  blobs = list(self._client.list_blobs(self.bucket_name, prefix="sessions/"))
+  ```
+  `list(...)` eagerly materializes every blob in memory. In a bucket with 10,000 files, this takes several seconds and megabytes of memory.
+- **Remedy:** Supply `page_size=100` and stream iteratively without eager `list()` evaluation.
+
+---
+
+### `[PERF-02]` Required: N+1 Sequential Synchronous Network Calls in Listing Endpoints
+- **Location:** [`src/omnimash/storage/gcs.py#L903`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L903), [`#L920`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L920), [`#L954`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L954), [`#L1020`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1020), [`#L1208`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L1208)
+- **Problem:** In `list_characters`, `list_storyboards`, and `list_project_characters`, the code loops over every discovered blob and calls `blob.download_as_text()` synchronously:
+  ```python
+  blobs = self._bucket.list_blobs(prefix=prefix)
+  for blob in blobs:
+      if blob.name.endswith(".json"):
+          data = json.loads(blob.download_as_text())
+  ```
+  Listing 30 storyboards generates 30 serial HTTPS requests over the internet.
+- **Remedy (Named Restructuring: Parallel Fetch / Metadata Headers):** Use a `ThreadPoolExecutor(max_workers=8)` to fetch JSON payloads concurrently, reducing latency by ~85%.
+
+---
+
+### `[PERF-03]` Optional: In-Memory Byte Buffering for Large Video Artifacts
+- **Location:** [`src/omnimash/storage/gcs.py#L744-L753`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L744-L753), [`#L610-L647`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py#L610-L647)
+- **Problem:** `save_video_clip` and `save_character_sheet` frequently read entire files into Python `bytes` objects in memory before calling `upload_bytes`, doubling heap consumption for large clips.
+- **Remedy:** Stream directly from disk using `upload_file` / `blob.upload_from_filename` whenever a local file path exists.
+
+---
+
+## Prioritized Remediation Roadmap
+
+1. **PR 1: Security & Stability Hardening (Immediate Priority)**
+   - `[SEC-01]`: Mitigate SSRF in `save_character_sheet` using `validate_remote_media_url` and `fetch_media_bytes`.
+   - `[SEC-02]`: Enforce local path containment in `save_final_master` using `validate_local_media_path`.
+   - `[SEC-03]`: Add `threading.Lock()` to `_SHARED_CLIENTS` for thread-safe client cache.
+   - `[SEC-04]`: Inject `timeout=settings.gcs_timeout_seconds` across all GCS operations.
+   - `[CORR-01]`: Replace silent `pass` blocks with structured `logger.warning` / `logger.error`.
+   - `[CORR-02]`: Consolidate `/api/media-proxy` unquoting in `_normalize_media_source_path`.
+   - `[CORR-03]`: Lazy-initialize `self._client` to eliminate blocking `gcloud` subprocess calls in tests.
+
+2. **PR 2: Architecture & Performance Modernization**
+   - `[READ-02]`, `[CORR-04]`: Extract unified `_guess_content_type` helper using `mimetypes.guess_type()`.
+   - `[READ-01]`: Extract generic `_upload_json_payload` and `_download_json_payload` helpers to deduplicate ~250 lines of boilerplate.
+   - `[ARCH-01]`: Expose clean public facade methods (`blob_exists`, `get_blob_metadata`, `delete_blob`).
+   - `[PERF-01]`: Add `page_size` and eliminate eager `list()` materialization in `list_session_ids`.
+   - `[PERF-02]`: Implement parallel JSON blob download via `ThreadPoolExecutor` for listing endpoints.
+   - `[PERF-03]`: Prefer disk-to-cloud streaming over memory byte buffering in `save_video_clip`.
+   - `[READ-03]`, `[READ-04]`: Document class alias and refine type annotations.
