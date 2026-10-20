@@ -9,11 +9,16 @@ class GuardrailResult:
 
 
 class ModelArmorGuardrail:
-    def __init__(self, mock_mode: bool | None = None):
+    def __init__(self, mock_mode: bool | None = None, template_id: str | None = None):
         from omnimash.config import settings
 
         self.mock_mode = (
             mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
+        )
+        self.template_id = (
+            template_id
+            if template_id is not None
+            else getattr(settings, "model_armor_template_id", "omnimash-safety-filter")
         )
 
     def validate_prompt(self, prompt: str) -> GuardrailResult:
@@ -26,7 +31,17 @@ class ModelArmorGuardrail:
 
         malicious_patterns = [
             "ignore previous instructions",
+            "ignore all previous instructions",
+            "disregard previous instructions",
+            "forget all prior instructions",
             "system override prompt",
+            "[system]",
+            "<|im_start|>",
+            "developer mode",
+            "jailbreak",
+            "do anything now",
+            "bypass safety filter",
+            "reveal system prompt",
             "hate speech",
             "overt hate speech attack",
         ]

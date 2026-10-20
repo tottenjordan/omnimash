@@ -46,53 +46,90 @@ def apply_dialogue_audio_ducking(
             f.write("mock ducked audio content")
         return output_path
 
-    # Normalize static paths if relative
-    if music_path.startswith("/static/"):
-        static_loc = os.path.join(os.getcwd(), music_path.lstrip("/"))
-        if os.path.exists(static_loc):
-            music_path = static_loc
+    temp_files: list[str] = []
 
-    if dialogue_path.startswith("/static/"):
-        static_loc = os.path.join(os.getcwd(), dialogue_path.lstrip("/"))
-        if os.path.exists(static_loc):
-            dialogue_path = static_loc
+    def _resolve_audio_input(raw_path: str) -> str:
+        from urllib.parse import parse_qs, unquote, urlparse
 
-    # Calculate compression threshold from ducking_db attenuation (-12dB default -> 0.2512 linear threshold)
-    threshold = round(10.0 ** (-abs(ducking_db) / 20.0), 4)
+        norm = raw_path.strip()
+        if "/api/media-proxy" in norm and "uri=" in norm:
+            try:
+                parsed = urlparse(norm)
+                qs = parse_qs(parsed.query)
+                if "uri" in qs and qs["uri"]:
+                    norm = unquote(qs["uri"][0])
+            except Exception:
+                pass
+        if norm.startswith("/static/"):
+            static_loc = os.path.join(os.getcwd(), norm.lstrip("/"))
+            if os.path.exists(static_loc):
+                return static_loc
+        if os.path.exists(norm):
+            return os.path.abspath(norm)
+        if norm.startswith(("gs://", "https://storage.googleapis.com/")):
+            try:
+                from omnimash.storage.gcs import GcsStorageManager
 
-    # FFmpeg sidechaincompress filter graph
-    # [0:a] is background music, [1:a] is dialogue trigger signal
-    filter_complex = (
-        f"[0:a][1:a]sidechaincompress="
-        f"threshold={threshold}:ratio=4:attack=20:release=300[ducked];"
-        f"[ducked][1:a]amix=inputs=2:duration=first[aout]"
-    )
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        music_path,
-        "-i",
-        dialogue_path,
-        "-filter_complex",
-        filter_complex,
-        "-map",
-        "[aout]",
-        "-c:a",
-        "aac",
-        output_path,
-    ]
+                storage_mgr = GcsStorageManager(mock_mode=mock_mode)
+                data, _ = storage_mgr.download_blob_bytes(norm)
+                if data:
+                    ext = os.path.splitext(norm)[1] or ".mp3"
+                    tmp_p = os.path.join(output_dir, f"duck_in_{uuid.uuid4().hex[:8]}{ext}")
+                    with open(tmp_p, "wb") as tf:
+                        tf.write(data)
+                    temp_files.append(tmp_p)
+                    return tmp_p
+            except Exception:
+                pass
+        return norm
 
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            logger.warning("FFmpeg sidechain ducking failed: %s", res.stderr)
+        music_path = _resolve_audio_input(music_path)
+        dialogue_path = _resolve_audio_input(dialogue_path)
+
+        # Calculate compression threshold from ducking_db attenuation (-12dB default -> 0.2512 linear threshold)
+        threshold = round(10.0 ** (-abs(ducking_db) / 20.0), 4)
+
+        # FFmpeg sidechaincompress filter graph
+        # [0:a] is background music, [1:a] is dialogue trigger signal
+        filter_complex = (
+            f"[0:a][1:a]sidechaincompress="
+            f"threshold={threshold}:ratio=4:attack=20:release=300[ducked];"
+            f"[ducked][1:a]amix=inputs=2:duration=first[aout]"
+        )
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            music_path,
+            "-i",
+            dialogue_path,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[aout]",
+            "-c:a",
+            "aac",
+            output_path,
+        ]
+
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                logger.warning("FFmpeg sidechain ducking failed: %s", res.stderr)
+                with open(output_path, "w") as f:
+                    f.write("fallback ducked audio content")
+        except Exception as exc:
+            logger.warning("Failed to execute FFmpeg dialogue audio ducking: %s", exc)
             with open(output_path, "w") as f:
                 f.write("fallback ducked audio content")
-    except Exception as exc:
-        logger.warning("Failed to execute FFmpeg dialogue audio ducking: %s", exc)
-        with open(output_path, "w") as f:
-            f.write("fallback ducked audio content")
+    finally:
+        for tp in temp_files:
+            if os.path.exists(tp):
+                try:
+                    os.remove(tp)
+                except OSError:
+                    pass
 
     return output_path

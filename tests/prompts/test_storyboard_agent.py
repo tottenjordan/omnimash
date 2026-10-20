@@ -91,7 +91,13 @@ def test_expand_vision_custom_duration():
 
 
 def test_expand_vision_live_fallback():
+    from unittest.mock import MagicMock
+
     agent = StoryboardAgent(mock_mode=False)
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = RuntimeError("Simulated live API failure")
+    agent._genai_client = mock_client
+
     shots = agent.expand_vision(
         concept="30-second Dripwarts video",
         style_tone="Gritty 90s rap video",
@@ -99,6 +105,11 @@ def test_expand_vision_live_fallback():
     )
     assert len(shots) >= 3
     assert all(s.duration_seconds <= 10.0 for s in shots)
+    assert mock_client.models.generate_content.called
+    for call in mock_client.models.generate_content.call_args_list:
+        assert call.kwargs.get("model") == "gemini-3.8-flash"
+        if call.kwargs.get("config") is not None:
+            assert getattr(call.kwargs["config"], "temperature", None) is None
 
 
 def test_parse_timecoded_script():
@@ -275,7 +286,9 @@ def test_optimize_shot_prompt_live_mocked_genai(monkeypatch):
 
     class MockModels:
         def generate_content(self, model, contents, config=None):
-            assert model == "gemini-2.5-flash"
+            assert model == "gemini-3.8-flash"
+            if config is not None:
+                assert getattr(config, "temperature", None) is None
             assert "Hollywood cinematographer" in contents
             assert "Dark Fantasy" in contents
             assert "Severus Snape enters the potion room" in contents

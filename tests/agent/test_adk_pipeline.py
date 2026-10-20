@@ -110,6 +110,7 @@ def test_adk_script_deconstructor_expands_storyboard():
             style_tone="Cinematic Trap Parody",
             target_duration=30.0,
             screenplay_script="[00:00-00:05] Intro shot: Neon street\n[00:05-00:10] Action: Duel begins",
+            mock_mode=True,
         )
         assert spy_deconstructor.call_count == 1
     assert isinstance(shots, list)

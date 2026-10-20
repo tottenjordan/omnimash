@@ -1238,7 +1238,7 @@ class PromptOptimizer:
                         "CRITICAL: Keep all [IMAGE ROLES] and [ROLE DEFINITIONS] blocks intact."
                     )
                     response = client.models.generate_content(
-                        model="gemini-2.5-flash",
+                        model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
                         contents=f"{system_instruction}\n\n[PROMPT TO OPTIMIZE]:\n{optimized}",
                     )
                     if response and getattr(response, "text", None):
@@ -1310,7 +1310,7 @@ class PromptCompiler:
                 self._flash_regional_client = genai.Client(
                     vertexai=True,
                     project=project,
-                    location="us-central1",
+                    location=getattr(settings, "gemini_location", "global"),
                 )
         except Exception as exc:
             logger.warning("Failed to initialize Tier 2 Flash Regional client: %s", exc)
@@ -1351,7 +1351,6 @@ class PromptCompiler:
 
                     config = types.GenerateContentConfig(
                         response_mime_type="application/json",
-                        temperature=0.7,
                     )
                     response = client.models.generate_content(
                         model=model_name,
@@ -1798,15 +1797,23 @@ class PromptCompiler:
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         style_preset: str | None = None,
+        is_seamless_loop: bool = False,
     ) -> str:
         apply_conversational_voice_edits(concept, characters)
         start_idx = 1
+        effective_has_keyframe = has_keyframe_seed or bool(keyframe_image_url)
         sources_items, references_items, char_tag_map = build_character_image_ref_tags(
             characters=characters,
             starting_index=start_idx,
-            has_keyframe_seed=(has_keyframe_seed or bool(keyframe_image_url)),
+            has_keyframe_seed=effective_has_keyframe,
             enable_sanitization=enable_sanitization,
         )
+        if (
+            is_seamless_loop
+            and effective_has_keyframe
+            and not any(s.startswith("<LAST_FRAME>") for s in sources_items)
+        ):
+            sources_items.append("<LAST_FRAME>@KeyframeSeed")
 
         input_roles: list[str] = []
         if sources_items:
@@ -1860,6 +1867,16 @@ class PromptCompiler:
         scene_inst_parts.append("Camera & Lighting: In a single continuous shot. No scene cuts.")
         if aspect_ratio and aspect_ratio.strip():
             scene_inst_parts.append(f"- Aspect Ratio: {aspect_ratio.strip()}")
+
+        if is_seamless_loop:
+            if effective_has_keyframe:
+                scene_inst_parts.append(
+                    "- Seamless Infinite Loop Mode: Seamless continuous infinite loop directive. Mirror start frame <FIRST_FRAME>@KeyframeSeed and end frame <LAST_FRAME>@KeyframeSeed so the final frame smoothly, imperceptibly loops back to the beginning with identical character posture, camera position, and ambient lighting."
+                )
+            else:
+                scene_inst_parts.append(
+                    "- Seamless Infinite Loop Mode: Seamless continuous infinite loop directive so the final frame smoothly, imperceptibly loops back to the beginning with identical character posture, camera position, and ambient lighting."
+                )
 
         has_dialogue = False
         for scene in scenes:
@@ -2158,7 +2175,16 @@ class PromptCompiler:
         enable_sanitization: bool = True,
         aspect_ratio: str = "16:9",
         style_preset: str | None = None,
+        is_seamless_loop: bool = False,
     ) -> str:
+        if (
+            is_seamless_loop
+            and keyframe_image_url
+            and keyframe_image_url.strip()
+            and not (last_frame_image_url and last_frame_image_url.strip())
+        ):
+            last_frame_image_url = keyframe_image_url.strip()
+
         if last_frame_image_url and last_frame_image_url.strip():
             if characters is None:
                 characters = []
@@ -2197,6 +2223,7 @@ class PromptCompiler:
             enable_sanitization=enable_sanitization,
             aspect_ratio=aspect_ratio,
             style_preset=style_preset,
+            is_seamless_loop=is_seamless_loop,
         )
         if edit_instruction and edit_instruction.strip():
             clean_instruction = edit_instruction.strip()
@@ -2216,7 +2243,7 @@ class PromptCompiler:
         if self._pro_global_client:
             res = self._try_gemini_deconstruction(
                 client=self._pro_global_client,
-                model_name="gemini-3.1-pro-preview",
+                model_name=getattr(settings, "pro_model_id", "gemini-4-argon"),
                 concept=concept,
                 tier_name="Tier 1 Pro Global",
             )
@@ -2226,7 +2253,7 @@ class PromptCompiler:
         if self._flash_regional_client:
             res = self._try_gemini_deconstruction(
                 client=self._flash_regional_client,
-                model_name="gemini-2.5-flash",
+                model_name=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
                 concept=concept,
                 tier_name="Tier 2 Flash Regional",
             )

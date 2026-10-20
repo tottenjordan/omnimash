@@ -130,6 +130,20 @@ class VideoStitcher:
                             f.write(f"file '{clip_file}'\n")
 
                     if resolved_audio and os.path.exists(resolved_audio):
+                        try:
+                            if os.path.getsize(resolved_audio) < 64:
+                                with open(resolved_audio, "rb") as af:
+                                    head = af.read(64)
+                                if head.startswith(b"fallback ducked audio content"):
+                                    logger.warning(
+                                        "Ignoring fallback ducked audio placeholder in live stitch: %s",
+                                        resolved_audio,
+                                    )
+                                    resolved_audio = None
+                        except OSError:
+                            pass
+
+                    if resolved_audio and os.path.exists(resolved_audio):
                         cmd_copy = [
                             "ffmpeg",
                             "-y",
@@ -371,6 +385,19 @@ class VideoStitcher:
 
         return out_path
 
+    @staticmethod
+    def _is_valid_audio_reference(ref: str) -> bool:
+        if not ref or not isinstance(ref, str):
+            return False
+        s = ref.strip()
+        if not s:
+            return False
+        if s.startswith(("/", "./", "../", "gs://", "http://", "https://")):
+            return True
+        if s.lower().endswith((".mp3", ".wav", ".aac", ".m4a", ".ogg", ".flac")):
+            return True
+        return os.path.exists(s)
+
     def stitch_storyboard_master(
         self,
         shot_clips: list[str],
@@ -382,45 +409,67 @@ class VideoStitcher:
         aspect_ratio: str = "16:9",
     ) -> str:
         ordered_clips = list(shot_clips)
+        temp_storyboard_files: list[str] = []
 
-        if title_cards:
-            sorted_cards = sorted(
-                title_cards,
-                key=lambda c: c.get("insert_at", 0),
-                reverse=True,
-            )
-            for card in sorted_cards:
-                title = card.get("title") or card.get("title_text", "")
-                subtitle = card.get("subtitle") or card.get("subtitle_text", "")
-                duration = card.get("duration") or card.get("duration_seconds", 3.0)
-                style = card.get("style", "gothic_gold")
-                insert_at = card.get("insert_at", 0)
-
-                card_clip_path = self.generate_title_card_clip(
-                    title_text=title,
-                    subtitle_text=subtitle,
-                    duration_seconds=float(duration),
-                    style=style,
-                    output_dir=output_dir,
-                    aspect_ratio=aspect_ratio,
+        try:
+            if title_cards:
+                sorted_cards = sorted(
+                    title_cards,
+                    key=lambda c: c.get("insert_at", 0),
+                    reverse=True,
                 )
-                idx = max(0, min(int(insert_at), len(ordered_clips)))
-                ordered_clips.insert(idx, card_clip_path)
+                for card in sorted_cards:
+                    title = card.get("title") or card.get("title_text", "")
+                    subtitle = card.get("subtitle") or card.get("subtitle_text", "")
+                    duration = card.get("duration") or card.get("duration_seconds", 3.0)
+                    style = card.get("style", "gothic_gold")
+                    insert_at = card.get("insert_at", 0)
 
-        master_audio = background_music_path
-        if background_music_path and narrator_audio_paths and len(narrator_audio_paths) > 0:
-            master_audio = apply_dialogue_audio_ducking(
-                music_path=background_music_path,
-                dialogue_path=narrator_audio_paths[0],
-                output_dir=output_dir,
-                mock_mode=self.mock_mode,
+                    card_clip_path = self.generate_title_card_clip(
+                        title_text=title,
+                        subtitle_text=subtitle,
+                        duration_seconds=float(duration),
+                        style=style,
+                        output_dir=output_dir,
+                        aspect_ratio=aspect_ratio,
+                    )
+                    temp_storyboard_files.append(card_clip_path)
+                    idx = max(0, min(int(insert_at), len(ordered_clips)))
+                    ordered_clips.insert(idx, card_clip_path)
+
+            valid_narrator_paths = [
+                p.strip()
+                for p in (narrator_audio_paths or [])
+                if isinstance(p, str) and self._is_valid_audio_reference(p)
+            ]
+
+            master_audio = (
+                background_music_path
+                if (background_music_path and self._is_valid_audio_reference(background_music_path))
+                else None
             )
-        elif not master_audio and narrator_audio_paths and len(narrator_audio_paths) > 0:
-            master_audio = narrator_audio_paths[0]
+            if master_audio and valid_narrator_paths:
+                ducked_audio = apply_dialogue_audio_ducking(
+                    music_path=master_audio,
+                    dialogue_path=valid_narrator_paths[0],
+                    output_dir=output_dir,
+                    mock_mode=self.mock_mode,
+                )
+                temp_storyboard_files.append(ducked_audio)
+                master_audio = ducked_audio
+            elif not master_audio and valid_narrator_paths:
+                master_audio = valid_narrator_paths[0]
 
-        return self.concatenate_clips(
-            clip_paths=ordered_clips,
-            output_dir=output_dir,
-            session_id=session_id,
-            master_audio_path=master_audio,
-        )
+            return self.concatenate_clips(
+                clip_paths=ordered_clips,
+                output_dir=output_dir,
+                session_id=session_id,
+                master_audio_path=master_audio,
+            )
+        finally:
+            for tmp_p in temp_storyboard_files:
+                if os.path.exists(tmp_p):
+                    try:
+                        os.remove(tmp_p)
+                    except OSError:
+                        pass

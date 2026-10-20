@@ -831,7 +831,7 @@ def test_generate_keyframe_image_with_character_roster() -> None:
     assert "keyframe" in res_url
     assert mock_models.generate_content.called
     call_kwargs = mock_models.generate_content.call_args.kwargs
-    assert call_kwargs["model"] == "gemini-3.1-flash-image"
+    assert call_kwargs["model"] == "gemini-nano-banana-2.1"
     contents = call_kwargs["contents"]
     assert len(contents) == 2  # 1 image part + 1 prompt text
     prompt_str = contents[1]
@@ -1184,7 +1184,7 @@ def test_generate_keyframe_image_verifies_gemini_flash_location(
 
         created_clients[0].models.generate_content.assert_called_once()
         gen_kwargs = created_clients[0].models.generate_content.call_args.kwargs
-        assert gen_kwargs.get("model") == "gemini-3.1-flash-image"
+        assert gen_kwargs.get("model") == "gemini-nano-banana-2.1"
         assert any("Cyberpunk street keyframe" in str(c) for c in gen_kwargs.get("contents", []))
         assert uri is not None
 
@@ -1213,7 +1213,7 @@ def test_generate_keyframe_image_fallback_on_failure(
 def test_generate_keyframe_image_with_reference_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify generate_keyframe_image passes reference images to gemini-3.1-flash-image."""
+    """Verify generate_keyframe_image passes reference images to gemini-nano-banana-2.1."""
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj-ref")
 
     created_clients: list[MagicMock] = []
@@ -1873,13 +1873,13 @@ def test_generate_character_reference_sheet_genai_call() -> None:
             source_image_url="gs://test-bucket/source.png",
             character_name="Astronaut",
             description="Sci-fi explorer",
-            image_model="gemini-3.1-flash-image",
+            image_model="gemini-nano-banana-2.1",
         )
 
     assert "ref_sheets" in res_url
     assert mock_models.generate_content.called
     call_kwargs = mock_models.generate_content.call_args.kwargs
-    assert call_kwargs["model"] == "gemini-3.1-flash-image"
+    assert call_kwargs["model"] == "gemini-nano-banana-2.1"
     contents = call_kwargs["contents"]
     assert len(contents) == 2  # 1 image part + 1 prompt text
 
@@ -2489,3 +2489,66 @@ def test_start_thread_from_video_regenerate_audio_strips_audio(tmp_path: Any) ->
         assert kf_url != ""
         assert kf_url != input_video
         assert "stripped" in kf_url or "silent" in kf_url
+
+
+def test_image_generation_skips_thought_parts() -> None:
+    """Verify generate_keyframe_image and generate_character_reference_sheet skip interim thought=True image parts."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_genai_client = MagicMock()
+    mock_models = MagicMock()
+
+    thought_part = MagicMock(
+        thought=True,
+        inline_data=MagicMock(data=base64.b64encode(b"interim_thought_png").decode("utf-8")),
+    )
+    final_part = MagicMock(
+        thought=False,
+        inline_data=MagicMock(data=base64.b64encode(b"final_rendered_png").decode("utf-8")),
+    )
+    mock_candidate = MagicMock(content=MagicMock(parts=[thought_part, final_part]))
+    mock_models.generate_content.return_value = MagicMock(candidates=[mock_candidate])
+    mock_genai_client.models = mock_models
+
+    client.storage = MagicMock()
+    client.storage.get_gcs_uri.return_value = "gs://test-bucket/keyframes/final.png"
+
+    with patch("google.genai.Client", return_value=mock_genai_client):
+        kf_url = client.generate_keyframe_image(
+            prompt="Cyberpunk wizard",
+            image_model="gemini-nano-banana-2.1",
+        )
+        assert "final.png" in kf_url
+        png_calls = [
+            c
+            for c in client.storage.upload_bytes.call_args_list
+            if c.kwargs.get("content_type") == "image/png"
+        ]
+        assert len(png_calls) == 1
+        assert png_calls[0].args[0] == b"final_rendered_png"
+
+        client.storage.upload_bytes.reset_mock()
+        sheet_url = client.generate_character_reference_sheet(
+            character_name="Wizard",
+            description="Neon robes",
+            image_model="gemini-3-pro-image",
+        )
+        assert "final.png" in sheet_url
+        assert mock_models.generate_content.call_args.kwargs.get("model") == "gemini-3-pro-image"
+        sheet_png_calls = [
+            c
+            for c in client.storage.upload_bytes.call_args_list
+            if c.kwargs.get("content_type") == "image/png"
+        ]
+        assert len(sheet_png_calls) == 1
+        assert sheet_png_calls[0].args[0] == b"final_rendered_png"
+
+        # Legacy model strings should normalize to gemini-nano-banana-2.1
+        client.generate_keyframe_image(
+            prompt="Legacy test",
+            image_model="gemini-3.1-flash-image-preview",
+        )
+        assert (
+            mock_models.generate_content.call_args.kwargs.get("model") == "gemini-nano-banana-2.1"
+        )

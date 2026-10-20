@@ -1,7 +1,16 @@
 import re
 from typing import Any
 import uuid
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _normalize_image_model(value: Any) -> str:
+    if not isinstance(value, str):
+        return "gemini-nano-banana-2.1"
+    cleaned = value.strip()
+    if not cleaned or cleaned.startswith("gemini-3.1-flash-image"):
+        return "gemini-nano-banana-2.1"
+    return cleaned
 
 
 class TurnNode(BaseModel):
@@ -23,11 +32,27 @@ class ClipSegment(BaseModel):
 
 
 class ProjectSession(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     session_id: str
-    user_id: str
+    user_id: str = "usr_default"
     project_id: str
     turns: dict[str, TurnNode] = Field(default_factory=dict)
     timeline: list[ClipSegment] = Field(default_factory=list)
+    master_description: str = ""
+    style_preset: str = ""
+    aspect_ratio: str = "16:9"
+    image_model: str = "gemini-nano-banana-2.1"
+    enable_safety_sanitization: bool = True
+    characters: list[dict[str, Any]] = Field(default_factory=list)
+    products: list[dict[str, Any]] = Field(default_factory=list)
+    shot_cards: list[dict[str, Any]] = Field(default_factory=list)
+    cumulative_state: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("image_model", mode="before")
+    @classmethod
+    def _validate_image_model(cls, v: Any) -> str:
+        return _normalize_image_model(v)
 
 
 class SessionManager:
@@ -38,9 +63,34 @@ class SessionManager:
     def _persist_session(self, session: ProjectSession) -> None:
         if self.storage is not None and hasattr(self.storage, "save_session_manifest"):
             try:
+                manifest_data = session.model_dump()
+                if hasattr(self.storage, "get_session_manifest"):
+                    existing = self.storage.get_session_manifest(
+                        session.session_id, project_id=session.project_id
+                    )
+                    if isinstance(existing, dict):
+                        for key in (
+                            "master_description",
+                            "style_preset",
+                            "aspect_ratio",
+                            "image_model",
+                            "enable_safety_sanitization",
+                            "characters",
+                            "products",
+                            "shot_cards",
+                            "cumulative_state",
+                        ):
+                            if not manifest_data.get(key) and existing.get(key):
+                                val = (
+                                    _normalize_image_model(existing[key])
+                                    if key == "image_model"
+                                    else existing[key]
+                                )
+                                manifest_data[key] = val
+                                setattr(session, key, val)
                 self.storage.save_session_manifest(
                     session_id=session.session_id,
-                    manifest_data=session.model_dump(),
+                    manifest_data=manifest_data,
                     project_id=session.project_id,
                 )
             except Exception:
@@ -57,8 +107,14 @@ class SessionManager:
             if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
                 try:
                     manifest = self.storage.get_session_manifest(session_key, project_id=project_id)
-                    if isinstance(manifest, dict) and "turns" in manifest:
-                        self._sessions[session_key] = ProjectSession.model_validate(manifest)
+                    if isinstance(manifest, dict):
+                        hydrated = {
+                            **manifest,
+                            "session_id": manifest.get("session_id") or session_key,
+                            "user_id": manifest.get("user_id") or user_id,
+                            "project_id": manifest.get("project_id") or project_id,
+                        }
+                        self._sessions[session_key] = ProjectSession.model_validate(hydrated)
                         return self._sessions[session_key]
                 except Exception:
                     pass

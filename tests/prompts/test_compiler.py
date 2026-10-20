@@ -242,13 +242,13 @@ def test_deconstruct_concept_3_tier_fallback():
         assert compiler._pro_global_client == mock_pro_client
         assert compiler._flash_regional_client == mock_flash_client
 
-        # Verify call args for global vs us-central1
+        # Verify call args for global location on both Tier 1 (gemini-4-argon) and Tier 2 (gemini-3.8-flash)
         assert mock_genai_client_cls.call_count == 2
         call1_kwargs = mock_genai_client_cls.call_args_list[0].kwargs
         call2_kwargs = mock_genai_client_cls.call_args_list[1].kwargs
         assert call1_kwargs.get("location") == "global"
         assert call1_kwargs.get("vertexai") is True
-        assert call2_kwargs.get("location") == "us-central1"
+        assert call2_kwargs.get("location") == "global"
         assert call2_kwargs.get("vertexai") is True
 
         # 3. Test Tier 1 success parsing structured JSON
@@ -277,6 +277,10 @@ def test_deconstruct_concept_3_tier_fallback():
         assert tags_t1.environment_tag == "Hogwarts dungeon"
         assert tags_t1.audio_beat == "140 BPM Trap"
         mock_pro_client.models.generate_content.assert_called_once()
+        pro_call_kwargs = mock_pro_client.models.generate_content.call_args.kwargs
+        assert pro_call_kwargs.get("model") == "gemini-4-argon"
+        if pro_call_kwargs.get("config") is not None:
+            assert getattr(pro_call_kwargs["config"], "temperature", None) is None
 
         # 4. Test Tier 1 failure -> Tier 2 fallback success
         mock_pro_client.models.generate_content.reset_mock()
@@ -289,6 +293,10 @@ def test_deconstruct_concept_3_tier_fallback():
         tags_t2 = compiler.deconstruct_concept("Harry Potter in trap video")
         assert tags_t2.environment_tag == "Flash regional stage"
         mock_flash_client.models.generate_content.assert_called_once()
+        flash_call_kwargs = mock_flash_client.models.generate_content.call_args.kwargs
+        assert flash_call_kwargs.get("model") == "gemini-3.8-flash"
+        if flash_call_kwargs.get("config") is not None:
+            assert getattr(flash_call_kwargs["config"], "temperature", None) is None
 
         # 5. Test Tier 1 failure & Tier 2 failure -> Tier 3 fallback
         mock_pro_client.models.generate_content.side_effect = RuntimeError("Pro error")
@@ -914,7 +922,7 @@ def test_expand_vision_inherits_deconstructed_concept_defaults():
     """Verify expand_vision derives location, framing, and style_lighting defaults from concept."""
     from omnimash.prompts.storyboard_agent import StoryboardAgent
 
-    agent = StoryboardAgent()
+    agent = StoryboardAgent(mock_mode=True)
     shots = agent.expand_vision(
         concept="Hip-Hop Wand Shop with glowing golden cases and black velvet",
         style_tone="Cinematic Rap Skit",
