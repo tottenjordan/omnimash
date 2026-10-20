@@ -23,12 +23,18 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.17.0",
     "ty>=0.0.86",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = "-n auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "browser: marks tests requiring headless browser via Playwright (deselect with '-m \"not browser\"')",
+]
 
 [tool.ruff]
 line-length = 100

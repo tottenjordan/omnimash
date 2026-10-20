@@ -1,4 +1,5 @@
 import re
+import threading
 from typing import Any
 import uuid
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -60,6 +61,7 @@ class SessionManager:
     def __init__(self, storage: Any | None = None):
         self._sessions: dict[str, ProjectSession] = {}
         self.storage = storage
+        self._lock = threading.RLock()
 
     def _persist_session(self, session: ProjectSession) -> None:
         if self.storage is not None and hasattr(self.storage, "save_session_manifest"):
@@ -100,29 +102,32 @@ class SessionManager:
     def get_or_create_session(
         self, user_id: str, project_id: str, session_name: str | None = None
     ) -> ProjectSession:
-        if session_name and session_name.strip():
-            session_key = re.sub(r"[^a-zA-Z0-9_-]", "_", session_name.strip())
-        else:
-            session_key = f"{user_id}:{project_id}"
-        if session_key not in self._sessions:
-            if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
-                try:
-                    manifest = self.storage.get_session_manifest(session_key, project_id=project_id)
-                    if isinstance(manifest, dict):
-                        hydrated = {
-                            **manifest,
-                            "session_id": manifest.get("session_id") or session_key,
-                            "user_id": manifest.get("user_id") or user_id,
-                            "project_id": manifest.get("project_id") or project_id,
-                        }
-                        self._sessions[session_key] = ProjectSession.model_validate(hydrated)
-                        return self._sessions[session_key]
-                except Exception:
-                    pass
-            self._sessions[session_key] = ProjectSession(
-                session_id=session_key, user_id=user_id, project_id=project_id
-            )
-        return self._sessions[session_key]
+        with self._lock:
+            if session_name and session_name.strip():
+                session_key = re.sub(r"[^a-zA-Z0-9_-]", "_", session_name.strip())
+            else:
+                session_key = f"{user_id}:{project_id}"
+            if session_key not in self._sessions:
+                if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
+                    try:
+                        manifest = self.storage.get_session_manifest(
+                            session_key, project_id=project_id
+                        )
+                        if isinstance(manifest, dict):
+                            hydrated = {
+                                **manifest,
+                                "session_id": manifest.get("session_id") or session_key,
+                                "user_id": manifest.get("user_id") or user_id,
+                                "project_id": manifest.get("project_id") or project_id,
+                            }
+                            self._sessions[session_key] = ProjectSession.model_validate(hydrated)
+                            return self._sessions[session_key]
+                    except Exception:
+                        pass
+                self._sessions[session_key] = ProjectSession(
+                    session_id=session_key, user_id=user_id, project_id=project_id
+                )
+            return self._sessions[session_key]
 
     def add_turn(
         self,
@@ -135,90 +140,95 @@ class SessionManager:
         is_checkpoint: bool = False,
         base_video_anchor_url: str | None = None,
     ) -> TurnNode:
-        session = self._sessions[session_id]
+        with self._lock:
+            session = self._sessions[session_id]
 
-        depth = 0
-        if parent_turn_id and parent_turn_id in session.turns:
-            parent = session.turns[parent_turn_id]
-            if parent.interaction_thread_id == interaction_thread_id and not is_checkpoint:
-                depth = parent.edit_depth_in_thread + 1
+            depth = 0
+            if parent_turn_id and parent_turn_id in session.turns:
+                parent = session.turns[parent_turn_id]
+                if parent.interaction_thread_id == interaction_thread_id and not is_checkpoint:
+                    depth = parent.edit_depth_in_thread + 1
 
-        turn = TurnNode(
-            parent_turn_id=parent_turn_id,
-            clip_index=clip_index,
-            prompt=prompt,
-            interaction_thread_id=interaction_thread_id,
-            video_url=video_url,
-            edit_depth_in_thread=depth,
-            is_committed=is_checkpoint,
-            base_video_anchor_url=base_video_anchor_url,
-        )
-        session.turns[turn.turn_id] = turn
-
-        found = False
-        for segment in session.timeline:
-            if segment.clip_index == clip_index:
-                segment.active_turn_id = turn.turn_id
-                segment.interaction_thread_id = interaction_thread_id
-                found = True
-                break
-        if not found:
-            session.timeline.append(
-                ClipSegment(
-                    clip_index=clip_index,
-                    active_turn_id=turn.turn_id,
-                    interaction_thread_id=interaction_thread_id,
-                )
+            turn = TurnNode(
+                parent_turn_id=parent_turn_id,
+                clip_index=clip_index,
+                prompt=prompt,
+                interaction_thread_id=interaction_thread_id,
+                video_url=video_url,
+                edit_depth_in_thread=depth,
+                is_committed=is_checkpoint,
+                base_video_anchor_url=base_video_anchor_url,
             )
-        self._persist_session(session)
-        return turn
+            session.turns[turn.turn_id] = turn
+
+            found = False
+            for segment in session.timeline:
+                if segment.clip_index == clip_index:
+                    segment.active_turn_id = turn.turn_id
+                    segment.interaction_thread_id = interaction_thread_id
+                    found = True
+                    break
+            if not found:
+                session.timeline.append(
+                    ClipSegment(
+                        clip_index=clip_index,
+                        active_turn_id=turn.turn_id,
+                        interaction_thread_id=interaction_thread_id,
+                    )
+                )
+            self._persist_session(session)
+            return turn
 
     def get_session(self, session_id: str, project_id: str | None = None) -> ProjectSession | None:
         """Retrieves a session from in-memory cache or hydrates from GCS storage manifest."""
-        if not session_id:
+        with self._lock:
+            if not session_id:
+                return None
+            if session_id in self._sessions:
+                return self._sessions[session_id]
+            sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
+            if sanitized in self._sessions:
+                return self._sessions[sanitized]
+            for session in self._sessions.values():
+                if session.session_id in (session_id, sanitized):
+                    return session
+            if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
+                try:
+                    manifest = self.storage.get_session_manifest(sanitized, project_id=project_id)
+                    if isinstance(manifest, dict) and manifest:
+                        hydrated = {
+                            **manifest,
+                            "session_id": manifest.get("session_id") or sanitized,
+                            "user_id": manifest.get("user_id") or "usr_default",
+                            "project_id": manifest.get("project_id") or project_id or sanitized,
+                        }
+                        sess = ProjectSession.model_validate(hydrated)
+                        self._sessions[sanitized] = sess
+                        return sess
+                except Exception:
+                    pass
             return None
-        if session_id in self._sessions:
-            return self._sessions[session_id]
-        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
-        if sanitized in self._sessions:
-            return self._sessions[sanitized]
-        for session in self._sessions.values():
-            if session.session_id in (session_id, sanitized):
-                return session
-        if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
-            try:
-                manifest = self.storage.get_session_manifest(sanitized, project_id=project_id)
-                if isinstance(manifest, dict) and manifest:
-                    hydrated = {
-                        **manifest,
-                        "session_id": manifest.get("session_id") or sanitized,
-                        "user_id": manifest.get("user_id") or "usr_default",
-                        "project_id": manifest.get("project_id") or project_id or sanitized,
-                    }
-                    sess = ProjectSession.model_validate(hydrated)
-                    self._sessions[sanitized] = sess
-                    return sess
-            except Exception:
-                pass
-        return None
 
     def allocate_turn_index(self, session_or_id: ProjectSession | str) -> int:
         """Calculates the next available turn index from existing turns in the session."""
-        session = (
-            session_or_id
-            if isinstance(session_or_id, ProjectSession)
-            else self.get_session(session_or_id)
-        )
-        if not session:
-            return 0
-        max_idx = -1
-        for t in session.turns.values():
-            m = re.search(r"turn_(\d+)_video\.mp4", t.video_url or "")
-            if m:
-                max_idx = max(max_idx, int(m.group(1)))
-            else:
-                max_idx = max(max_idx, getattr(t, "clip_index", 0))
-        return max(len(session.turns), max_idx + 1)
+        with self._lock:
+            session = (
+                session_or_id
+                if isinstance(session_or_id, ProjectSession)
+                else self.get_session(session_or_id)
+            )
+            if not session:
+                return 0
+            max_idx = getattr(session, "_last_allocated_turn_index", -1)
+            for t in session.turns.values():
+                m = re.search(r"turn_(\d+)_video\.mp4", t.video_url or "")
+                if m:
+                    max_idx = max(max_idx, int(m.group(1)))
+                else:
+                    max_idx = max(max_idx, getattr(t, "clip_index", 0))
+            next_idx = max(len(session.turns), max_idx + 1)
+            object.__setattr__(session, "_last_allocated_turn_index", next_idx)
+            return next_idx
 
     def update_turn_video(
         self,
@@ -228,19 +238,21 @@ class SessionManager:
         gcs_uri: str | None = None,
     ) -> None:
         """Updates the video URL and GCS URI for an existing turn and persists the updated session."""
-        session = self.get_session(session_id)
-        if session and turn_id in session.turns:
-            node = session.turns[turn_id]
-            node.video_url = video_url
-            if gcs_uri is not None:
-                node.gcs_uri = gcs_uri
-            self._persist_session(session)
+        with self._lock:
+            session = self.get_session(session_id)
+            if session and turn_id in session.turns:
+                node = session.turns[turn_id]
+                node.video_url = video_url
+                if gcs_uri is not None:
+                    node.gcs_uri = gcs_uri
+                self._persist_session(session)
 
     def commit_turn(self, session_id: str, turn_id: str) -> TurnNode:
-        session = self._sessions[session_id]
-        if turn_id not in session.turns:
-            raise KeyError(f"Turn {turn_id} not found in session {session_id}")
-        node = session.turns[turn_id]
-        node.is_committed = True
-        self._persist_session(session)
-        return node
+        with self._lock:
+            session = self._sessions[session_id]
+            if turn_id not in session.turns:
+                raise KeyError(f"Turn {turn_id} not found in session {session_id}")
+            node = session.turns[turn_id]
+            node.is_committed = True
+            self._persist_session(session)
+            return node

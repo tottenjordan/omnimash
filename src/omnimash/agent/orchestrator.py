@@ -317,10 +317,10 @@ class OmniMashAgent:
         self.guardrail = ModelArmorGuardrail(mock_mode=mock_mode)
         self.storage = GcsStorageManager(mock_mode=mock_mode)
         self.session_manager = SessionManager(storage=self.storage)
-        self.omni_client = OmniFlashClient(mock_mode=mock_mode)
+        self.omni_client = OmniFlashClient(mock_mode=mock_mode, storage=self.storage)
         self.taxonomy = PromptTaxonomyEngine(mock_mode=mock_mode)
-        self.media_extractor = MediaExtractor(mock_mode=mock_mode)
-        self.stitcher = VideoStitcher(mock_mode=mock_mode)
+        self.media_extractor = MediaExtractor(mock_mode=mock_mode, storage=self.storage)
+        self.stitcher = VideoStitcher(mock_mode=mock_mode, storage=self.storage)
         self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
         self.cumulative_tracker = CumulativeStateTracker(storage=self.storage)
         self.journey3_tracker = self.cumulative_tracker
@@ -1038,7 +1038,13 @@ def build_adk_agent(
 ) -> Agent:
     """Builds and returns the official Google ADK Agent instance for OmniMash."""
     is_mock = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
-    orchestrator = OmniMashAgent(mock_mode=is_mock)
+    _orchestrator: OmniMashAgent | None = None
+
+    def _get_orchestrator() -> OmniMashAgent:
+        nonlocal _orchestrator
+        if _orchestrator is None:
+            _orchestrator = OmniMashAgent(mock_mode=is_mock)
+        return _orchestrator
 
     def generate_parody_clip(
         prompt: str,
@@ -1073,7 +1079,7 @@ def build_adk_agent(
         Returns:
             A dictionary containing status, success flag, video URL, turn ID, edit depth, status event, and error message.
         """
-        res = orchestrator.process_user_turn(
+        res = _get_orchestrator().process_user_turn(
             user_id=user_id,
             project_id=project_id,
             prompt=prompt,
