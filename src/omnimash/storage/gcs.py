@@ -259,6 +259,64 @@ class GcsStorageManager:
         except Exception:
             return (b"", "image/jpeg")
 
+    def download_blob_range(
+        self, gs_uri: str, range_spec: str
+    ) -> tuple[bytes, str, int, int, int] | None:
+        """Downloads only the requested byte range [start, end] from GCS without buffering the full blob."""
+        if self.mock_mode or not self._client or not isinstance(gs_uri, str) or not gs_uri.strip():
+            return None
+
+        raw_uri = gs_uri.strip()
+        if raw_uri.startswith("https://storage.googleapis.com/"):
+            raw_uri = "gs://" + raw_uri.replace("https://storage.googleapis.com/", "")
+        if not raw_uri.startswith("gs://"):
+            return None
+
+        parts = raw_uri[5:].split("/", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            return None
+
+        bucket_name, blob_path = parts[0], parts[1]
+        if "-" not in range_spec:
+            return None
+
+        try:
+            bucket = self._client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+            blob.reload()
+            total_len = int(blob.size or 0)
+            if total_len <= 0:
+                return None
+
+            start_str, end_str = range_spec.split("-", 1)
+            if start_str == "":
+                suffix_len = int(end_str)
+                start = max(0, total_len - suffix_len)
+                end = total_len - 1
+            else:
+                start = int(start_str)
+                end = min(int(end_str), total_len - 1) if end_str else total_len - 1
+
+            if not (0 <= start <= end < total_len):
+                return None
+
+            chunk = blob.download_as_bytes(start=start, end=end)
+            content_type = getattr(blob, "content_type", None)
+            if not content_type:
+                if blob_path.endswith(".mp4"):
+                    content_type = "video/mp4"
+                elif blob_path.endswith(".wav"):
+                    content_type = "audio/wav"
+                elif blob_path.endswith(".jpg") or blob_path.endswith(".jpeg"):
+                    content_type = "image/jpeg"
+                elif blob_path.endswith(".png"):
+                    content_type = "image/png"
+                else:
+                    content_type = "application/octet-stream"
+            return (chunk, content_type, total_len, start, end)
+        except Exception:
+            return None
+
     def load_bytes(self, gs_uri_or_path: str) -> tuple[bytes, str]:
         """Loads binary bytes and content_type from a GCS URI or local filesystem path."""
         if isinstance(gs_uri_or_path, str) and gs_uri_or_path.startswith("gs://"):

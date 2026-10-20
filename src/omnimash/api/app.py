@@ -2,14 +2,14 @@ from contextlib import asynccontextmanager
 import logging
 import os
 import re
-import uuid
-from typing import Annotated, Any
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from typing import Any
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from omnimash.agent.adk_pipeline import deconstruct_screenplay_with_adk
 from omnimash.agent.orchestrator import OmniMashAgent
 from omnimash.api.deps import AgentDep
+from omnimash.api.routers import media as media_router
 from omnimash.api.helpers import (
     clean_text,
     extract_reference_urls,
@@ -33,7 +33,6 @@ from omnimash.api.models import (
     DraftBatchResponse,
     DraftBatchShotItem,
     ExtendSceneRequest,
-    ExtractReferenceRequest,
     GenerateCharacterSheetRequest,
     GenerateCharacterSheetResponse,
     GenerateRequest,
@@ -48,11 +47,8 @@ from omnimash.api.models import (
     KeyframeImageResponse,
     LoadCharacterRequest,
     LoadStoryboardRequest,
-    MotionReferenceRequest,
-    MotionReferenceResponse,
     ProjectListResponse,
     ReferenceSheetListResponse,
-    ResearchRequest,
     SaveCharacterRequest,
     SaveCharacterResponse,
     SaveCharacterSheetRequest,
@@ -72,10 +68,6 @@ from omnimash.api.models import (
     StoryboardShotModel,
 )
 from omnimash.engine.omni_client import parse_guardrail_error_guidance
-from omnimash.ingestion.media_extractor import (
-    ParodyResearchResult,
-    ReferenceAnalysisReport,
-)
 from omnimash.prompts.compiler import (
     CharacterRole,
     SceneDirective,
@@ -126,6 +118,8 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     static_dir = os.path.join(os.getcwd(), "static")
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    app.include_router(media_router.router)
 
     @app.get("/", response_class=HTMLResponse)
     def get_dashboard() -> HTMLResponse:
@@ -328,87 +322,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             video_url=pub_url,
             message=f"Final master successfully saved to {gcs_uri}",
         )
-
-    @app.post("/api/upload")
-    async def upload_media_file(file: Annotated[UploadFile, File()], agent: AgentDep):
-        """Uploads a local media file (audio MP3, WAV, image, etc.) to storage and returns accessible URL."""
-        try:
-            max_upload_bytes = 50 * 1024 * 1024
-            content = await file.read(max_upload_bytes + 1)
-            if len(content) > max_upload_bytes:
-                return JSONResponse(
-                    status_code=413,
-                    content={
-                        "success": False,
-                        "error": "File exceeds maximum upload size of 50MB",
-                    },
-                )
-            ext = os.path.splitext(file.filename or "file")[1] or ".bin"
-            filename = f"upload_{uuid.uuid4().hex[:8]}{ext}"
-
-            if agent.storage._bucket and not agent.storage.mock_mode:
-                gcs_uri = agent.storage.upload_bytes(
-                    content,
-                    f"uploads/{filename}",
-                    content_type=file.content_type or "application/octet-stream",
-                )
-                return {"success": True, "url": gcs_uri, "filename": file.filename}
-            else:
-                local_dir = os.path.join(os.getcwd(), "static", "uploads")
-                os.makedirs(local_dir, exist_ok=True)
-                local_path = os.path.join(local_dir, filename)
-                with open(local_path, "wb") as f:
-                    f.write(content)
-                return {
-                    "success": True,
-                    "url": f"/static/uploads/{filename}",
-                    "filename": file.filename,
-                }
-        except Exception as exc:
-            logger.error("File upload failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
-
-    @app.post("/api/motion-reference/upload", response_model=MotionReferenceResponse)
-    def upload_motion_reference(
-        req: MotionReferenceRequest, agent: AgentDep
-    ) -> MotionReferenceResponse:
-        """Crops a 3-second motion reference clip from input_video_path starting at start_sec."""
-        raw_path = (req.input_video_path or "").strip()
-        if not raw_path:
-            raise HTTPException(status_code=400, detail="Missing input_video_path")
-        if not (
-            raw_path.startswith("gs://") or raw_path.startswith("https://storage.googleapis.com/")
-        ):
-            import tempfile
-
-            normalized_rel = raw_path.lstrip("/") if raw_path.startswith("/static/") else raw_path
-            real_target = os.path.realpath(normalized_rel)
-            allowed_roots = (
-                os.path.realpath("static"),
-                os.path.realpath("/tmp"),
-                os.path.realpath(tempfile.gettempdir()),
-            )
-            if not any(
-                real_target == root or real_target.startswith(root + os.sep)
-                for root in allowed_roots
-            ):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid input_video_path: must reside within static/ or /tmp/ directory",
-                )
-        try:
-            clip_path = agent.media_extractor.crop_3s_motion_reference(
-                input_video_path=req.input_video_path,
-                start_sec=req.start_sec,
-            )
-            return MotionReferenceResponse(
-                success=True,
-                clip_path=clip_path,
-                message="Motion reference clip cropped successfully",
-            )
-        except Exception as exc:
-            logger.error("Motion reference cropping failed: %s", exc)
-            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.post("/api/storyboard/expand", response_model=StoryboardExpandResponse)
     def expand_storyboard(req: StoryboardExpandRequest) -> StoryboardExpandResponse:
@@ -1101,16 +1014,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             reference_analysis=agent_turn.reference_analysis,
         )
 
-    @app.post("/api/research", response_model=ParodyResearchResult)
-    def research_parody(req: ResearchRequest, agent: AgentDep) -> ParodyResearchResult:
-        return agent.media_extractor.research_parody_clash(req.subject, req.aesthetic)
-
-    @app.post("/api/extract-reference", response_model=ReferenceAnalysisReport)
-    def extract_reference(req: ExtractReferenceRequest, agent: AgentDep) -> ReferenceAnalysisReport:
-        return agent.media_extractor.analyze_youtube_reference(
-            req.url, session_id=req.session_name or "default"
-        )
-
     @app.post("/api/characters/save", response_model=SaveCharacterResponse)
     def save_character(req: SaveCharacterRequest, agent: AgentDep) -> SaveCharacterResponse:
         _pub_url, gcs_uri = agent.storage.save_character(
@@ -1262,90 +1165,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             else f"Storyboard '{req.slug}' not found"
         )
         return {"success": deleted, "message": message}
-
-    @app.get("/api/media-proxy")
-    def media_proxy(uri: str, request: Request, agent: AgentDep) -> Response:
-        if not uri:
-            raise HTTPException(status_code=400, detail="Missing URI parameter")
-
-        if uri.startswith("https://storage.googleapis.com/"):
-            parts = uri.replace("https://storage.googleapis.com/", "").split("/", 1)
-            if len(parts) == 2:
-                uri = f"gs://{parts[0]}/{parts[1]}"
-        elif uri.startswith("https://storage.cloud.google.com/"):
-            parts = uri.replace("https://storage.cloud.google.com/", "").split("/", 1)
-            if len(parts) == 2:
-                uri = f"gs://{parts[0]}/{parts[1]}"
-
-        if not uri.startswith("gs://"):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid GCS URI. Must start with gs:// or https://storage.googleapis.com/",
-            )
-        gcs_path = uri[5:]
-        if "/" in gcs_path:
-            from omnimash.config import settings
-
-            req_bucket = gcs_path.split("/", 1)[0]
-            allowed_buckets = {
-                agent.storage.bucket_name,
-                settings.gcs_bucket_name,
-                "reference-images-jt-trend-trawler",
-                "omnimash-media-hybrid-vertex",
-                "test-omnimash-bucket",
-                "bucket",
-            }
-            if req_bucket not in allowed_buckets:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Access to GCS bucket '{req_bucket}' is not permitted",
-                )
-        data, content_type = agent.storage.download_blob_bytes(uri)
-        if not data:
-            raise HTTPException(
-                status_code=404,
-                detail="Media object not found or empty",
-            )
-        total_len = len(data)
-        range_header = (
-            request.headers.get("range") if request and hasattr(request, "headers") else None
-        )
-        if range_header and range_header.strip().lower().startswith("bytes="):
-            range_spec = range_header.strip()[6:].split(",")[0].strip()
-            if "-" in range_spec:
-                start_str, end_str = range_spec.split("-", 1)
-                try:
-                    if start_str == "":
-                        suffix_len = int(end_str)
-                        start = max(0, total_len - suffix_len)
-                        end = total_len - 1
-                    else:
-                        start = int(start_str)
-                        end = int(end_str) if end_str else total_len - 1
-                    if 0 <= start <= end < total_len:
-                        chunk = data[start : end + 1]
-                        return Response(
-                            content=chunk,
-                            status_code=206,
-                            media_type=content_type,
-                            headers={
-                                "Cache-Control": "public, max-age=86400",
-                                "Accept-Ranges": "bytes",
-                                "Content-Range": f"bytes {start}-{end}/{total_len}",
-                                "Content-Length": str(len(chunk)),
-                            },
-                        )
-                except ValueError:
-                    pass
-        return Response(
-            content=data,
-            media_type=content_type,
-            headers={
-                "Cache-Control": "public, max-age=86400",
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(total_len),
-            },
-        )
 
     @app.post(
         "/api/characters/generate-sheet",
