@@ -540,3 +540,13 @@ def test_gcs_operations_pass_timeout_and_log_warnings(caplog):
                 b"data", content_type="application/json", timeout=30.0
             )
             assert "upload_bytes failed on test/path.json" in caplog.text
+
+
+def test_storage_defaults_module():
+    from omnimash.storage.defaults import DEFAULT_CHARACTERS
+    from omnimash.storage import DEFAULT_CHARACTERS as REEXPORTED_CHARS
+
+    assert len(DEFAULT_CHARACTERS) >= 4
+    assert DEFAULT_CHARACTERS == REEXPORTED_CHARS
+    assert any("Harry" in c["name"] for c in DEFAULT_CHARACTERS)
+
