@@ -1,6 +1,7 @@
 """Unit tests for ADK pipeline agents instantiation."""
 
-from google.adk.agents import Agent, ParallelAgent, SequentialAgent
+from google.adk.agents import Agent
+from google.adk.workflow import Workflow
 from omnimash.agent.adk_pipeline import (
     build_production_orchestrator,
     create_final_cut_stitcher_agent,
@@ -18,12 +19,12 @@ def test_adk_deconstructor_and_storyboard_agents_instantiation():
 
     assert isinstance(deconstructor, Agent)
     assert deconstructor.name == "script_deconstructor"
-    assert deconstructor.model == settings.omni_model_id
+    assert deconstructor.model == settings.flash_model_id
     assert "Script Deconstructor Agent" in str(deconstructor.instruction)
 
     assert isinstance(storyboard_compiler, Agent)
     assert storyboard_compiler.name == "storyboard_compiler"
-    assert storyboard_compiler.model == settings.omni_model_id
+    assert storyboard_compiler.model == settings.flash_model_id
     assert "Storyboard Compiler Agent" in str(storyboard_compiler.instruction)
 
 
@@ -35,37 +36,44 @@ def test_adk_shot_execution_and_stitcher_agents():
 
     assert isinstance(shot_worker, Agent)
     assert shot_worker.name == "shot_execution_worker_1"
-    assert shot_worker.model == settings.omni_model_id
+    assert shot_worker.model == settings.flash_model_id
     assert "Shot Execution Worker Agent" in str(shot_worker.instruction)
     assert "shot #1" in str(shot_worker.instruction)
 
     assert isinstance(stitcher, Agent)
     assert stitcher.name == "final_cut_stitcher"
-    assert stitcher.model == settings.omni_model_id
+    assert stitcher.model == settings.flash_model_id
     assert "Final Cut Stitcher Agent" in str(stitcher.instruction)
 
 
 def test_build_production_orchestrator():
     orchestrator = build_production_orchestrator(num_shots=3)
 
-    assert isinstance(orchestrator, SequentialAgent)
+    assert isinstance(orchestrator, Workflow)
     assert orchestrator.name == "root_production_orchestrator"
-    assert len(orchestrator.sub_agents) == 4
+    assert orchestrator.graph is not None
 
-    assert orchestrator.sub_agents[0].name == "script_deconstructor"
-    assert orchestrator.sub_agents[1].name == "storyboard_compiler"
+    node_names = [n.name for n in orchestrator.graph.nodes]
+    assert "__START__" in node_names
+    assert "script_deconstructor" in node_names
+    assert "storyboard_compiler" in node_names
+    assert "shot_execution_worker_1" in node_names
+    assert "shot_execution_worker_2" in node_names
+    assert "shot_execution_worker_3" in node_names
+    assert "shot_join_node" in node_names
+    assert "final_cut_stitcher" in node_names
 
-    shot_pipeline = orchestrator.sub_agents[2]
-    assert isinstance(shot_pipeline, ParallelAgent)
-    assert shot_pipeline.name == "shot_execution_pipeline"
-    assert len(shot_pipeline.sub_agents) == 3
-    assert [w.name for w in shot_pipeline.sub_agents] == [
-        "shot_execution_worker_1",
-        "shot_execution_worker_2",
-        "shot_execution_worker_3",
-    ]
-
-    assert orchestrator.sub_agents[3].name == "final_cut_stitcher"
+    # Check DAG edge topology
+    edge_pairs = [(e.from_node.name, e.to_node.name) for e in orchestrator.graph.edges]
+    assert ("__START__", "script_deconstructor") in edge_pairs
+    assert ("script_deconstructor", "storyboard_compiler") in edge_pairs
+    assert ("storyboard_compiler", "shot_execution_worker_1") in edge_pairs
+    assert ("storyboard_compiler", "shot_execution_worker_2") in edge_pairs
+    assert ("storyboard_compiler", "shot_execution_worker_3") in edge_pairs
+    assert ("shot_execution_worker_1", "shot_join_node") in edge_pairs
+    assert ("shot_execution_worker_2", "shot_join_node") in edge_pairs
+    assert ("shot_execution_worker_3", "shot_join_node") in edge_pairs
+    assert ("shot_join_node", "final_cut_stitcher") in edge_pairs
 
 
 def test_adk_pipeline_instructions_include_omni_flash_guidance_and_agent_tools():

@@ -8,13 +8,13 @@ dependencies = [
     "cloudpickle>=3.1.2",
     "fastapi>=0.141.1",
     "ffmpeg-python>=0.2.0",
-    "google-adk>=2.9.2",
-    "google-cloud-aiplatform>=2.3.0",
-    "google-cloud-storage>=3.16.0",
-    "google-genai>=2.27.0",
-    "pydantic>=2.13.5",
+    "google-adk>=2.11.0",
+    "google-cloud-aiplatform>=2.5.0",
+    "google-cloud-storage>=3.17.1",
+    "google-genai>=2.31.0",
+    "pydantic>=2.14.1",
     "pydantic-settings>=2.15.0",
-    "sse-starlette>=3.4.11",
+    "sse-starlette>=3.5.0",
     "uvicorn>=0.54.0",
     "yt-dlp>=2026.8.19",
     "pillow>=12.3.0",
@@ -23,8 +23,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
-    "ruff>=0.16.9",
-    "ty>=0.0.84",
+    "ruff>=0.17.0",
+    "ty>=0.0.86",
 ]
 
 [tool.pytest.ini_options]
