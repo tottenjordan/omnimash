@@ -1,132 +1,268 @@
-# Code Review: `src/omnimash/security` Module
+# Code Quality Review: `src/omnimash/state` Module
 
-**Inspection Target:** `src/omnimash/security/` (`__init__.py`, `models.py`, `heuristics.py`, `client.py`, `guardrail.py`, `adk_plugin.py`)  
-**Review Standard:** 5-Axes Code Review Framework (`Correctness`, `Readability & Simplicity`, `Architecture`, `Security`, `Performance`)  
-**Overall Verdict:** **Conditionally Approved with Recommended Improvements**  
-**Executive Summary:** The recent modernization of `src/omnimash/security` successfully introduced official Google Cloud Model Armor SDK integration (`google-cloud-modelarmor>=0.7.2`), regional endpoint routing, async client support, and high-speed local regex heuristics. However, inspection revealed several critical and required improvements concerning detector failure handling, RPC timeouts, heuristic false-positive sensitivity, and production fail-closed defaults.
-
----
-
-## Findings Summary by Severity
-
-| Severity | Count | Summary |
-|---|---|---|
-| **Critical** | 1 | Unhandled `InvocationResult.FAILURE` and `EXECUTION_ERROR` leading to silent approval of failed screenings. |
-| **Required** | 2 | Missing RPC timeout parameters; Overly broad "hate speech" heuristic trigger causing false positives on benign screenplays. |
-| **Optional** | 3 | Production `fail_closed` configuration; Missing client connection pool teardown; Empty/whitespace prompt RPC bypass. |
-| **Nit** | 3 | Type annotations on client factories; Thread-safe client initialization lock; Cache key using `id(credentials)`. |
+**Review Target:** [`src/omnimash/state`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state) (`session_manager.py`, `__init__.py`)  
+**Associated Context:** [`src/omnimash/agent/orchestrator.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py), [`src/omnimash/storage/gcs.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py), [`tests/state/test_session_manager.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/state/test_session_manager.py)  
+**Standard:** 5-Axes Code Review Framework (Correctness, Readability, Architecture, Security, Performance)
 
 ---
 
-## Detailed Findings Across the 5 Axes
+## Executive Summary
+
+The `src/omnimash/state` module is the state engine of OmniMash, responsible for tracking non-linear conversational branching (Version Tree DAG), clip timelines, commit checkpoints, and persisting session manifests (`session_manifest.json`) to Google Cloud Storage.
+
+While the core DAG branching and thread depth tracking concepts are conceptually solid and pass basic tests, the module exhibits several critical architectural, concurrency, and reliability issues:
+1. **Asymmetric Storage Hydration:** `add_turn()` and `commit_turn()` bypass storage hydration and use raw dictionary lookups (`self._sessions[session_id]`), leading to unhandled `KeyError` crashes upon container restarts or cold starts.
+2. **Blocking Network I/O Under Global Lock:** Cloud Storage HTTP calls (`get_session_manifest` and `save_session_manifest`) are executed synchronously inside `with self._lock:`, serializing all API requests across all users and threads during GCS network latency.
+3. **Split-Brain State Management:** `CumulativeStateTracker` in `orchestrator.py` maintains an independent in-memory cache and directly reads/writes to `session_manifest.json`, competing with `SessionManager`'s own `session_manifest.json` persistence.
+4. **Pydantic V2 Anti-Patterns:** Usage of `object.__setattr__` to inject undeclared private attributes, unvalidated `extra="allow"` with untyped dictionaries, and hardcoded fallback strings bypassing centralized settings.
+
+---
+
+## Severity-Labeled Findings Breakdown
 
 ### 1. Correctness
 
-#### `[CORR-01]` Critical: Unhandled `InvocationResult.FAILURE` and `EXECUTION_ERROR` causes silent approval
-- **Location:** `src/omnimash/security/guardrail.py:138-164`
-- **Description:** In `_process_sanitization_result`, the method only checks:
+#### [CORR-01] Critical: Asymmetric Storage Hydration Causes Cold-Start `KeyError` Crashes in `add_turn` and `commit_turn`
+- **Location:** [`src/omnimash/state/session_manager.py#L144`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L144), [`src/omnimash/state/session_manager.py#L252`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L252)
+- **Problem:**
+  `get_session()` properly attempts to hydrate from GCS via `self.storage.get_session_manifest()` when a session is not in memory. Similarly, `update_turn_video()` invokes `self.get_session(session_id)`.
+  However, `add_turn()` and `commit_turn()` perform direct in-memory dictionary lookups:
   ```python
-  is_match = match_state == modelarmor_v1.FilterMatchState.MATCH_FOUND
+  def add_turn(self, session_id: str, ...):
+      with self._lock:
+          session = self._sessions[session_id]  # Crashes if cold-started!
   ```
-  If the remote Model Armor service experiences a backend detector outage, invocation failure (`result.invocation_result == InvocationResult.FAILURE`), or execution error (`result.filter_match_state == FilterMatchState.EXECUTION_ERROR`), `is_match` evaluates to `False`. The function then proceeds directly to line 178:
   ```python
-  return GuardrailResult(is_approved=True, sanitized_prompt=sanitized_text, filter_match_state="NO_MATCH_FOUND", ...)
+  def commit_turn(self, session_id: str, turn_id: str) -> TurnNode:
+      with self._lock:
+          session = self._sessions[session_id]  # Crashes if cold-started!
   ```
-  This creates a critical vulnerability: failed or errored security scans are silently treated as approved and clean.
-- **Remedy:** Inspect `result.invocation_result` and `result.filter_match_state`. If an error or failure is reported:
-  ```python
-  if getattr(result, "invocation_result", None) == modelarmor_v1.InvocationResult.FAILURE or match_state == modelarmor_v1.FilterMatchState.EXECUTION_ERROR:
-      if self.fail_closed:
-          return GuardrailResult(is_approved=False, sanitized_prompt="", rejection_reason="Model Armor screening failed to execute.", filter_match_state="EXECUTION_ERROR")
-      return validate_prompt_heuristics(original_prompt)
-  ```
-
-#### `[CORR-02]` Required: Missing RPC Timeout on Synchronous and Asynchronous `sanitize_user_prompt` Calls
-- **Location:** `src/omnimash/security/guardrail.py:82` and `src/omnimash/security/guardrail.py:112`
-- **Description:** Both `client.sanitize_user_prompt(request=request)` and `await client.sanitize_user_prompt(request=request)` do not specify a `timeout` argument. Under network degradation or gRPC channel stalls, requests can hang up to default gRPC deadlines (often 60s+), freezing the FastAPI/Uvicorn event loop and orchestrator turns.
-- **Remedy:** Pass a configurable `timeout` parameter (e.g. `timeout: float = 5.0`) on all `sanitize_user_prompt` invocations.
-
-#### `[CORR-03]` Optional: Empty and Whitespace-Only Prompts Trigger Unnecessary Remote RPCs
-- **Location:** `src/omnimash/security/guardrail.py:68` and `src/omnimash/security/guardrail.py:98`
-- **Description:** If a user submits an empty string or whitespace-only prompt, the guardrail still constructs a `SanitizeUserPromptRequest` and performs a remote network call to Model Armor, risking 400 `INVALID_ARGUMENT` errors and introducing needless latency.
-- **Remedy:** Guard early in `validate_prompt` and `validate_prompt_async`:
-  ```python
-  if not prompt or not prompt.strip():
-      return GuardrailResult(is_approved=True, sanitized_prompt="")
-  ```
+  If a Cloud Run container restarts, scales up, or handles a turn/commit request on a session that has been persisted to GCS but not yet cached in this process instance, `add_turn` and `commit_turn` immediately crash with an unhandled `KeyError: session_id`.
+- **Proposed Remedy:**
+  Replace raw `self._sessions[session_id]` with `session = self.get_session(session_id, project_id=project_id)`. If `session is None`, raise an explicit `KeyError(f"Session '{session_id}' not found in cache or persistent storage")`.
 
 ---
 
-### 2. Readability & Simplicity
+#### [CORR-02] Critical: Conflation of `clip_index` with `turn_index` Corrupts Turn Allocation Sequence
+- **Location:** [`src/omnimash/state/session_manager.py#L223-L229`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L223-L229)
+- **Problem:**
+  `allocate_turn_index` calculates the next monotonic turn index using:
+  ```python
+  for t in session.turns.values():
+      m = re.search(r"turn_(\d+)_video\.mp4", t.video_url or "")
+      if m:
+          max_idx = max(max_idx, int(m.group(1)))
+      else:
+          max_idx = max(max_idx, getattr(t, "clip_index", 0))
+  ```
+  `clip_index` is the horizontal position of a shot in the timeline sequence (e.g. shot 0, shot 1, shot 2), whereas turn allocation represents the chronological edit/render counter (turn 0, turn 1, turn 2...).
+  If an artist renders clip index 5 on turn 1, `max_idx` artificially jumps to 5, skipping turn indices 2 through 5. Furthermore, if `video_url` points to a signed GCS URL or a different filename pattern, turn allocation fails to detect prior turns and can overwrite earlier video outputs.
+- **Proposed Remedy:**
+  Add an explicit typed `turn_index: int = 0` field to [`TurnNode`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L17) populated upon turn creation. Have `allocate_turn_index` compute `max(t.turn_index for t in session.turns.values()) + 1` directly from typed metadata, falling back to regex only for legacy manifests.
 
-#### `[READ-01]` Nit: Broad `-> Any` Return Type Annotations on Client Factory Functions
-- **Location:** `src/omnimash/security/client.py:35` and `src/omnimash/security/client.py:75`
-- **Description:** Both `get_model_armor_client` and `get_model_armor_async_client` return `-> Any` to avoid import errors when the package is missing. This deprives IDEs, static type checkers, and callers of autocomplete and type safety.
-- **Remedy:** Use `typing.TYPE_CHECKING` to import and annotate `modelarmor_v1.ModelArmorClient` and `modelarmor_v1.ModelArmorAsyncClient` accurately.
+---
 
-#### `[READ-02]` Nit: Duplicate Import Guard Logic Across `client.py` and `guardrail.py`
-- **Location:** `src/omnimash/security/guardrail.py:14-17` and `src/omnimash/security/client.py:8-14`
-- **Description:** Both modules define independent `try...from google.cloud import modelarmor_v1...except ImportError` blocks.
-- **Remedy:** Centralize the imported module in `client.py` and import `modelarmor_v1` directly from `omnimash.security.client`.
+#### [CORR-03] Required: Silent Exception Swallowing (`except Exception: pass`) Masks Storage Failures
+- **Location:** [`src/omnimash/state/session_manager.py#L99-L100`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L99-L100), [`src/omnimash/state/session_manager.py#L125-L126`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L125-L126), [`src/omnimash/state/session_manager.py#L208-L209`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L208-L209)
+- **Problem:**
+  `_persist_session`, `get_or_create_session`, and `get_session` catch all exceptions with `except Exception: pass`. If GCS write operations fail due to expired credentials, missing buckets, IAM misconfigurations, or network dropouts, the error is completely swallowed. The user assumes the session was saved, but on restart, data is lost without a single error trace in Cloud Logging.
+- **Proposed Remedy:**
+  Initialize structured logger `logger = logging.getLogger("omnimash.state")` and log detailed warnings/errors: `logger.warning("Failed to persist session manifest '%s': %s", session.session_id, exc, exc_info=True)`.
+
+---
+
+#### [CORR-04] Required: Disconnected Version DAG on Non-Existent `parent_turn_id`
+- **Location:** [`src/omnimash/state/session_manager.py#L147-L150`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L147-L150)
+- **Problem:**
+  In `add_turn()`:
+  ```python
+  depth = 0
+  if parent_turn_id and parent_turn_id in session.turns:
+      parent = session.turns[parent_turn_id]
+      if parent.interaction_thread_id == interaction_thread_id and not is_checkpoint:
+          depth = parent.edit_depth_in_thread + 1
+  ```
+  If an API client or agent passes an invalid or stale `parent_turn_id` (e.g. from an aborted branch), the system silently assigns `parent_turn_id` to the node while resetting `depth = 0`. The node becomes an orphaned branch in the DAG that points to a non-existent parent.
+- **Proposed Remedy:**
+  Validate `parent_turn_id` against `session.turns`. If `parent_turn_id` is supplied but missing from `session.turns`, log a warning and either set `parent_turn_id = None` or raise a `ValueError`.
+
+---
+
+### 2. Performance
+
+#### [PERF-01] Critical: Blocking Remote GCS Network I/O Inside Global Mutex Lock
+- **Location:** [`src/omnimash/state/session_manager.py#L143-L179`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L143-L179), [`src/omnimash/state/session_manager.py#L241-L248`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L241-L248), [`src/omnimash/state/session_manager.py#L251-L257`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L251-L257)
+- **Problem:**
+  `SessionManager` uses a single instance-wide `threading.RLock()`. In `add_turn()`, `commit_turn()`, and `update_turn_video()`, `self._persist_session(session)` is called while holding `self._lock`.
+  Inside `_persist_session()`, blocking network calls (`storage.get_session_manifest()` and `storage.save_session_manifest()`) execute synchronously.
+  During high-concurrency requests or GCS network latency spikes (200ms–5s), every other thread attempting to access, create, or validate any session is blocked waiting for the global lock.
+- **Proposed Remedy:**
+  Separate in-memory state manipulation from remote network I/O:
+  1. Under `self._lock`, perform the in-memory mutations and extract a snapshot of the manifest data via `session.model_dump(mode="json")`.
+  2. Release the lock before performing `storage.save_session_manifest()`.
+  3. Optionally introduce per-session locks (`dict[str, threading.Lock]`) for fine-grained concurrency.
+
+---
+
+#### [PERF-02] Required: Redundant Remote Read-Before-Write (`get_session_manifest`) on Every Persistence Call
+- **Location:** [`src/omnimash/state/session_manager.py#L70-L93`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L70-L93)
+- **Problem:**
+  On every single turn generation, video URL update, or turn commit, `_persist_session()` performs:
+  1. `existing = self.storage.get_session_manifest(...)` (Remote GCS GET)
+  2. Iterates over 9 keys to backfill missing fields
+  3. `self.storage.save_session_manifest(...)` (Remote GCS PUT)
+  This doubles GCS latency on every mutation, adding 200–500ms of unnecessary network round-trips. Furthermore, because in-memory `session` already contains the authoritative state, re-fetching and backfilling from storage during an active session introduces race conditions where stale data can overwrite recent in-memory edits.
+- **Proposed Remedy:**
+  Remove the read-before-write logic from `_persist_session()`. Ensure hydration happens once at load time (`get_session` / `get_or_create_session`), and write the in-memory model directly to storage.
+
+---
+
+#### [PERF-03] Optional: Missing JSON Mode in `model_dump()` Serialization
+- **Location:** [`src/omnimash/state/session_manager.py#L69`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L69)
+- **Problem:**
+  `manifest_data = session.model_dump()` uses default `mode='python'`, which preserves non-JSON types (such as `UUID`, `datetime`, or custom types) as Python objects. When passed to storage or serialization helpers, this can cause serialization overhead or `TypeError`.
+- **Proposed Remedy:**
+  Use `session.model_dump(mode="json")` to guarantee that all attributes are converted directly into JSON-safe primitives.
+  *(Source: [Pydantic V2 Serialization Docs](https://docs.pydantic.dev/latest/concepts/serialization/#modelmodel_dump))*
 
 ---
 
 ### 3. Architecture
 
-#### `[ARCH-01]` Optional: Naming and Domain Clarification Between `omnimash.security` and `omnimash.engine.guardrails`
-- **Location:** `src/omnimash/security/guardrail.py` vs `src/omnimash/engine/guardrails.py`
-- **Description:** Having `omnimash.security.guardrail` (Model Armor input screening) alongside `omnimash.engine.guardrails` (Responsible AI prompt abstraction for character names/copyrights and post-inference 400 error parsing) creates naming confusion.
-- **Remedy:** Add clear module-level docstrings explicitly delineating the responsibilities:
-  - `omnimash.security`: Pre-generation adversarial injection, jailbreak, and PII gateway.
-  - `omnimash.engine.guardrails`: In-engine prompt keyword abstraction and video inference policy error guidance.
+#### [ARCH-01] Critical: Split-Brain State Management Between `CumulativeStateTracker` and `SessionManager`
+- **Location:** [`src/omnimash/agent/orchestrator.py#L46-L130`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L46-L130), [`src/omnimash/state/session_manager.py#L52`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L52)
+- **Problem:**
+  [`src/omnimash/agent/orchestrator.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py) defines a separate `CumulativeStateTracker` class with its own in-memory cache `_session_states: dict[str, CumulativeShotState]`.
+  When `CumulativeStateTracker._persist_state()` runs, it loads `session_manifest.json` from GCS, writes `manifest["cumulative_state"] = ...`, and saves it back to GCS.
+  Simultaneously, `ProjectSession` in `src/omnimash/state/session_manager.py` defines `cumulative_state: dict[str, Any]` and also writes `session_manifest.json`.
+  These two independent state trackers run concurrently without shared synchronization, risking write-clobbering and state desynchronization.
+- **Proposed Remedy:**
+  Move `CumulativeStateTracker` into `src/omnimash/state/` (or integrate its tracking directly into `ProjectSession`), ensuring that `ProjectSession` is the single source of truth for both the Version Tree DAG and cumulative character/scene state.
 
-#### `[ARCH-02]` Optional: Missing Cleanup / Teardown Hook for Cached gRPC Clients
-- **Location:** `src/omnimash/security/client.py:18-19`
-- **Description:** Cached `ModelArmorClient` and `ModelArmorAsyncClient` instances hold persistent gRPC channels and thread pools. During application shutdown or test teardown, channels remain open without an explicit `close()` hook.
-- **Remedy:** Add `close_model_armor_clients()` and `async close_model_armor_async_clients()` functions to gracefully shut down open transports.
+---
+
+#### [ARCH-02] Required: Duck-Typing on Storage Without Explicit Protocol
+- **Location:** [`src/omnimash/state/session_manager.py#L61`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L61)
+- **Problem:**
+  `SessionManager.__init__` accepts `storage: Any | None = None` and repeatedly uses `hasattr(self.storage, "save_session_manifest")`.
+  This untyped duck-typing prevents static type checking with `ty check` and lacks a clear contract for alternative storage backends (e.g. Memory, Firestore, GCS, Local Disk).
+- **Proposed Remedy:**
+  Define a `typing.Protocol` in `src/omnimash/state/session_manager.py`:
+  ```python
+  from typing import Protocol, runtime_checkable
+
+  @runtime_checkable
+  class SessionStorageProtocol(Protocol):
+      def save_session_manifest(
+          self, session_id: str, manifest_data: dict[str, Any], project_id: str | None = None
+      ) -> str: ...
+
+      def get_session_manifest(
+          self, session_id: str, project_id: str | None = None
+      ) -> dict[str, Any] | None: ...
+  ```
+
+---
+
+#### [ARCH-03] Required: Hardcoded Model Strings Bypassing Central Configuration
+- **Location:** [`src/omnimash/state/session_manager.py#L8-L14`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L8-L14), [`src/omnimash/state/session_manager.py#L47`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L47)
+- **Problem:**
+  `_normalize_image_model()` and `ProjectSession.image_model` default to `"gemini-nano-banana-2.1"` hardcoded as literal strings, ignoring `settings.image_model_id` from [`src/omnimash/config.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/config.py). If environment variables configure a different model, `session_manager.py` remains pinned to the hardcoded default.
+- **Proposed Remedy:**
+  Import `settings` from `omnimash.config` and use `getattr(settings, "image_model_id", "gemini-nano-banana-2.1")` as the canonical default.
+
+---
+
+#### [ARCH-04] Optional: Permissive `extra="allow"` with Untyped Collections in `ProjectSession`
+- **Location:** [`src/omnimash/state/session_manager.py#L37-L52`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L37-L52)
+- **Problem:**
+  `model_config = ConfigDict(extra="allow")` allows arbitrary unknown keys into `ProjectSession`. Furthermore, `characters`, `products`, `shot_cards`, and `cumulative_state` are untyped lists of `dict[str, Any]`, bypassing Pydantic V2 schema validation and editor autocomplete.
+- **Proposed Remedy:**
+  Progressively type these fields or provide typed wrappers, ensuring structured validation when deserializing manifests.
 
 ---
 
 ### 4. Security
 
-#### `[SEC-01]` Required: Overly Broad Literal `"hate speech"` Pattern in Local Heuristics
-- **Location:** `src/omnimash/security/heuristics.py:28`
-- **Description:** `_MALICIOUS_PROMPT_PATTERNS` includes `r"\bhate\s+speech\b"`. This matches any occurrence of the literal phrase "hate speech", even when used harmlessly in screenplays (e.g. *"Detective: The suspect was investigated for hate speech online"*). This causes unintended false-positive rejections.
-- **Remedy:** Refine the pattern to focus on intent or explicit attack phrasing:
+#### [SEC-01] Required: Inadequate Sanitization of Default Session Keys (`user_id:project_id`)
+- **Location:** [`src/omnimash/state/session_manager.py#L106-L109`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L106-L109)
+- **Problem:**
   ```python
-  r"\b(?:generate|write|produce|create)\s+(?:overt\s+)?hate\s+speech\b",
-  r"\bovert\s+hate\s+speech\b",
+  if session_name and session_name.strip():
+      session_key = re.sub(r"[^a-zA-Z0-9_-]", "_", session_name.strip())
+  else:
+      session_key = f"{user_id}:{project_id}"
+  ```
+  When `session_name` is provided, it is sanitized against `[^a-zA-Z0-9_-]`. However, when `session_name` is omitted, `user_id` and `project_id` are concatenated with a colon (`:`).
+  If `user_id` or `project_id` contain path traversal sequences (`../`, `/`), slashes, or special characters, they can lead to invalid GCS blob keys or directory traversal vulnerabilities when constructing storage paths (`sessions/{session_id}/prompts/`).
+- **Proposed Remedy:**
+  Apply strict regex sanitization to both components when constructing the default key:
+  ```python
+  clean_user = re.sub(r"[^a-zA-Z0-9_-]", "_", (user_id or "default").strip())
+  clean_project = re.sub(r"[^a-zA-Z0-9_-]", "_", (project_id or "default").strip())
+  session_key = f"{clean_user}_{clean_project}"
   ```
 
-#### `[SEC-02]` Optional: Production `fail_closed` Policy Configuration
-- **Location:** `src/omnimash/security/guardrail.py:31`
-- **Description:** `ModelArmorGuardrail.__init__` defaults to `fail_closed = False`. While ideal for developer convenience and automated CI test execution, production deployments should fail closed by default if the Model Armor service becomes unreachable.
-- **Remedy:** Bind default `fail_closed` to `getattr(settings, "model_armor_fail_closed", False)`, allowing production `.env` to enforce strict fail-closed security.
+---
 
-#### `[SEC-03]` Nit: Cache Key Using `id(credentials)` Vulnerable to ID Collision
-- **Location:** `src/omnimash/security/client.py:54` and `src/omnimash/security/client.py:94`
-- **Description:** `cache_key = f"{effective_loc}:{id(credentials)}"` relies on `id(credentials)`. In CPython, if short-lived credential objects are allocated and deallocated, memory addresses can be recycled, leading to potential cache key collisions.
-- **Remedy:** Use a tuple `(effective_loc, credentials)` or a weak reference cache dictionary.
+#### [SEC-02] Required: Unbounded In-Memory Collections (Denial of Service Vector)
+- **Location:** [`src/omnimash/state/session_manager.py#L42-L43`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L42-L43), [`src/omnimash/state/session_manager.py#L62`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L62)
+- **Problem:**
+  `self._sessions: dict[str, ProjectSession]`, `session.turns: dict[str, TurnNode]`, and `session.timeline: list[ClipSegment]` have no upper limits or eviction policy (LRU / TTL). An automated loop or malicious actor repeatedly generating turns or sessions can cause unbounded memory growth and trigger container OOM crashes.
+- **Proposed Remedy:**
+  Enforce a sensible maximum turn limit per session (e.g. `MAX_TURNS_PER_SESSION = 500`) and cap in-memory session cache size with LRU eviction or an explicit cleanup method.
 
 ---
 
-### 5. Performance
+### 5. Readability & Simplicity
 
-#### `[PERF-01]` Nit: Thread-Safe Client Cache Initialization Lock
-- **Location:** `src/omnimash/security/client.py:56-68`
-- **Description:** Client caching uses a non-atomic `if cache_key not in _CLIENT_CACHE: ...` pattern without a mutex. Under high-concurrency cold-start scenarios, multiple worker threads may instantiate redundant `ModelArmorClient` gRPC channels.
-- **Remedy:** Protect client cache initialization with a `threading.Lock()`.
+#### [READ-01] Required: Pydantic V2 Private Attribute Anti-Pattern (`object.__setattr__`)
+- **Location:** [`src/omnimash/state/session_manager.py#L222`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L222), [`src/omnimash/state/session_manager.py#L230`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L230)
+- **Problem:**
+  `allocate_turn_index` writes to an undeclared attribute using `object.__setattr__(session, "_last_allocated_turn_index", next_idx)`.
+  In Pydantic V2, undeclared private attributes trigger introspection overhead, confuse developers reading the model definition, and fail type checking.
+- **Proposed Remedy:**
+  Declare `_last_allocated_turn_index: int = PrivateAttr(default=-1)` directly on `ProjectSession`. Then update it cleanly with `session._last_allocated_turn_index = next_idx`.
+  *(Source: [Pydantic V2 Private Model Attributes](https://docs.pydantic.dev/latest/concepts/models/#private-model-attributes))*
 
 ---
 
-## Action Plan & Remediation Roadmap
+#### [READ-02] Optional: Repeated Regex Sanitization Across Functions
+- **Location:** [`src/omnimash/state/session_manager.py#L107`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L107), [`src/omnimash/state/session_manager.py#L189`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L189)
+- **Problem:**
+  The regex `re.sub(r"[^a-zA-Z0-9_-]", "_", ...)` is duplicated across `get_or_create_session` and `get_session`.
+- **Proposed Remedy:**
+  Extract a single reusable helper function:
+  ```python
+  def sanitize_session_id(name: str) -> str:
+      """Sanitizes session identifiers to be safe for GCS paths and file systems."""
+      return re.sub(r"[^a-zA-Z0-9_-]", "_", name.strip()) if name else "default"
+  ```
 
-1. **Immediate / Critical:**
-   - Update `_process_sanitization_result` to reject or fallback on `InvocationResult.FAILURE` and `FilterMatchState.EXECUTION_ERROR`.
-   - Add default `timeout=5.0` to synchronous and asynchronous `sanitize_user_prompt` calls.
-   - Refine `r"\bhate\s+speech\b"` in `heuristics.py` to prevent screenplay dialogue false positives.
-2. **Follow-up / Optional & Nits:**
-   - Add early return for empty/whitespace prompts.
-   - Add `close_model_armor_clients()` teardown hook in `client.py`.
-   - Add thread lock to client initialization.
-   - Bind `fail_closed` to `settings.model_armor_fail_closed`.
+---
+
+#### [READ-03] Nit: Hardcoded Field List in `_persist_session`
+- **Location:** [`src/omnimash/state/session_manager.py#L75-L85`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L75-L85)
+- **Problem:**
+  The 9-element tuple of keys to check is hardcoded inside the function body.
+- **Proposed Remedy:**
+  Define at module level or remove as part of eliminating redundant read-before-write (PERF-02).
+
+---
+
+## Action Plan & Structural Remedies
+
+| Refactoring Step | Target Issues | Description |
+| :--- | :--- | :--- |
+| **PR 1: Correctness & Concurrency** | `CORR-01`, `PERF-01`, `PERF-02`, `CORR-03` | Fix asymmetric storage hydration in `add_turn` and `commit_turn`; release mutex lock before GCS I/O; eliminate redundant remote read-before-write; add structured logging. |
+| **PR 2: Typing, Turn Indexing & Pydantic V2** | `CORR-02`, `READ-01`, `ARCH-02`, `ARCH-03`, `PERF-03` | Add typed `turn_index: int = 0` to `TurnNode`; declare `PrivateAttr` on `ProjectSession`; define `SessionStorageProtocol`; bind default image model to `settings.image_model_id`; use `model_dump(mode="json")`. |
+| **PR 3: Security & Architecture Consolidation** | `SEC-01`, `SEC-02`, `ARCH-01`, `READ-02` | Sanitize all session keys; enforce turn/session caps; unify cumulative state tracking under `src/omnimash/state`; extract `sanitize_session_id` helper. |
+
+---
+
+## Verification Strategy
+- **Unit Tests:** Run `uv run pytest tests/state/ -v` to ensure all existing and new turn/session/hydration tests pass.
+- **Integration Tests:** Run `uv run pytest tests/api/test_architecture_remediation.py -v` and `tests/agent/test_orchestrator.py -v` to verify cold-start reloads, turn index allocation, and timeline stitching.
+- **Static Analysis:**
+  - `uv run ruff check .`
+  - `uv run ty check`
