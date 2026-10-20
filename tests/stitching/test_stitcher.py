@@ -114,6 +114,7 @@ def test_stitch_clips_live_mode_reencode_fallback(tmp_path):
         second_cmd = mock_subproc.call_args_list[1][0][0]
         assert "-c:v" in second_cmd and "libx264" in second_cmd
         assert "-c:a" in second_cmd and "aac" in second_cmd
+        assert "-r" in second_cmd and "24" in second_cmd
         mock_upload.assert_called_once()
 
 
@@ -490,6 +491,42 @@ def test_stitch_storyboard_master_handles_invalid_insert_at_gracefully(tmp_path)
             output_dir=str(tmp_path),
         )
         assert os.path.exists(out_path)
+
+
+def test_get_font_loads_font_or_default():
+    from omnimash.stitching.stitcher import _get_font, HAS_PIL
+
+    if HAS_PIL:
+        font = _get_font("DejaVuSans-Bold.ttf", 48)
+        assert font is not None
+
+
+def test_concatenate_clips_preserves_clip_order_with_parallel_resolution(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    clip_paths = [str(tmp_path / f"clip_{i}.mp4") for i in range(5)]
+    for cp in clip_paths:
+        with open(cp, "wb") as f:
+            f.write(b"dummy")
+
+    captured_concat_lines = []
+
+    def fake_subproc(cmd, *args, **kwargs):
+        concat_path = cmd[cmd.index("-i") + 1]
+        with open(concat_path, "r") as f:
+            captured_concat_lines.extend(f.read().splitlines())
+        res = MagicMock()
+        res.returncode = 0
+        return res
+
+    with (
+        patch("subprocess.run", side_effect=fake_subproc),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        stitcher.concatenate_clips(clip_paths, output_dir=str(tmp_path))
+
+    expected_lines = [f"file '{os.path.abspath(cp)}'" for cp in clip_paths]
+    assert captured_concat_lines == expected_lines
+
 
 
 

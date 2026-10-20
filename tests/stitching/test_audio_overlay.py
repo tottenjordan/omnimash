@@ -152,6 +152,8 @@ def test_concatenate_clips_with_master_audio_reencode_fallback(tmp_path):
             "1:a:0",
             "-pix_fmt",
             "yuv420p",
+            "-r",
+            "24",
             "-shortest",
         ]
         assert second_cmd[-1] == out_path
@@ -232,6 +234,8 @@ def test_apply_dialogue_audio_ducking_filter(tmp_path):
         filter_str = cmd[filter_idx + 1]
         assert "sidechaincompress" in filter_str
         assert "threshold=0.2512" in filter_str
+        assert "normalize=0" in filter_str
+        assert "dropout_transition=0" in filter_str
 
 
 def test_apply_dialogue_audio_ducking_custom_ducking_db(tmp_path):
@@ -317,6 +321,7 @@ def test_stitch_storyboard_master_wires_audio_ducking(tmp_path):
             dialogue_path=narrator_file,
             output_dir=str(tmp_path),
             mock_mode=True,
+            storage=stitcher.storage,
         )
         mock_concat.assert_called_once_with(
             clip_paths=[],

@@ -1,12 +1,15 @@
+import concurrent.futures
 import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import uuid
 from typing import Any, Literal
 
 from omnimash.config import settings
 from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
+from omnimash.stitching.resolver import resolve_media_source_to_local_path
 from omnimash.storage.gcs import GcsStorageManager
 
 AspectRatio = Literal["16:9", "9:16", "1:1", "21:9"]
@@ -19,6 +22,19 @@ try:
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
+
+
+def _get_font(font_name: str, size: int) -> Any:
+    """Helper to load a TrueType font with fallbacks to default fonts."""
+    if not HAS_PIL:
+        return None
+    try:
+        return ImageFont.truetype(font_name, size)
+    except Exception:
+        try:
+            return ImageFont.load_default(size=size)
+        except Exception:
+            return ImageFont.load_default()
 
 
 class VideoStitcher:
@@ -56,108 +72,38 @@ class VideoStitcher:
                 with open(out_path, "w") as f:
                     f.write("mock mp4 master video content")
         else:
-            temp_cleanup_paths: list[str] = []
-            try:
-                resolved_clips: list[str] = []
-                for clip in clip_paths:
-                    norm_clip = self.storage._normalize_media_source_path(clip)
-                    if norm_clip.startswith("/static/"):
-                        from omnimash.engine.media_loader import validate_local_media_path
-
-                        loc = validate_local_media_path(norm_clip)
-                        if loc and os.path.exists(loc):
-                            resolved_clips.append(loc)
-                    elif os.path.exists(norm_clip):
-                        resolved_clips.append(os.path.abspath(norm_clip))
-                    elif (
-                        not self.mock_mode
-                        and self.storage._bucket
-                        and norm_clip.startswith("gs://")
-                    ):
-                        try:
-                            blob_name = norm_clip.replace(
-                                f"gs://{self.storage.bucket_name}/", ""
-                            ).lstrip("/")
-                            tmp_clip_path = os.path.join(
-                                output_dir, f"clip_{uuid.uuid4().hex[:6]}.mp4"
-                            )
-                            blob = self.storage._bucket.blob(blob_name)
-                            blob.download_to_filename(tmp_clip_path)
-                            temp_cleanup_paths.append(tmp_clip_path)
-                            resolved_clips.append(tmp_clip_path)
-                        except Exception:
-                            resolved_clips.append(norm_clip)
-                    else:
-                        resolved_clips.append(norm_clip)
-
-                resolved_audio: str | None = None
-                if master_audio_path:
-                    norm_audio = self.storage._normalize_media_source_path(master_audio_path)
-                    if norm_audio.startswith("/static/"):
-                        from omnimash.engine.media_loader import validate_local_media_path
-
-                        loc = validate_local_media_path(norm_audio)
-                        if loc and os.path.exists(loc):
-                            resolved_audio = loc
-                    elif os.path.exists(norm_audio):
-                        resolved_audio = os.path.abspath(norm_audio)
-                    elif (
-                        not self.mock_mode
-                        and self.storage._bucket
-                        and norm_audio.startswith("gs://")
-                    ):
-                        try:
-                            blob_name = norm_audio.replace(
-                                f"gs://{self.storage.bucket_name}/", ""
-                            ).lstrip("/")
-                            tmp_audio_path = os.path.join(
-                                output_dir, f"audio_{uuid.uuid4().hex[:6]}.mp3"
-                            )
-                            blob = self.storage._bucket.blob(blob_name)
-                            blob.download_to_filename(tmp_audio_path)
-                            temp_cleanup_paths.append(tmp_audio_path)
-                            resolved_audio = tmp_audio_path
-                        except Exception:
-                            resolved_audio = norm_audio
-                    elif norm_audio.startswith(("http://", "https://")):
-                        from omnimash.engine.media_loader import (
-                            fetch_media_bytes,
-                            validate_remote_media_url,
+            with tempfile.TemporaryDirectory() as scoped_temp_dir:
+                max_workers = min(len(clip_paths), 4) if clip_paths else 1
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = [
+                        executor.submit(
+                            resolve_media_source_to_local_path,
+                            clip,
+                            temp_dir=scoped_temp_dir,
+                            storage=self.storage,
+                            mock_mode=self.mock_mode,
                         )
+                        for clip in clip_paths
+                    ]
+                    resolved_clips: list[str] = [
+                        res for f in futures if (res := f.result()) is not None
+                    ]
 
-                        if not validate_remote_media_url(norm_audio):
-                            logger.warning(
-                                "Blocked disallowed or private HTTP audio URL: %s",
-                                norm_audio,
-                            )
-                            resolved_audio = None
-                        else:
-                            try:
-                                data, _ = fetch_media_bytes(norm_audio, storage=self.storage)
-                                if data:
-                                    tmp_audio_path = os.path.join(
-                                        output_dir, f"audio_{uuid.uuid4().hex[:6]}.mp3"
-                                    )
-                                    with open(tmp_audio_path, "wb") as f:
-                                        f.write(data)
-                                    temp_cleanup_paths.append(tmp_audio_path)
-                                    resolved_audio = tmp_audio_path
-                                else:
-                                    resolved_audio = None
-                            except Exception as exc:
-                                logger.warning(
-                                    "Failed to download HTTP master audio URL safely: %s",
-                                    exc,
-                                )
-                                resolved_audio = None
-                    else:
-                        resolved_audio = norm_audio
+                resolved_audio = (
+                    resolve_media_source_to_local_path(
+                        master_audio_path,
+                        temp_dir=scoped_temp_dir,
+                        storage=self.storage,
+                        mock_mode=self.mock_mode,
+                    )
+                    if master_audio_path
+                    else None
+                )
 
                 if resolved_clips:
                     concat_list_path = os.path.join(
-                        output_dir, f"concat_list_{uuid.uuid4().hex[:8]}.txt"
+                        scoped_temp_dir, f"concat_list_{uuid.uuid4().hex[:8]}.txt"
                     )
-                    temp_cleanup_paths.append(concat_list_path)
                     with open(concat_list_path, "w") as f:
                         for clip_file in resolved_clips:
                             escaped_clip = clip_file.replace("'", "'\\''")
@@ -246,6 +192,8 @@ class VideoStitcher:
                                     "1:a:0",
                                     "-pix_fmt",
                                     "yuv420p",
+                                    "-r",
+                                    "24",
                                     "-shortest",
                                     out_path,
                                 ]
@@ -265,6 +213,8 @@ class VideoStitcher:
                                     "aac",
                                     "-pix_fmt",
                                     "yuv420p",
+                                    "-r",
+                                    "24",
                                     out_path,
                                 ]
                             res_reencode = subprocess.run(
@@ -289,13 +239,6 @@ class VideoStitcher:
                         raise RuntimeError(
                             f"FFmpeg execution timed out after {timeout_secs} seconds"
                         ) from exc
-            finally:
-                for tmp_p in temp_cleanup_paths:
-                    if os.path.exists(tmp_p):
-                        try:
-                            os.remove(tmp_p)
-                        except OSError:
-                            pass
 
         gcs_blob = self.storage.build_session_blob_path(
             session_id=session_id,
@@ -356,16 +299,8 @@ class VideoStitcher:
             img = Image.new("RGB", (width, height), color=bg_color)
             draw = ImageDraw.Draw(img)
 
-            try:
-                title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 60)
-                subtitle_font = ImageFont.truetype("DejaVuSans.ttf", 36)
-            except Exception:
-                try:
-                    title_font = ImageFont.load_default(size=60)
-                    subtitle_font = ImageFont.load_default(size=36)
-                except Exception:
-                    title_font = ImageFont.load_default()
-                    subtitle_font = ImageFont.load_default()
+            title_font = _get_font("DejaVuSans-Bold.ttf", 60)
+            subtitle_font = _get_font("DejaVuSans.ttf", 36)
 
             t_bbox = draw.textbbox((0, 0), title_text, font=title_font)
             t_w = t_bbox[2] - t_bbox[0]
@@ -537,6 +472,7 @@ class VideoStitcher:
                     dialogue_path=valid_narrator_paths[0],
                     output_dir=output_dir,
                     mock_mode=self.mock_mode,
+                    storage=self.storage,
                 )
                 temp_storyboard_files.append(ducked_audio)
                 master_audio = ducked_audio
