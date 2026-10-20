@@ -43,6 +43,7 @@ def _guess_content_type(path_or_filename: str, default: str = "application/octet
 
 
 if TYPE_CHECKING:
+    from google.cloud import storage
     from omnimash.ingestion.media_extractor import ReferenceAnalysisReport
 
 try:
@@ -110,19 +111,19 @@ class GcsStorageManager:
             return self._client_instance
 
     @property
-    def client(self) -> Any:
+    def client(self) -> storage.Client | Any | None:
         """Lazily retrieves or initializes the thread-safe GCS client singleton."""
         return self._get_client()
 
     @property
-    def _client(self) -> Any:
+    def _client(self) -> storage.Client | Any | None:
         return self._get_client()
 
     @_client.setter
     def _client(self, val: Any) -> None:
         self._client_instance = val
 
-    def _get_bucket(self) -> Any:
+    def _get_bucket(self) -> storage.Bucket | Any | None:
         if self._bucket_instance is not None:
             return self._bucket_instance
         if self.mock_mode or storage is None:
@@ -137,12 +138,12 @@ class GcsStorageManager:
         return self._bucket_instance
 
     @property
-    def bucket(self) -> Any:
+    def bucket(self) -> storage.Bucket | Any | None:
         """Lazily retrieves or initializes the GCS bucket reference."""
         return self._get_bucket()
 
     @property
-    def _bucket(self) -> Any:
+    def _bucket(self) -> storage.Bucket | Any | None:
         return self._get_bucket()
 
     @_bucket.setter
@@ -1429,5 +1430,6 @@ class GcsStorageManager:
         return deleted or deleted_from_mock
 
 
-# Alias for backward compatibility and convenience
+# Backward compatibility alias for GcsStorageManager
 GCSStorage = GcsStorageManager
+"""GCSStorage is preserved as a backward-compatible alias for GcsStorageManager."""
