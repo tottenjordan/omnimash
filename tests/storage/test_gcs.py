@@ -470,3 +470,49 @@ def test_gcs_shared_clients_thread_safety():
         assert len(results) == 10
         assert all(c is results[0] for c in results)
 
+
+def test_save_character_sheet_blocks_ssrf_urls():
+    from unittest.mock import patch
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=False)
+    disallowed_urls = [
+        "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+        "http://localhost:8080/admin",
+        "http://metadata.google.internal/computeMetadata/v1/",
+    ]
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        for url in disallowed_urls:
+            pub_url, gcs_uri = storage.save_character_sheet(
+                image_data=url, custom_name="test-char", session_id="s1"
+            )
+            assert "s1/character_sheets/test_char.png" in gcs_uri
+        # Ensure urllib.request.urlopen was NEVER called with malicious URLs
+        mock_urlopen.assert_not_called()
+
+
+def test_save_final_master_blocks_path_traversal():
+    from unittest.mock import MagicMock
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=False)
+    mock_bucket = MagicMock()
+    storage._bucket = mock_bucket
+
+    # Path traversal attempting to read /etc/passwd or escape static
+    pub_url, gcs_uri = storage.save_final_master(
+        session_id="s1",
+        source_rel_path="/static/../../etc/passwd",
+        master_title="pwned",
+    )
+    assert "s1/final_masters/pwned.mp4" in gcs_uri
+    # upload_from_filename should NOT be called with an unconfined path
+    mock_blob = mock_bucket.blob.return_value
+    mock_blob.upload_from_filename.assert_not_called()
+
+
+def test_download_blob_bytes_unquotes_proxy_uri():
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=True)
+    encoded_uri = "gs%3A%2F%2Ftest-bucket%2Fsessions%2Fs1%2Fclip.mp4"
+    proxy_url = f"/api/media-proxy?uri={encoded_uri}"
+    # In mock mode, should parse gs:// URI correctly and return mock bytes
+    bytes_data, mime = storage.download_blob_bytes(proxy_url)
+    assert bytes_data == b"mock_image_bytes"
+
+

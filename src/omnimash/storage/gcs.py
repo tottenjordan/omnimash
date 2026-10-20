@@ -273,15 +273,7 @@ class GcsStorageManager:
         if not isinstance(gs_uri, str) or not gs_uri.strip():
             return (b"", "image/jpeg")
 
-        raw_uri = gs_uri.strip()
-        if "/api/media-proxy" in raw_uri and "uri=" in raw_uri:
-            try:
-                parsed = urlparse(raw_uri)
-                qs = parse_qs(parsed.query)
-                if "uri" in qs and qs["uri"]:
-                    raw_uri = qs["uri"][0]
-            except Exception:
-                pass
+        raw_uri = self._normalize_media_source_path(gs_uri.strip())
 
         if raw_uri.startswith("https://storage.googleapis.com/"):
             raw_uri = "gs://" + raw_uri.replace("https://storage.googleapis.com/", "")
@@ -530,13 +522,17 @@ class GcsStorageManager:
 
     def _normalize_media_source_path(self, src: str) -> str:
         """Normalizes proxy URLs, GCS URIs, or relative paths to a raw GCS URI or local path."""
-        if not src:
+        if not src or not isinstance(src, str):
             return ""
+        src = src.strip()
         if "/api/media-proxy" in src and "uri=" in src:
-            parsed = urlparse(src)
-            qs = parse_qs(parsed.query)
-            if "uri" in qs and qs["uri"]:
-                return unquote(qs["uri"][0])
+            try:
+                parsed = urlparse(src)
+                qs = parse_qs(parsed.query)
+                if "uri" in qs and qs["uri"]:
+                    return unquote(qs["uri"][0]).strip()
+            except Exception as exc:
+                logger.warning("Failed to parse media-proxy URL %s: %s", src, exc)
         return src
 
     def save_final_master(
@@ -555,27 +551,49 @@ class GcsStorageManager:
         public_url = self.get_public_url(dest_blob_path)
         gcs_uri = self.get_gcs_uri(dest_blob_path)
 
-        if not self.mock_mode and self._bucket:
+        if not self.mock_mode and self.bucket:
             try:
-                norm_source = self._normalize_media_source_path(source_rel_path)
-                local_path = norm_source
-                if local_path.startswith("/static/"):
-                    local_path = os.path.join(os.getcwd(), local_path.lstrip("/"))
-                elif not os.path.isabs(local_path) and os.path.exists(
-                    os.path.join(os.getcwd(), local_path)
-                ):
-                    local_path = os.path.join(os.getcwd(), local_path)
+                from omnimash.engine.media_loader import validate_local_media_path
 
-                if os.path.exists(local_path):
-                    blob = self._bucket.blob(dest_blob_path)
-                    blob.upload_from_filename(local_path, content_type="video/mp4")
+                norm_source = self._normalize_media_source_path(source_rel_path)
+                safe_local = validate_local_media_path(norm_source)
+                if safe_local and os.path.isfile(safe_local):
+                    blob = self.bucket.blob(dest_blob_path)
+                    blob.upload_from_filename(
+                        safe_local, content_type="video/mp4", timeout=self.timeout
+                    )
+                elif (
+                    not norm_source.startswith("/")
+                    and not os.path.isabs(norm_source)
+                    and not norm_source.startswith("gs://")
+                ):
+                    candidate = os.path.join(os.getcwd(), norm_source)
+                    safe_local = validate_local_media_path(candidate)
+                    if safe_local and os.path.isfile(safe_local):
+                        blob = self.bucket.blob(dest_blob_path)
+                        blob.upload_from_filename(
+                            safe_local, content_type="video/mp4", timeout=self.timeout
+                        )
+                    else:
+                        src_blob_name = norm_source.replace(f"gs://{self.bucket_name}/", "").lstrip(
+                            "/"
+                        )
+                        src_blob = self.bucket.blob(src_blob_name)
+                        if src_blob.exists(timeout=self.timeout):
+                            self.bucket.copy_blob(
+                                src_blob, self.bucket, dest_blob_path, timeout=self.timeout
+                            )
                 else:
                     src_blob_name = norm_source.replace(f"gs://{self.bucket_name}/", "").lstrip("/")
-                    src_blob = self._bucket.blob(src_blob_name)
-                    if src_blob.exists():
-                        self._bucket.copy_blob(src_blob, self._bucket, dest_blob_path)
-            except Exception:
-                pass
+                    src_blob = self.bucket.blob(src_blob_name)
+                    if src_blob.exists(timeout=self.timeout):
+                        self.bucket.copy_blob(
+                            src_blob, self.bucket, dest_blob_path, timeout=self.timeout
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "save_final_master failed to upload/copy source %s: %s", source_rel_path, exc
+                )
 
         if prompt_data is not None:
             prompt_filename = f"{title_base}_prompt.json"
@@ -675,32 +693,11 @@ class GcsStorageManager:
         if isinstance(image_data, bytes):
             raw_bytes = image_data
         elif isinstance(image_data, str):
-            if image_data.startswith("data:"):
-                try:
-                    _header, encoded = image_data.split(",", 1)
-                    raw_bytes = base64.b64decode(encoded)
-                except Exception:
-                    pass
-            elif image_data.startswith("gs://"):
-                raw_bytes, _ = self.download_blob_bytes(image_data)
-            elif "/api/media-proxy" in image_data and "uri=" in image_data:
-                try:
-                    parsed = urlparse(image_data)
-                    qs = parse_qs(parsed.query)
-                    if "uri" in qs and qs["uri"]:
-                        raw_bytes, _ = self.download_blob_bytes(unquote(qs["uri"][0]))
-                except Exception:
-                    pass
-            elif image_data.startswith("http://") or image_data.startswith("https://"):
-                try:
-                    req = urllib.request.Request(image_data, headers={"User-Agent": "Mozilla/5.0"})
-                    raw_bytes = urllib.request.urlopen(req, timeout=10).read()
-                except Exception:
-                    pass
-            elif os.path.exists(image_data):
-                raw_bytes, _ = self.load_bytes(image_data)
-            else:
-                # Try decoding as raw base64 string
+            from omnimash.engine.media_loader import fetch_media_bytes
+
+            raw_bytes, _ = fetch_media_bytes(image_data, storage=self)
+            if not raw_bytes:
+                # Fallback: try decoding as raw base64 string
                 try:
                     raw_bytes = base64.b64decode(image_data)
                 except Exception:
