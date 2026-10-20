@@ -1,4 +1,17 @@
-"""Model Armor security guardrail integration for OmniMash."""
+"""Model Armor security guardrail integration for OmniMash.
+
+Provides the primary security gateway for screening raw user inputs, prompt directives,
+and agent turns against Google Cloud Model Armor. Detects adversarial prompt injections,
+jailbreak attempts, and sensitive data (PII) before prompts reach models.
+
+Note on Architecture:
+    Pre-generation prompt screening is owned by this module (`omnimash.security`).
+    This is distinct from `omnimash.engine.guardrails`, which handles procedural
+    character likeness abstraction (e.g. pop-culture names/trademarks) and post-inference
+    Gemini Omni Flash 400 error guidance parsing. Decoupling pre-generation Model Armor
+    screening from video generation avoids the google-genai constraint where model_armor_config
+    and relaxed safety_settings are mutually exclusive in GenerateContentConfig.
+"""
 
 import logging
 from typing import Any
@@ -7,14 +20,10 @@ from omnimash.security.client import (
     get_model_armor_async_client,
     get_model_armor_client,
     is_model_armor_available,
+    modelarmor_v1,
 )
 from omnimash.security.heuristics import validate_prompt_heuristics
 from omnimash.security.models import GuardrailResult
-
-try:
-    from google.cloud import modelarmor_v1
-except ImportError:
-    modelarmor_v1 = None  # type: ignore[assignment]
 
 logger = logging.getLogger("omnimash.security.guardrail")
 
@@ -28,7 +37,8 @@ class ModelArmorGuardrail:
         template_id: str | None = None,
         location: str | None = None,
         project_id: str | None = None,
-        fail_closed: bool = False,
+        fail_closed: bool | None = None,
+        timeout: float | None = None,
         client: Any | None = None,
         async_client: Any | None = None,
     ):
@@ -52,7 +62,14 @@ class ModelArmorGuardrail:
             if project_id is not None
             else getattr(settings, "google_cloud_project", "hybrid-vertex")
         )
-        self.fail_closed = fail_closed
+        self.fail_closed = (
+            fail_closed
+            if fail_closed is not None
+            else getattr(settings, "model_armor_fail_closed", False)
+        )
+        self.timeout = (
+            timeout if timeout is not None else getattr(settings, "model_armor_timeout", 5.0)
+        )
         self._client = client
         self._async_client = async_client
 
@@ -68,6 +85,14 @@ class ModelArmorGuardrail:
 
         Falls back to local heuristic validation in mock mode or when the remote service is unavailable.
         """
+        # Short-circuit empty or whitespace-only prompts without remote RPC calls
+        if not prompt or not prompt.strip():
+            return GuardrailResult(
+                is_approved=True,
+                sanitized_prompt="",
+                filter_match_state="NO_MATCH_FOUND",
+            )
+
         if self.mock_mode or not is_model_armor_available() or modelarmor_v1 is None:
             return validate_prompt_heuristics(prompt)
 
@@ -77,7 +102,7 @@ class ModelArmorGuardrail:
                 name=self.template_name,
                 user_prompt_data=modelarmor_v1.DataItem(text=prompt),
             )
-            response = client.sanitize_user_prompt(request=request)
+            response = client.sanitize_user_prompt(request=request, timeout=self.timeout)
             return self._process_sanitization_result(response, prompt)
         except Exception as err:
             logger.warning(
@@ -98,6 +123,14 @@ class ModelArmorGuardrail:
 
         Falls back to local heuristic validation in mock mode or when the remote service is unavailable.
         """
+        # Short-circuit empty or whitespace-only prompts without remote RPC calls
+        if not prompt or not prompt.strip():
+            return GuardrailResult(
+                is_approved=True,
+                sanitized_prompt="",
+                filter_match_state="NO_MATCH_FOUND",
+            )
+
         if self.mock_mode or not is_model_armor_available() or modelarmor_v1 is None:
             return validate_prompt_heuristics(prompt)
 
@@ -107,7 +140,7 @@ class ModelArmorGuardrail:
                 name=self.template_name,
                 user_prompt_data=modelarmor_v1.DataItem(text=prompt),
             )
-            response = await client.sanitize_user_prompt(request=request)
+            response = await client.sanitize_user_prompt(request=request, timeout=self.timeout)
             return self._process_sanitization_result(response, prompt)
         except Exception as err:
             logger.warning(
@@ -134,6 +167,37 @@ class ModelArmorGuardrail:
 
         result = response.sanitization_result
         match_state = getattr(result, "filter_match_state", None)
+        inv_result = getattr(result, "invocation_result", None)
+
+        # Check for detector execution failure or backend error
+        is_failure = False
+        if modelarmor_v1 and hasattr(modelarmor_v1, "InvocationResult"):
+            is_failure = inv_result in (
+                modelarmor_v1.InvocationResult.FAILURE,
+                getattr(modelarmor_v1.InvocationResult, "PARTIAL", None),
+            )
+        else:
+            is_failure = str(inv_result) in ("FAILURE", "PARTIAL", "3", "2")
+
+        is_exec_error = (
+            str(match_state) in ("EXECUTION_ERROR", "FILTER_MATCH_STATE_UNSPECIFIED", "0")
+            and is_failure
+        ) or str(match_state) == "EXECUTION_ERROR"
+
+        if is_failure or is_exec_error:
+            logger.warning(
+                "Model Armor screening encountered backend execution error (invocation_result=%s, match_state=%s).",
+                inv_result,
+                match_state,
+            )
+            if self.fail_closed:
+                return GuardrailResult(
+                    is_approved=False,
+                    sanitized_prompt="",
+                    rejection_reason="Model Armor screening service encountered an execution failure.",
+                    filter_match_state="EXECUTION_ERROR",
+                )
+            return validate_prompt_heuristics(original_prompt)
 
         # Check MATCH_FOUND
         is_match = False
