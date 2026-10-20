@@ -2219,3 +2219,179 @@ def test_journey3_compiler_4block_alignment_and_stateful_4k_upscale_endpoint() -
         assert kwargs.get("keyframe_image_url") is None
         assert kwargs.get("resolution") == "4k"
         assert kwargs.get("motion_reference_clip") == "static/uploads/motion_3s.mp4"
+
+
+def test_ui_html_shared_character_roster_and_turnaround_studio_component() -> None:
+    """Verify CharacterRosterAndTurnaroundStudio is extracted above OmniMashApp, deduplicates the 3x roster JSX, syncs characters/j3Characters, and renders the Visual Anchor Active badge."""
+    from omnimash.api.app import UI_HTML
+
+    comp_pos = UI_HTML.find("function CharacterRosterAndTurnaroundStudio(")
+    app_pos = UI_HTML.find("function OmniMashApp()")
+    assert comp_pos != -1, "CharacterRosterAndTurnaroundStudio component must be defined"
+    assert comp_pos < app_pos, (
+        "CharacterRosterAndTurnaroundStudio must be defined above OmniMashApp"
+    )
+
+    assert UI_HTML.count("<CharacterRosterAndTurnaroundStudio") >= 3
+    assert UI_HTML.count("<span>Character Turnaround Reference Sheet Studio</span>") == 1
+    assert "⚓ Visual Anchor Active" in UI_HTML
+    assert (
+        "useEffect(() => {\n                setJ3Characters(characters);\n            }, [characters]);"
+        in UI_HTML
+    )
+
+
+def test_ui_html_mode1_stage3_inline_conversational_diffs_and_turn_branching() -> None:
+    """Verify Mode 1 Stage 3 embeds Conversational Diff (POST /api/diff), Guided Diff Category Pills, Turn Depth Meter, and TurnHistoryCarousel."""
+    from omnimash.api.app import UI_HTML
+
+    stage3_start = UI_HTML.find("{activeStage === 3 && (")
+    stage4_start = UI_HTML.find("{activeStage === 4 && (")
+    assert stage3_start != -1 and stage4_start != -1 and stage3_start < stage4_start
+    stage3_block = UI_HTML[stage3_start:stage4_start]
+
+    for pill in [
+        "🌧️ Lighting/Weather",
+        "🎥 Camera Angle",
+        "🎵 Audio Beat",
+        "🗣️ Dialogue Line",
+        "⏱️ Pacing",
+    ]:
+        assert pill in UI_HTML
+    assert "GUIDED_DIFF_CATEGORY_PILLS" in stage3_block
+    assert "POST /api/diff" in stage3_block
+    assert "TurnHistoryCarousel" in stage3_block
+    assert "⏪ Branch from Turn" in stage3_block
+    assert "/ 4 — Re-anchor recommended at 4+ turns" in stage3_block
+    assert "Depth: N / 4 — Re-anchor recommended at 4+ turns" in stage3_block
+    assert "const shotTurnId = parentTurnId || selectedShotObj?.turn_id || null;" in UI_HTML
+    assert "keyframe_seed: isVisualContinuityLocked ? keyframeSeedAnchor : null" in UI_HTML
+    assert "? { ...s, turn_id: tId, video_url: turn.videoUrl || s.video_url }" in stage3_block
+
+
+def test_ui_html_mode3_shot_card_speaker_role_and_duration_sweet_spot() -> None:
+    """Verify Mode 3 shot cards include Speaker Role selector (Role A / Role B / Off-Screen Narrator) and duration sweet-spot indicator (4s–15s • 10s optimal)."""
+    from omnimash.api.app import UI_HTML
+
+    assert "4s–15s • 10s optimal" in UI_HTML
+    assert "speaker_role" in UI_HTML
+    assert '<option value="Role A">Role A</option>' in UI_HTML
+    assert '<option value="Role B">Role B</option>' in UI_HTML
+    assert (
+        '<option value="🎙️ Off-Screen Narrator (off-screen)">🎙️ Off-Screen Narrator (off-screen)</option>'
+        in UI_HTML
+    )
+    assert "const speakerRole = (card && card.speaker_role) ||" in UI_HTML
+    assert 'speaker_role: card.speaker_role || "Role A",' in UI_HTML
+    assert (
+        'speakerRole !== "Role A" ? `${speakerRole}: "${trimmedDialogue}"` : rawDialogue' in UI_HTML
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.browser
+def test_ui_html_pr2_browser_dom_interactions(tmp_path) -> None:
+    """Verify in a real headless Chromium browser that CharacterRosterAndTurnaroundStudio, Mode 1 Stage 3 Guided Diff Pills, Turn Depth Meter (4+ turn warning), TurnHistoryCarousel branching, and Mode 3 Speaker Role selector + payload work interactively."""
+    import os
+    import subprocess
+    from omnimash.api.app import UI_HTML
+
+    skill_dir = "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill"
+    if not os.path.exists(skill_dir):
+        pytest.skip("Playwright skill directory not installed")
+
+    html_file = tmp_path / "ui_pr2_check.html"
+    html_file.write_text(UI_HTML, encoding="utf-8")
+    inline_js = (
+        "const { chromium } = require('playwright');"
+        "(async () => {"
+        "  const browser = await chromium.launch({ headless: true });"
+        "  const page = await browser.newPage();"
+        "  page.on('pageerror', err => { console.error('BROWSER ERROR:', err.message); process.exit(2); });"
+        f"  await page.goto('file://{html_file}', {{ waitUntil: 'domcontentloaded' }});"
+        "  await page.waitForFunction(() => {"
+        "    const el = document.querySelector('#__next');"
+        "    return el && el.innerHTML.length > 1000;"
+        "  }, { timeout: 15000 });"
+        "  await page.evaluate(() => {"
+        "    window.__capturedRequests = [];"
+        "    let turnCounter = 0;"
+        "    window.fetch = async (url, opts) => {"
+        "      const body = opts && opts.body ? JSON.parse(opts.body) : null;"
+        "      window.__capturedRequests.push({ url: String(url), body });"
+        "      if (String(url).includes('/api/journey3/generate-shot')) {"
+        "        return { ok: true, status: 200, json: async () => ({ video_url: 'https://example.com/j3.mp4', turn_id: 'j3_turn_1' }) };"
+        "      }"
+        "      if (String(url).includes('/api/generate') || String(url).includes('/api/diff')) {"
+        "        const tId = `turn_0${turnCounter++}`;"
+        "        return { ok: true, status: 200, json: async () => ({ success: true, status: 'OK', turn_id: tId, video_url: `https://example.com/${tId}.mp4`, raw_compiled_prompt: 'compiled' }) };"
+        "      }"
+        "      return { ok: true, status: 200, json: async () => ({}) };"
+        "    };"
+        "  });"
+        "  const mode3Text = await page.innerText('#__next');"
+        "  if (!mode3Text.includes('4s–15s • 10s optimal')) throw new Error('Missing duration sweet-spot badge in Mode 3');"
+        "  if (!mode3Text.includes('⚓ Visual Anchor Active')) throw new Error('Missing Visual Anchor Active badge in Mode 3');"
+        "  const speakerSelect = page.locator('select').filter({ hasText: '🎙️ Off-Screen Narrator (off-screen)' }).first();"
+        "  await speakerSelect.selectOption('Role B');"
+        "  await page.getByRole('button', { name: /Render 10s Shot Video/i }).first().click();"
+        "  await page.waitForTimeout(100);"
+        "  const j3ReqRoleB = await page.evaluate(() => window.__capturedRequests.find(r => r.url.includes('/api/journey3/generate-shot')));"
+        "  if (!j3ReqRoleB || j3ReqRoleB.body.speaker_role !== 'Role B' || !j3ReqRoleB.body.dialogue_text.startsWith('Role B:')) {"
+        "    throw new Error('Mode 3 Role B speaker_role not normalized in generate-shot payload: ' + JSON.stringify(j3ReqRoleB));"
+        "  }"
+        "  await page.evaluate(() => { window.__capturedRequests = []; });"
+        "  await speakerSelect.selectOption('🎙️ Off-Screen Narrator (off-screen)');"
+        "  await page.getByRole('button', { name: /Render 10s Shot Video/i }).first().click();"
+        "  await page.waitForTimeout(100);"
+        "  const j3ReqNarr = await page.evaluate(() => window.__capturedRequests.find(r => r.url.includes('/api/journey3/generate-shot')));"
+        "  if (!j3ReqNarr || j3ReqNarr.body.dialogue_text !== '' || !String(j3ReqNarr.body.narrator_text || '').includes('I see all.')) {"
+        "    throw new Error('Mode 3 Off-Screen Narrator speaker_role not routed to narrator_text: ' + JSON.stringify(j3ReqNarr));"
+        "  }"
+        "  await page.getByRole('button', { name: /Mode 1: Guided Fine-Tune/i }).first().click();"
+        "  const stage1Text = await page.innerText('#__next');"
+        "  if (!stage1Text.includes('⚓ Visual Anchor Active')) throw new Error('Missing Visual Anchor Active badge in Stage 1');"
+        "  await page.getByRole('button', { name: /Step 3: Render & Stitch Master Video/i }).click();"
+        "  const stage3Text = await page.innerText('#__next');"
+        "  if (!stage3Text.includes('Depth: 0 / 4 — Re-anchor recommended at 4+ turns')) throw new Error('Missing Turn Depth Meter in Stage 3');"
+        "  if (!stage3Text.includes('🌧️ Lighting/Weather')) throw new Error('Missing Guided Diff Category Pills in Stage 3');"
+        "  if (!stage3Text.toUpperCase().includes('TURNHISTORYCAROUSEL')) throw new Error('Missing TurnHistoryCarousel in Stage 3');"
+        "  const carouselCount = await page.locator('.TurnHistoryCarousel').count();"
+        "  if (carouselCount < 1) throw new Error('Expected .TurnHistoryCarousel element in Stage 3 DOM');"
+        "  await page.getByRole('button', { name: /🌧️ Lighting\\/Weather/i }).click();"
+        "  const diffVal = await page.locator('input[placeholder*=\"Change Harry\"]').inputValue();"
+        "  if (!diffVal.includes('Shift scene lighting to dramatic neon rain')) throw new Error('Guided Diff Pill did not populate deltaPrompt: ' + diffVal);"
+        "  for (let i = 0; i < 4; i++) {"
+        "    await page.getByRole('button', { name: /Apply Diff & Render/i }).click();"
+        "    await page.waitForTimeout(50);"
+        "  }"
+        "  const stage3After4 = await page.innerText('#__next');"
+        "  if (!stage3After4.includes('Depth: 4 / 4 — Re-anchor recommended at 4+ turns')) {"
+        "    throw new Error('Turn Depth Meter did not update to 4 / 4 after 4 turns');"
+        "  }"
+        "  const meterClasses = await page.locator('div[title*=\"Turn Depth Meter\"]').getAttribute('class');"
+        "  if (!meterClasses || !meterClasses.includes('border-red-500')) {"
+        "    throw new Error('Turn Depth Meter did not switch to red warning state at 4+ turns: ' + meterClasses);"
+        "  }"
+        "  await page.getByRole('button', { name: /⏪ Branch from Turn 1/i }).click();"
+        "  await page.evaluate(() => { window.__capturedRequests = []; });"
+        "  await page.getByRole('button', { name: /🎥 Camera Angle/i }).click();"
+        "  await page.getByRole('button', { name: /Apply Diff & Render/i }).click();"
+        "  await page.waitForTimeout(50);"
+        "  const branchedDiffReq = await page.evaluate(() => window.__capturedRequests.find(r => r.url.includes('/api/diff')));"
+        "  if (!branchedDiffReq || branchedDiffReq.body.parent_turn_id !== 'turn_01') {"
+        "    throw new Error('Branching from Turn 1 in Stage 3 TurnHistoryCarousel did not send parent_turn_id=turn_01: ' + JSON.stringify(branchedDiffReq));"
+        "  }"
+        "  console.log('PR2_BROWSER_INTERACTIONS_OK');"
+        "  await browser.close();"
+        "})();"
+    )
+    res = subprocess.run(
+        ["node", "-e", inline_js],
+        cwd=skill_dir,
+        capture_output=True,
+        text=True,
+    )
+    output = res.stdout + res.stderr
+    assert res.returncode == 0, f"Playwright PR2 interaction test failed: {output}"
+    assert "PR2_BROWSER_INTERACTIONS_OK" in output
