@@ -25,8 +25,8 @@ _MALICIOUS_PROMPT_PATTERNS: Final[tuple[str, ...]] = (
     r"\bdo\s+anything\s+now\b",
     r"\bbypass\s+safety\s+filter\b",
     r"\breveal\s+system\s+prompt\b",
-    r"\b(?:generate|write|produce|create)\s+(?:overt\s+)?hate\s+speech\b",
-    r"\bovert\s+hate\s+speech\b",
+    r"\b(?:generate|write|produce|create)\s+(?:(?:\w+)\s+)?hate\s+speech\b",
+    r"\b(?:overt|illegal)\s+hate\s+speech\b",
 )
 
 _MALICIOUS_PROMPT_RE: Final[re.Pattern[str]] = re.compile(
