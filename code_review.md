@@ -1,379 +1,202 @@
-# Code Review: `src/omnimash/agent` Module
+# Code Review: `src/omnimash/api` Module
 
 ## Context & Scope
 
-This review conducts an in-depth inspection of the entire `src/omnimash/agent` package across the **5-Axes Quality Framework**:
+This review conducts an in-depth inspection of the `src/omnimash/api` module using the **5-Axes Quality Framework**:
 1. **Correctness**
 2. **Readability & Simplicity**
 3. **Architecture**
 4. **Security**
 5. **Performance**
 
-Files inspected:
-- [`src/omnimash/agent/orchestrator.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py) (1,126 lines)
-- [`src/omnimash/agent/adk_pipeline.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/adk_pipeline.py) (222 lines)
-- [`src/omnimash/agent/agent.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/agent.py) (7 lines)
-- [`src/omnimash/agent/__init__.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/__init__.py) (5 lines)
+### Target Files Inspected
+- [`src/omnimash/api/app.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py) (11,060 lines, 814 KB)
+- [`src/omnimash/api/__init__.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/__init__.py) (0 lines)
 
-Associated test suites inspected:
-- [`tests/agent/test_orchestrator.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/agent/test_orchestrator.py)
-- [`tests/agent/test_adk_pipeline.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/agent/test_adk_pipeline.py)
-- [`tests/agent/test_journey3_tracker.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/agent/test_journey3_tracker.py)
-- [`tests/agent/test_single_change_diff.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/agent/test_single_change_diff.py)
+### Associated Test Suites Inspected
+- [`tests/api/test_app.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/api/test_app.py) (2,040 lines, 80 tests)
+- [`tests/api/test_character_api.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/api/test_character_api.py)
+- [`tests/api/test_concept_api.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/api/test_concept_api.py)
+- [`tests/api/test_integration.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/api/test_integration.py)
+- [`tests/api/test_storyboard_library_api.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/api/test_storyboard_library_api.py)
+- [`tests/api/test_phase1_shot_and_draft_bugs.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/api/test_phase1_shot_and_draft_bugs.py)
+- [`tests/api/test_phase3_media_security.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/api/test_phase3_media_security.py)
+- [`tests/api/test_architecture_remediation.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/api/test_architecture_remediation.py)
 
 ---
 
-## Executive Summary & Verdict
+## Executive Summary & Quality Verdict
 
-- **Overall Health Verdict:** **Request Changes** — Several high-leverage issues in correctness (silent attribute loss, greedy state corruption, and graph inconsistency), architectural leakage, and brittle regex validation must be resolved before this module is production-ready.
+- **Overall Health Verdict:** **Request Changes** — While the API has strong unit and browser integration test coverage (416 passing tests), it suffers from severe file bloat (11,060 lines in a single file containing an embedded 8,810-line React SPA), blocking synchronous I/O within an `async def` route handler, lack of exception isolation in concurrent batch tasks, extensive copy-paste logic duplication (~250+ lines across 5 endpoints), and full-file in-memory buffering on video range requests.
 - **Total Findings:** 18
-  - **Critical:** 4
-  - **Required (no prefix):** 8
-  - **Consider / Optional:** 4
-  - **Nit:** 2
+  - **Critical:** 3
+  - **Required (no prefix):** 7
+  - **Consider / Optional:** 5
+  - **Nit:** 3
 
 ---
 
 ## 1. Correctness
 
-### **Critical:** Character `wardrobe` Dropped During Role Normalization
-- **File:** [`src/omnimash/agent/orchestrator.py#L579-L639`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L579-L639)
-- **Problem:** When `char_objs` is reconstructed from raw dictionaries, Pydantic models, or `CharacterRole` instances in `process_user_turn`, the `wardrobe` field is omitted across all 4 conversion branches:
-  ```python
-  char_objs.append(
-      CharacterRole(
-          role_id=c.role_id,
-          name=_clean(c.name),
-          description=_clean(c.description),
-          reference_url=c.reference_url,
-          aesthetic_tags=[_clean(t) for t in (c.aesthetic_tags or [])],
-          voice_style=_clean(c.voice_style or ""),
-          voice_profile=_clean(c.voice_profile or ""),
-          image_role=getattr(c, "image_role", "Character Reference"),
-          is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
-      )
-  )
-  ```
-  `CharacterRole` (defined in [`src/omnimash/prompts/character_roles.py#L15`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/prompts/character_roles.py#L15)) defines `wardrobe: str = ""`. By omitting `wardrobe`, any custom costume or wardrobe prompt provided by the user is silently erased before reaching the prompt compiler and Omni Flash. (In contrast, `adk_pipeline.py` correctly handles `wardrobe`).
-- **Structural Remedy:** Extract a single canonical `normalize_character_role(c: Any, clean_fn: Callable | None = None) -> CharacterRole` helper function that populates all fields including `wardrobe`, and reuse it across both `orchestrator.py` and `adk_pipeline.py`.
+### **Critical:** Blocking Synchronous I/O in `async def upload_media_file`
+- **File:** [`src/omnimash/api/app.py#L9618-L9648`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9618-L9648)
+- **Problem:** `upload_media_file` is defined as `async def`, but executes blocking synchronous file I/O (`with open(local_path, "wb") as f: f.write(content)`) and blocking synchronous network I/O (`agent.storage.upload_bytes(...)`).
+- **Impact:** In FastAPI, an `async def` endpoint executes directly on the main asyncio event loop thread. Any blocking disk or network write freezes the entire event loop, preventing all other concurrent requests, SSE connections, or background tasks from progressing until the file write completes.
+- **Remedy:** Either change the signature to standard synchronous `def upload_media_file(...)` (so FastAPI automatically offloads execution to its AnyIO worker threadpool), or wrap blocking writes in `await anyio.to_thread.run_sync(...)`.
 
----
+### **Critical:** Unhandled Exceptions in `generate_draft_batch` Abort the Entire Batch
+- **File:** [`src/omnimash/api/app.py#L10603-L10642`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10603-L10642)
+- **Problem:** In `/api/storyboard/draft-batch`, the inner function `_run_draft` lacks a `try...except` block around `agent.process_user_turn(...)`. `executor.map(_run_draft, tasks)` is then evaluated into a list via `list(...)`.
+- **Impact:** If even a single variation fails due to a transient API timeout, rate limit, or model safety filter, `executor.map` raises the exception upon consumption. This crashes the entire HTTP request with a 500 Internal Server Error, discarding all other successfully rendered variations and leaking compute.
+- **Remedy:** Wrap `_run_draft` in a `try...except Exception as exc:` block, returning a `DraftBatchItem` with `status="FAILED"`, `video_url=None`, and capturing the error message so the caller receives the partial batch.
 
-### **Critical:** State Corruption in `Journey3StateTracker.record_shot_directive` via Greedy Regex
-- **File:** [`src/omnimash/agent/orchestrator.py#L141-L162`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L141-L162)
-- **Problem:** The removal pattern for unsetting cumulative character states is:
-  ```python
-  pattern = r"\b" + re.escape(verb) + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_\s]+)"
-  ```
-  Because `[a-zA-Z0-9_\s]+` includes whitespace and has no terminating delimiter, `m.group(1)` matches the **entire remainder of the sentence**.
-  For example, in `"Totti removes blindfold and steps into the ring"`, `target` becomes `"blindfold and steps into the ring"`.
-  When split into words (`['blindfold', 'steps', 'into', 'ring']`), the subsequent check:
-  ```python
-  if any(tw in st_lower for tw in target_words):
-      state.remove_character_state(char, st_desc)
-  ```
-  will match any existing state containing words like `"ring"` (e.g., `"golden ring"`) or `"steps"` and **accidentally delete completely unrelated character states**.
-- **Structural Remedy:** Terminate the target group at clause boundaries or punctuation:
-  ```python
-  pattern = (
-      r"\b"
-      + re.escape(verb)
-      + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+){0,3}?)(?=[,;.]|\b(?:and|then|while|as|with|into|in|on|at)\b|$)"
-  )
-  ```
-  Ensure `target` captures only the noun phrase immediately governed by the removal verb.
+### **Critical:** Temporary File Descriptor & Disk Leak on Stitching Upload Failure
+- **File:** [`src/omnimash/api/app.py#L10103-L10116`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10103-L10116) and [`#L10577-L10590`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10577-L10590)
+- **Problem:** In `/api/storyboard/stitch_master` and `/api/journey3/stitch`, `local_master_path` is removed only if `agent.storage.upload_file` succeeds without raising an exception. If GCS upload fails or raises an error, `os.remove(local_master_path)` is never reached. (Compare with `/api/stitch-clips` at `#L10080-L10085`, which properly uses a `finally:` block).
+- **Impact:** Failed stitch uploads leave multi-megabyte temporary H.264 video files indefinitely in `/tmp/`, causing disk exhaustion on long-running container instances.
+- **Remedy:** Wrap GCS upload in `try: ... finally: if local_master_path.startswith('/tmp/') and os.path.exists(local_master_path): os.remove(...)`.
 
----
-
-### **Critical:** Unstitched Video URL Inconsistency in Session Turn Graph during Multi-Chunk Generations
-- **File:** [`src/omnimash/agent/orchestrator.py#L483-L558`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L483-L558)
-- **Problem:** When `duration_seconds > 10.0`, `process_user_turn` recursively generates 10-second chunks, concatenates them with `self.stitcher.concatenate_clips`, uploads the stitched master to GCS, and returns `AgentTurnResponse(video_url=proxy_url, turn_id=last_resp.turn_id)`.
-  However, in `SessionManager`, `session.turns[last_resp.turn_id].video_url` remains the raw unstitched clip of Chunk N (only the final 10 seconds).
-  Any client querying the session turn tree (`GET /api/session/...`) or branching from `turn_id` receives only the final 10s chunk instead of the full stitched 20s/30s video.
-- **Structural Remedy:** Update the turn node's `video_url` in `SessionManager` after stitching:
-  ```python
-  if len(chunk_urls) > 1 and last_resp and last_resp.turn_id:
-      self.session_manager.update_turn_video(
-          session_id=session.session_id,
-          turn_id=last_resp.turn_id,
-          video_url=proxy_url,
-          gcs_uri=gcs_uri,
-      )
-  ```
-
----
-
-### **Critical:** `save_final_master` Discards Explicit `video_url` and Stitches Abandoned Draft Turns
-- **File:** [`src/omnimash/agent/orchestrator.py#L982-L1008`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L982-L1008)
-- **Problem:** In `save_final_master`:
-  ```python
-  if session:
-      active_clips = self._resolve_active_session_clips(session)
-      if len(active_clips) > 1:
-          return self.stitch_session_master(...)
-  return self.storage.save_final_master(session_id=s_id, source_rel_path=video_url, ...)
-  ```
-  1. If a caller explicitly provides `video_url` (e.g. exporting a specific rendered clip), but the session contains > 1 turns, `video_url` is completely ignored and all active session clips are stitched instead.
-  2. In `_resolve_active_session_clips` ([lines 943-945](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L943-L945)):
-     `if not clip_paths and turns: clip_paths = [t.video_url for t in turns.values() if getattr(t, "video_url", None)]`
-     If `timeline` is not populated, it gathers **every turn in the session dictionary** — including failed edits, superseded drafts, and abandoned branches — stitching them into an invalid master video.
-- **Structural Remedy:**
-  - Respect caller-provided `video_url`: if `video_url` is passed explicitly and the user did not request multi-shot stitching, save `video_url` directly.
-  - Traverse only the active branch path (from root to active leaf via `parent_turn_id` or explicit `timeline` segments), never all unordered values in `turns.values()`.
-
----
-
-### `extend_scene` Erroneously Flagged as `is_conversational_edit=True`
-- **File:** [`src/omnimash/agent/orchestrator.py#L1009-L1048`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L1009-L1048)
-- **Problem:** `extend_scene` passes `is_conversational_edit=True if prev_inter_id else False` to `process_user_turn`. This causes two regressions:
-  1. It subjects scene extension actions to `validate_conversational_edit`, which rejects any prompt with action sequences, multiple verbs, or connectors (e.g. `"The hero draws sword, then strikes the enemy"`).
-  2. It forces the compiler into `build_delta_prompt` (`[PRESERVATION LOCK] / [ISOLATED DIFF]`), instructing Omni Flash to keep all kinematics locked and alter only one variable — the exact opposite of extending a scene forward in time.
-  3. `clip_index` is omitted and defaults to 0, preventing timeline advancement.
-- **Structural Remedy:** Separate conversational delta editing from scene extension:
-  - Add an explicit `is_scene_extension=True` parameter to `process_user_turn`.
-  - In `extend_scene`, set `is_conversational_edit=False`, `is_scene_extension=True`, and route directly to stateful continuation via `previous_interaction_id` without delta prompt locking.
-
----
-
-### Incomplete ADK Tool Schema in `generate_parody_clip`
-- **File:** [`src/omnimash/agent/orchestrator.py#L1058-L1094`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L1058-L1094)
-- **Problem:** The ADK agent's system instruction specifies:
-  - Support for 360p draft rendering for rapid feedback before exporting 4K masters.
-  - Stateful scene extensions up to 40s total continuation via `previous_interaction_id`.
-  - Dual-keyframe transitions (`<FIRST_FRAME>` and `<LAST_FRAME>`).
-  - Conversational delta edits.
-  However, the `generate_parody_clip` tool only accepts `(prompt, user_id, project_id, clip_index, parent_turn_id, reference_url)`.
-  It lacks `resolution`, `duration_seconds`, `aspect_ratio`, `keyframe_image_url`, `is_conversational_edit`, and `audio_stem`.
-  The agent cannot execute any of the capabilities described in its system prompt because the tool arguments are missing.
-- **Structural Remedy:** Expand `generate_parody_clip` arguments to include `resolution: str = "720p"`, `duration_seconds: float = 10.0`, `aspect_ratio: str = "16:9"`, `keyframe_image_url: str | None = None`, `is_conversational_edit: bool = False`, and `audio_stem: str | None = None`, forwarding them to `process_user_turn`.
+### Inconsistent Error Protocol: HTTP Status Codes vs 200 OK with `success: False`
+- **File:** [`src/omnimash/api/app.py#L10971-L11046`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10971-L11046) vs [`#L9657-L9695`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9657-L9695)
+- **Problem:** Endpoints use divergent error reporting conventions:
+  - `/api/characters/generate-sheet` and `/api/characters/save-sheet` catch all exceptions and return HTTP 200 with `GenerateCharacterSheetResponse(success=False, details=str(e))`.
+  - `/api/motion-reference/upload` catches exceptions and raises `HTTPException(status_code=500, detail=str(exc))`.
+  - `/api/journey3/keyframe` catches exceptions and returns `JSONResponse(status_code=400, content={"detail": err_str})`.
+- **Impact:** Client-side fetch handlers and frontend state management cannot rely on HTTP status codes to detect failures, forcing bespoke response-body checking per endpoint.
+- **Remedy:** Standardize on FastAPI `HTTPException` with semantic status codes (400, 404, 422, 500) and consistent error schemas.
 
 ---
 
 ## 2. Readability & Simplicity
 
-### Fragile Regex & High False-Positive Rate in `validate_conversational_edit`
-- **File:** [`src/omnimash/agent/orchestrator.py#L345-L442`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L345-L442)
-- **Problem:** `validate_conversational_edit` spans ~100 lines of regexes matching hardcoded verbs and connectors. It produces frequent false positives on standard English phrasing:
-  - `"Add a setting sun"` matches `add` and `setting` (2 verbs) $\rightarrow$ **REJECTED**.
-  - `"Make the car turn left"` matches `make` and `turn` (2 verbs) $\rightarrow$ **REJECTED**.
-  - `"Set camera to zoom in"` matches `set` and `zoom` (2 verbs) $\rightarrow$ **REJECTED**.
-  - `"Make him walk slowly, to the edge"` has `, to` in clause 2 $\rightarrow$ **REJECTED**.
-- **Structural Remedy:** Replace the brittle multi-verb counting heuristic with an intent-based clause segmentation:
-  - Discard auxiliary/causative verbs (`make`, `set`, `turn`) from the action verb blacklist when followed by an object/adjective.
-  - Use regex boundary tokens on full verbs rather than gerunds/participles (`setting` as adjective in "setting sun").
-  - Alternatively, offload multi-change intent classification to a structured Gemini Flash evaluation with a strict schema.
+### Monolithic 11,060-Line File (`app.py`) Containing an Embedded 8,810-Line SPA
+- **File:** [`src/omnimash/api/app.py#L507-L9317`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L507-L9317)
+- **Problem:** `UI_HTML` is an 8,810-line raw string literal embedded directly inside a Python backend module. Navigating Python backend code requires jumping past nearly 9,000 lines of Babel/React/Tailwind code.
+- **Impact:** Violates single-responsibility principle; breaks IDE tooling, linting, and type checking for the frontend codebase; creates extreme merge-conflict vulnerability.
+- **Remedy:** Extract `UI_HTML` into a dedicated file (e.g. `src/omnimash/api/templates/index.html` or `static/index.html`) loaded lazily or served directly via `FileResponse` / `StaticFiles`.
 
----
+### Massive Duplication of Character Role Normalization Logic (~175 Lines)
+- **File:** [`src/omnimash/api/app.py#L9420-L9455`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9420-L9455), [`#L9700-L9740`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9700-L9740), [`#L9896-L9940`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9896-L9940), [`#L10308-L10326`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10308-L10326), [`#L10425-L10460`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10425-L10460)
+- **Problem:** The identical ~35-line loop that normalizes `CharacterRoleModel | dict` into `CharacterRole` dataclass objects (handling `role_id`, `name`, `description`, `reference_url`, `aesthetic_tags`, `voice_style`, `wardrobe`, `image_role`, and `is_offscreen_narrator` with fallback attribute getters) is duplicated verbatim across 5 route handlers.
+- **Remedy:** Extract a single canonical conversion helper: `def normalize_character_roles(characters: list[CharacterRoleModel | dict[str, Any]] | None, sanitize: bool = False) -> list[CharacterRole]`.
 
-### Unused ADK Agent Facade in `deconstruct_screenplay_with_adk`
-- **File:** [`src/omnimash/agent/adk_pipeline.py#L150-L212`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/adk_pipeline.py#L150-L212)
-- **Problem:** `deconstruct_screenplay_with_adk` instantiates `deconstructor_agent`, assigns it to an unused variable, and then immediately bypasses it to call `sb_agent.expand_vision`:
-  ```python
-  sb_agent = StoryboardAgent(mock_mode=mock_mode)
-  deconstructor_agent = create_script_deconstructor_agent(tools=[sb_agent.expand_vision])
-  _ = deconstructor_agent  # <--- Dead code facade
-  ...
-  shots = sb_agent.expand_vision(...)
-  return shots
-  ```
-  This creates the illusion that Google ADK agents are orchestrating script deconstruction, when in reality it is a direct call to `StoryboardAgent`.
-- **Structural Remedy:** Either:
-  1. Actually execute the ADK Agent using `google.adk.runners.InMemoryRunner` or `AgentSession` to deconstruct the screenplay via the tool, OR
-  2. If direct execution is intended, remove the faux agent instantiation and document that `StoryboardAgent.expand_vision` is the underlying compiler.
+### Duplicate Storyboard Master Stitching Handlers
+- **File:** [`src/omnimash/api/app.py#L10092-L10125`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10092-L10125) and [`#L10568-L10601`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10568-L10601)
+- **Problem:** `/api/storyboard/stitch_master` and `/api/journey3/stitch` execute identical business logic: calling `agent.stitcher.stitch_storyboard_master`, uploading to `sessions/{session_id}/masters/`, converting GCS URIs to proxy URLs, and returning master paths.
+- **Remedy:** Unify into a single service helper `_stitch_and_upload_master(...)` called by both endpoints.
 
----
+### Repeated Character Dict-to-Model Mapping in Storage Listing Routes
+- **File:** [`src/omnimash/api/app.py#L10700-L10715`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10700-L10715), [`#L10755-L10770`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10755-L10770), [`#L10794-L10805`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10794-L10805), [`#L10823-L10836`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10823-L10836)
+- **Problem:** Converting raw character dicts from storage into `CharacterRoleModel` instances is duplicated 4 times across `/api/characters/list`, `/api/projects/{name}/characters`, `/api/characters/load`, and `/api/characters/roster`.
+- **Remedy:** Add a `classmethod` constructor: `CharacterRoleModel.from_storage_dict(data: dict[str, Any]) -> CharacterRoleModel`.
 
-### Duplicated Character Normalization Logic
-- **Files:**
-  - [`src/omnimash/agent/orchestrator.py#L579-L639`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L579-L639)
-  - [`src/omnimash/agent/adk_pipeline.py#L165-L202`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/adk_pipeline.py#L165-L202)
-- **Problem:** 60 lines of repetitive type checking (`isinstance(c, CharacterRole)`, `isinstance(c, dict)`, `hasattr(c, "model_dump")`, `hasattr(c, "role_id")`) are duplicated almost verbatim between `orchestrator.py` and `adk_pipeline.py` (and multiple times in `app.py`).
-- **Structural Remedy:** Extract canonical `from omnimash.prompts.character_roles import normalize_character_role` and delete the redundant blocks.
-
----
-
-### Hardcoded Stop-Words List in State Tracker
-- **File:** [`src/omnimash/agent/orchestrator.py#L174-L221`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L174-L221)
-- **Problem:** 47 hardcoded words (`["Yo", "The", "Camera", "Wide", "Dramatic", ...]`) are used to filter out non-character words when extracting character names from action text. Any capitalized word outside this set is assumed to be a character name, causing words like `"London"` or `"Cyberpunk"` to become characters in state tracking.
-- **Structural Remedy:** Match characters strictly against `known_characters` or registered session character IDs. If no known character matches, do not guess based on capitalization.
+### Recompiled Regexes on Every Call in `parse_shot_directive_if_needed`
+- **File:** [`src/omnimash/api/app.py#L9833-L9865`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9833-L9865)
+- **Problem:** Six regexes (`r"-\s*Action\s*/\s*Subject:\s*(.*)"`, `r"-\s*(?:Dialogue...):\s*(.*)"`, etc.) are compiled on every single shot generation request inside an inner helper function.
+- **Remedy:** Precompile patterns as module-level constants (`_RE_ACTION = re.compile(...)`).
 
 ---
 
 ## 3. Architecture
 
-### Direct Access to Private `SessionManager._sessions` & Encapsulation Break
-- **File:** [`src/omnimash/agent/orchestrator.py#L906-L928`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L906-L928)
-- **Problem:** `_get_session` accesses the private attribute `self.session_manager._sessions` three times directly:
+### Lack of Modular `APIRouter` Architecture (1,735-Line Closure Function)
+- **File:** [`src/omnimash/api/app.py#L9320-L11050`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9320-L11050)
+- **Problem:** All 38 route handlers are declared as nested inner functions inside a monolithic `def create_app(...)` factory.
+- **Impact:**
+  - Route handlers cannot be imported or tested independently.
+  - Handlers capture outer scope variables (`agent`) rather than receiving dependencies via FastAPI's dependency injection (`Depends`).
+  - OpenAPI tags and route metadata cannot be partitioned cleanly.
+- **Remedy:** Modularize routes using `APIRouter` in `src/omnimash/api/routers/`:
+  - `routers/generation.py` (`/api/generate`, `/api/diff`, `/api/journey3/...`)
+  - `routers/storyboard.py` (`/api/storyboard/...`)
+  - `routers/projects.py` (`/api/projects/...`, `/api/sessions/...`)
+  - `routers/characters.py` (`/api/characters/...`)
+  - `routers/media.py` (`/api/upload`, `/api/media-proxy`, `/api/motion-reference/...`)
+
+### Direct Lexical Closure Access vs FastAPI Dependency Injection (`Depends`)
+- **File:** [`src/omnimash/api/app.py#L9329-L9353`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9329-L9353)
+- **Problem:** While `app.state.agent = agent` is set, all endpoints access the local variable `agent` directly from the enclosing `create_app` scope.
+- **Impact:** Prevents overriding dependencies in tests via `app.dependency_overrides`.
+- **Remedy:** Declare a dependency provider `def get_agent(request: Request) -> OmniMashAgent:` and inject it into endpoints via `agent: Annotated[OmniMashAgent, Depends(get_agent)]`.
+
+### Hardcoded Allowed Buckets in `media_proxy`
+- **File:** [`src/omnimash/api/app.py#L10911-L10918`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10911-L10918)
+- **Problem:** `media_proxy` contains a hardcoded set of bucket names:
   ```python
-  if session_id in self.session_manager._sessions:
-      return self.session_manager._sessions[session_id]
-  ...
-  for session in self.session_manager._sessions.values():
+  allowed_buckets = {
+      agent.storage.bucket_name,
+      settings.gcs_bucket_name,
+      "reference-images-jt-trend-trawler",
+      "omnimash-media-hybrid-vertex",
+      "test-omnimash-bucket",
+      "bucket",
+  }
   ```
-  `SessionManager` should encapsulate session retrieval and lookup.
-- **Structural Remedy:** Add a public method `get_session(session_id: str) -> ProjectSession | None` on `SessionManager` and remove direct private attribute access.
+- **Impact:** Architectural leakage — environment-specific and test fixture bucket names are hardcoded in application logic.
+- **Remedy:** Move permitted external bucket identifiers to `Settings` in `src/omnimash/config.py` (`settings.allowed_gcs_buckets`).
 
----
-
-### Eager Initialization of `root_agent` at Module Import Time
-- **Files:**
-  - [`src/omnimash/agent/agent.py#L5`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/agent.py#L5)
-  - [`src/omnimash/agent/orchestrator.py#L1126`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L1126)
-- **Problem:** At the bottom of `orchestrator.py`, `root_agent = build_adk_agent(mock_mode=getattr(settings, "mock_mode", False))` executes unconditionally at import time.
-  When `agent.py` imports `root_agent`, it instantiates `OmniMashAgent`, initializing `ModelArmorGuardrail`, `GcsStorageManager`, `OmniFlashClient`, `PromptTaxonomyEngine`, `MediaExtractor`, and `VideoStitcher`.
-  This triggers GCS and Vertex AI client setup during module discovery (e.g. pytest collection or schema inspection) before environment variables or credentials may be initialized.
-- **Structural Remedy:** Use lazy initialization or a factory function:
-  ```python
-  def get_root_agent() -> Agent: ...
-  ```
-  Or in `agent.py`, define a module-level `__getattr__` to initialize `agent` upon first access.
-
----
-
-### Turn Index Allocation Inversion & Concurrency Vulnerability
-- **File:** [`src/omnimash/agent/orchestrator.py#L309-L325`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L309-L325)
-- **Problem:** `_allocate_turn_index` relies on an in-memory dictionary `self._session_turn_counters: dict[str, int] = {}` protected by a local `threading.Lock()`.
-  1. In a multi-worker deployment (e.g. Cloud Run with multiple instances or Uvicorn with multiple workers), this in-memory state is not shared, leading to colliding turn indices.
-  2. The method attempts to infer turn numbers by running regex on video URLs (`r"turn_(\d+)_video\.mp4"`). If URLs are hashed, UUID-based, or proxied, regex extraction fails and defaults to `len(session.turns)`.
-- **Structural Remedy:** Delegate turn indexing and sequence numbering entirely to `SessionManager`, which persists the canonical turn graph and timeline in the session manifest.
-
----
-
-### Two Disconnected ADK Representations
-- **Files:**
-  - `src/omnimash/agent/adk_pipeline.py` (defines multi-agent DAG: `Workflow`, `script_deconstructor`, `storyboard_compiler`, `shot_workers`, `stitcher`)
-  - `src/omnimash/agent/orchestrator.py` (defines single agent: `omnimash_orchestrator` with `generate_parody_clip`)
-- **Problem:** The repository maintains two distinct, divergent ADK concepts:
-  - `adk_pipeline.py` defines a multi-agent Workflow DAG where workers have no tools and which is never executed in production.
-  - `orchestrator.py` defines the actual agent used by `adk run` and `app.py`.
-  Having two separate ADK architectures confuses engineers and leaves `adk_pipeline.py` as orphaned test-only code.
-- **Structural Remedy:** Unify the pipeline: wire the sub-agents in `adk_pipeline.py` as genuine tools or sub-agents of `omnimash_orchestrator`, or export `build_production_orchestrator` as a selectable ADK root agent.
-
----
-
-### **Consider:** Rename `Journey3StateTracker` to `CumulativeStateTracker`
-- **File:** [`src/omnimash/agent/orchestrator.py#L43`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L43)
-- **Problem:** The class name `Journey3StateTracker` references a demo/script journey ("Journey 3") from development rather than domain functionality.
-- **Structural Remedy:** Rename to `CumulativeStateTracker` or `SceneStateTracker`. Provide a deprecated alias `Journey3StateTracker = CumulativeStateTracker` for backwards compatibility.
+### Unused Package Dependency in `pyproject.toml`
+- **File:** [`pyproject.toml#L17`](file:///usr/local/google/home/jordantotten/omnimash/pyproject.toml#L17)
+- **Problem:** `sse-starlette>=3.5.0` is declared as a direct runtime dependency, but is neither imported nor used anywhere in the codebase.
+- **Remedy:** Either implement real-time SSE progress streaming for batch video generation or prune the dependency with `uv remove sse-starlette`.
 
 ---
 
 ## 4. Security
 
-### Unvalidated `reference_url` Input
-- **File:** [`src/omnimash/agent/orchestrator.py#L560-L567`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L560-L567)
-- **Problem:** `reference_url` is passed directly from user input into `media_extractor.process_youtube_url` and `media_extractor.analyze_youtube_reference` without URL scheme, hostname, or domain validation.
-  If downstream processing resolves the URL, malicious inputs (e.g. `http://169.254.169.254/...` or `file:///...`) could lead to Server-Side Request Forgery (SSRF) against internal GCP metadata services.
-- **Structural Remedy:** Validate `reference_url` against an allowlist of permitted schemes (`https://`) and domains (e.g. `youtube.com`, `youtu.be`, `storage.googleapis.com`) before passing to media extractors.
+### Memory Exhaustion (DoS Risk) via Full Blob Buffering in `media_proxy`
+- **File:** [`src/omnimash/api/app.py#L10924-L10950`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10924-L10950)
+- **Problem:** When handling HTTP 206 Partial Content (range requests) for video playback, `media_proxy` downloads the *entire* media file into memory via `data, content_type = agent.storage.download_blob_bytes(uri)` before slicing `chunk = data[start:end+1]`.
+- **Impact:** Video players send dozens of small range requests during playback and scrubbing. A 50MB master video file scrubbed 10 times causes 500MB of transient RAM allocation. Under concurrent streaming, this creates high risk of Out-Of-Memory (OOM) worker termination.
+- **Remedy:** Use GCS byte-range downloads (`blob.download_as_bytes(start=start, end=end)`) or stream directly via Starlette's `StreamingResponse`.
 
----
+### Unsanitized Project & Session Names in GCS Storage Paths
+- **File:** [`src/omnimash/api/app.py#L10723-L10750`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10723-L10750)
+- **Problem:** `req.project_name`, `req.session_name`, and path parameter `project_name` are passed directly to `agent.storage.create_project` and `agent.storage.create_session` without validation against path traversal characters (e.g. `../`, `/`, null bytes).
+- **Remedy:** Add Pydantic field validators with regex `^[a-zA-Z0-9_\-]+$` or sanitize using a slugify helper before constructing GCS blob paths.
 
-### Silent Exception Swallowing (`except Exception: pass`)
-- **File:** [`src/omnimash/agent/orchestrator.py#L80-L81, L101-L102, L926-L927`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L80-L81)
-- **Problem:** Throughout `Journey3StateTracker` and `_get_session`, broad `try ... except Exception: pass` blocks catch and suppress all errors without logging.
-  This masks GCS permission errors (403 Forbidden), corrupt JSON manifests, and network dropouts.
-- **Structural Remedy:** Catch specific exceptions (`GoogleAPICallError`, `KeyError`, `json.JSONDecodeError`) and log warnings with contextual details:
-  ```python
-  except Exception as exc:
-      logger.warning("Failed to persist cumulative state for session %s: %s", session_id, exc)
-  ```
+### Unvalidated File Extension & Content-Type in `/api/upload`
+- **File:** [`src/omnimash/api/app.py#L9627-L9635`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9627-L9635)
+- **Problem:** `/api/upload` extracts the extension using `os.path.splitext(file.filename or "file")[1]` and stores the file without validating against permitted media types.
+- **Remedy:** Validate against an explicit media extension allowlist (`.mp4`, `.mov`, `.mp3`, `.wav`, `.jpg`, `.jpeg`, `.png`, `.webp`) and reject unapproved MIME types.
 
 ---
 
 ## 5. Performance
 
-### Redundant Client & Storage Instantiation (Lack of Dependency Injection)
-- **File:** [`src/omnimash/agent/orchestrator.py#L293-L308`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L293-L308)
-- **Problem:** `OmniMashAgent.__init__` creates:
-  ```python
-  self.storage = GcsStorageManager(mock_mode=mock_mode)
-  self.session_manager = SessionManager(storage=self.storage)
-  self.omni_client = OmniFlashClient(mock_mode=mock_mode)
-  self.taxonomy = PromptTaxonomyEngine(mock_mode=mock_mode)
-  self.media_extractor = MediaExtractor(mock_mode=mock_mode)
-  self.stitcher = VideoStitcher(mock_mode=mock_mode)
-  self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
-  ```
-  Every single one of these classes instantiates its own internal `GcsStorageManager` instance rather than sharing `self.storage`. This creates 7 duplicate storage client instances, multiplying OpenTelemetry logging hooks, credential checks, and memory footprint.
-- **Structural Remedy:** Inject `storage=self.storage` into `OmniFlashClient`, `PromptTaxonomyEngine`, `MediaExtractor`, `VideoStitcher`, and `StoryboardAgent`.
+### Inefficient ThreadPool Nesting in `generate_draft_batch`
+- **File:** [`src/omnimash/api/app.py#L10640-L10642`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L10640-L10642)
+- **Problem:** `/api/storyboard/draft-batch` creates a new `ThreadPoolExecutor(max_workers=4)` inside a synchronous route handler that is already executing on one of FastAPI's AnyIO threadpool worker threads.
+- **Impact:** Thread pool oversubscription and synchronous blocking of the HTTP worker until all 12 drafts finish.
+- **Remedy:** Either convert to asynchronous execution using `asyncio.gather()` with `anyio.to_thread.run_sync`, or use a shared application-level threadpool.
+
+### Absence of HTTP Compression on 814KB `UI_HTML` Response
+- **File:** [`src/omnimash/api/app.py#L9342-L9350`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/app.py#L9342-L9350)
+- **Problem:** The `/` dashboard endpoint returns `HTMLResponse(content=UI_HTML)` without `GZipMiddleware` enabled on the FastAPI application.
+- **Impact:** Every page load transfers ~814 KB uncompressed HTML over the network instead of ~140 KB compressed (an unnecessary 5.8x network transfer penalty).
+- **Remedy:** Add `app.add_middleware(GZipMiddleware, minimum_size=1000)` in `create_app`.
 
 ---
 
-### Duplicate GCS Network Roundtrips in `_get_session`
-- **File:** [`src/omnimash/agent/orchestrator.py#L917-L925`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L917-L925)
-- **Problem:** `_get_session` calls `manifest = self.storage.get_session_manifest(sanitized)`.
-  If found, it calls `self.session_manager.get_or_create_session(..., session_name=sanitized)`.
-  Inside `get_or_create_session`, if the session is not in cache, it **re-fetches the exact same manifest from GCS a second time**:
-  ```python
-  manifest = self.storage.get_session_manifest(session_key, project_id=project_id)
-  ```
-- **Structural Remedy:** Pass the already-fetched manifest into `get_or_create_session(..., initial_manifest=manifest)` to eliminate the duplicate network roundtrip.
+## Findings Summary & Priority Matrix
 
----
-
-### Synchronous Blocking Multi-Chunk Video Generation
-- **File:** [`src/omnimash/agent/orchestrator.py#L489-L539`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L489-L539)
-- **Problem:** Generating multi-chunk videos (e.g. 30 seconds = 3 chunks) executes sequentially in a blocking synchronous loop. Each chunk takes 15–30 seconds for Omni Flash generation, followed by synchronous FFmpeg stitching and GCS upload. In HTTP request contexts, this frequently exceeds standard gateway timeouts (60s).
-- **Structural Remedy:** For durations > 10s, return an accepted job ticket with SSE / WebSocket progress updates, processing chunks via an async background task or queue.
-
----
-
-## 6. Dead Code Hygiene
-
-```
-DEAD CODE IDENTIFIED:
-1. `_ = deconstructor_agent` in `src/omnimash/agent/adk_pipeline.py` (lines 162-163):
-   Instantiates `create_script_deconstructor_agent` only to discard it and call `sb_agent.expand_vision`.
-2. `create_adk_agent_tool_pipeline()` in `src/omnimash/agent/adk_pipeline.py` (lines 140-148):
-   Unused anywhere in production code; referenced only in `tests/agent/test_adk_pipeline.py`.
-3. `build_production_orchestrator()` in `src/omnimash/agent/adk_pipeline.py` (lines 111-137):
-   Creates a disconnected Workflow graph with tool-less workers that is never executed by `app.py` or `agent.py`.
-4. Hardcoded stop words (`stop_words`) in `src/omnimash/agent/orchestrator.py` (lines 174-221):
-   Fragile capitalized-word blacklist superseded by explicit character roster validation.
-```
-
----
-
-## 7. Review Checklist
-
-### Context
-- [x] I understand what this module does and why (OmniMash Agent & ADK Orchestration for Gemini Omni Flash 1.1).
-
-### Correctness
-- [ ] Change matches spec/task requirements *(Blocked by wardrobe attribute loss and greedy regex state deletion)*
-- [ ] Edge cases handled *(Blocked by multi-chunk graph inconsistency and save_final_master clip selection)*
-- [ ] Error paths handled *(Blocked by broad `except Exception: pass` suppressing storage failures)*
-- [x] Tests cover the change adequately *(31 agent tests passing, but missing tests for wardrobe preservation, greedy regex edge cases, and multi-chunk graph consistency)*
-
-### Readability
-- [ ] Names are clear and consistent *(Blocked by `Journey3StateTracker` naming leakage)*
-- [ ] Logic is straightforward *(Blocked by ~100-line regex heuristic in `validate_conversational_edit`)*
-- [ ] No unnecessary complexity *(Blocked by duplicated character normalization logic)*
-
-### Architecture
-- [x] Follows existing patterns
-- [ ] No unnecessary coupling or dependencies *(Blocked by redundant GcsStorageManager instantiations)*
-- [ ] Appropriate abstraction level *(Blocked by lack of public `get_session` on SessionManager)*
-- [ ] Refactors reduce complexity rather than relocate it *(Blocked by disconnected ADK representations in adk_pipeline.py vs orchestrator.py)*
-- [x] File stays within healthy size *(orchestrator.py is 1,126 lines; consider splitting into state_tracker.py, prompt_builder.py, and orchestrator.py)*
-
-### Security
-- [x] No secrets in code
-- [ ] Input validated at boundaries *(Blocked by missing `reference_url` validation)*
-- [x] No injection vulnerabilities
-- [x] Auth checks in place
-- [ ] External data sources treated as untrusted *(Blocked by silent exception suppression on GCS storage reads)*
-
-### Performance
-- [x] No N+1 patterns
-- [ ] No redundant operations *(Blocked by duplicate GCS manifest fetch in `_get_session` and redundant storage manager instances)*
-- [ ] Unbounded synchronous blocking operations *(Multi-chunk video generation blocks synchronously)*
-
-### Verification
-- [x] Tests pass (`31 passed in 17.78s` via `uv run pytest tests/agent/ -v`)
-- [x] Static type check succeeds (`uv run ty check` 0 errors)
-- [x] Linter succeeds (`uv run ruff check src/omnimash/agent` 0 errors)
-
-### Final Verdict
-- [ ] **Approve** — Ready to merge
-- [x] **Request changes** — Critical and Required issues must be addressed before production release.
+| ID | Finding Description | Axis | Severity | Recommended Remediation |
+| :--- | :--- | :--- | :--- | :--- |
+| **COR-01** | Blocking synchronous file & GCS I/O in `async def upload_media_file` | Correctness | **Critical** | Switch to `def` or use `anyio.to_thread.run_sync` |
+| **COR-02** | Unhandled exception in batch draft worker crashes entire request | Correctness | **Critical** | Wrap `_run_draft` in `try...except` to capture `status="FAILED"` |
+| **COR-03** | Temporary video file leak in `/tmp/` on failed stitching GCS uploads | Correctness | **Critical** | Enforce cleanup inside `try...finally` blocks |
+| **SEC-01** | Full blob RAM buffering on range requests in `media_proxy` (DoS risk) | Security | Required | Fetch byte ranges via GCS API or `StreamingResponse` |
+| **SEC-02** | Unsanitized project & session names in GCS path construction | Security | Required | Enforce `^[a-zA-Z0-9_\-]+$` regex validation in Pydantic models |
+| **SEC-03** | Unvalidated file extensions & content-types in `/api/upload` | Security | Required | Enforce allowed media extension and MIME allowlists |
+| **ARC-01** | Monolithic 1,735-line `create_app` closure lacking `APIRouter`s | Architecture | Required | Decompose into 5 domain `APIRouter` modules |
+| **ARC-02** | Direct closure variable access to `agent` bypassing `Depends` | Architecture | Required | Introduce `get_agent` dependency provider |
+| **RED-01** | 8,810-line embedded React SPA string inside backend `app.py` | Readability | Required | Extract `UI_HTML` to `src/omnimash/api/templates/index.html` |
+| **RED-02** | Verbatim 35-line character normalization loop duplicated across 5 routes | Readability | Required | Extract `normalize_character_roles` helper |
+| **RED-03** | Storyboard master stitching logic duplicated in two endpoints | Readability | Required | Unify into `_stitch_and_upload_master` |
+| **PER-01** | Absence of GZip compression on 814KB dashboard response | Performance | Consider | Add FastAPI `GZipMiddleware(minimum_size=1000)` |
+| **PER-02** | ThreadPoolExecutor oversubscription in `generate_draft_batch` | Performance | Consider | Use shared executor or async task orchestration |
+| **ARC-03** | Hardcoded bucket names in `media_proxy` | Architecture | Consider | Move bucket allowlist to `Settings` in `config.py` |
+| **ARC-04** | Unused `sse-starlette` dependency in `pyproject.toml` | Architecture | Consider | Prune with `uv remove` or adopt for streaming |
+| **RED-04** | Recompiled regexes in `parse_shot_directive_if_needed` | Performance | Consider | Precompile module-level `re.Pattern` constants |
+| **COR-04** | Inconsistent error schemas (200 OK error vs HTTPException vs JSONResponse) | Correctness | Consider | Standardize on `HTTPException` with consistent JSON schema |
+| **NIT-01** | F-strings used inside `logger.error` instead of %-formatting | Readability | Nit | Use `logger.error("msg: %s", exc)` |
