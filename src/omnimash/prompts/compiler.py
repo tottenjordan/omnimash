@@ -24,6 +24,15 @@ from omnimash.prompts.parody import (
     _COMPILED_PARODY_PATTERNS,
     sanitize_real_names,
 )
+from omnimash.prompts.screenplay import (
+    MAX_CONCEPT_CHARS,
+    MAX_SCREENPLAY_CHARS,
+    SCREENPLAY_AUDIO_KEYWORDS,
+    parse_directors_notes,
+    parse_screenplay_script,
+    parse_timecoded_script,
+    validate_prompt_input_lengths,
+)
 
 if TYPE_CHECKING:
     from omnimash.prompts.taxonomy import StylePreset
@@ -67,11 +76,14 @@ __all__ = [
     "DeconstructedCharacterSchema",
     "DeconstructedConceptSchema",
     "GEMINI_OMNI_FLASH_INSTR",
+    "MAX_CONCEPT_CHARS",
+    "MAX_SCREENPLAY_CHARS",
     "MetaPromptTags",
     "PromptCompiler",
     "PromptOptimizer",
     "REAL_NAME_MAPPINGS",
     "REAL_NAME_PARODY_MAP",
+    "SCREENPLAY_AUDIO_KEYWORDS",
     "SceneDirective",
     "_COMPILED_PARODY_PATTERNS",
     "apply_conversational_voice_edits",
@@ -80,12 +92,14 @@ __all__ = [
     "enrich_timeline_dialogue_speakers",
     "ensure_character_voice_style",
     "get_character_identifier",
+    "parse_directors_notes",
     "parse_screenplay_script",
     "parse_timecoded_script",
     "replace_character_in_text_image_tags",
     "sanitize_real_names",
     "sort_characters_by_role_id",
     "validate_compiled_prompt",
+    "validate_prompt_input_lengths",
 ]
 
 
@@ -313,301 +327,6 @@ AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
         "audio": "Deep cinematic trailer braam horn, rising orchestral risers, thunderous sub-bass drop, and epic theatrical soundscape",
     },
 }
-
-SCREENPLAY_AUDIO_KEYWORDS: set[str] = {
-    "audio",
-    "sound",
-    "music",
-    "beat",
-    "bgm",
-    "sfx",
-    "thunder",
-    "bass",
-    "boom",
-    "track",
-    "rumble",
-    "rumbles",
-    "reverb",
-    "echo",
-    "hiss",
-    "synth",
-    "drums",
-    "screech",
-    "whisper",
-    "noise",
-    "loud",
-    "cue",
-    "playing",
-    "rhythm",
-    "melody",
-    "vocals",
-    "singing",
-    "rap",
-    "808",
-    "drone",
-}
-
-
-def parse_screenplay_script(
-    script_text: str,
-    characters: list[CharacterRole] | None = None,
-    char_tag_map: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Parses line-by-line screenplay text into structured components.
-
-    Format: `CharacterName: (Action description. Audio cue.) "Spoken dialogue."`
-    Returns a dictionary with keys: active_roles, action, audio_cues, dialogue.
-    """
-    if not script_text or not script_text.strip():
-        return {
-            "active_roles": [],
-            "action": "",
-            "audio_cues": "",
-            "dialogue": "",
-        }
-
-    active_roles: list[str] = []
-    action_parts: list[str] = []
-    audio_cue_parts: list[str] = []
-    dialogue_parts: list[str] = []
-
-    lines = [line.strip() for line in script_text.splitlines() if line.strip()]
-
-    for line in lines:
-        line = re.sub(
-            r"^\[\s*\d+[:\.\d]*\s*[sS]?\s*(?:-\s*\d+[:\.\d]*\s*[sS]?)?\s*\]\s*",
-            "",
-            line,
-        ).strip()
-        if not line:
-            continue
-
-        kw_pattern = r"(?i)\b(Action|Audio|Sound|Dialogue)\s*:"
-        line_no_parens = re.sub(r"\([^)]*\)", "", line)
-        line_no_quotes = re.sub(r'["“][^"”]*["”]', "", line_no_parens)
-        if list(re.finditer(kw_pattern, line_no_quotes)):
-            kw_matches = list(re.finditer(kw_pattern, line))
-            for i, match in enumerate(kw_matches):
-                kw_name = match.group(1).lower()
-                start_idx = match.end()
-                end_idx = kw_matches[i + 1].start() if i + 1 < len(kw_matches) else len(line)
-                val = line[start_idx:end_idx].strip()
-                if not val:
-                    continue
-
-                if kw_name == "action":
-                    val_clean = val.rstrip(".").strip()
-                    if val_clean and val_clean not in action_parts:
-                        action_parts.append(val_clean)
-                elif kw_name in ("audio", "sound"):
-                    val_clean = val.rstrip(".").strip()
-                    if val_clean and val_clean not in audio_cue_parts:
-                        audio_cue_parts.append(val_clean)
-                elif kw_name == "dialogue":
-                    speaker_raw: str | None = None
-                    colon_idx = val.find(":")
-                    quote_idx = min(
-                        [idx for idx in [val.find('"'), val.find("“")] if idx != -1],
-                        default=-1,
-                    )
-                    if colon_idx != -1 and (quote_idx == -1 or colon_idx < quote_idx):
-                        paren_idx = val.find("(")
-                        end_spk = min(idx for idx in [colon_idx, paren_idx] if idx != -1)
-                        candidate_clean = re.sub(
-                            r"^[\[\(\s]+|[\]\)\:\s]+$", "", val[:end_spk]
-                        ).strip()
-                        if candidate_clean:
-                            speaker_raw = candidate_clean
-                        remainder = val[colon_idx + 1 :].strip()
-                    else:
-                        remainder = val.strip()
-
-                    matched_role_id: str | None = None
-                    matched_role_name: str | None = None
-                    if speaker_raw:
-                        spk_lower = speaker_raw.lower()
-                        if characters:
-                            for char in characters:
-                                char_role = char.role_id.strip().lower()
-                                char_name = char.name.strip().lower()
-                                if spk_lower == char_role or spk_lower == char_name:
-                                    matched_role_id = char.role_id
-                                    matched_role_name = char.name
-                                    break
-                                if spk_lower in char_name or char_name in spk_lower:
-                                    matched_role_id = char.role_id
-                                    matched_role_name = char.name
-                                    break
-                                if char_role in spk_lower:
-                                    matched_role_id = char.role_id
-                                    matched_role_name = char.name
-                                    break
-
-                        role_to_add = matched_role_id if matched_role_id else speaker_raw
-                        if role_to_add not in active_roles:
-                            active_roles.append(role_to_add)
-
-                    quotes = re.findall(r'["“]([^"”]+)["”]', remainder)
-                    if quotes:
-                        spoken_text = " ".join(q.strip() for q in quotes if q.strip())
-                    else:
-                        spoken_text = remainder.strip()
-
-                    if spoken_text:
-                        matched_char = None
-                        if matched_role_id and characters:
-                            for c in characters:
-                                if getattr(c, "role_id", "") == matched_role_id:
-                                    matched_char = c
-                                    break
-                        if matched_char:
-                            speaker_display = get_character_identifier(matched_char)
-                        elif matched_role_id and matched_role_name:
-                            speaker_display = f"{matched_role_id} - {matched_role_name}"
-                        else:
-                            speaker_display = speaker_raw if speaker_raw else "Speaker"
-
-                        if char_tag_map and char_tag_map.get(speaker_display):
-                            tag = char_tag_map[speaker_display]
-                            if tag not in speaker_display:
-                                speaker_display = f"{speaker_display} {tag}"
-
-                        dialogue_parts.append(f'{speaker_display}: "{spoken_text}"')
-            continue
-
-        speaker_raw: str | None = None
-        matched_role_name: str | None = None
-
-        colon_idx = line.find(":")
-        paren_idx = line.find("(")
-        quote_idx = line.find('"')
-        smart_quote_idx = line.find("“")
-
-        delim_indices = [
-            idx for idx in [colon_idx, paren_idx, quote_idx, smart_quote_idx] if idx != -1
-        ]
-        if delim_indices:
-            first_idx = min(delim_indices)
-            candidate = line[:first_idx].strip()
-            candidate_clean = re.sub(r"^[\[\(\s]+|[\]\)\:\s]+$", "", candidate).strip()
-            if candidate_clean:
-                speaker_raw = candidate_clean
-
-        matched_role_id: str | None = None
-        if speaker_raw:
-            spk_lower = speaker_raw.lower()
-            if characters:
-                for char in characters:
-                    char_role = char.role_id.strip().lower()
-                    char_name = char.name.strip().lower()
-                    if spk_lower == char_role or spk_lower == char_name:
-                        matched_role_id = char.role_id
-                        matched_role_name = char.name
-                        break
-                    if spk_lower in char_name or char_name in spk_lower:
-                        matched_role_id = char.role_id
-                        matched_role_name = char.name
-                        break
-                    if char_role in spk_lower:
-                        matched_role_id = char.role_id
-                        matched_role_name = char.name
-                        break
-
-            role_to_add = matched_role_id if matched_role_id else speaker_raw
-            if role_to_add not in active_roles:
-                active_roles.append(role_to_add)
-
-        # Parenthetical extraction
-        parentheticals = re.findall(r"\((.*?)\)", line)
-        for ptext in parentheticals:
-            ptext_clean = ptext.strip()
-            if not ptext_clean:
-                continue
-            segments = [s.strip() for s in re.split(r"[.;]", ptext_clean) if s.strip()]
-            for seg in segments:
-                seg_lower = seg.lower()
-                has_audio_kw = any(kw in seg_lower for kw in SCREENPLAY_AUDIO_KEYWORDS)
-                is_pure_audio = seg_lower.startswith(
-                    ("audio:", "sound:", "bgm:", "sfx:", "cue:")
-                ) or (
-                    has_audio_kw
-                    and not any(
-                        w in seg_lower
-                        for w in [
-                            "standing",
-                            "bopping",
-                            "walking",
-                            "looking",
-                            "stepping",
-                            "sitting",
-                            "gesturing",
-                            "head",
-                            "wand",
-                            "hand",
-                            "eye",
-                            "face",
-                            "wearing",
-                            "facing",
-                            "running",
-                            "moving",
-                            "turning",
-                        ]
-                    )
-                )
-                if not is_pure_audio:
-                    if seg not in action_parts:
-                        action_parts.append(seg)
-                if has_audio_kw:
-                    seg_clean = re.sub(
-                        r"^(?:audio|sound|bgm|sfx|cue)\s*:\s*",
-                        "",
-                        seg,
-                        flags=re.IGNORECASE,
-                    ).strip()
-                    if seg_clean and seg_clean not in audio_cue_parts:
-                        audio_cue_parts.append(seg_clean)
-
-        # Quoted text extraction
-        quotes = re.findall(r'["“]([^"”]+)["”]', line)
-        if quotes:
-            spoken_text = " ".join(q.strip() for q in quotes if q.strip())
-            if spoken_text:
-                matched_char = None
-                if matched_role_id and characters:
-                    for c in characters:
-                        if getattr(c, "role_id", "") == matched_role_id:
-                            matched_char = c
-                            break
-                if matched_char:
-                    speaker_display = get_character_identifier(matched_char)
-                elif matched_role_id and matched_role_name:
-                    speaker_display = f"{matched_role_id} - {matched_role_name}"
-                else:
-                    speaker_display = speaker_raw if speaker_raw else "Speaker"
-
-                if char_tag_map and char_tag_map.get(speaker_display):
-                    tag = char_tag_map[speaker_display]
-                    if tag not in speaker_display:
-                        speaker_display = f"{speaker_display} {tag}"
-
-                dialogue_parts.append(f'{speaker_display}: "{spoken_text}"')
-
-    action_str = ". ".join(action_parts).strip()
-    if action_str and not action_str.endswith("."):
-        action_str += "."
-
-    audio_cues_str = ". ".join(audio_cue_parts).strip()
-    if audio_cues_str and not audio_cues_str.endswith("."):
-        audio_cues_str += "."
-
-    dialogue_str = " / ".join(dialogue_parts).strip()
-
-    return {
-        "active_roles": active_roles,
-        "action": action_str,
-        "audio_cues": audio_cues_str,
-        "dialogue": dialogue_str,
-    }
 
 
 def ensure_character_voice_style(char: CharacterRole | dict, concept: str = "") -> str:
@@ -860,122 +579,6 @@ def enrich_timeline_dialogue_speakers(
         )
         replaced = True
     return enriched, replaced
-
-
-def parse_timecoded_script(
-    script_text: str,
-    characters: list[CharacterRole] | None = None,
-    char_tag_map: dict[str, str] | None = None,
-) -> list[dict[str, Any]]:
-    """Parses screenplay or timecoded script into structured chronological timing blocks.
-
-    Supports single-line screenplay format (`[0-3s] Character: (Action. Audio.) "Dialogue."`),
-    multi-line block format (`[0-3s]\nACTION: ...\nDIALOGUE: ...\nAUDIO: ...`), and un-timecoded text.
-    Returns a list of block dictionaries with keys:
-    timecode, start_seconds, end_seconds, duration_seconds, active_roles, action, audio, audio_cues, dialogue.
-    """
-    if not script_text or not script_text.strip():
-        return []
-
-    tc_pattern = re.compile(r"\[(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)s\]", re.IGNORECASE)
-    matches = list(tc_pattern.finditer(script_text))
-
-    blocks: list[dict[str, Any]] = []
-
-    if matches:
-        for i, match in enumerate(matches):
-            start_sec = float(match.group(1))
-            end_sec = float(match.group(2))
-            dur_sec = max(0.0, end_sec - start_sec)
-            tc_str = f"[{match.group(1)}-{match.group(2)}s]"
-
-            block_start_idx = match.end()
-            block_end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(script_text)
-            block_content = script_text[block_start_idx:block_end_idx].strip()
-
-            if any(k in block_content.upper() for k in ("ACTION:", "DIALOGUE:", "AUDIO:")):
-                action_match = re.search(
-                    r"ACTION:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)",
-                    block_content,
-                    re.IGNORECASE | re.DOTALL,
-                )
-                dialogue_match = re.search(
-                    r"DIALOGUE:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)",
-                    block_content,
-                    re.IGNORECASE | re.DOTALL,
-                )
-                audio_match = re.search(
-                    r"AUDIO(?:_CUES)?:\s*(.*?)(?=\n(?:DIALOGUE|AUDIO|ACTION):|$)",
-                    block_content,
-                    re.IGNORECASE | re.DOTALL,
-                )
-
-                act = action_match.group(1).strip().replace("\n", " ") if action_match else ""
-                diag = dialogue_match.group(1).strip().replace("\n", " ") if dialogue_match else ""
-                aud = audio_match.group(1).strip().replace("\n", " ") if audio_match else ""
-
-                roles: list[str] = []
-                if diag and ":" in diag:
-                    spk = diag.split(":", 1)[0].strip()
-                    if spk and spk not in roles:
-                        roles.append(spk)
-
-                blocks.append(
-                    {
-                        "timecode": tc_str,
-                        "start_seconds": start_sec,
-                        "end_seconds": end_sec,
-                        "duration_seconds": dur_sec,
-                        "active_roles": roles,
-                        "action": act,
-                        "audio": aud,
-                        "audio_cues": aud,
-                        "dialogue": diag,
-                    }
-                )
-            else:
-                parsed = parse_screenplay_script(
-                    block_content, characters=characters, char_tag_map=char_tag_map
-                )
-                blocks.append(
-                    {
-                        "timecode": tc_str,
-                        "start_seconds": start_sec,
-                        "end_seconds": end_sec,
-                        "duration_seconds": dur_sec,
-                        "active_roles": parsed.get("active_roles", []),
-                        "action": parsed.get("action", ""),
-                        "audio": parsed.get("audio_cues", ""),
-                        "audio_cues": parsed.get("audio_cues", ""),
-                        "dialogue": parsed.get("dialogue", ""),
-                    }
-                )
-    else:
-        lines = [line.strip() for line in script_text.splitlines() if line.strip()]
-        default_tcs = [
-            ("[0-3s]", 0.0, 3.0, 3.0),
-            ("[3-6s]", 3.0, 6.0, 3.0),
-            ("[6-10s]", 6.0, 10.0, 4.0),
-        ]
-
-        for idx, line in enumerate(lines):
-            tc_info = default_tcs[min(idx, len(default_tcs) - 1)]
-            parsed = parse_screenplay_script(line, characters=characters, char_tag_map=char_tag_map)
-            blocks.append(
-                {
-                    "timecode": tc_info[0],
-                    "start_seconds": tc_info[1],
-                    "end_seconds": tc_info[2],
-                    "duration_seconds": tc_info[3],
-                    "active_roles": parsed.get("active_roles", []),
-                    "action": parsed.get("action", ""),
-                    "audio": parsed.get("audio_cues", ""),
-                    "audio_cues": parsed.get("audio_cues", ""),
-                    "dialogue": parsed.get("dialogue", ""),
-                }
-            )
-
-    return blocks
 
 
 class PromptOptimizer:
@@ -1312,6 +915,10 @@ class PromptCompiler:
         drip_props: list[str] | str | None = None,
         vibe_intensity: int = 50,
     ) -> CompiledPromptParts:
+        validate_prompt_input_lengths(
+            screenplay_script=screenplay_text,
+            raw_prompt=raw_prompt,
+        )
         script: str | None = screenplay_text
         scene_action: str = ""
         scene_dialogue: str = ""
@@ -1573,6 +1180,7 @@ class PromptCompiler:
         style_preset: str | None = None,
         is_seamless_loop: bool = False,
     ) -> str:
+        validate_prompt_input_lengths(concept=concept)
         apply_conversational_voice_edits(concept, characters)
         start_idx = 1
         effective_has_keyframe = has_keyframe_seed or bool(keyframe_image_url)
