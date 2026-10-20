@@ -432,3 +432,41 @@ def test_get_session_manifest_reads_from_gcs_bucket_when_not_cached():
     assert loaded is not None
     assert loaded["session_id"] == "cold_start_sess"
     assert "t1" in loaded["turns"]
+
+
+def test_gcs_lazy_client_initialization_does_not_call_storage_client_on_init():
+    import threading
+    from unittest.mock import patch
+
+    with patch("omnimash.storage.gcs.storage") as mock_storage:
+        mgr = GcsStorageManager(bucket_name="lazy-bucket", mock_mode=False)
+        mock_storage.Client.assert_not_called()
+        client = mgr.client
+        assert client is not None
+        mock_storage.Client.assert_called_once()
+
+
+def test_gcs_shared_clients_thread_safety():
+    import threading
+    from unittest.mock import patch
+
+    with patch("omnimash.storage.gcs.storage") as mock_storage:
+        mock_storage.Client.side_effect = lambda project=None: object()
+        # Clear shared clients cache for clean test
+        GcsStorageManager._SHARED_CLIENTS.clear()
+        instances = [GcsStorageManager(project_id="test-thread-safety-proj", mock_mode=False) for _ in range(10)]
+        results = []
+
+        def worker(mgr):
+            results.append(mgr.client)
+
+        threads = [threading.Thread(target=worker, args=(mgr,)) for mgr in instances]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert mock_storage.Client.call_count == 1
+        assert len(results) == 10
+        assert all(c is results[0] for c in results)
+

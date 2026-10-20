@@ -4,13 +4,18 @@ import base64
 import dataclasses
 from datetime import datetime, timezone
 import json
+import logging
 import os
 import re
+import threading
 from typing import TYPE_CHECKING, Any
 import urllib.request
 from urllib.parse import parse_qs, unquote, urlparse
 
 from omnimash.config import settings
+
+logger = logging.getLogger(__name__)
+_CLIENTS_LOCK = threading.Lock()
 
 if TYPE_CHECKING:
     from omnimash.ingestion.media_extractor import ReferenceAnalysisReport
@@ -75,8 +80,8 @@ class GcsStorageManager:
         self.mock_mode = settings.mock_mode if mock_mode is None else mock_mode
         self.project_id = project_id or settings.google_cloud_project
         self.bucket_name = bucket_name or settings.gcs_bucket_name
-        self._client: Any = None
-        self._bucket: Any = None
+        self._client_instance: Any = None
+        self._bucket_instance: Any = None
         self._mock_analyses: dict[str, dict[str, Any]] = {}
         self._mock_session_manifests: dict[str, dict[str, Any]] = {}
         self._mock_characters: dict[str, dict[str, Any]] = {
@@ -92,29 +97,89 @@ class GcsStorageManager:
         self._mock_project_products: dict[str, list[dict[str, Any]]] = {}
         self._mock_project_reference_sheets: dict[str, list[dict[str, Any]]] = {}
 
-        if not self.mock_mode and storage:
-            try:
-                client_key = self.project_id or "default"
-                if client_key not in self._SHARED_CLIENTS:
+    @property
+    def timeout(self) -> float:
+        """Configured GCS SDK network timeout in seconds."""
+        return float(getattr(settings, "gcs_timeout_seconds", 30.0))
+
+    def _get_client(self) -> Any:
+        if self._client_instance is not None:
+            return self._client_instance
+        if self.mock_mode or storage is None:
+            return None
+        with _CLIENTS_LOCK:
+            if self._client_instance is not None:
+                return self._client_instance
+            client_key = self.project_id or "default"
+            if client_key not in self._SHARED_CLIENTS:
+                try:
                     self._SHARED_CLIENTS[client_key] = storage.Client(project=self.project_id)
-                self._client = self._SHARED_CLIENTS[client_key]
-                self._bucket = self._client.bucket(self.bucket_name)
-            except Exception:
-                pass
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to initialize GCS client for project %s: %s",
+                        self.project_id,
+                        exc,
+                    )
+                    return None
+            self._client_instance = self._SHARED_CLIENTS[client_key]
+            return self._client_instance
+
+    @property
+    def client(self) -> Any:
+        """Lazily retrieves or initializes the thread-safe GCS client singleton."""
+        return self._get_client()
+
+    @property
+    def _client(self) -> Any:
+        return self._get_client()
+
+    @_client.setter
+    def _client(self, val: Any) -> None:
+        self._client_instance = val
+
+    def _get_bucket(self) -> Any:
+        if self._bucket_instance is not None:
+            return self._bucket_instance
+        if self.mock_mode or storage is None:
+            return None
+        c = self.client
+        if c is not None:
+            try:
+                self._bucket_instance = c.bucket(self.bucket_name)
+            except Exception as exc:
+                logger.warning("Failed to get bucket %s: %s", self.bucket_name, exc)
+                return None
+        return self._bucket_instance
+
+    @property
+    def bucket(self) -> Any:
+        """Lazily retrieves or initializes the GCS bucket reference."""
+        return self._get_bucket()
+
+    @property
+    def _bucket(self) -> Any:
+        return self._get_bucket()
+
+    @_bucket.setter
+    def _bucket(self, val: Any) -> None:
+        self._bucket_instance = val
 
     def ensure_bucket_exists(self, location: str | None = None) -> bool:
         """Verifies or programmatically creates the GCS bucket in the configured GCP project."""
-        if self.mock_mode or not self._client:
+        if self.mock_mode or not self.client:
             return True
         try:
             loc = location or settings.google_cloud_region or "us-central1"
-            bucket = self._client.lookup_bucket(self.bucket_name)
+            bucket = self.client.lookup_bucket(self.bucket_name, timeout=self.timeout)
             if not bucket:
-                self._bucket = self._client.create_bucket(self.bucket_name, location=loc)
+                self._bucket = self.client.create_bucket(
+                    self.bucket_name, location=loc, timeout=self.timeout
+                )
             else:
                 self._bucket = bucket
             return True
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to ensure bucket %s exists: %s", self.bucket_name, exc)
             return False
 
     def get_public_url(self, blob_name: str) -> str:
