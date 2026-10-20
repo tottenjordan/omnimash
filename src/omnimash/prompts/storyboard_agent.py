@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import logging
 import math
-import os
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -11,7 +11,9 @@ from typing import Any
 from pydantic import BaseModel, Field, TypeAdapter
 
 from omnimash.config import settings
-from omnimash.prompts.compiler import CharacterRole, sanitize_real_names
+from omnimash.prompts.character_roles import CharacterRole
+from omnimash.prompts.genai_client import get_genai_client
+from omnimash.prompts.parody import sanitize_real_names
 from omnimash.prompts.screenplay import (
     parse_directors_notes,
     parse_timecoded_script,
@@ -172,30 +174,9 @@ class StoryboardAgent:
             self._init_genai_client()
 
     def _init_genai_client(self) -> None:
-        try:
-            from google import genai
-
-            api_key = (
-                os.environ.get("GEMINI_API_KEY")
-                or os.environ.get("GOOGLE_API_KEY")
-                or getattr(settings, "gemini_api_key", None)
-                or getattr(settings, "google_api_key", None)
-            )
-            project = os.environ.get(
-                "GOOGLE_CLOUD_PROJECT",
-                getattr(settings, "google_cloud_project", "hybrid-vertex"),
-            )
-            if api_key:
-                self._genai_client = genai.Client(api_key=api_key)
-            else:
-                self._genai_client = genai.Client(
-                    vertexai=True,
-                    project=project,
-                    location=getattr(settings, "gemini_location", "global"),
-                )
-        except Exception as exc:
-            logger.warning("StoryboardAgent failed to initialize GenAI client: %s", exc)
-            self._genai_client = None
+        self._genai_client = get_genai_client(
+            location=getattr(settings, "gemini_location", "global")
+        )
 
     def _generate_mock_shots(
         self,
@@ -353,6 +334,19 @@ class StoryboardAgent:
         )
         return sanitize_real_names(enriched)
 
+    def _optimize_shots(self, shots: list[StoryboardShot], style_tone: str) -> None:
+        """Optimizes action directives across storyboard shots, running concurrently when live."""
+
+        def _optimize(s: StoryboardShot) -> None:
+            s.action = self.optimize_shot_prompt(s.action, style_tone=style_tone)
+
+        if len(shots) > 1 and not self.mock_mode and self._genai_client:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(shots))) as executor:
+                list(executor.map(_optimize, shots))
+        else:
+            for s in shots:
+                _optimize(s)
+
     def expand_vision(
         self,
         concept: str,
@@ -448,16 +442,14 @@ class StoryboardAgent:
                             character_continuity="Maintain subject outfit, posture, and facial expression from preceding shot",
                         )
                     )
-                for shot in shots:
-                    shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
+                self._optimize_shots(shots, style_tone=style_tone)
                 return shots
 
         if self.mock_mode or not self._genai_client:
             shots = self._generate_mock_shots(
                 concept, style_tone, target_duration, characters=characters
             )
-            for shot in shots:
-                shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
+            self._optimize_shots(shots, style_tone=style_tone)
             return shots
 
         try:
@@ -576,8 +568,7 @@ class StoryboardAgent:
                             else None,
                         )
                     )
-                for shot in shots:
-                    shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
+                self._optimize_shots(shots, style_tone=style_tone)
                 return shots
         except Exception as exc:
             logger.warning("Live expand_vision failed, falling back to mock: %s", exc)
@@ -585,6 +576,5 @@ class StoryboardAgent:
         shots = self._generate_mock_shots(
             concept, style_tone, target_duration, characters=characters
         )
-        for shot in shots:
-            shot.action = self.optimize_shot_prompt(shot.action, style_tone=style_tone)
+        self._optimize_shots(shots, style_tone=style_tone)
         return shots
