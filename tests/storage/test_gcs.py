@@ -386,7 +386,7 @@ def test_list_project_characters_with_legacy_fallback():
         {"name": "Villain", "role_id": "Role B"}
     )
 
-    def mock_list_blobs(prefix=""):
+    def mock_list_blobs(prefix="", **kwargs):
         if prefix == "projects/p1/saved_characters/":
             return [blob_saved]
         elif prefix == "projects/p1/sessions/":
@@ -514,5 +514,28 @@ def test_download_blob_bytes_unquotes_proxy_uri():
     # In mock mode, should parse gs:// URI correctly and return mock bytes
     bytes_data, mime = storage.download_blob_bytes(proxy_url)
     assert bytes_data == b"mock_image_bytes"
+
+
+def test_gcs_operations_pass_timeout_and_log_warnings(caplog):
+    import logging
+    from unittest.mock import MagicMock, patch
+
+    with patch("omnimash.storage.gcs.storage") as mock_storage:
+        mock_client = MagicMock()
+        mock_bucket = MagicMock()
+        mock_blob = MagicMock()
+        mock_client.bucket.return_value = mock_bucket
+        mock_bucket.blob.return_value = mock_blob
+        mock_blob.upload_from_string.side_effect = RuntimeError("GCS upload simulated error")
+        mock_storage.Client.return_value = mock_client
+
+        mgr = GcsStorageManager(bucket_name="test-timeout-bucket", mock_mode=False)
+        with caplog.at_level(logging.WARNING):
+            mgr.upload_bytes(b"data", "test/path.json", content_type="application/json")
+            mock_blob.upload_from_string.assert_called_once_with(
+                b"data", content_type="application/json", timeout=30.0
+            )
+            assert "upload_bytes failed on test/path.json" in caplog.text
+
 
 
