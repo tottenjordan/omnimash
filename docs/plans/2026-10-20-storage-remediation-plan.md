@@ -1,6 +1,8 @@
 # Storage Remediation Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status:** ✅ **COMPLETED**
+> - **PR 1:** [PR #193](https://github.com/tottenjordan/omnimash/pull/193) (`fix/storage-security-and-transport-hardening`) — Security, thread safety, and transport hardening.
+> - **PR 2:** [PR #194](https://github.com/tottenjordan/omnimash/pull/194) (`refactor/storage-entity-modernization-and-perf`) — Entity decomposition, facade encapsulation, and I/O performance optimization.
 
 **Goal:** Remediate all 18 Critical, Required, Optional, and Nit code review findings in `src/omnimash/storage` to harden security, ensure thread safety, eliminate silent failure modes, decompose God-class bloat, modernize MIME detection, and optimize listing performance with bounded pagination and concurrent downloads.
 

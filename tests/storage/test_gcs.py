@@ -540,3 +540,129 @@ def test_gcs_operations_pass_timeout_and_log_warnings(caplog):
                 b"data", content_type="application/json", timeout=30.0
             )
             assert "upload_bytes failed on test/path.json" in caplog.text
+
+
+def test_storage_defaults_module():
+    from omnimash.storage.defaults import DEFAULT_CHARACTERS
+    from omnimash.storage import DEFAULT_CHARACTERS as REEXPORTED_CHARS
+
+    assert len(DEFAULT_CHARACTERS) >= 4
+    assert DEFAULT_CHARACTERS == REEXPORTED_CHARS
+    assert any("Harry" in c["name"] for c in DEFAULT_CHARACTERS)
+
+
+def test_guess_content_type():
+    from omnimash.storage.gcs import _guess_content_type
+
+    test_cases = [
+        ("video.mp4", "video/mp4"),
+        ("audio.wav", "audio/wav"),
+        ("audio.aac", "audio/aac"),
+        ("image.png", "image/png"),
+        ("photo.jpg", "image/jpeg"),
+        ("photo.jpeg", "image/jpeg"),
+        ("manifest.json", "application/json"),
+        ("document.pdf", "application/pdf"),
+        ("unknown_blob.unregistered1234", "application/octet-stream"),
+    ]
+    for path, expected_mime in test_cases:
+        assert _guess_content_type(path) == expected_mime
+
+
+def test_json_payload_helpers_and_mock_synchronization():
+    from omnimash.storage.gcs import GcsStorageManager
+
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=True)
+    payload = {"title": "Scene 1", "duration": 5.0}
+    path = "sessions/s1/storyboards/scene_1.json"
+    pub_url, gcs_uri = storage._upload_json_payload(
+        path,
+        payload,
+        mock_cache_dict=storage._mock_storyboards,
+        mock_cache_key="s1:scene_1",
+    )
+    assert "scene_1.json" in gcs_uri
+    assert storage._mock_storyboards["s1:scene_1"] == payload
+
+    retrieved = storage._download_json_payload(
+        path,
+        mock_cache_dict=storage._mock_storyboards,
+        mock_cache_key="s1:scene_1",
+    )
+    assert retrieved == payload
+
+
+def test_gcs_public_facade_methods():
+    from unittest.mock import MagicMock
+    from omnimash.storage.gcs import GcsStorageManager
+
+    storage = GcsStorageManager(bucket_name="test-facade", mock_mode=True)
+    assert storage.blob_exists("test/blob.mp4") is False
+    assert storage.get_blob_metadata("test/blob.mp4") is None
+    assert storage.delete_blob("test/blob.mp4") is True
+
+    storage_real = GcsStorageManager(bucket_name="test-facade", mock_mode=False)
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_blob.exists.return_value = True
+    mock_blob.size = 1024
+    mock_blob.content_type = "video/mp4"
+    mock_blob.name = "test/blob.mp4"
+    mock_blob.updated = "2026-10-20T00:00:00Z"
+    mock_blob.metadata = {"custom": "value"}
+    mock_bucket.blob.return_value = mock_blob
+    mock_bucket.get_blob.return_value = mock_blob
+    storage_real._bucket = mock_bucket
+
+    assert storage_real.blob_exists("test/blob.mp4") is True
+    metadata = storage_real.get_blob_metadata("test/blob.mp4")
+    assert metadata is not None
+    assert metadata["size"] == 1024
+    assert metadata["content_type"] == "video/mp4"
+
+    assert storage_real.delete_blob("test/blob.mp4") is True
+    mock_blob.delete.assert_called_once()
+
+
+def test_list_session_ids_page_size_and_streaming():
+    from unittest.mock import MagicMock, patch
+    from omnimash.storage.gcs import GcsStorageManager
+
+    with patch("omnimash.storage.gcs.storage") as mock_storage:
+        mock_client = MagicMock()
+        mock_storage.Client.return_value = mock_client
+        mock_blob1 = MagicMock()
+        mock_blob1.name = "sessions/sess_1/prompt.json"
+        mock_blob1.updated = "2026-10-20T01:00:00Z"
+        mock_blob2 = MagicMock()
+        mock_blob2.name = "sessions/sess_2/prompt.json"
+        mock_blob2.updated = "2026-10-20T02:00:00Z"
+        mock_client.list_blobs.return_value = [mock_blob1, mock_blob2]
+
+        mgr = GcsStorageManager(bucket_name="test-b", mock_mode=False)
+        sess_ids = mgr.list_session_ids()
+        assert "sess_1" in sess_ids
+        assert "sess_2" in sess_ids
+        assert sess_ids[0] == "sess_2"
+        mock_client.list_blobs.assert_called_once_with(
+            "test-b", prefix="sessions/", page_size=100, timeout=30.0
+        )
+
+
+def test_concurrent_json_blob_download():
+    from unittest.mock import MagicMock
+    from omnimash.storage.gcs import GcsStorageManager
+
+    storage = GcsStorageManager(bucket_name="test-b", mock_mode=False)
+    blob1 = MagicMock()
+    blob1.name = "library/characters/harry.json"
+    blob1.download_as_text.return_value = '{"name": "Harry Potter", "slug": "harry"}'
+    blob2 = MagicMock()
+    blob2.name = "library/characters/ron.json"
+    blob2.download_as_text.return_value = '{"name": "Ron Weasley", "slug": "ron"}'
+
+    results = storage._download_blobs_concurrently([blob1, blob2])
+    assert len(results) == 2
+    names = {r["name"] for r in results}
+    assert "Harry Potter" in names
+    assert "Ron Weasley" in names

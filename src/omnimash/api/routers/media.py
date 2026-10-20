@@ -85,7 +85,7 @@ async def upload_media_file(file: Annotated[UploadFile, File()], agent: AgentDep
 
         filename = f"upload_{uuid.uuid4().hex[:8]}{ext}"
 
-        if agent.storage._bucket and not agent.storage.mock_mode:
+        if agent.storage.bucket and not agent.storage.mock_mode:
             gcs_uri = await anyio.to_thread.run_sync(
                 lambda: agent.storage.upload_bytes(
                     content,
