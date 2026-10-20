@@ -59,6 +59,22 @@ def test_adk_agent_instruction_and_compiler_integration():
     assert "Anchor & Inject" in adk_agent.instruction
 
 
+def test_adk_agent_model_and_tool_schema():
+    from omnimash.config import settings
+
+    # Verify default mock_mode=False instantiation aligns with cognitive flash model
+    adk_agent = build_adk_agent(mock_mode=False)
+    assert adk_agent.model == settings.flash_model_id
+    assert len(adk_agent.tools) == 1
+    tool_func = adk_agent.tools[0]
+    assert getattr(tool_func, "__name__", "") == "generate_parody_clip"
+    tool_doc = getattr(tool_func, "__doc__", "") or ""
+    assert "Args:" in tool_doc
+    assert "prompt:" in tool_doc
+    assert "user_id:" in tool_doc
+    assert "Returns:" in tool_doc
+
+
 def test_adk_agent_delta_prompt_instruction_rules():
     adk_agent = build_adk_agent(mock_mode=True)
     assert isinstance(adk_agent.instruction, str)

@@ -1047,20 +1047,35 @@ class OmniMashAgent:
         )
 
 
-def build_adk_agent(mock_mode: bool | None = None) -> Agent:
+def build_adk_agent(
+    mock_mode: bool | None = None,
+    model: str | None = None,
+) -> Agent:
     """Builds and returns the official Google ADK Agent instance for OmniMash."""
     is_mock = mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
     orchestrator = OmniMashAgent(mock_mode=is_mock)
 
     def generate_parody_clip(
-        user_id: str,
-        project_id: str,
         prompt: str,
+        user_id: str = "usr_default",
+        project_id: str = "prj_default",
         clip_index: int = 0,
         parent_turn_id: str | None = None,
         reference_url: str | None = None,
-    ) -> dict[str, str | bool | int | None]:
-        """Generates a parody video clip or conversational diff branch using Gemini Omni 1.1 Flash."""
+    ) -> dict[str, Any]:
+        """Generates a parody video clip or conversational diff branch using Gemini Omni 1.1 Flash.
+
+        Args:
+            prompt: The scene action prompt, 4-Block Meta-Prompt, or conversational diff instruction.
+            user_id: The active user identifier (defaults to 'usr_default').
+            project_id: The active project identifier (defaults to 'prj_default').
+            clip_index: The zero-based shot index in the sequence (defaults to 0).
+            parent_turn_id: Optional parent turn ID to extend or branch from.
+            reference_url: Optional YouTube or video URL for aesthetic or audio reference.
+
+        Returns:
+            A dictionary containing status, success flag, video URL, turn ID, edit depth, and error message.
+        """
         res = orchestrator.process_user_turn(
             user_id=user_id,
             project_id=project_id,
@@ -1070,8 +1085,8 @@ def build_adk_agent(mock_mode: bool | None = None) -> Agent:
             reference_url=reference_url,
         )
         return {
+            "status": "success" if res.success else "error",
             "success": res.success,
-            "status": res.status_event,
             "video_url": res.video_url,
             "turn_id": res.turn_id,
             "depth": res.depth,
@@ -1098,7 +1113,7 @@ def build_adk_agent(mock_mode: bool | None = None) -> Agent:
         "4. Support fast 360p draft rendering for rapid feedback before exporting 4K masters."
     )
 
-    model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash-preview")
+    model_id = model or getattr(settings, "flash_model_id", "gemini-3.8-flash")
 
     return Agent(
         name="omnimash_orchestrator",

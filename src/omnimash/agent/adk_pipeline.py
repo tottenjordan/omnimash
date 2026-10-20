@@ -1,7 +1,10 @@
 """ADK Multi-Agent Pipeline for OmniMash Scene Breakdown and Storyboard Compilation."""
 
-from google.adk.agents import Agent, ParallelAgent, SequentialAgent
+from typing import Any
+
+from google.adk.agents import Agent
 from google.adk.tools import AgentTool
+from google.adk.workflow import START, JoinNode, Workflow
 
 from omnimash.config import settings
 from omnimash.prompts.compiler import CharacterRole, GEMINI_OMNI_FLASH_INSTR
@@ -47,7 +50,7 @@ def create_script_deconstructor_agent(
     effective_instruction = instruction or DECONSTRUCTOR_DEFAULT_INSTRUCTION
     return Agent(
         name=name,
-        model=model or settings.omni_model_id,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
         instruction=effective_instruction,
         tools=tools or [],
     )
@@ -63,7 +66,7 @@ def create_storyboard_compiler_agent(
     effective_instruction = instruction or STORYBOARD_COMPILER_DEFAULT_INSTRUCTION
     return Agent(
         name=name,
-        model=model or settings.omni_model_id,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
         instruction=effective_instruction,
         tools=tools or [],
     )
@@ -83,7 +86,7 @@ def create_shot_execution_worker(
     )
     return Agent(
         name=effective_name,
-        model=model or settings.omni_model_id,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
         instruction=effective_instruction,
         tools=tools or [],
     )
@@ -99,31 +102,38 @@ def create_final_cut_stitcher_agent(
     effective_instruction = instruction or FINAL_CUT_STITCHER_DEFAULT_INSTRUCTION
     return Agent(
         name=name,
-        model=model or settings.omni_model_id,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
         instruction=effective_instruction,
         tools=tools or [],
     )
 
 
-def build_production_orchestrator(num_shots: int = 3) -> SequentialAgent:
-    """Builds the multi-agent production pipeline orchestrator."""
+def build_production_orchestrator(num_shots: int = 3) -> Workflow:
+    """Builds the multi-agent production pipeline orchestrator as an ADK graph Workflow.
+
+    Architecture (DAG):
+      START -> script_deconstructor -> storyboard_compiler
+             -> [shot_execution_worker_1 .. N in parallel]
+             -> shot_join_node -> final_cut_stitcher
+    """
     deconstructor = create_script_deconstructor_agent()
     storyboard_compiler = create_storyboard_compiler_agent()
     shot_workers = [create_shot_execution_worker(shot_idx=i) for i in range(1, num_shots + 1)]
-    parallel_shots = ParallelAgent(
-        name="shot_execution_pipeline",
-        sub_agents=shot_workers,
-    )
+    join_node = JoinNode(name="shot_join_node")
     stitcher = create_final_cut_stitcher_agent()
 
-    return SequentialAgent(
+    edges: list[tuple[Any, Any]] = [
+        (START, deconstructor),
+        (deconstructor, storyboard_compiler),
+    ]
+    for worker in shot_workers:
+        edges.append((storyboard_compiler, worker))
+        edges.append((worker, join_node))
+    edges.append((join_node, stitcher))
+
+    return Workflow(
         name="root_production_orchestrator",
-        sub_agents=[
-            deconstructor,
-            storyboard_compiler,
-            parallel_shots,
-            stitcher,
-        ],
+        edges=edges,
     )
 
 
