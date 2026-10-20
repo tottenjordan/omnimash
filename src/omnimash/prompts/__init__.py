@@ -13,6 +13,11 @@ from omnimash.prompts.journey3 import (
     compile_journey3_shot_prompt,
     validate_compiled_prompt,
 )
+from omnimash.prompts.models import (
+    DeconstructedCharacterSchema,
+    DeconstructedConceptSchema,
+    MetaPromptTags,
+)
 from omnimash.prompts.parody import sanitize_real_names
 from omnimash.prompts.screenplay import (
     parse_directors_notes,
@@ -33,6 +38,9 @@ __all__ = [
     "CompiledDeltaPrompt",
     "CompiledPromptParts",
     "CumulativeShotState",
+    "DeconstructedCharacterSchema",
+    "DeconstructedConceptSchema",
+    "MetaPromptTags",
     "PromptCompiler",
     "PromptOptimizer",
     "PromptTaxonomyEngine",
