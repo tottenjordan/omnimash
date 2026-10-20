@@ -1,7 +1,7 @@
+import logging
 import math
 import os
 import re
-import threading
 import urllib.parse
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -11,6 +11,7 @@ from google.adk.agents import Agent
 
 from omnimash.engine.omni_client import OmniFlashClient
 from omnimash.ingestion.media_extractor import MediaExtractor
+from omnimash.prompts.character_roles import normalize_character_role
 from omnimash.prompts.compiler import (
     CharacterRole,
     CumulativeShotState,
@@ -24,6 +25,8 @@ from omnimash.security.guardrail import ModelArmorGuardrail
 from omnimash.state.session_manager import SessionManager
 from omnimash.stitching.stitcher import VideoStitcher
 from omnimash.storage.gcs import GcsStorageManager
+
+logger = logging.getLogger("omnimash.agent")
 
 
 @dataclass
@@ -40,8 +43,8 @@ class AgentTurnResponse:
     reference_analysis: dict | None = None
 
 
-class Journey3StateTracker:
-    """Tracks cumulative character and scene state modifications across shot directives for Journey 3."""
+class CumulativeStateTracker:
+    """Tracks cumulative character and scene state modifications across shot directives."""
 
     def __init__(self, storage: Any | None = None) -> None:
         self._session_states: dict[str, CumulativeShotState] = {}
@@ -77,8 +80,10 @@ class Journey3StateTracker:
                     manifest_data=manifest,
                     project_id=effective_project_id,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Failed to persist cumulative state for session %s: %s", session_id, exc
+                )
 
     def get_cumulative_state(
         self, session_id: str, project_id: str | None = None
@@ -98,8 +103,10 @@ class Journey3StateTracker:
                                     hydrated_state.character_states[str(k)] = [str(x) for x in v]
                         if isinstance(cs.get("scene_states"), list):
                             hydrated_state.scene_states = [str(x) for x in cs["scene_states"]]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to hydrate cumulative state for session %s: %s", session_id, exc
+                    )
             self._session_states[session_id] = hydrated_state
         return self._session_states[session_id]
 
@@ -143,9 +150,20 @@ class Journey3StateTracker:
                 r"\b" + re.escape(verb) + r"\s+(?:a|an|the|his|her|their)?\s*([a-zA-Z0-9_\s]+)"
             )
             for m in re.finditer(pattern, combined_text, re.IGNORECASE):
-                target = m.group(1).strip().lower()
+                raw_target = m.group(1).strip()
+                target = (
+                    re.split(
+                        r"[,;.]|\b(?:while|as|and|then|in|on|at|under|into|through|across|towards|from|with|surrounded|steps|walks|moves|runs)\b",
+                        raw_target,
+                        flags=re.IGNORECASE,
+                    )[0]
+                    .strip()
+                    .lower()
+                )
                 target_words = [
-                    w for w in re.split(r"\s+", target) if w not in ("a", "an", "the", "and", "or")
+                    w
+                    for w in re.split(r"\s+", target)
+                    if w not in ("a", "an", "the", "and", "or", "to", "his", "her", "their")
                 ]
                 if not target_words:
                     continue
@@ -166,8 +184,6 @@ class Journey3StateTracker:
             "handcuffed",
             "magic aura",
             "golden cup",
-            "holding",
-            "wearing",
             "neon candles",
         ]
 
@@ -289,6 +305,10 @@ class Journey3StateTracker:
         self._persist_state(session_id, state, project_id=project_id)
 
 
+# Backwards-compatibility alias for legacy code & tests
+Journey3StateTracker = CumulativeStateTracker
+
+
 class OmniMashAgent:
     def __init__(self, mock_mode: bool | None = None):
         self.mock_mode = (
@@ -302,26 +322,11 @@ class OmniMashAgent:
         self.media_extractor = MediaExtractor(mock_mode=mock_mode)
         self.stitcher = VideoStitcher(mock_mode=mock_mode)
         self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
-        self.journey3_tracker = Journey3StateTracker(storage=self.storage)
-        self._turn_lock = threading.Lock()
-        self._session_turn_counters: dict[str, int] = {}
+        self.cumulative_tracker = CumulativeStateTracker(storage=self.storage)
+        self.journey3_tracker = self.cumulative_tracker
 
     def _allocate_turn_index(self, session: Any) -> int:
-        with self._turn_lock:
-            sid = session.session_id
-            max_existing = -1
-            for t in getattr(session, "turns", {}).values():
-                v_url = getattr(t, "video_url", "") or ""
-                m = re.search(r"turn_(\d+)_video\.mp4", v_url)
-                if m:
-                    max_existing = max(max_existing, int(m.group(1)))
-            current = max(
-                self._session_turn_counters.get(sid, 0),
-                len(session.turns),
-                max_existing + 1,
-            )
-            self._session_turn_counters[sid] = current + 1
-            return current
+        return self.session_manager.allocate_turn_index(session)
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         return self.taxonomy.deconstruct_concept(concept)
@@ -412,28 +417,58 @@ class OmniMashAgent:
             "updating",
         ]
         verb_pattern = r"\b(" + "|".join(action_verbs) + r")\b"
-        matched_verbs = re.findall(verb_pattern, prompt_clean)
+
+        # Pre-process text to avoid false positives on participle adjectives,
+        # noun phrases, and causative auxiliary verbs
+        processed_prompt = prompt_clean
+        # 1. "setting sun / lighting / ambience / scene / mood" -> not an action verb
+        processed_prompt = re.sub(
+            r"\bsetting\s+(?:sun|sky|light|lighting|ambience|mood|scene)\b",
+            "scene_setting",
+            processed_prompt,
+        )
+        # 2. "panning / zooming / tracking shot / angle / view" -> not an action verb
+        processed_prompt = re.sub(
+            r"\b(panning|zooming)\s+(?:shot|camera|angle|view|movement)\b",
+            r"static_\1",
+            processed_prompt,
+        )
+        # 3. Causative "make ... turn / rotate / shift / zoom" -> single action
+        processed_prompt = re.sub(
+            r"\bmake\s+(?:the\s+|a\s+|an\s+|him\s+|her\s+|them\s+|it\s+)?[a-z0-9_-]+\s+(turn|rotate|shift|zoom|pan)\b",
+            r"cause_\1",
+            processed_prompt,
+        )
+        # 4. "set camera to zoom / pan" -> single action
+        processed_prompt = re.sub(
+            r"\bset\s+(?:the\s+)?camera\s+(?:to\s+)?(zoom|pan|rotate|shift)\b",
+            r"orient_\1",
+            processed_prompt,
+        )
+
+        matched_verbs = re.findall(verb_pattern, processed_prompt)
 
         if len(matched_verbs) >= 2:
             return False, rejection_msg
 
         # Check for comma or semicolon separated clauses/actions
-        comma_parts = [p.strip() for p in re.split(r"[,;]", prompt_clean) if p.strip()]
+        comma_parts = [p.strip() for p in re.split(r"[,;]", processed_prompt) if p.strip()]
         if len(comma_parts) >= 2:
             if len(comma_parts) >= 3:
                 return False, rejection_msg
             p2 = comma_parts[1]
             if (
                 re.search(verb_pattern, p2)
-                or re.search(r"\bto\b", p2)
-                or re.search(r"\binto\b", p2)
                 or p2.startswith("and ")
+                or any(re.search(conn, p2) for conn in connectors)
             ):
                 return False, rejection_msg
 
         # Check for "and" joining two distinct edit clauses
-        and_parts = [p.strip() for p in re.split(r"\band\b", prompt_clean) if p.strip()]
+        and_parts = [p.strip() for p in re.split(r"\band\b", processed_prompt) if p.strip()]
         if len(and_parts) >= 2:
+            if re.search(verb_pattern, and_parts[0]) and re.search(verb_pattern, and_parts[1]):
+                return False, rejection_msg
             if re.search(r"\bto\b", and_parts[0]) and re.search(r"\bto\b", and_parts[1]):
                 return False, rejection_msg
             if len(and_parts) >= 3:
@@ -451,6 +486,7 @@ class OmniMashAgent:
         duration_seconds: float = 10.0,
         is_conversational_edit: bool = False,
         is_chunk_continuation: bool = False,
+        is_scene_extension: bool = False,
         reference_url: str | None = None,
         audio_stem: str | None = None,
         voiceover: str | None = None,
@@ -499,6 +535,7 @@ class OmniMashAgent:
                     duration_seconds=10.0,
                     is_conversational_edit=(is_conversational_edit if c_idx == 0 else False),
                     is_chunk_continuation=(c_idx > 0),
+                    is_scene_extension=(is_scene_extension if c_idx == 0 else False),
                     reference_url=reference_url,
                     audio_stem=audio_stem,
                     voiceover=voiceover,
@@ -547,6 +584,13 @@ class OmniMashAgent:
                         except OSError:
                             pass
                 proxy_url = self._get_media_proxy_video_url(gcs_uri, _pub_url)
+                if last_resp and last_resp.turn_id:
+                    self.session_manager.update_turn_video(
+                        session_id=session.session_id,
+                        turn_id=last_resp.turn_id,
+                        video_url=proxy_url,
+                        gcs_uri=gcs_uri,
+                    )
                 return AgentTurnResponse(
                     success=True,
                     status_event="COMPLETED",
@@ -578,64 +622,8 @@ class OmniMashAgent:
         # Step 2: Check if initial generation or conversational diff
         char_objs: list[CharacterRole] = []
         if characters:
-            for c in characters:
-                if isinstance(c, CharacterRole):
-                    char_objs.append(
-                        CharacterRole(
-                            role_id=c.role_id,
-                            name=_clean(c.name),
-                            description=_clean(c.description),
-                            reference_url=c.reference_url,
-                            aesthetic_tags=[_clean(t) for t in (c.aesthetic_tags or [])],
-                            voice_style=_clean(c.voice_style or ""),
-                            voice_profile=_clean(c.voice_profile or ""),
-                            image_role=getattr(c, "image_role", "Character Reference"),
-                            is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
-                        )
-                    )
-                elif isinstance(c, dict):
-                    char_objs.append(
-                        CharacterRole(
-                            role_id=c.get("role_id", ""),
-                            name=_clean(c.get("name", "")),
-                            description=_clean(c.get("description", "")),
-                            reference_url=c.get("reference_url"),
-                            aesthetic_tags=[_clean(t) for t in c.get("aesthetic_tags", [])],
-                            voice_style=_clean(c.get("voice_style", "")),
-                            voice_profile=_clean(c.get("voice_profile", "")),
-                            image_role=c.get("image_role", "Character Reference"),
-                            is_offscreen_narrator=c.get("is_offscreen_narrator", False),
-                        )
-                    )
-                elif hasattr(c, "model_dump"):
-                    cd = c.model_dump()
-                    char_objs.append(
-                        CharacterRole(
-                            role_id=cd.get("role_id", ""),
-                            name=_clean(cd.get("name", "")),
-                            description=_clean(cd.get("description", "")),
-                            reference_url=cd.get("reference_url"),
-                            aesthetic_tags=[_clean(t) for t in cd.get("aesthetic_tags", [])],
-                            voice_style=_clean(cd.get("voice_style", "")),
-                            voice_profile=_clean(cd.get("voice_profile", "")),
-                            image_role=cd.get("image_role", "Character Reference"),
-                            is_offscreen_narrator=cd.get("is_offscreen_narrator", False),
-                        )
-                    )
-                elif hasattr(c, "role_id"):
-                    char_objs.append(
-                        CharacterRole(
-                            role_id=getattr(c, "role_id", ""),
-                            name=_clean(getattr(c, "name", "")),
-                            description=_clean(getattr(c, "description", "")),
-                            reference_url=getattr(c, "reference_url", None),
-                            aesthetic_tags=[_clean(t) for t in getattr(c, "aesthetic_tags", [])],
-                            voice_style=_clean(getattr(c, "voice_style", "")),
-                            voice_profile=_clean(getattr(c, "voice_profile", "")),
-                            image_role=getattr(c, "image_role", "Character Reference"),
-                            is_offscreen_narrator=getattr(c, "is_offscreen_narrator", False),
-                        )
-                    )
+            clean_func = _clean if enable_sanitization else None
+            char_objs = [normalize_character_role(c, clean_fn=clean_func) for c in characters]
 
         turn_index = self._allocate_turn_index(session)
         parent_turn = session.turns.get(parent_turn_id) if parent_turn_id else None
@@ -732,7 +720,9 @@ class OmniMashAgent:
             raw_compiled_prompt = meta_prompt
             self.storage.save_session_prompt(session.session_id, turn_index, meta_prompt)
             effective_thread_id = (
-                parent_thread_id if (is_conversational_edit or is_chunk_continuation) else None
+                parent_thread_id
+                if (is_conversational_edit or is_chunk_continuation or is_scene_extension)
+                else None
             )
             gen_res = self._execute_turn_generation(
                 session_id=session.session_id,
@@ -906,26 +896,7 @@ class OmniMashAgent:
     def _get_session(self, session_id: str | None) -> Any | None:
         if not session_id:
             return None
-        if session_id in self.session_manager._sessions:
-            return self.session_manager._sessions[session_id]
-        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
-        if sanitized in self.session_manager._sessions:
-            return self.session_manager._sessions[sanitized]
-        for session in self.session_manager._sessions.values():
-            if session.session_id in (session_id, sanitized):
-                return session
-        if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
-            try:
-                manifest = self.storage.get_session_manifest(sanitized)
-                if isinstance(manifest, dict) and manifest:
-                    return self.session_manager.get_or_create_session(
-                        user_id=str(manifest.get("user_id") or "usr_default"),
-                        project_id=str(manifest.get("project_id") or sanitized),
-                        session_name=sanitized,
-                    )
-            except Exception:
-                pass
-        return None
+        return self.session_manager.get_session(session_id)
 
     @staticmethod
     def _resolve_active_session_clips(session: Any) -> list[str]:
@@ -940,8 +911,17 @@ class OmniMashAgent:
                 turn = turns.get(active_tid) if active_tid else None
                 if turn and getattr(turn, "video_url", None):
                     clip_paths.append(turn.video_url)
-        if not clip_paths and turns:
-            clip_paths = [t.video_url for t in turns.values() if getattr(t, "video_url", None)]
+        elif turns:
+            sorted_turns = sorted(
+                turns.values(),
+                key=lambda t: (getattr(t, "clip_index", 0), getattr(t, "edit_depth_in_thread", 0)),
+            )
+            seen_clips: set[int] = set()
+            for t in reversed(sorted_turns):
+                c_idx = getattr(t, "clip_index", 0)
+                if c_idx not in seen_clips and getattr(t, "video_url", None):
+                    seen_clips.add(c_idx)
+                    clip_paths.insert(0, t.video_url)
         return clip_paths
 
     def stitch_session_master(
@@ -992,13 +972,15 @@ class OmniMashAgent:
         session = self._get_session(s_id)
         if session:
             active_clips = self._resolve_active_session_clips(session)
-            if len(active_clips) > 1:
+            if len(active_clips) > 1 and (not video_url or video_url in active_clips):
                 return self.stitch_session_master(
                     session_name=s_id,
                     master_title=master_title,
                     raw_compiled_prompt=raw_compiled_prompt,
                     master_audio_path=master_audio_path,
                 )
+            elif not video_url and len(active_clips) == 1:
+                video_url = active_clips[0]
         return self.storage.save_final_master(
             session_id=s_id,
             source_rel_path=video_url,
@@ -1032,16 +1014,19 @@ class OmniMashAgent:
             prompt_parts.append(f'Dialogue: "{dialogue}"')
 
         combined_prompt = " ".join(prompt_parts) if prompt_parts else next_scene_action
+        clip_idx = (turn.clip_index + 1) if turn else 1
 
         return self.process_user_turn(
             user_id=user_id,
             project_id=project_id,
             prompt=combined_prompt or next_scene_action,
+            clip_index=clip_idx,
             parent_turn_id=turn_id,
             session_name=session_name,
             voiceover=dialogue,
             vocal_delivery=vocal_delivery,
-            is_conversational_edit=True if prev_inter_id else False,
+            is_conversational_edit=False,
+            is_scene_extension=True if prev_inter_id else False,
             aspect_ratio="16:9",
             resolution=resolution,
         )
@@ -1062,8 +1047,14 @@ def build_adk_agent(
         clip_index: int = 0,
         parent_turn_id: str | None = None,
         reference_url: str | None = None,
+        duration_seconds: float = 10.0,
+        resolution: str = "720p",
+        aspect_ratio: str = "16:9",
+        keyframe_image_url: str | None = None,
+        is_conversational_edit: bool = False,
+        audio_stem: str | None = None,
     ) -> dict[str, Any]:
-        """Generates a parody video clip or conversational diff branch using Gemini Omni 1.1 Flash.
+        """Generates a parody video clip, scene extension, or conversational diff branch using Gemini Omni 1.1 Flash.
 
         Args:
             prompt: The scene action prompt, 4-Block Meta-Prompt, or conversational diff instruction.
@@ -1072,9 +1063,15 @@ def build_adk_agent(
             clip_index: The zero-based shot index in the sequence (defaults to 0).
             parent_turn_id: Optional parent turn ID to extend or branch from.
             reference_url: Optional YouTube or video URL for aesthetic or audio reference.
+            duration_seconds: Duration of the video clip in seconds (defaults to 10.0).
+            resolution: Output video resolution, e.g. '360p', '720p', '1080p', '4k' (defaults to '720p').
+            aspect_ratio: Output aspect ratio, e.g. '16:9', '9:16', '1:1' (defaults to '16:9').
+            keyframe_image_url: Optional starting keyframe image URI or prior video URL.
+            is_conversational_edit: Set True for single-change delta diffs, False for new shot generations.
+            audio_stem: Optional genre, BPM, or music style reference for joint acoustic generation.
 
         Returns:
-            A dictionary containing status, success flag, video URL, turn ID, edit depth, and error message.
+            A dictionary containing status, success flag, video URL, turn ID, edit depth, status event, and error message.
         """
         res = orchestrator.process_user_turn(
             user_id=user_id,
@@ -1083,6 +1080,12 @@ def build_adk_agent(
             clip_index=clip_index,
             parent_turn_id=parent_turn_id,
             reference_url=reference_url,
+            duration_seconds=duration_seconds,
+            resolution=resolution,
+            aspect_ratio=aspect_ratio,
+            keyframe_image_url=keyframe_image_url,
+            is_conversational_edit=is_conversational_edit,
+            audio_stem=audio_stem,
         )
         return {
             "status": "success" if res.success else "error",
@@ -1090,6 +1093,7 @@ def build_adk_agent(
             "video_url": res.video_url,
             "turn_id": res.turn_id,
             "depth": res.depth,
+            "status_event": res.status_event,
             "error": res.error_message,
         }
 
@@ -1123,4 +1127,15 @@ def build_adk_agent(
     )
 
 
-root_agent = build_adk_agent(mock_mode=getattr(settings, "mock_mode", False))
+_root_agent: Agent | None = None
+
+
+def get_root_agent() -> Agent:
+    """Returns the singleton root ADK Agent instance."""
+    global _root_agent
+    if _root_agent is None:
+        _root_agent = build_adk_agent(mock_mode=getattr(settings, "mock_mode", False))
+    return _root_agent
+
+
+root_agent: Agent = get_root_agent()

@@ -469,3 +469,120 @@ def test_process_user_turn_multi_chunk_chains_previous_interaction_id(monkeypatc
     assert generate_clip_calls[0][1].get("aspect_ratio") == "9:16"
     assert apply_diff_calls[0][1].get("resolution") == "1080p"
     assert apply_diff_calls[0][1].get("aspect_ratio") == "9:16"
+
+
+def test_process_user_turn_preserves_wardrobe(monkeypatch):
+    agent = OmniMashAgent(mock_mode=True)
+    captured_kwargs = {}
+
+    def mock_generate_clip(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        from omnimash.engine.omni_client import GenerationResult
+
+        return GenerationResult("thread_wardrobe", "/static/rendered/test.mp4")
+
+    monkeypatch.setattr(agent.omni_client, "generate_clip", mock_generate_clip)
+
+    char = CharacterRole(
+        role_id="r_wardrobe",
+        name="Severus Snape",
+        description="Master of Potions",
+        wardrobe="Black velvet trench coat with silver serpent embroidery",
+    )
+    res = agent.process_user_turn(
+        user_id="u_ward",
+        project_id="p_ward",
+        prompt="Snape entering room",
+        characters=[char],
+    )
+    assert res.success is True
+    assert len(captured_kwargs["characters"]) == 1
+    assert (
+        captured_kwargs["characters"][0].wardrobe
+        == "Black velvet trench coat with silver serpent embroidery"
+    )
+
+
+def test_process_user_turn_multi_chunk_updates_session_turn_video_url():
+    agent = OmniMashAgent(mock_mode=True)
+    res = agent.process_user_turn(
+        user_id="u_multi",
+        project_id="p_multi",
+        prompt="Long 20 second shot",
+        duration_seconds=20.0,
+        session_name="test_multi_chunk_update_sess",
+    )
+    assert res.success is True
+    assert res.video_url is not None
+    sess = agent._get_session("test_multi_chunk_update_sess")
+    assert sess is not None
+    assert res.turn_id in sess.turns
+    turn_node = sess.turns[res.turn_id]
+    # The session turn node MUST match the stitched video URL returned to the caller
+    assert turn_node.video_url == res.video_url
+    assert "final_masters" in turn_node.video_url
+
+
+def test_extend_scene_is_not_treated_as_conversational_edit():
+    agent = OmniMashAgent(mock_mode=True)
+    s_name = "scene_extension_test_sess"
+    r1 = agent.process_user_turn(
+        user_id="u_ext",
+        project_id="p_ext",
+        prompt="Shot 1 hero stands ready",
+        clip_index=0,
+        session_name=s_name,
+    )
+    assert r1.success is True
+
+    # Extend scene with compound action directive containing 'then' and multiple verbs
+    r2 = agent.extend_scene(
+        session_name=s_name,
+        turn_id=r1.turn_id,
+        next_scene_action="Hero draws katana, then charges across the neon bridge",
+        dialogue="Time to end this",
+    )
+    assert r2.success is True
+    assert r2.video_url is not None
+    assert r2.status_event == "COMPLETED"
+
+
+def test_save_final_master_respects_explicit_single_clip():
+    agent = OmniMashAgent(mock_mode=True)
+    explicit_clip = "/static/rendered/specific_single_clip.mp4"
+    pub_url, gcs_uri = agent.save_final_master(
+        session_id="explicit_save_sess",
+        video_url=explicit_clip,
+        master_title="explicit_single_export",
+    )
+    assert "explicit_single_export.mp4" in gcs_uri
+    assert pub_url.startswith("https://")
+
+
+def test_adk_agent_extended_tool_parameters():
+    from typing import Any, cast
+    import inspect
+    from omnimash.agent.orchestrator import build_adk_agent
+
+    agent = build_adk_agent(mock_mode=True)
+    tool = cast(Any, agent.tools[0])
+
+    sig = inspect.signature(tool)
+    params = sig.parameters
+    assert "prompt" in params
+    assert "duration_seconds" in params
+    assert "resolution" in params
+    assert "aspect_ratio" in params
+    assert "keyframe_image_url" in params
+    assert "is_conversational_edit" in params
+    assert "audio_stem" in params
+
+
+def test_root_agent_lazy_loading():
+    from omnimash.agent import get_root_agent, root_agent
+
+    adk_agent = get_root_agent()
+    assert hasattr(adk_agent, "name")
+    assert adk_agent.name == "omnimash_orchestrator"
+    # Verify root_agent proxy forwards attribute access
+    assert root_agent.name == "omnimash_orchestrator"

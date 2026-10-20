@@ -20,6 +20,7 @@ class TurnNode(BaseModel):
     prompt: str
     interaction_thread_id: str
     video_url: str
+    gcs_uri: str | None = None
     edit_depth_in_thread: int = 0
     is_committed: bool = False
     base_video_anchor_url: str | None = None
@@ -171,6 +172,69 @@ class SessionManager:
             )
         self._persist_session(session)
         return turn
+
+    def get_session(self, session_id: str, project_id: str | None = None) -> ProjectSession | None:
+        """Retrieves a session from in-memory cache or hydrates from GCS storage manifest."""
+        if not session_id:
+            return None
+        if session_id in self._sessions:
+            return self._sessions[session_id]
+        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
+        if sanitized in self._sessions:
+            return self._sessions[sanitized]
+        for session in self._sessions.values():
+            if session.session_id in (session_id, sanitized):
+                return session
+        if self.storage is not None and hasattr(self.storage, "get_session_manifest"):
+            try:
+                manifest = self.storage.get_session_manifest(sanitized, project_id=project_id)
+                if isinstance(manifest, dict) and manifest:
+                    hydrated = {
+                        **manifest,
+                        "session_id": manifest.get("session_id") or sanitized,
+                        "user_id": manifest.get("user_id") or "usr_default",
+                        "project_id": manifest.get("project_id") or project_id or sanitized,
+                    }
+                    sess = ProjectSession.model_validate(hydrated)
+                    self._sessions[sanitized] = sess
+                    return sess
+            except Exception:
+                pass
+        return None
+
+    def allocate_turn_index(self, session_or_id: ProjectSession | str) -> int:
+        """Calculates the next available turn index from existing turns in the session."""
+        session = (
+            session_or_id
+            if isinstance(session_or_id, ProjectSession)
+            else self.get_session(session_or_id)
+        )
+        if not session:
+            return 0
+        max_idx = -1
+        for t in session.turns.values():
+            m = re.search(r"turn_(\d+)_video\.mp4", t.video_url or "")
+            if m:
+                max_idx = max(max_idx, int(m.group(1)))
+            else:
+                max_idx = max(max_idx, getattr(t, "clip_index", 0))
+        return max(len(session.turns), max_idx + 1)
+
+    def update_turn_video(
+        self,
+        session_id: str,
+        turn_id: str,
+        video_url: str,
+        gcs_uri: str | None = None,
+    ) -> None:
+        """Updates the video URL and GCS URI for an existing turn and persists the updated session."""
+        session = self.get_session(session_id)
+        if session and turn_id in session.turns:
+            node = session.turns[turn_id]
+            node.video_url = video_url
+            if gcs_uri is not None:
+                node.gcs_uri = gcs_uri
+            self._persist_session(session)
 
     def commit_turn(self, session_id: str, turn_id: str) -> TurnNode:
         session = self._sessions[session_id]
