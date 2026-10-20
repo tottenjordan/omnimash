@@ -152,6 +152,8 @@ def test_concatenate_clips_with_master_audio_reencode_fallback(tmp_path):
             "1:a:0",
             "-pix_fmt",
             "yuv420p",
+            "-r",
+            "24",
             "-shortest",
         ]
         assert second_cmd[-1] == out_path
@@ -319,6 +321,7 @@ def test_stitch_storyboard_master_wires_audio_ducking(tmp_path):
             dialogue_path=narrator_file,
             output_dir=str(tmp_path),
             mock_mode=True,
+            storage=stitcher.storage,
         )
         mock_concat.assert_called_once_with(
             clip_paths=[],
