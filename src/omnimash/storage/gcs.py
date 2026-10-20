@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import dataclasses
 from datetime import datetime, timezone
 import json
@@ -470,6 +471,32 @@ class GcsStorageManager:
         if self.mock_mode and mock_cache_dict is not None and mock_cache_key is not None:
             return mock_cache_dict.get(mock_cache_key)
         return None
+
+    def _download_blobs_concurrently(self, blobs: list[Any]) -> list[dict[str, Any]]:
+        """Downloads multiple JSON blobs concurrently using ThreadPoolExecutor."""
+        results: list[dict[str, Any]] = []
+        if not blobs:
+            return results
+        json_blobs = [b for b in blobs if getattr(b, "name", "").endswith(".json")]
+        if not json_blobs:
+            return results
+        workers = min(len(json_blobs), 8)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_blob = {
+                executor.submit(
+                    lambda b: json.loads(b.download_as_text(timeout=self.timeout)), blob
+                ): blob
+                for blob in json_blobs
+            }
+            for future in as_completed(future_to_blob):
+                blob = future_to_blob[future]
+                try:
+                    data = future.result()
+                    if isinstance(data, dict):
+                        results.append(data)
+                except Exception as exc:
+                    logger.warning("Failed to download/parse blob %s: %s", blob.name, exc)
+        return results
 
     def save_session_prompt(
         self,
@@ -1013,36 +1040,29 @@ class GcsStorageManager:
             try:
                 prefix = f"projects/{project_id}/saved_characters/"
                 blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
-                for blob in blobs:
-                    if blob.name.endswith(".json"):
-                        try:
-                            data = json.loads(blob.download_as_text(timeout=self.timeout))
-                            if isinstance(data, dict):
-                                slug = self._slugify(str(data.get("name", "")))
-                                if slug not in seen_slugs:
-                                    seen_slugs.add(slug)
-                                    characters.append(data)
-                        except Exception as exc:
-                            logger.warning("Failed to load character blob %s: %s", blob.name, exc)
+                json_blobs = [b for b in blobs if getattr(b, "name", "").endswith(".json")]
+                for data in self._download_blobs_concurrently(json_blobs):
+                    slug = self._slugify(str(data.get("name", "")))
+                    if slug not in seen_slugs:
+                        seen_slugs.add(slug)
+                        characters.append(data)
             except Exception as exc:
                 logger.warning("list_project_characters failed on prefix %s: %s", prefix, exc)
 
             try:
                 prefix_sessions = f"projects/{project_id}/sessions/"
                 blobs = self._bucket.list_blobs(prefix=prefix_sessions, timeout=self.timeout)
-                for blob in blobs:
-                    if "/characters/" in blob.name and blob.name.endswith(".json"):
-                        try:
-                            data = json.loads(blob.download_as_text(timeout=self.timeout))
-                            if isinstance(data, dict):
-                                slug = self._slugify(str(data.get("name", "")))
-                                if slug not in seen_slugs:
-                                    seen_slugs.add(slug)
-                                    characters.append(data)
-                        except Exception as exc:
-                            logger.warning(
-                                "Failed to load session character blob %s: %s", blob.name, exc
-                            )
+                json_blobs = [
+                    b
+                    for b in blobs
+                    if "/characters/" in getattr(b, "name", "")
+                    and getattr(b, "name", "").endswith(".json")
+                ]
+                for data in self._download_blobs_concurrently(json_blobs):
+                    slug = self._slugify(str(data.get("name", "")))
+                    if slug not in seen_slugs:
+                        seen_slugs.add(slug)
+                        characters.append(data)
             except Exception as exc:
                 logger.warning(
                     "list_project_characters failed on session prefix %s: %s", prefix_sessions, exc
@@ -1134,20 +1154,18 @@ class GcsStorageManager:
 
                 for prefix in prefixes:
                     blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
-                    for blob in blobs:
-                        if blob.name.endswith(".json") and not blob.name.endswith("roster.json"):
-                            try:
-                                data = json.loads(blob.download_as_text(timeout=self.timeout))
-                                if isinstance(data, dict):
-                                    slug = self._slugify(str(data.get("name", "")))
-                                    if slug not in seen_slugs:
-                                        seen_slugs.add(slug)
-                                        characters.append(data)
-                                        self._mock_characters[slug] = data
-                            except Exception as exc:
-                                logger.warning(
-                                    "Failed to load character blob %s: %s", blob.name, exc
-                                )
+                    json_blobs = [
+                        b
+                        for b in blobs
+                        if getattr(b, "name", "").endswith(".json")
+                        and not getattr(b, "name", "").endswith("roster.json")
+                    ]
+                    for data in self._download_blobs_concurrently(json_blobs):
+                        slug = self._slugify(str(data.get("name", "")))
+                        if slug not in seen_slugs:
+                            seen_slugs.add(slug)
+                            characters.append(data)
+                            self._mock_characters[slug] = data
                 if characters:
                     return characters
             except Exception as exc:
@@ -1229,11 +1247,11 @@ class GcsStorageManager:
             return default_sessions
 
         try:
-            blobs = list(
-                self._client.list_blobs(self.bucket_name, prefix="sessions/", timeout=self.timeout)
+            blobs_iter = self._client.list_blobs(
+                self.bucket_name, prefix="sessions/", page_size=100, timeout=self.timeout
             )
             session_latest: dict[str, Any] = {}
-            for b in blobs:
+            for b in blobs_iter:
                 parts = b.name.removeprefix("sessions/").split("/")
                 if parts and parts[0]:
                     sid = parts[0]
@@ -1317,26 +1335,14 @@ class GcsStorageManager:
 
                 for prefix in prefixes:
                     blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
-                    for blob in blobs:
-                        if blob.name.endswith(".json"):
-                            try:
-                                data = json.loads(blob.download_as_text(timeout=self.timeout))
-                                if isinstance(data, dict):
-                                    slug = str(
-                                        data.get("slug", "")
-                                        or self._slugify(str(data.get("name", "")))
-                                    )
-                                    if slug not in seen_slugs:
-                                        seen_slugs.add(slug)
-                                        meta = self._extract_storyboard_metadata(
-                                            data, fallback_slug=slug
-                                        )
-                                        storyboards.append(meta)
-                                        self._mock_storyboards[slug] = data
-                            except Exception as exc:
-                                logger.warning(
-                                    "Failed to load storyboard blob %s: %s", blob.name, exc
-                                )
+                    json_blobs = [b for b in blobs if getattr(b, "name", "").endswith(".json")]
+                    for data in self._download_blobs_concurrently(json_blobs):
+                        slug = str(data.get("slug", "") or self._slugify(str(data.get("name", ""))))
+                        if slug and slug not in seen_slugs:
+                            seen_slugs.add(slug)
+                            meta = self._extract_storyboard_metadata(data, fallback_slug=slug)
+                            storyboards.append(meta)
+                            self._mock_storyboards[slug] = data
                 if storyboards:
                     return storyboards
             except Exception as exc:
