@@ -428,27 +428,6 @@ wheels = [
 ]
 
 [[package]]
-name = "ffmpeg-python"
-version = "0.2.0"
-source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/simple/" }
-dependencies = [
-    { name = "future" },
-]
-sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/ffmpeg-python/ffmpeg-python-0.2.0.tar.gz", hash = "sha256:65225db34627c578ef0e11c8b1eb528bb35e024752f6f10b78c011f6f64c4127" }
-wheels = [
-    { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/ffmpeg-python/ffmpeg_python-0.2.0-py3-none-any.whl", hash = "sha256:ac441a0404e053f8b6a1113a77c0f452f1cfc62f6344a769475ffdc0f56c23c5" },
-]
-
-[[package]]
-name = "future"
-version = "1.0.0"
-source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/simple/" }
-sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/future/future-1.0.0.tar.gz", hash = "sha256:bd2968309307861edae1458a4f8a4f3598c03be43b97521076aebf5d94c07b05" }
-wheels = [
-    { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/future/future-1.0.0-py3-none-any.whl", hash = "sha256:929292d34f5872e70396626ef385ec22355a1fae8ad29e1a734c3e43f9fbc216" },
-]
-
-[[package]]
 name = "google-adk"
 version = "2.11.0"
 source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/simple/" }
@@ -896,7 +875,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "cloudpickle" },
     { name = "fastapi" },
-    { name = "ffmpeg-python" },
     { name = "google-adk" },
     { name = "google-cloud-aiplatform" },
     { name = "google-cloud-modelarmor" },
@@ -922,7 +900,6 @@ dev = [
 requires-dist = [
     { name = "cloudpickle", specifier = ">=3.1.2" },
     { name = "fastapi", specifier = ">=0.141.1" },
-    { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "google-adk", specifier = ">=2.11.0" },
     { name = "google-cloud-aiplatform", specifier = ">=2.5.0" },
     { name = "google-cloud-modelarmor", specifier = ">=0.7.2" },
