@@ -1,268 +1,221 @@
-# Code Quality Review: `src/omnimash/state` Module
+# Code Quality Review: `src/omnimash/stitching` Module
 
-**Review Target:** [`src/omnimash/state`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state) (`session_manager.py`, `__init__.py`)  
-**Associated Context:** [`src/omnimash/agent/orchestrator.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py), [`src/omnimash/storage/gcs.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/storage/gcs.py), [`tests/state/test_session_manager.py`](file:///usr/local/google/home/jordantotten/omnimash/tests/state/test_session_manager.py)  
-**Standard:** 5-Axes Code Review Framework (Correctness, Readability, Architecture, Security, Performance)
+**Review Date:** October 20, 2026  
+**Target Module:** [`src/omnimash/stitching/`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching) (`stitcher.py`, `audio_overlay.py`, `__init__.py`)  
+**Evaluation Framework:** 5-Axes Code Quality (Correctness, Readability, Architecture, Security, Performance)  
+**Approval Standard:** Request Changes (Actionable remediation required prior to production release)
 
 ---
 
 ## Executive Summary
 
-The `src/omnimash/state` module is the state engine of OmniMash, responsible for tracking non-linear conversational branching (Version Tree DAG), clip timelines, commit checkpoints, and persisting session manifests (`session_manifest.json`) to Google Cloud Storage.
+The `src/omnimash/stitching` module is responsible for video timeline assembly, audio stem mixing, dialogue ducking, title card generation, and master artifact delivery to Google Cloud Storage. 
 
-While the core DAG branching and thread depth tracking concepts are conceptually solid and pass basic tests, the module exhibits several critical architectural, concurrency, and reliability issues:
-1. **Asymmetric Storage Hydration:** `add_turn()` and `commit_turn()` bypass storage hydration and use raw dictionary lookups (`self._sessions[session_id]`), leading to unhandled `KeyError` crashes upon container restarts or cold starts.
-2. **Blocking Network I/O Under Global Lock:** Cloud Storage HTTP calls (`get_session_manifest` and `save_session_manifest`) are executed synchronously inside `with self._lock:`, serializing all API requests across all users and threads during GCS network latency.
-3. **Split-Brain State Management:** `CumulativeStateTracker` in `orchestrator.py` maintains an independent in-memory cache and directly reads/writes to `session_manifest.json`, competing with `SessionManager`'s own `session_manifest.json` persistence.
-4. **Pydantic V2 Anti-Patterns:** Usage of `object.__setattr__` to inject undeclared private attributes, unvalidated `extra="allow"` with untyped dictionaries, and hardcoded fallback strings bypassing centralized settings.
+While the core FFmpeg filtergraph design (`sidechaincompress`, `concat` demuxer, `lavfi anullsrc`) demonstrates a solid understanding of multimedia pipelines, the module exhibits critical security vulnerabilities (unbounded SSRF via `urllib.request.urlretrieve` and unconfined `/static/` path resolution), correctness bugs (single quotes breaking the FFmpeg concat demuxer parser, unhandled empty clip lists causing `FileNotFoundError`, and silent failure text files disguised as media clips), and architectural fragmentation (three duplicated, divergent implementations of media path resolution).
 
 ---
 
-## Severity-Labeled Findings Breakdown
+## 5-Axes Findings Summary
 
-### 1. Correctness
+| Axis | Critical | Required | Optional | Nit | Total |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **1. Correctness** | 1 | 3 | 1 | 0 | **5** |
+| **2. Readability & Simplicity** | 0 | 2 | 1 | 1 | **4** |
+| **3. Architecture** | 0 | 3 | 1 | 1 | **5** |
+| **4. Security** | 2 | 1 | 0 | 0 | **3** |
+| **5. Performance** | 0 | 2 | 1 | 0 | **3** |
+| **Total** | **3** | **11** | **4** | **2** | **20** |
 
-#### [CORR-01] Critical: Asymmetric Storage Hydration Causes Cold-Start `KeyError` Crashes in `add_turn` and `commit_turn`
-- **Location:** [`src/omnimash/state/session_manager.py#L144`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L144), [`src/omnimash/state/session_manager.py#L252`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L252)
-- **Problem:**
-  `get_session()` properly attempts to hydrate from GCS via `self.storage.get_session_manifest()` when a session is not in memory. Similarly, `update_turn_video()` invokes `self.get_session(session_id)`.
-  However, `add_turn()` and `commit_turn()` perform direct in-memory dictionary lookups:
+---
+
+## Severity-Labeled Detailed Findings
+
+### Axis 1: Correctness
+
+#### `[CORR-01]` Critical: Empty `clip_paths` in `concatenate_clips` Causes Unhandled `FileNotFoundError` on GCS Upload
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L48-L86`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L48-L86), [`L245-L250`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L245-L250)
+- **Problem:** If `clip_paths` is empty (`[]`) in non-mock mode, `resolved_clips` evaluates to `[]`. The `if resolved_clips:` block is skipped entirely, meaning `out_path` is never created. Execution immediately proceeds to line 250: `self.storage.upload_file(out_path, ...)`, raising a fatal `FileNotFoundError`.
+- **Structural Remedy:** Guard against empty inputs at the function entrypoint:
   ```python
-  def add_turn(self, session_id: str, ...):
-      with self._lock:
-          session = self._sessions[session_id]  # Crashes if cold-started!
-  ```
-  ```python
-  def commit_turn(self, session_id: str, turn_id: str) -> TurnNode:
-      with self._lock:
-          session = self._sessions[session_id]  # Crashes if cold-started!
-  ```
-  If a Cloud Run container restarts, scales up, or handles a turn/commit request on a session that has been persisted to GCS but not yet cached in this process instance, `add_turn` and `commit_turn` immediately crash with an unhandled `KeyError: session_id`.
-- **Proposed Remedy:**
-  Replace raw `self._sessions[session_id]` with `session = self.get_session(session_id, project_id=project_id)`. If `session is None`, raise an explicit `KeyError(f"Session '{session_id}' not found in cache or persistent storage")`.
-
----
-
-#### [CORR-02] Critical: Conflation of `clip_index` with `turn_index` Corrupts Turn Allocation Sequence
-- **Location:** [`src/omnimash/state/session_manager.py#L223-L229`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L223-L229)
-- **Problem:**
-  `allocate_turn_index` calculates the next monotonic turn index using:
-  ```python
-  for t in session.turns.values():
-      m = re.search(r"turn_(\d+)_video\.mp4", t.video_url or "")
-      if m:
-          max_idx = max(max_idx, int(m.group(1)))
-      else:
-          max_idx = max(max_idx, getattr(t, "clip_index", 0))
-  ```
-  `clip_index` is the horizontal position of a shot in the timeline sequence (e.g. shot 0, shot 1, shot 2), whereas turn allocation represents the chronological edit/render counter (turn 0, turn 1, turn 2...).
-  If an artist renders clip index 5 on turn 1, `max_idx` artificially jumps to 5, skipping turn indices 2 through 5. Furthermore, if `video_url` points to a signed GCS URL or a different filename pattern, turn allocation fails to detect prior turns and can overwrite earlier video outputs.
-- **Proposed Remedy:**
-  Add an explicit typed `turn_index: int = 0` field to [`TurnNode`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L17) populated upon turn creation. Have `allocate_turn_index` compute `max(t.turn_index for t in session.turns.values()) + 1` directly from typed metadata, falling back to regex only for legacy manifests.
-
----
-
-#### [CORR-03] Required: Silent Exception Swallowing (`except Exception: pass`) Masks Storage Failures
-- **Location:** [`src/omnimash/state/session_manager.py#L99-L100`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L99-L100), [`src/omnimash/state/session_manager.py#L125-L126`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L125-L126), [`src/omnimash/state/session_manager.py#L208-L209`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L208-L209)
-- **Problem:**
-  `_persist_session`, `get_or_create_session`, and `get_session` catch all exceptions with `except Exception: pass`. If GCS write operations fail due to expired credentials, missing buckets, IAM misconfigurations, or network dropouts, the error is completely swallowed. The user assumes the session was saved, but on restart, data is lost without a single error trace in Cloud Logging.
-- **Proposed Remedy:**
-  Initialize structured logger `logger = logging.getLogger("omnimash.state")` and log detailed warnings/errors: `logger.warning("Failed to persist session manifest '%s': %s", session.session_id, exc, exc_info=True)`.
-
----
-
-#### [CORR-04] Required: Disconnected Version DAG on Non-Existent `parent_turn_id`
-- **Location:** [`src/omnimash/state/session_manager.py#L147-L150`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L147-L150)
-- **Problem:**
-  In `add_turn()`:
-  ```python
-  depth = 0
-  if parent_turn_id and parent_turn_id in session.turns:
-      parent = session.turns[parent_turn_id]
-      if parent.interaction_thread_id == interaction_thread_id and not is_checkpoint:
-          depth = parent.edit_depth_in_thread + 1
-  ```
-  If an API client or agent passes an invalid or stale `parent_turn_id` (e.g. from an aborted branch), the system silently assigns `parent_turn_id` to the node while resetting `depth = 0`. The node becomes an orphaned branch in the DAG that points to a non-existent parent.
-- **Proposed Remedy:**
-  Validate `parent_turn_id` against `session.turns`. If `parent_turn_id` is supplied but missing from `session.turns`, log a warning and either set `parent_turn_id = None` or raise a `ValueError`.
-
----
-
-### 2. Performance
-
-#### [PERF-01] Critical: Blocking Remote GCS Network I/O Inside Global Mutex Lock
-- **Location:** [`src/omnimash/state/session_manager.py#L143-L179`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L143-L179), [`src/omnimash/state/session_manager.py#L241-L248`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L241-L248), [`src/omnimash/state/session_manager.py#L251-L257`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L251-L257)
-- **Problem:**
-  `SessionManager` uses a single instance-wide `threading.RLock()`. In `add_turn()`, `commit_turn()`, and `update_turn_video()`, `self._persist_session(session)` is called while holding `self._lock`.
-  Inside `_persist_session()`, blocking network calls (`storage.get_session_manifest()` and `storage.save_session_manifest()`) execute synchronously.
-  During high-concurrency requests or GCS network latency spikes (200ms–5s), every other thread attempting to access, create, or validate any session is blocked waiting for the global lock.
-- **Proposed Remedy:**
-  Separate in-memory state manipulation from remote network I/O:
-  1. Under `self._lock`, perform the in-memory mutations and extract a snapshot of the manifest data via `session.model_dump(mode="json")`.
-  2. Release the lock before performing `storage.save_session_manifest()`.
-  3. Optionally introduce per-session locks (`dict[str, threading.Lock]`) for fine-grained concurrency.
-
----
-
-#### [PERF-02] Required: Redundant Remote Read-Before-Write (`get_session_manifest`) on Every Persistence Call
-- **Location:** [`src/omnimash/state/session_manager.py#L70-L93`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L70-L93)
-- **Problem:**
-  On every single turn generation, video URL update, or turn commit, `_persist_session()` performs:
-  1. `existing = self.storage.get_session_manifest(...)` (Remote GCS GET)
-  2. Iterates over 9 keys to backfill missing fields
-  3. `self.storage.save_session_manifest(...)` (Remote GCS PUT)
-  This doubles GCS latency on every mutation, adding 200–500ms of unnecessary network round-trips. Furthermore, because in-memory `session` already contains the authoritative state, re-fetching and backfilling from storage during an active session introduces race conditions where stale data can overwrite recent in-memory edits.
-- **Proposed Remedy:**
-  Remove the read-before-write logic from `_persist_session()`. Ensure hydration happens once at load time (`get_session` / `get_or_create_session`), and write the in-memory model directly to storage.
-
----
-
-#### [PERF-03] Optional: Missing JSON Mode in `model_dump()` Serialization
-- **Location:** [`src/omnimash/state/session_manager.py#L69`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L69)
-- **Problem:**
-  `manifest_data = session.model_dump()` uses default `mode='python'`, which preserves non-JSON types (such as `UUID`, `datetime`, or custom types) as Python objects. When passed to storage or serialization helpers, this can cause serialization overhead or `TypeError`.
-- **Proposed Remedy:**
-  Use `session.model_dump(mode="json")` to guarantee that all attributes are converted directly into JSON-safe primitives.
-  *(Source: [Pydantic V2 Serialization Docs](https://docs.pydantic.dev/latest/concepts/serialization/#modelmodel_dump))*
-
----
-
-### 3. Architecture
-
-#### [ARCH-01] Critical: Split-Brain State Management Between `CumulativeStateTracker` and `SessionManager`
-- **Location:** [`src/omnimash/agent/orchestrator.py#L46-L130`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py#L46-L130), [`src/omnimash/state/session_manager.py#L52`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L52)
-- **Problem:**
-  [`src/omnimash/agent/orchestrator.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/agent/orchestrator.py) defines a separate `CumulativeStateTracker` class with its own in-memory cache `_session_states: dict[str, CumulativeShotState]`.
-  When `CumulativeStateTracker._persist_state()` runs, it loads `session_manifest.json` from GCS, writes `manifest["cumulative_state"] = ...`, and saves it back to GCS.
-  Simultaneously, `ProjectSession` in `src/omnimash/state/session_manager.py` defines `cumulative_state: dict[str, Any]` and also writes `session_manifest.json`.
-  These two independent state trackers run concurrently without shared synchronization, risking write-clobbering and state desynchronization.
-- **Proposed Remedy:**
-  Move `CumulativeStateTracker` into `src/omnimash/state/` (or integrate its tracking directly into `ProjectSession`), ensuring that `ProjectSession` is the single source of truth for both the Version Tree DAG and cumulative character/scene state.
-
----
-
-#### [ARCH-02] Required: Duck-Typing on Storage Without Explicit Protocol
-- **Location:** [`src/omnimash/state/session_manager.py#L61`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L61)
-- **Problem:**
-  `SessionManager.__init__` accepts `storage: Any | None = None` and repeatedly uses `hasattr(self.storage, "save_session_manifest")`.
-  This untyped duck-typing prevents static type checking with `ty check` and lacks a clear contract for alternative storage backends (e.g. Memory, Firestore, GCS, Local Disk).
-- **Proposed Remedy:**
-  Define a `typing.Protocol` in `src/omnimash/state/session_manager.py`:
-  ```python
-  from typing import Protocol, runtime_checkable
-
-  @runtime_checkable
-  class SessionStorageProtocol(Protocol):
-      def save_session_manifest(
-          self, session_id: str, manifest_data: dict[str, Any], project_id: str | None = None
-      ) -> str: ...
-
-      def get_session_manifest(
-          self, session_id: str, project_id: str | None = None
-      ) -> dict[str, Any] | None: ...
+  if not clip_paths:
+      raise ValueError("concatenate_clips requires at least one clip path.")
   ```
 
----
-
-#### [ARCH-03] Required: Hardcoded Model Strings Bypassing Central Configuration
-- **Location:** [`src/omnimash/state/session_manager.py#L8-L14`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L8-L14), [`src/omnimash/state/session_manager.py#L47`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L47)
-- **Problem:**
-  `_normalize_image_model()` and `ProjectSession.image_model` default to `"gemini-nano-banana-2.1"` hardcoded as literal strings, ignoring `settings.image_model_id` from [`src/omnimash/config.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/config.py). If environment variables configure a different model, `session_manager.py` remains pinned to the hardcoded default.
-- **Proposed Remedy:**
-  Import `settings` from `omnimash.config` and use `getattr(settings, "image_model_id", "gemini-nano-banana-2.1")` as the canonical default.
-
----
-
-#### [ARCH-04] Optional: Permissive `extra="allow"` with Untyped Collections in `ProjectSession`
-- **Location:** [`src/omnimash/state/session_manager.py#L37-L52`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L37-L52)
-- **Problem:**
-  `model_config = ConfigDict(extra="allow")` allows arbitrary unknown keys into `ProjectSession`. Furthermore, `characters`, `products`, `shot_cards`, and `cumulative_state` are untyped lists of `dict[str, Any]`, bypassing Pydantic V2 schema validation and editor autocomplete.
-- **Proposed Remedy:**
-  Progressively type these fields or provide typed wrappers, ensuring structured validation when deserializing manifests.
-
----
-
-### 4. Security
-
-#### [SEC-01] Required: Inadequate Sanitization of Default Session Keys (`user_id:project_id`)
-- **Location:** [`src/omnimash/state/session_manager.py#L106-L109`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L106-L109)
-- **Problem:**
+#### `[CORR-02]` Required: FFmpeg Concat Demuxer Syntax Error on Unescaped Single Quotes
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L135-L138`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L135-L138)
+- **Problem:** In `concatenate_clips`, file paths are written to the concat manifest using `f"file '{clip_file}'\n"`. Per official FFmpeg concat demuxer documentation, single quotes within file paths must be escaped (`'\''`). If a clip name contains a single quote (e.g. `director's_cut.mp4`), FFmpeg crashes with a manifest syntax error.
+- **Structural Remedy:** Sanitize and escape single quotes before writing:
   ```python
-  if session_name and session_name.strip():
-      session_key = re.sub(r"[^a-zA-Z0-9_-]", "_", session_name.strip())
-  else:
-      session_key = f"{user_id}:{project_id}"
-  ```
-  When `session_name` is provided, it is sanitized against `[^a-zA-Z0-9_-]`. However, when `session_name` is omitted, `user_id` and `project_id` are concatenated with a colon (`:`).
-  If `user_id` or `project_id` contain path traversal sequences (`../`, `/`), slashes, or special characters, they can lead to invalid GCS blob keys or directory traversal vulnerabilities when constructing storage paths (`sessions/{session_id}/prompts/`).
-- **Proposed Remedy:**
-  Apply strict regex sanitization to both components when constructing the default key:
-  ```python
-  clean_user = re.sub(r"[^a-zA-Z0-9_-]", "_", (user_id or "default").strip())
-  clean_project = re.sub(r"[^a-zA-Z0-9_-]", "_", (project_id or "default").strip())
-  session_key = f"{clean_user}_{clean_project}"
+  escaped_path = clip_file.replace("'", "'\\''")
+  f.write(f"file '{escaped_path}'\n")
   ```
 
----
+#### `[CORR-03]` Required: Silent Failure Writes Plaintext Disguised as Media Files
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L273-L275`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L273-L275), [`L380-L385`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L380-L385), [`src/omnimash/stitching/audio_overlay.py#L121-L126`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L121-L126)
+- **Problem:** When title card generation or audio ducking fails, the code writes ASCII text strings (e.g. `"fallback title card video content"` or `"fallback ducked audio content"`) into files with `.mp4` and `.aac` extensions. In `stitcher.py#L144-L149`, an ad-hoc byte sniffer reads the first 64 bytes to detect this placeholder. Passing these corrupt text files into downstream FFmpeg concat commands causes mysterious downstream rendering crashes.
+- **Structural Remedy:** Replace disguised corrupt text writes with proper structured error raising (`RuntimeError`) or return `None` so the orchestrator can fall back cleanly without byte-sniffing corrupted files.
 
-#### [SEC-02] Required: Unbounded In-Memory Collections (Denial of Service Vector)
-- **Location:** [`src/omnimash/state/session_manager.py#L42-L43`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L42-L43), [`src/omnimash/state/session_manager.py#L62`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L62)
-- **Problem:**
-  `self._sessions: dict[str, ProjectSession]`, `session.turns: dict[str, TurnNode]`, and `session.timeline: list[ClipSegment]` have no upper limits or eviction policy (LRU / TTL). An automated loop or malicious actor repeatedly generating turns or sessions can cause unbounded memory growth and trigger container OOM crashes.
-- **Proposed Remedy:**
-  Enforce a sensible maximum turn limit per session (e.g. `MAX_TURNS_PER_SESSION = 500`) and cap in-memory session cache size with LRU eviction or an explicit cleanup method.
+#### `[CORR-04]` Required: Unchecked Returncode on FFmpeg Re-encode Fallback
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L236`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L236)
+- **Problem:** In `concatenate_clips`, if the fast `-c copy` pass fails (e.g. mismatched codecs/resolutions), it falls back to `cmd_reencode`. However, `subprocess.run(cmd_reencode, capture_output=True, text=True)` does not check `res.returncode` and does not set `check=True`. If the re-encode fails, the error is swallowed and line 250 attempts to upload an incomplete or missing file.
+- **Structural Remedy:** Check `res.returncode != 0`, log `res.stderr`, and raise a descriptive `RuntimeError` if re-encoding fails.
 
----
-
-### 5. Readability & Simplicity
-
-#### [READ-01] Required: Pydantic V2 Private Attribute Anti-Pattern (`object.__setattr__`)
-- **Location:** [`src/omnimash/state/session_manager.py#L222`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L222), [`src/omnimash/state/session_manager.py#L230`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L230)
-- **Problem:**
-  `allocate_turn_index` writes to an undeclared attribute using `object.__setattr__(session, "_last_allocated_turn_index", next_idx)`.
-  In Pydantic V2, undeclared private attributes trigger introspection overhead, confuse developers reading the model definition, and fail type checking.
-- **Proposed Remedy:**
-  Declare `_last_allocated_turn_index: int = PrivateAttr(default=-1)` directly on `ProjectSession`. Then update it cleanly with `session._last_allocated_turn_index = next_idx`.
-  *(Source: [Pydantic V2 Private Model Attributes](https://docs.pydantic.dev/latest/concepts/models/#private-model-attributes))*
+#### `[CORR-05]` Optional: Title Card Insertion Order Inversion on Equal Indices
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L423-L445`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L423-L445)
+- **Problem:** `title_cards` are sorted by `insert_at` in reverse order before insertion. If multiple cards specify identical `insert_at` indices (or invalid strings that fail `int(insert_at)`), their relative sequence is inverted or can trigger unhandled `ValueError`.
+- **Structural Remedy:** Validate `insert_at` with safe integer coercion and preserve stable insertion order.
 
 ---
 
-#### [READ-02] Optional: Repeated Regex Sanitization Across Functions
-- **Location:** [`src/omnimash/state/session_manager.py#L107`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L107), [`src/omnimash/state/session_manager.py#L189`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L189)
-- **Problem:**
-  The regex `re.sub(r"[^a-zA-Z0-9_-]", "_", ...)` is duplicated across `get_or_create_session` and `get_session`.
-- **Proposed Remedy:**
-  Extract a single reusable helper function:
+### Axis 2: Readability & Simplicity
+
+#### `[READ-01]` Required: Replace Ad-Hoc Temporary File Lists with `tempfile.TemporaryDirectory`
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L55`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L55), [`L237-L244`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L237-L244), [`src/omnimash/stitching/audio_overlay.py#L49`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L49), [`L128-L133`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L128-L133)
+- **Problem:** `temp_cleanup_paths: list[str] = []` and `temp_files: list[str] = []` require manual append calls after every file creation and manual loops in `finally:` blocks. If an unhandled exception or SIGTERM occurs before registration, files leak on disk.
+- **Structural Remedy:** Use `tempfile.TemporaryDirectory()` context manager. All intermediate clips, manifests, and audio stems are placed in the scoped directory and cleaned up automatically in one step.
+
+#### `[READ-02]` Required: Flatten Nested TrueType / Pillow Font Loading Ladder
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L304-L314`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L304-L314)
+- **Problem:** Three levels of deeply nested `try...except` ladders attempt font loading with duplicate magic strings and fallback logic.
+- **Structural Remedy:** Extract a clean helper:
   ```python
-  def sanitize_session_id(name: str) -> str:
-      """Sanitizes session identifiers to be safe for GCS paths and file systems."""
-      return re.sub(r"[^a-zA-Z0-9_-]", "_", name.strip()) if name else "default"
+  def _get_font(font_name: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+      for candidate in (font_name, "DejaVuSans.ttf", "Arial.ttf"):
+          try:
+              return ImageFont.truetype(candidate, size)
+          except Exception:
+              continue
+      return ImageFont.load_default(size=size)
   ```
 
+#### `[READ-03]` Optional: Inlined Dynamic Import of `settings` Inside Methods
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L28`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L28), [`src/omnimash/stitching/audio_overlay.py#L30`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L30)
+- **Problem:** `from omnimash.config import settings` is imported inside method bodies. There are no circular import issues between `config` and `stitching`.
+- **Structural Remedy:** Move `from omnimash.config import settings` to top-level imports.
+
+#### `[READ-04]` Nit: Inconsistent Logging Formats
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L11`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L11), [`src/omnimash/stitching/audio_overlay.py#L6`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L6)
+- **Problem:** Logger naming uses `logging.getLogger(__name__)`, which is standard, but log messages mix f-strings and `%s` arguments inconsistently.
+- **Structural Remedy:** Standardize on lazy formatting `%s` throughout.
+
 ---
 
-#### [READ-03] Nit: Hardcoded Field List in `_persist_session`
-- **Location:** [`src/omnimash/state/session_manager.py#L75-L85`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/state/session_manager.py#L75-L85)
-- **Problem:**
-  The 9-element tuple of keys to check is hardcoded inside the function body.
-- **Proposed Remedy:**
-  Define at module level or remove as part of eliminating redundant read-before-write (PERF-02).
+### Axis 3: Architecture & Design
+
+#### `[ARCH-01]` Required: Unify Triplicated Media Path Resolution into a Canonical Helper
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L58-L86`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L58-L86), [`L88-L129`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L88-L129), [`src/omnimash/stitching/audio_overlay.py#L51-L84`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L51-L84)
+- **Problem:** Media resolution logic is implemented three times with divergent capabilities:
+  1. `stitcher.py` clip loop: does not decode `/api/media-proxy`, does not support HTTP URLs, accesses private `_bucket`.
+  2. `stitcher.py` audio block: supports HTTP URLs via insecure `urlretrieve`, does not decode `/api/media-proxy`.
+  3. `audio_overlay.py` `_resolve_audio_input`: decodes `/api/media-proxy`, downloads GCS blobs via `download_blob_bytes`, but ignores HTTP URLs.
+- **Structural Remedy:** Collapse into a single canonical helper `resolve_media_source_to_local_path(source: str, temp_dir: str, storage: GcsStorageManager) -> str` used by both `VideoStitcher` and `apply_dialogue_audio_ducking`.
+
+#### `[ARCH-02]` Required: Eliminate Direct Private `_bucket` Access and GCS Prefix String Hacks
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L68-L80`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L68-L80)
+- **Problem:** `stitcher.py` accesses `self.storage._bucket` directly and attempts to parse blob names with:
+  `blob_name = norm_clip.replace(f"gs://{self.storage.bucket_name}/", "").lstrip("/")`
+  If `norm_clip` is in another bucket (or an HTTPS GCS URL), this string replacement fails, and `self.storage._bucket.blob(...)` crashes.
+- **Structural Remedy:** Delegate blob retrieval to `self.storage.download_blob_bytes(uri)` or a public `storage.download_to_file(uri, dest_path)`.
+
+#### `[ARCH-03]` Required: Export Public API Symbols in `src/omnimash/stitching/__init__.py`
+- **File & Lines:** [`src/omnimash/stitching/__init__.py#L1`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/__init__.py#L1)
+- **Problem:** `__init__.py` is completely empty. Callers must know internal module filenames (`omnimash.stitching.stitcher`, `omnimash.stitching.audio_overlay`).
+- **Structural Remedy:** Export `VideoStitcher` and `apply_dialogue_audio_ducking` in `__init__.py` with `__all__`.
+
+#### `[ARCH-04]` Optional: Unused Dependency `ffmpeg-python` in `pyproject.toml`
+- **File & Lines:** [`pyproject.toml#L10`](file:///usr/local/google/home/jordantotten/omnimash/pyproject.toml#L10)
+- **Problem:** `ffmpeg-python>=0.2.0` is declared in project dependencies, but is unmaintained and never imported anywhere in the project.
+- **Structural Remedy:** Remove `ffmpeg-python` via `uv remove ffmpeg-python` to eliminate dead weight and security footprint.
+
+#### `[ARCH-05]` Nit: Pass Explicit Aspect Ratio Type or Enum
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L260`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L260), [`L279-L285`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L279-L285)
+- **Problem:** `aspect_ratio: str = "16:9"` uses raw string mapping with an arbitrary dictionary fallback.
+- **Structural Remedy:** Use `Literal["16:9", "9:16", "1:1", "21:9"]` for explicit typing.
 
 ---
 
-## Action Plan & Structural Remedies
+### Axis 4: Security
 
-| Refactoring Step | Target Issues | Description |
-| :--- | :--- | :--- |
-| **PR 1: Correctness & Concurrency** | `CORR-01`, `PERF-01`, `PERF-02`, `CORR-03` | Fix asymmetric storage hydration in `add_turn` and `commit_turn`; release mutex lock before GCS I/O; eliminate redundant remote read-before-write; add structured logging. |
-| **PR 2: Typing, Turn Indexing & Pydantic V2** | `CORR-02`, `READ-01`, `ARCH-02`, `ARCH-03`, `PERF-03` | Add typed `turn_index: int = 0` to `TurnNode`; declare `PrivateAttr` on `ProjectSession`; define `SessionStorageProtocol`; bind default image model to `settings.image_model_id`; use `model_dump(mode="json")`. |
-| **PR 3: Security & Architecture Consolidation** | `SEC-01`, `SEC-02`, `ARCH-01`, `READ-02` | Sanitize all session keys; enforce turn/session caps; unify cumulative state tracking under `src/omnimash/state`; extract `sanitize_session_id` helper. |
+#### `[SEC-01]` Critical: Server-Side Request Forgery (SSRF) via Insecure `urllib.request.urlretrieve`
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L114-L126`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L114-L126)
+- **Problem:** In `concatenate_clips`, when `norm_audio` starts with `http://` or `https://`, it executes `urllib.request.urlretrieve(norm_audio, tmp_audio_path)`.
+  1. No hostname validation (allows requests to `169.254.169.254`, `localhost`, or internal VPC IPs).
+  2. No request timeout (vulnerable to Slowloris DoS).
+  3. No file size ceiling (vulnerable to disk exhaustion via unbounded streams).
+- **Structural Remedy:** Enforce validation using `validate_remote_media_url` and download safely using `safe_fetch_remote_bytes(url, max_bytes=MAX_MEDIA_FETCH_BYTES)` from `omnimash.engine.media_loader`.
+
+#### `[SEC-02]` Critical: Unconfined Path Traversal in `/static/` File Resolution
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L62-L65`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L62-L65), [`L92-L95`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L92-L95), [`src/omnimash/stitching/audio_overlay.py#L63-L66`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L63-L66)
+- **Problem:** In both files, paths starting with `/static/` are resolved via:
+  `loc = os.path.join(os.getcwd(), norm_clip.lstrip("/"))`
+  If a user passes `/static/../../etc/passwd` or `/static/../../../app/.env`, `os.path.join` traverses out of the intended directory.
+- **Structural Remedy:** Enforce directory confinement using `validate_local_media_path` from `omnimash.engine.media_loader`.
+
+#### `[SEC-03]` Required: Missing Subprocess Execution Timeouts (Process Hang / Resource Exhaustion)
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L191`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L191), [`L236`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L236), [`L377`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L377), [`src/omnimash/stitching/audio_overlay.py#L118`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L118)
+- **Problem:** All FFmpeg invocations run `subprocess.run(cmd, ...)` with NO `timeout` parameter. Corrupt video streams or malformed inputs can hang FFmpeg indefinitely, freezing worker processes and exhausting thread pools.
+- **Structural Remedy:** Pass `timeout=settings.ffmpeg_timeout_seconds` (default 120s) and handle `subprocess.TimeoutExpired` with proper error logging and process cleanup.
+
+---
+
+### Axis 5: Performance
+
+#### `[PERF-01]` Required: Dialogue Audio Ducking Muffled by FFmpeg `amix` Normalization Default
+- **File & Lines:** [`src/omnimash/stitching/audio_overlay.py#L95-L99`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/audio_overlay.py#L95-L99)
+- **Problem:** The filtergraph sets `amix=inputs=2:duration=first[aout]`. In FFmpeg, `amix` defaults to `normalize=true`, which divides the volume of each input stream by 2 (-6dB). Because the background music was already ducked by `sidechaincompress`, attenuating the speech track by -6dB results in muffled dialogue.
+- **Structural Remedy:** Specify `amix=inputs=2:duration=first:dropout_transition=0:normalize=0`.
+
+#### `[PERF-02]` Required: FFmpeg Re-encode Fallback Lacks Framerate Normalization
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L205-L235`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L205-L235)
+- **Problem:** In `cmd_reencode`, `-r 24` is omitted, while `generate_title_card_clip` enforces `-r 24`. Concatenating clips with differing or variable framerates causes video stutter and timestamp drift during re-encoding.
+- **Structural Remedy:** Add `-r 24` and `-pix_fmt yuv420p` to ensure smooth playback and stream alignment.
+
+#### `[PERF-03]` Optional: Synchronous Sequential Clip Downloads from GCS
+- **File & Lines:** [`src/omnimash/stitching/stitcher.py#L58-L86`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/stitching/stitcher.py#L58-L86)
+- **Problem:** Clips stored in GCS are downloaded sequentially in a blocking `for` loop. When stitching 5 to 10 clips for a long master video, network latency compounds.
+- **Structural Remedy:** Download clips concurrently using a `ThreadPoolExecutor` when multiple GCS URIs are detected.
+
+---
+
+## Remediation Plan Blueprint
+
+To ensure clean isolation, thorough testing, and minimal execution time, we propose organizing the fixes into **two parallel PRs**:
+
+```
+                              ┌────────────────────────────────────────┐
+                              │  PR 1: Security & Path Confinement     │
+                              │  - Safe remote media fetch (SSRF fix)  │
+                              │  - Local /static/ path confinement     │
+                              │  - Subprocess timeouts                 │
+                              │  - Concat demuxer quote escaping       │
+                              │  - Empty clip_paths guard              │
+                              └────────────────────────────────────────┘
+                                                 │
+                                                 ▼
+┌───────────────────────────┐ ┌────────────────────────────────────────┐
+│ main (Green: 503 passing) │ │  PR 2: Architecture & Audio Modernize  │
+└───────────────────────────┘ │  - Unified canonical media resolution  │
+                              │  - FFmpeg amix normalize=0 (0dB voice) │
+                              │  - Tempfile.TemporaryDirectory cleanup │
+                              │  - Public __init__.py exports          │
+                              │  - Remove unused ffmpeg-python dep     │
+                              └────────────────────────────────────────┘
+```
+
+### Proposed PR 1: Security, Input Validation & Subprocess Hardening
+- Remediates: `SEC-01`, `SEC-02`, `SEC-03`, `CORR-01`, `CORR-02`, `CORR-04`
+- Estimated Diff: ~120 lines changed
+- Scope: In `stitcher.py` and `audio_overlay.py`, wire SSRF validation, path confinement, subprocess timeouts, and concat single-quote escaping.
+
+### Proposed PR 2: Architecture Unification, Audio Modernization & Cleanup
+- Remediates: `ARCH-01`, `ARCH-02`, `ARCH-03`, `ARCH-04`, `PERF-01`, `PERF-02`, `READ-01`, `READ-02`, `CORR-03`
+- Estimated Diff: ~150 lines changed
+- Scope: Unified media resolver helper, `tempfile.TemporaryDirectory`, `amix normalize=0`, `__init__.py` exports, and removal of unused `ffmpeg-python` dependency.
 
 ---
 
 ## Verification Strategy
-- **Unit Tests:** Run `uv run pytest tests/state/ -v` to ensure all existing and new turn/session/hydration tests pass.
-- **Integration Tests:** Run `uv run pytest tests/api/test_architecture_remediation.py -v` and `tests/agent/test_orchestrator.py -v` to verify cold-start reloads, turn index allocation, and timeline stitching.
-- **Static Analysis:**
-  - `uv run ruff check .`
-  - `uv run ty check`
+- **Unit & Integration Suite:** `uv run pytest tests/stitching/ -v`
+- **Full Test Suite:** `uv run pytest`
+- **Linting:** `uv run ruff check .`
+- **Static Typing:** `uv run ty check`

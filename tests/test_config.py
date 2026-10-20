@@ -15,3 +15,8 @@ def test_omnimash_settings_custom_project():
 def test_omnimash_settings_explicit_bucket():
     s = OmniMashSettings(omnimash_gcs_bucket="my-custom-bucket")
     assert s.gcs_bucket_name == "my-custom-bucket"
+
+
+def test_omnimash_settings_ffmpeg_timeout():
+    s = OmniMashSettings()
+    assert s.ffmpeg_timeout_seconds == 120.0

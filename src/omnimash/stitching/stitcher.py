@@ -3,10 +3,13 @@ import os
 import shutil
 import subprocess
 import uuid
-from typing import Any
+from typing import Any, Literal
 
+from omnimash.config import settings
 from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
 from omnimash.storage.gcs import GcsStorageManager
+
+AspectRatio = Literal["16:9", "9:16", "1:1", "21:9"]
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +28,6 @@ class VideoStitcher:
         bucket_name: str | None = None,
         storage: GcsStorageManager | None = None,
     ):
-        from omnimash.config import settings
-
         self.mock_mode = (
             mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
@@ -45,6 +46,9 @@ class VideoStitcher:
         master_filename = f"master_{uuid.uuid4().hex[:8]}_stitched.mp4"
         out_path = os.path.join(output_dir, master_filename)
 
+        if not self.mock_mode and not clip_paths:
+            raise ValueError("concatenate_clips requires at least one clip path.")
+
         if self.mock_mode:
             if clip_paths and os.path.exists(clip_paths[0]):
                 shutil.copyfile(clip_paths[0], out_path)
@@ -57,12 +61,14 @@ class VideoStitcher:
                 resolved_clips: list[str] = []
                 for clip in clip_paths:
                     norm_clip = self.storage._normalize_media_source_path(clip)
-                    if os.path.exists(norm_clip):
-                        resolved_clips.append(os.path.abspath(norm_clip))
-                    elif norm_clip.startswith("/static/"):
-                        loc = os.path.join(os.getcwd(), norm_clip.lstrip("/"))
-                        if os.path.exists(loc):
+                    if norm_clip.startswith("/static/"):
+                        from omnimash.engine.media_loader import validate_local_media_path
+
+                        loc = validate_local_media_path(norm_clip)
+                        if loc and os.path.exists(loc):
                             resolved_clips.append(loc)
+                    elif os.path.exists(norm_clip):
+                        resolved_clips.append(os.path.abspath(norm_clip))
                     elif (
                         not self.mock_mode
                         and self.storage._bucket
@@ -87,12 +93,14 @@ class VideoStitcher:
                 resolved_audio: str | None = None
                 if master_audio_path:
                     norm_audio = self.storage._normalize_media_source_path(master_audio_path)
-                    if os.path.exists(norm_audio):
-                        resolved_audio = os.path.abspath(norm_audio)
-                    elif norm_audio.startswith("/static/"):
-                        loc = os.path.join(os.getcwd(), norm_audio.lstrip("/"))
-                        if os.path.exists(loc):
+                    if norm_audio.startswith("/static/"):
+                        from omnimash.engine.media_loader import validate_local_media_path
+
+                        loc = validate_local_media_path(norm_audio)
+                        if loc and os.path.exists(loc):
                             resolved_audio = loc
+                    elif os.path.exists(norm_audio):
+                        resolved_audio = os.path.abspath(norm_audio)
                     elif (
                         not self.mock_mode
                         and self.storage._bucket
@@ -112,18 +120,36 @@ class VideoStitcher:
                         except Exception:
                             resolved_audio = norm_audio
                     elif norm_audio.startswith(("http://", "https://")):
-                        try:
-                            import urllib.request
+                        from omnimash.engine.media_loader import (
+                            fetch_media_bytes,
+                            validate_remote_media_url,
+                        )
 
-                            tmp_audio_path = os.path.join(
-                                output_dir, f"audio_{uuid.uuid4().hex[:6]}.mp3"
+                        if not validate_remote_media_url(norm_audio):
+                            logger.warning(
+                                "Blocked disallowed or private HTTP audio URL: %s",
+                                norm_audio,
                             )
-                            urllib.request.urlretrieve(norm_audio, tmp_audio_path)
-                            temp_cleanup_paths.append(tmp_audio_path)
-                            resolved_audio = tmp_audio_path
-                        except Exception as exc:
-                            logger.warning("Failed to download HTTP master audio URL: %s", exc)
-                            resolved_audio = norm_audio
+                            resolved_audio = None
+                        else:
+                            try:
+                                data, _ = fetch_media_bytes(norm_audio, storage=self.storage)
+                                if data:
+                                    tmp_audio_path = os.path.join(
+                                        output_dir, f"audio_{uuid.uuid4().hex[:6]}.mp3"
+                                    )
+                                    with open(tmp_audio_path, "wb") as f:
+                                        f.write(data)
+                                    temp_cleanup_paths.append(tmp_audio_path)
+                                    resolved_audio = tmp_audio_path
+                                else:
+                                    resolved_audio = None
+                            except Exception as exc:
+                                logger.warning(
+                                    "Failed to download HTTP master audio URL safely: %s",
+                                    exc,
+                                )
+                                resolved_audio = None
                     else:
                         resolved_audio = norm_audio
 
@@ -134,7 +160,8 @@ class VideoStitcher:
                     temp_cleanup_paths.append(concat_list_path)
                     with open(concat_list_path, "w") as f:
                         for clip_file in resolved_clips:
-                            f.write(f"file '{clip_file}'\n")
+                            escaped_clip = clip_file.replace("'", "'\\''")
+                            f.write(f"file '{escaped_clip}'\n")
 
                     if resolved_audio and os.path.exists(resolved_audio):
                         try:
@@ -188,52 +215,80 @@ class VideoStitcher:
                             out_path,
                         ]
 
-                    res = subprocess.run(cmd_copy, capture_output=True, text=True)
-                    if res.returncode != 0:
-                        if resolved_audio and os.path.exists(resolved_audio):
-                            cmd_reencode = [
-                                "ffmpeg",
-                                "-y",
-                                "-f",
-                                "concat",
-                                "-safe",
-                                "0",
-                                "-i",
-                                concat_list_path,
-                                "-i",
-                                resolved_audio,
-                                "-c:v",
-                                "libx264",
-                                "-c:a",
-                                "aac",
-                                "-map",
-                                "0:v:0",
-                                "-map",
-                                "1:a:0",
-                                "-pix_fmt",
-                                "yuv420p",
-                                "-shortest",
-                                out_path,
-                            ]
-                        else:
-                            cmd_reencode = [
-                                "ffmpeg",
-                                "-y",
-                                "-f",
-                                "concat",
-                                "-safe",
-                                "0",
-                                "-i",
-                                concat_list_path,
-                                "-c:v",
-                                "libx264",
-                                "-c:a",
-                                "aac",
-                                "-pix_fmt",
-                                "yuv420p",
-                                out_path,
-                            ]
-                        subprocess.run(cmd_reencode, capture_output=True, text=True)
+                    timeout_secs = float(getattr(settings, "ffmpeg_timeout_seconds", 120.0))
+                    try:
+                        res = subprocess.run(
+                            cmd_copy,
+                            capture_output=True,
+                            text=True,
+                            timeout=timeout_secs,
+                        )
+                        if res.returncode != 0:
+                            if resolved_audio and os.path.exists(resolved_audio):
+                                cmd_reencode = [
+                                    "ffmpeg",
+                                    "-y",
+                                    "-f",
+                                    "concat",
+                                    "-safe",
+                                    "0",
+                                    "-i",
+                                    concat_list_path,
+                                    "-i",
+                                    resolved_audio,
+                                    "-c:v",
+                                    "libx264",
+                                    "-c:a",
+                                    "aac",
+                                    "-map",
+                                    "0:v:0",
+                                    "-map",
+                                    "1:a:0",
+                                    "-pix_fmt",
+                                    "yuv420p",
+                                    "-shortest",
+                                    out_path,
+                                ]
+                            else:
+                                cmd_reencode = [
+                                    "ffmpeg",
+                                    "-y",
+                                    "-f",
+                                    "concat",
+                                    "-safe",
+                                    "0",
+                                    "-i",
+                                    concat_list_path,
+                                    "-c:v",
+                                    "libx264",
+                                    "-c:a",
+                                    "aac",
+                                    "-pix_fmt",
+                                    "yuv420p",
+                                    out_path,
+                                ]
+                            res_reencode = subprocess.run(
+                                cmd_reencode,
+                                capture_output=True,
+                                text=True,
+                                timeout=timeout_secs,
+                            )
+                            if res_reencode.returncode != 0:
+                                logger.error(
+                                    "FFmpeg re-encode fallback failed (exit %s): %s",
+                                    res_reencode.returncode,
+                                    res_reencode.stderr,
+                                )
+                                raise RuntimeError(f"FFmpeg re-encode failed: {res_reencode.stderr}")
+                    except subprocess.TimeoutExpired as exc:
+                        logger.error(
+                            "FFmpeg concatenate execution timed out after %s seconds: %s",
+                            timeout_secs,
+                            exc,
+                        )
+                        raise RuntimeError(
+                            f"FFmpeg execution timed out after {timeout_secs} seconds"
+                        ) from exc
             finally:
                 for tmp_p in temp_cleanup_paths:
                     if os.path.exists(tmp_p):
@@ -257,7 +312,7 @@ class VideoStitcher:
         duration_seconds: float = 3.0,
         style: str = "gothic_gold",
         output_dir: str = "/tmp",
-        aspect_ratio: str = "16:9",
+        aspect_ratio: AspectRatio | str = "16:9",
     ) -> str:
         os.makedirs(output_dir, exist_ok=True)
         clip_filename = f"title_card_{uuid.uuid4().hex[:8]}.mp4"
@@ -374,9 +429,24 @@ class VideoStitcher:
                 "-shortest",
                 out_path,
             ]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode != 0:
-                logger.warning("FFmpeg title card rendering failed: %s", res.stderr)
+            timeout_secs = float(getattr(settings, "ffmpeg_timeout_seconds", 120.0))
+            try:
+                res = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_secs,
+                )
+                if res.returncode != 0:
+                    logger.warning("FFmpeg title card rendering failed: %s", res.stderr)
+                    with open(out_path, "w") as f:
+                        f.write("fallback title card video content")
+            except subprocess.TimeoutExpired as exc:
+                logger.warning(
+                    "FFmpeg title card rendering timed out after %s seconds: %s",
+                    timeout_secs,
+                    exc,
+                )
                 with open(out_path, "w") as f:
                     f.write("fallback title card video content")
         except Exception as exc:
@@ -413,16 +483,23 @@ class VideoStitcher:
         background_music_path: str | None = None,
         output_dir: str = "/tmp",
         session_id: str | None = None,
-        aspect_ratio: str = "16:9",
+        aspect_ratio: AspectRatio | str = "16:9",
     ) -> str:
         ordered_clips = list(shot_clips)
         temp_storyboard_files: list[str] = []
 
         try:
+            def _safe_insert_at(card: dict[str, Any]) -> int:
+                raw_idx = card.get("insert_at", 0)
+                try:
+                    return int(raw_idx)
+                except (ValueError, TypeError):
+                    return 0
+
             if title_cards:
                 sorted_cards = sorted(
                     title_cards,
-                    key=lambda c: c.get("insert_at", 0),
+                    key=_safe_insert_at,
                     reverse=True,
                 )
                 for card in sorted_cards:
@@ -430,7 +507,6 @@ class VideoStitcher:
                     subtitle = card.get("subtitle") or card.get("subtitle_text", "")
                     duration = card.get("duration") or card.get("duration_seconds", 3.0)
                     style = card.get("style", "gothic_gold")
-                    insert_at = card.get("insert_at", 0)
 
                     card_clip_path = self.generate_title_card_clip(
                         title_text=title,
@@ -441,7 +517,7 @@ class VideoStitcher:
                         aspect_ratio=aspect_ratio,
                     )
                     temp_storyboard_files.append(card_clip_path)
-                    idx = max(0, min(int(insert_at), len(ordered_clips)))
+                    idx = max(0, min(_safe_insert_at(card), len(ordered_clips)))
                     ordered_clips.insert(idx, card_clip_path)
 
             valid_narrator_paths = [

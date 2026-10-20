@@ -61,11 +61,19 @@ def apply_dialogue_audio_ducking(
             except Exception:
                 pass
         if norm.startswith("/static/"):
-            static_loc = os.path.join(os.getcwd(), norm.lstrip("/"))
-            if os.path.exists(static_loc):
+            from omnimash.engine.media_loader import validate_local_media_path
+
+            static_loc = validate_local_media_path(norm)
+            if static_loc and os.path.exists(static_loc):
                 return static_loc
+            return ""
         if os.path.exists(norm):
-            return os.path.abspath(norm)
+            from omnimash.engine.media_loader import validate_local_media_path
+
+            confined_path = validate_local_media_path(norm)
+            if confined_path and os.path.exists(confined_path):
+                return os.path.abspath(confined_path)
+            return ""
         if norm.startswith(("gs://", "https://storage.googleapis.com/")):
             try:
                 from omnimash.storage.gcs import GcsStorageManager
@@ -114,12 +122,26 @@ def apply_dialogue_audio_ducking(
             output_path,
         ]
 
+        timeout_secs = float(getattr(settings, "ffmpeg_timeout_seconds", 120.0))
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_secs,
+            )
             if res.returncode != 0:
                 logger.warning("FFmpeg sidechain ducking failed: %s", res.stderr)
                 with open(output_path, "w") as f:
                     f.write("fallback ducked audio content")
+        except subprocess.TimeoutExpired as exc:
+            logger.warning(
+                "FFmpeg sidechain ducking timed out after %s seconds: %s",
+                timeout_secs,
+                exc,
+            )
+            with open(output_path, "w") as f:
+                f.write("fallback ducked audio content")
         except Exception as exc:
             logger.warning("Failed to execute FFmpeg dialogue audio ducking: %s", exc)
             with open(output_path, "w") as f:

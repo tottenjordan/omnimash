@@ -348,3 +348,149 @@ def test_concatenate_clips_cleans_up_temp_downloaded_files_and_uses_unique_manif
     remaining_files = [p.name for p in tmp_path.iterdir()]
     assert not any(name.startswith("clip_") for name in remaining_files)
     assert not any(name.startswith("concat_list_") for name in remaining_files)
+
+
+def test_concatenate_clips_empty_clip_paths_raises_value_error(tmp_path):
+    import pytest
+
+    stitcher = VideoStitcher(mock_mode=False)
+    with pytest.raises(ValueError, match="at least one clip path"):
+        stitcher.concatenate_clips([], output_dir=str(tmp_path))
+
+
+def test_concatenate_clips_escapes_single_quotes_in_manifest(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    clip_with_quote = tmp_path / "director's_cut.mp4"
+    clip_with_quote.write_bytes(b"dummy clip")
+
+    captured_concat_lines = []
+
+    def fake_subproc(cmd, *args, **kwargs):
+        concat_path = cmd[cmd.index("-i") + 1]
+        with open(concat_path, "r") as f:
+            captured_concat_lines.extend(f.read().splitlines())
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        return mock_res
+
+    with (
+        patch("subprocess.run", side_effect=fake_subproc),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        stitcher.concatenate_clips([str(clip_with_quote)], output_dir=str(tmp_path))
+
+    expected_escaped = os.path.abspath(str(clip_with_quote)).replace("'", "'\\''")
+    assert captured_concat_lines == [f"file '{expected_escaped}'"]
+
+
+def test_concatenate_clips_ssrf_disallowed_url_blocked(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    clip1 = tmp_path / "clip1.mp4"
+    clip1.write_bytes(b"dummy clip")
+
+    captured_cmds = []
+
+    def fake_subproc(cmd, *args, **kwargs):
+        captured_cmds.append(cmd)
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        return mock_res
+
+    with (
+        patch("subprocess.run", side_effect=fake_subproc),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        # Metadata service URL must be blocked by SSRF check and not passed to ffmpeg
+        stitcher.concatenate_clips(
+            [str(clip1)],
+            output_dir=str(tmp_path),
+            master_audio_path="http://169.254.169.254/computeMetadata/v1/",
+        )
+
+    assert len(captured_cmds) == 1
+    # Master audio was blocked, so ffmpeg command shouldn't have -i <audio>
+    cmd = captured_cmds[0]
+    assert "169.254.169.254" not in " ".join(cmd)
+
+
+def test_concatenate_clips_path_traversal_blocked(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    valid_clip = tmp_path / "valid.mp4"
+    valid_clip.write_bytes(b"dummy clip content")
+
+    # Malicious static traversal path
+    malicious_path = "/static/../../etc/passwd"
+
+    captured_cmds = []
+
+    def fake_subproc(cmd, *args, **kwargs):
+        captured_cmds.append(cmd)
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        return mock_res
+
+    with (
+        patch("subprocess.run", side_effect=fake_subproc),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        stitcher.concatenate_clips(
+            [str(valid_clip)],
+            output_dir=str(tmp_path),
+            master_audio_path=malicious_path,
+        )
+
+    assert len(captured_cmds) == 1
+    cmd = captured_cmds[0]
+    assert "passwd" not in " ".join(cmd)
+
+
+def test_concatenate_clips_subprocess_timeout_handled(tmp_path):
+    import subprocess
+    import pytest
+
+    stitcher = VideoStitcher(mock_mode=False)
+    clip1 = tmp_path / "clip1.mp4"
+    clip1.write_bytes(b"dummy")
+
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=120.0)):
+        with pytest.raises(RuntimeError, match="timed out"):
+            stitcher.concatenate_clips([str(clip1)], output_dir=str(tmp_path))
+
+
+def test_concatenate_clips_reencode_failure_raises_runtime_error(tmp_path):
+    import pytest
+
+    stitcher = VideoStitcher(mock_mode=False)
+    clip1 = tmp_path / "clip1.mp4"
+    clip1.write_bytes(b"dummy")
+
+    fail_copy = MagicMock()
+    fail_copy.returncode = 1
+    fail_reencode = MagicMock()
+    fail_reencode.returncode = 1
+    fail_reencode.stderr = "Fatal re-encode error"
+
+    with patch("subprocess.run", side_effect=[fail_copy, fail_reencode]):
+        with pytest.raises(RuntimeError, match="FFmpeg re-encode failed"):
+            stitcher.concatenate_clips([str(clip1)], output_dir=str(tmp_path))
+
+
+def test_stitch_storyboard_master_handles_invalid_insert_at_gracefully(tmp_path):
+    stitcher = VideoStitcher(mock_mode=True)
+    shot_clips = ["/static/shot1.mp4"]
+    title_cards = [
+        {"insert_at": "not_an_int", "title": "Invalid Index Card"},
+    ]
+
+    with patch.object(stitcher.storage, "upload_file") as mock_upload:
+        mock_upload.return_value = "https://storage.googleapis.com/test/master.mp4"
+        out_path = stitcher.stitch_storyboard_master(
+            shot_clips=shot_clips,
+            title_cards=title_cards,
+            output_dir=str(tmp_path),
+        )
+        assert os.path.exists(out_path)
+
+
+
+
