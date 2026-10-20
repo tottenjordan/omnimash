@@ -12,104 +12,21 @@ from pydantic import BaseModel, Field
 
 from omnimash.config import settings
 from omnimash.prompts.character_roles import CharacterRole
+from omnimash.prompts.image_tags import (
+    build_character_image_ref_tags,
+    get_character_identifier,
+    replace_character_in_text_image_tags,
+    sort_characters_by_role_id,
+)
+from omnimash.prompts.parody import (
+    REAL_NAME_MAPPINGS,
+    REAL_NAME_PARODY_MAP,
+    _COMPILED_PARODY_PATTERNS,
+    sanitize_real_names,
+)
 
 if TYPE_CHECKING:
     from omnimash.prompts.taxonomy import StylePreset
-
-REAL_NAME_PARODY_MAP: dict[str, str] = {
-    r"\bGordon Ramsay\b": "Fiery Chef Blood",
-    r"\bJulia Child\b": "Classic Chef Fam",
-    r"\bYoung Jeezy\b": "Trap Legend Fam",
-    r"\bDrake\b": "Drizzy Bruv (6ix Melodic Star)",
-    r"\bKanye West\b": "Ye Fam (Avant-Garde Producer)",
-    r"\bTravis Scott\b": "Rodeo Trap Bruv",
-    r"\bTaylor Swift\b": "Pop Star Fam",
-    r"\bSeverus Snape\b": "Gothic Potion Master Fam",
-    r"\bSnape\b": "Potion Master",
-    r"\bHarry Potter\b": "Spectacled Wizard Bruv",
-    r"\bDraco Malfoy\b": "Platinum Rival Blood",
-    r"\bDraco\b": "Rival Wizard",
-    r"\bHermione Granger\b": "Retainer Academic Fam",
-    r"\bRon Weasley\b": "Redhair Wizard Blood",
-    r"\bSlytherin\b": "Green Snake House",
-    r"\bDark Mark\b": "Golden Skull Emblem",
-    r"\bAzkaban\b": "High Security Fortress",
-    r"\bHogwarts\b": "Gothic Academy",
-    r"\bBurberry\b": "Plaid Trench",
-    r"\bJordans\b": "High Top Kicks",
-    r"\bCartier\b": "Gold Wire Glasses",
-    r"\bDumbledore\b": "Venerable High Wizard Bruv",
-    r"\bVoldemort\b": "Dark Sorcerer",
-    r"\bWaka Flocka Flame\b": "Southern Trap Blood",
-    r"\bWaka Flocka\b": "Southern Trap Blood",
-    r"\bSnoop Dogg\b": "West Coast Drip (Rap Legend)",
-    r"\bEminem\b": "Shady Fam (Detroit Speed Rapper)",
-    r"\bBeyonce\b": "Pop Queen Fam",
-    r"\bBeyoncé\b": "Pop Queen Fam",
-    r"\bJay-Z\b": "Hov Fam (NY Rap Mogul)",
-    r"\bJayZ\b": "Hov Fam",
-    r"\bRihanna\b": "Riri Fam (Caribbean Pop Icon)",
-    r"\bKendrick Lamar\b": "Lyrical West Coast Bruv",
-    r"\b50 Cent\b": "Fifty Cent Fam",
-    r"\b50Cent\b": "Fifty Cent Fam",
-    r"\bIce Cube\b": "Cube Blood",
-    r"\bGucci Mane\b": "Designer Drip (Trap Pioneer)",
-    r"\bCardi B\b": "Bronx Queen Fam",
-    r"\bNicki Minaj\b": "Queens Rap Queen Fam",
-    r"\bLil Wayne\b": "New Orleans Rap Genius",
-    r"\bElon Musk\b": "Tech Entrepreneur Executive",
-    r"\bDonald Trump\b": "Charismatic Business Executive",
-    r"\bJoe Biden\b": "Senior Statesman Leader",
-    r"\bBarack Obama\b": "Eloquent Former Statesman",
-    r"\bFrancesco Totti\b": "a tatted wizard",
-    r"\bJohn Totti\b": "a tatted wizard",
-    r"\bYo Totti\b": "a tatted wizard",
-    r"\bYoTotti\b": "a tatted wizard",
-    r"\bTotti\b": "a tatted wizard",
-    r"\bJordan Totten\b": "a young wizard scholar",
-    r"\bJordanTotten\b": "a young wizard scholar",
-    r"\bDumble Dior\b": "a high-fashion wizard headmaster",
-    r"\bDumbleDior\b": "a high-fashion wizard headmaster",
-    # Street Slang, Band Trademarks, Drug & Alcohol Sanitization
-    r"\bbaking\s*soda\b": "magical potion powder",
-    r"\b40-ounce\s*beer\b": "glowing golden goblet",
-    r"\b40-ounce\b": "golden goblet",
-    r"\bpop\s+you\s+for\b": "challenge you for",
-    r"\bstepped\s*on\b": "diluted",
-    r"\bwidespread\s*panic\b": "vintage band emblem",
-    r"\btear\s*drop\s*tattoos?\b": "facial ink accent",
-    r"\bface\s*tattoos?\b": "artistic facial ink",
-    r"\bface\s*tatted\b": "artistic facial ink",
-    r"\b1017\b": "gold",
-    # Trademarked Luxury Brands & Pop-Culture House Abstractions
-    r"\bGucci\b": "high-fashion designer",
-    r"\bDior\b": "luxury fashion",
-    r"\bChanel\b": "high-fashion designer",
-    r"\bLouis Vuitton\b": "luxury fashion",
-    r"\bBalenciaga\b": "streetwear designer",
-    r"\bPrada\b": "luxury designer",
-    r"\bVersace\b": "luxury designer",
-    r"\bRolex\b": "luxury watch",
-    r"\bGryffindor\b": "Gold Lion House",
-    r"\bRavenclaw\b": "Blue Eagle House",
-    r"\bHufflepuff\b": "Yellow Badger House",
-    r"\bGolden Snitch\b": "glowing golden flying orb",
-    r"\bSnitch\b": "golden flying orb",
-    r"\bQuidditch\b": "aerial magical sport",
-    r"\bLightsaber\b": "laser sword",
-    r"\bLight Saber\b": "laser sword",
-    r"\bBatmobile\b": "armored tactical vehicle",
-}
-
-REAL_NAME_MAPPINGS = REAL_NAME_PARODY_MAP
-
-# Pre-compile parody sanitization regex patterns at module import time to avoid
-# thrashing Python's 512-entry re._cache on every sanitize_real_names() call.
-# Source: https://docs.python.org/3.12/library/re.html#re.compile
-_COMPILED_PARODY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
-    (re.compile(pattern, flags=re.IGNORECASE), replacement)
-    for pattern, replacement in REAL_NAME_PARODY_MAP.items()
-)
 
 GEMINI_OMNI_FLASH_INSTR: str = """\
 GEMINI OMNI FLASH PROMPT BEST PRACTICES & COMPILER SPECIFICATION
@@ -139,214 +56,37 @@ Gemini Omni Flash (gemini-omni-flash-preview) is the sole video+audio generation
 """
 
 
-def sanitize_real_names(text: str) -> str:
-    """Sanitizes real celebrity and public figure full names into safe visual parody role descriptors to adhere to Gemini Omni Flash safety guidelines."""
-    if not text:
-        return text
-    result = text
-    for compiled_pattern, replacement in _COMPILED_PARODY_PATTERNS:
-        result = compiled_pattern.sub(replacement, result)
-    return result
-
-
-def get_character_identifier(
-    char: CharacterRole | dict[str, Any] | Any,
-    enable_sanitization: bool = True,
-    use_role_id: bool = False,
-) -> str:
-    """Returns character identifier string.
-
-    When use_role_id is True (default for Gemini API prompt compilation), returns 'role_id' (e.g. 'Role A', 'Role B')
-    to ensure Gemini API prompts remain 100% clean and free of real-person/celebrity name tokens.
-    """
-    if isinstance(char, dict):
-        role_id = str(char.get("role_id", "") or "").strip()
-        name = str(char.get("name", "") or "").strip()
-    else:
-        role_id = str(getattr(char, "role_id", "") or "").strip()
-        name = str(getattr(char, "name", "") or "").strip()
-
-    if use_role_id and role_id:
-        return role_id
-
-    if enable_sanitization:
-        name_clean = sanitize_real_names(name) if name else ""
-    else:
-        name_clean = name if name else ""
-
-    if name_clean:
-        return name_clean
-    if role_id:
-        return role_id
-    return "Character"
-
-
-def sort_characters_by_role_id(characters: list[Any] | None) -> list[Any]:
-    """Sorts character role list deterministically: Starting Frame / Keyframe Seed first, followed by Ending Frame, Role A, Role B, Role C, Role D."""
-    if not characters:
-        return []
-
-    def _role_key(c: Any) -> tuple[int, int, str]:
-        img_role = (
-            getattr(c, "image_role", "")
-            if not isinstance(c, dict)
-            else c.get("image_role", "") or ""
-        )
-        if img_role in ("Starting Frame", "Keyframe Seed Anchor"):
-            return (0, 0, "")
-        if img_role in ("Ending Frame", "Keyframe Last Anchor"):
-            return (0, 1, "")
-
-        r_id = (
-            str(
-                getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "") or ""
-            )
-            .strip()
-            .upper()
-        )
-        m = re.search(r"ROLE\s*([A-Z0-9]+)", r_id)
-        if m:
-            val = m.group(1)
-            if val.isdigit():
-                return (1, 0, f"{int(val):04d}")
-            elif len(val) == 1 and "A" <= val <= "Z":
-                return (1, 0, f"{ord(val) - ord('A'):04d}")
-        return (1, 1, r_id)
-
-    return sorted(characters, key=_role_key)
-
-
-def build_character_image_ref_tags(
-    characters: list[CharacterRole] | None,
-    starting_index: int = 1,
-    has_keyframe_seed: bool = False,
-    enable_sanitization: bool = True,
-) -> tuple[list[str], list[str], dict[str, str]]:
-    """Builds official Gemini Omni Flash <IMAGE_REF_N>, <FIRST_FRAME>, and <LAST_FRAME> tag structures.
-
-    Returns:
-      (sources_items, references_items, char_tag_map)
-    """
-    sources_items: list[str] = []
-    references_items: list[str] = []
-    char_tag_map: dict[str, str] = {}
-
-    if has_keyframe_seed:
-        sources_items.append("<FIRST_FRAME>@KeyframeSeed")
-
-    if not characters:
-        return sources_items, references_items, char_tag_map
-
-    sorted_chars = sort_characters_by_role_id(characters)
-    ref_counter = 0
-    img_idx = starting_index
-
-    for char in sorted_chars:
-        ref_url = (
-            getattr(char, "reference_url", None)
-            if not isinstance(char, dict)
-            else char.get("reference_url")
-        )
-        if not ref_url or not isinstance(ref_url, str) or not ref_url.strip():
-            continue
-
-        char_id = get_character_identifier(char, enable_sanitization=enable_sanitization)
-        role_id = str(
-            getattr(char, "role_id", "")
-            if not isinstance(char, dict)
-            else char.get("role_id", "") or ""
-        ).strip()
-        name = str(
-            getattr(char, "name", "") if not isinstance(char, dict) else char.get("name", "") or ""
-        ).strip()
-        img_role = (
-            getattr(char, "image_role", "Character Reference")
-            if not isinstance(char, dict)
-            else char.get("image_role", "Character Reference")
-        ) or "Character Reference"
-
-        if img_role in ("Starting Frame", "Keyframe Seed Anchor"):
-            tag = "<FIRST_FRAME>"
-            sources_items.append(f"<FIRST_FRAME>@Image{img_idx}")
-        elif img_role in ("Ending Frame", "Keyframe Last Anchor"):
-            tag = "<LAST_FRAME>"
-            sources_items.append(f"<LAST_FRAME>@Image{img_idx}")
-        else:
-            tag = f"<IMAGE_REF_{ref_counter}>"
-            references_items.append(f"{tag}@Image{img_idx}")
-            ref_counter += 1
-
-        name_clean = (sanitize_real_names(name) if name else "") if enable_sanitization else name
-        base_name = re.sub(r"\s*\(.*?\)", "", name).strip() if name else ""
-        base_name_clean = (
-            (sanitize_real_names(base_name) if base_name else "")
-            if enable_sanitization
-            else base_name
-        )
-
-        candidate_keys: set[str] = set()
-        for k in (char_id, role_id, name, name_clean, base_name, base_name_clean):
-            if k and k.strip():
-                candidate_keys.add(k.strip())
-
-        for source_name in (base_name, name):
-            if source_name:
-                for token in source_name.split():
-                    tok = token.strip()
-                    if tok:
-                        candidate_keys.add(tok)
-                        tok_clean = sanitize_real_names(tok) if enable_sanitization else tok
-                        if tok_clean and tok_clean.strip():
-                            candidate_keys.add(tok_clean.strip())
-
-        for key in candidate_keys:
-            if key and key.strip():
-                k_str = key.strip()
-                char_tag_map[k_str] = tag
-                char_tag_map[k_str.lower()] = tag
-
-        img_idx += 1
-
-    has_first_frame = has_keyframe_seed or any(s.startswith("<FIRST_FRAME>") for s in sources_items)
-    has_last_frame = any(s.startswith("<LAST_FRAME>") for s in sources_items)
-    if has_last_frame and not has_first_frame:
-        raise ValueError(
-            "<LAST_FRAME> anchor requires a corresponding <FIRST_FRAME> anchor in prompt payload."
-        )
-
-    return sources_items, references_items, char_tag_map
-
-
-def replace_character_in_text_image_tags(
-    text: str,
-    name_to_tag: dict[str, str],
-) -> str:
-    """Replaces character name mentions in text with 'name (@ImageN)' if not already tagged."""
-    if not text or not name_to_tag:
-        return text
-    sorted_keys = sorted(name_to_tag.keys(), key=len, reverse=True)
-    result = text
-    for key in sorted_keys:
-        tag = name_to_tag[key]
-        if not tag or not key or len(key.strip()) < 2:
-            continue
-        pattern = r"\b" + re.escape(key) + r"\b"
-
-        def _repl(match: re.Match) -> str:
-            matched_text = match.group(0)
-            end_pos = match.end()
-            remaining = result[end_pos:]
-            if re.match(r"\s*\(" + re.escape(tag) + r"\)", remaining) or re.match(
-                r"\s*" + re.escape(tag), remaining
-            ):
-                return matched_text
-            return f"{matched_text} ({tag})"
-
-        result = re.sub(pattern, _repl, result)
-    return result
-
-
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "AESTHETIC_SIGNIFIERS",
+    "CHARACTER_LORE_ANCHORS",
+    "CompiledDeltaPrompt",
+    "CompiledPromptParts",
+    "CumulativeShotState",
+    "DeconstructedCharacterSchema",
+    "DeconstructedConceptSchema",
+    "GEMINI_OMNI_FLASH_INSTR",
+    "MetaPromptTags",
+    "PromptCompiler",
+    "PromptOptimizer",
+    "REAL_NAME_MAPPINGS",
+    "REAL_NAME_PARODY_MAP",
+    "SceneDirective",
+    "_COMPILED_PARODY_PATTERNS",
+    "apply_conversational_voice_edits",
+    "build_character_image_ref_tags",
+    "compile_journey3_shot_prompt",
+    "enrich_timeline_dialogue_speakers",
+    "ensure_character_voice_style",
+    "get_character_identifier",
+    "parse_screenplay_script",
+    "parse_timecoded_script",
+    "replace_character_in_text_image_tags",
+    "sanitize_real_names",
+    "sort_characters_by_role_id",
+    "validate_compiled_prompt",
+]
 
 
 @dataclass
