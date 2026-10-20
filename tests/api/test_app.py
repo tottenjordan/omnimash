@@ -2359,7 +2359,7 @@ def test_ui_html_pr2_browser_dom_interactions(tmp_path) -> None:
         "  const carouselCount = await page.locator('.TurnHistoryCarousel').count();"
         "  if (carouselCount < 1) throw new Error('Expected .TurnHistoryCarousel element in Stage 3 DOM');"
         "  await page.getByRole('button', { name: /🌧️ Lighting\\/Weather/i }).click();"
-        "  const diffVal = await page.locator('input[placeholder*=\"Change Harry\"]').inputValue();"
+        "  const diffVal = await page.locator('input[placeholder*=\"gold metallic sunglasses\"]').inputValue();"
         "  if (!diffVal.includes('Shift scene lighting to dramatic neon rain')) throw new Error('Guided Diff Pill did not populate deltaPrompt: ' + diffVal);"
         "  for (let i = 0; i < 4; i++) {"
         "    await page.getByRole('button', { name: /Apply Diff & Render/i }).click();"
@@ -2434,31 +2434,42 @@ def test_ui_html_safety_compliant_presets_and_parody_mappings() -> None:
     )
     assert "Gothic Potion Master in a 90s East Coast boom-bap rap video" in UI_HTML
     assert "Crimson Velvet Tracksuit, Gold Wire-Rim Glasses" in UI_HTML
+    assert "Headmaster Archmage: (Casual, adjusting his spectacles)" in UI_HTML
     assert "Red Gucci Tracksuit" not in UI_HTML
     assert "Cartier Glasses" not in UI_HTML
+    assert "Gothic Hogwarts courtyard" not in UI_HTML
+    assert "This is Trap or Die, Potter!" not in UI_HTML
+    assert 'placeholder="e.g. Harry"' not in UI_HTML
+    assert 'placeholder="e.g. harry_potter_sheet_v1"' not in UI_HTML
+    assert "Dumble Dior: (Casual" not in UI_HTML
 
     assert "gemini-omni-1.1-flash-preview" in GEMINI_OMNI_FLASH_INSTR
     assert "Zero Wardrobe Redundancy" in GEMINI_OMNI_FLASH_INSTR
     assert len(REAL_NAME_MAPPINGS) >= 60
 
-    sample = "Guy Fieri and Anthony Bourdain wearing Hermes and Patek Philippe with Audemars Piguet"
+    sample = "Guy Fieri and Anthony Bourdain wearing Hermes and Patek Philippe with Audemars Piguet at Hogwarts with Potter"
     sanitized = sanitize_real_names(sample)
     assert "Guy Fieri" not in sanitized
     assert "Anthony Bourdain" not in sanitized
     assert "Hermes" not in sanitized
     assert "Patek Philippe" not in sanitized
     assert "Audemars Piguet" not in sanitized
+    assert "Hogwarts" not in sanitized
+    assert "Potter" not in sanitized
     assert "Spiky Blonde Flavortown Chef" in sanitized
     assert "World-Weary Culinary Traveler" in sanitized
+    assert "Gothic Academy" in sanitized
 
 
 def test_ui_html_wcag_aa_polish_toast_region_and_modal_a11y() -> None:
-    """Verify UI_HTML has zero blocking alert() calls, mounts ToastNotificationRegion, defines CSS tokens & focus-visible, eliminates text-[9px]/text-[10px]/text-gray-500, and adds ARIA dialog attributes + Escape dismissal."""
+    """Verify UI_HTML has zero blocking alert() calls, mounts ToastNotificationRegion, defines CSS tokens & focus-visible, eliminates text-[9px]/text-[10px]/text-gray-500/text-gray-600, and adds ARIA dialog attributes + Escape dismissal + Tab focus trap."""
     from omnimash.api.app import UI_HTML
 
     assert "alert(" not in UI_HTML
     assert "function ToastNotificationRegion(" in UI_HTML
     assert "<ToastNotificationRegion toasts={toasts} onDismiss={dismissToast} />" in UI_HTML
+    assert "toasts.slice(-4)" in UI_HTML
+    assert "const pushToast = addToast;" in UI_HTML
     assert 'role="status"' in UI_HTML
     assert 'aria-live="polite"' in UI_HTML
 
@@ -2474,12 +2485,13 @@ def test_ui_html_wcag_aa_polish_toast_region_and_modal_a11y() -> None:
     ]:
         assert token in UI_HTML
 
-    # No sub-11px or low-contrast gray-500 text classes remaining
+    # No sub-11px or low-contrast gray-500/gray-600 text classes remaining
     assert "text-[9px]" not in UI_HTML
     assert "text-[10px]" not in UI_HTML
     assert "text-gray-500" not in UI_HTML
+    assert "text-gray-600" not in UI_HTML
 
-    # Modal ARIA dialog attributes & Escape listener
+    # Modal ARIA dialog attributes, Escape listener, and Tab focus trap
     assert UI_HTML.count('role="dialog"') >= 10
     assert UI_HTML.count('aria-modal="true"') >= 10
     for label_id in [
@@ -2493,12 +2505,13 @@ def test_ui_html_wcag_aa_polish_toast_region_and_modal_a11y() -> None:
         assert f'aria-labelledby="{label_id}"' in UI_HTML
         assert f'id="{label_id}"' in UI_HTML
     assert 'if (e.key === "Escape")' in UI_HTML
+    assert 'else if (e.key === "Tab")' in UI_HTML
 
 
 @pytest.mark.slow
 @pytest.mark.browser
 def test_ui_html_pr3_browser_dom_interactions(tmp_path) -> None:
-    """Verify in a real headless Chromium browser that ToastNotificationRegion, 7-card Omni 1.1 Prompting Guide modal, ARIA dialog attributes, Escape-key modal dismissal, and non-blocking toast validation work interactively."""
+    """Verify in a real headless Chromium browser that ToastNotificationRegion, 7-card Omni 1.1 Prompting Guide modal, ARIA dialog attributes, Escape-key modal dismissal, Tab focus trapping, and capped non-blocking toast validation work interactively."""
     import os
     import subprocess
     from omnimash.api.app import UI_HTML
@@ -2530,16 +2543,30 @@ def test_ui_html_pr3_browser_dom_interactions(tmp_path) -> None:
         "  if (!dialogText.includes('CARD 1: CANONICAL 4-BLOCK PROMPT ARCHITECTURE') || !dialogText.includes('CARD 7: REAL-PERSON LIKENESS')) {"
         "    throw new Error('7-card playbook content missing from modal: ' + dialogText);"
         "  }"
+        "  for (let t = 0; t < 4; t++) {"
+        "    await page.keyboard.press('Tab');"
+        "    const insideDialog = await page.evaluate(() => {"
+        '      const dlg = document.querySelector(\'[role="dialog"][aria-modal="true"]\');'
+        "      return dlg && dlg.contains(document.activeElement);"
+        "    });"
+        "    if (!insideDialog) throw new Error('Tab focus escaped open aria-modal dialog on press ' + t);"
+        "  }"
         "  await page.keyboard.press('Escape');"
         "  await page.waitForTimeout(50);"
         "  if (await dialog.count() !== 0) throw new Error('Escape key did not dismiss Best Practices modal');"
         "  await page.getByRole('button', { name: /\\+ New Project/i }).first().click();"
         "  if (await dialog.count() < 1) throw new Error('Expected New Project modal to open');"
-        "  await page.getByRole('button', { name: /Create Project/i }).click();"
+        "  for (let i = 0; i < 6; i++) {"
+        "    await page.getByRole('button', { name: /Create Project/i }).click();"
+        "  }"
         "  await page.waitForTimeout(50);"
         "  const toastText = await toastRegion.innerText();"
         "  if (!toastText.includes('Please enter a valid project name.')) {"
         "    throw new Error('Expected non-blocking toast notification on empty project name, got: ' + toastText);"
+        "  }"
+        '  const renderedToasts = await toastRegion.locator(\'button[aria-label="Dismiss notification"]\').count();'
+        "  if (renderedToasts !== 4) {"
+        "    throw new Error('Expected toast stack to cap at 4 items, got: ' + renderedToasts);"
         "  }"
         "  await page.keyboard.press('Escape');"
         "  await page.waitForTimeout(50);"
@@ -2557,3 +2584,4 @@ def test_ui_html_pr3_browser_dom_interactions(tmp_path) -> None:
     output = res.stdout + res.stderr
     assert res.returncode == 0, f"Playwright PR3 interaction test failed: {output}"
     assert "PR3_BROWSER_INTERACTIONS_OK" in output
+

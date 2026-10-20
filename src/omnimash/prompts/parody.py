@@ -19,6 +19,7 @@ REAL_NAME_PARODY_MAP: dict[str, str] = {
     r"\bSeverus Snape\b": "Gothic Potion Master Fam",
     r"\bSnape\b": "Potion Master",
     r"\bHarry Potter\b": "Spectacled Wizard Bruv",
+    r"\bPotter\b": "Bruv",
     r"\bDraco Malfoy\b": "Platinum Rival Blood",
     r"\bDraco\b": "Rival Wizard",
     r"\bHermione Granger\b": "Retainer Academic Fam",

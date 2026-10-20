@@ -48,6 +48,10 @@
             outline: 2px solid var(--focus-ring);
             outline-offset: 2px;
         }
+        input::placeholder, textarea::placeholder {
+            color: var(--text-muted);
+            opacity: 1;
+        }
     </style>
 </head>
 <body class="bg-gray-950 text-white font-sans antialiased min-h-screen selection:bg-blue-600 selection:text-white">
@@ -112,7 +116,7 @@
                     aria-atomic="false"
                     className="ToastNotificationRegion fixed bottom-5 right-5 z-[100] flex flex-col gap-2.5 max-w-md w-full pointer-events-none"
                 >
-                    {toasts.map((toast) => {
+                    {toasts.slice(-4).map((toast) => {
                         const toneClasses = toast.type === "error"
                             ? "bg-red-950/95 border-red-500/80 text-red-100"
                             : toast.type === "success"
@@ -389,7 +393,7 @@
                                         type="text"
                                         value={char.name || ""}
                                         onChange={(e) => updateCharacter(idx, "name", e.target.value)}
-                                        placeholder="e.g. Harry"
+                                        placeholder="e.g. Spectacled Wizard Bruv"
                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-medium"
                                     />
                                 </div>
@@ -650,7 +654,7 @@
                                                         type="text"
                                                         value={charSheetFileName[idx] || ""}
                                                         onChange={(e) => setCharSheetFileName({ ...charSheetFileName, [idx]: e.target.value })}
-                                                        placeholder="e.g. harry_potter_sheet_v1"
+                                                        placeholder="e.g. wizard_scholar_sheet_v1"
                                                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                     />
                                                 </div>
@@ -730,11 +734,12 @@
             };
             const addToast = (message, type = "info") => {
                 const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-                setToasts((prev) => [...prev, { id, message: String(message || ""), type }]);
+                setToasts((prev) => [...prev, { id, message: String(message || ""), type }].slice(-4));
                 setTimeout(() => {
                     setToasts((prev) => prev.filter((t) => t.id !== id));
                 }, 4500);
             };
+            const pushToast = addToast;
 
             // Navigation Act State (1: The Concept & Cast Manager, 2: Fine-Tune & Storyboard Directing, 3: The Screening Room & Branching)
             const [activeAct, setActiveAct] = useState(1);
@@ -883,7 +888,7 @@
             ]);
             const [newTagInput, setNewTagInput] = useState("");
 
-            const [environmentTag, setEnvironmentTag] = useState("Gothic Hogwarts courtyard lit by neon stage lights and smoky haze");
+            const [environmentTag, setEnvironmentTag] = useState("Gothic Academy courtyard lit by neon stage lights and smoky haze");
             const [cameraLightingTag, setCameraLightingTag] = useState("Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights");
             const [audioBeat, setAudioBeat] = useState("140 BPM Heavy 808 Trap");
             const [audioAmbience, setAudioAmbience] = useState("Rainy cyberpunk street noise with neon hum");
@@ -895,7 +900,7 @@
                     scene_number: 1,
                     mode: "guided",
                     active_roles: ["Role A"],
-                    action: "Arriving at foggy Hogwarts courtyard rapping into microphone wand",
+                    action: "Arriving at foggy Gothic Academy courtyard rapping into microphone wand",
                     dialogue: "I been cooking potions since first year. Burrr!",
                     screenplay_script: ""
                 },
@@ -904,7 +909,7 @@
                     mode: "guided",
                     active_roles: ["Role B"],
                     action: "Stepping from shadows in high-gloss neon lighting with ice chain",
-                    dialogue: "This is Trap or Die, Potter! Let's get it!",
+                    dialogue: "This is Trap or Die, Bruv! Let's get it!",
                     screenplay_script: ""
                 }
             ]);
@@ -950,6 +955,10 @@
             const REAL_NAME_MAP = [
                 [/\bGordon Ramsay\b/gi, "Fiery Chef Blood"],
                 [/\bJulia Child\b/gi, "Classic Chef Fam"],
+                [/\bGuy Fieri\b/gi, "Spiky Blonde Flavortown Chef"],
+                [/\bAnthony Bourdain\b/gi, "World-Weary Culinary Traveler"],
+                [/\bWolfgang Puck\b/gi, "Master Haute Cuisine Chef"],
+                [/\bMarco Pierre White\b/gi, "Intense Michelin Master Chef"],
                 [/\bYoung Jeezy\b/gi, "Trap Legend Fam"],
                 [/\bDrake\b/gi, "Drizzy Bruv (6ix Melodic Star)"],
                 [/\bKanye West\b/gi, "Ye Fam (Avant-Garde Producer)"],
@@ -958,13 +967,17 @@
                 [/\bSeverus Snape\b/gi, "Gothic Potion Master Fam"],
                 [/\bSnape\b/gi, "Potion Master"],
                 [/\bHarry Potter\b/gi, "Spectacled Wizard Bruv"],
+                [/\bPotter\b/gi, "Bruv"],
                 [/\bDraco Malfoy\b/gi, "Platinum Rival Blood"],
                 [/\bDraco\b/gi, "Rival Wizard"],
                 [/\bHermione Granger\b/gi, "Retainer Academic Fam"],
                 [/\bRon Weasley\b/gi, "Redhair Wizard Blood"],
+                [/\bHogwarts\b/gi, "Gothic Academy"],
                 [/\bSlytherin\b/gi, "Emerald Snake Guild"],
+                [/\bDumble Dior\b/gi, "Headmaster Archmage"],
                 [/\bDumbledore\b/gi, "Venerable High Wizard Bruv"],
                 [/\bVoldemort\b/gi, "Dark Sorcerer"],
+                [/\bYoTotti\b/gi, "Streetwear Apprentice"],
                 [/\bSnoop Dogg\b/gi, "West Coast Drip (Rap Legend)"],
                 [/\bEminem\b/gi, "Shady Fam (Detroit Speed Rapper)"],
                 [/\bBeyonce\b/gi, "Pop Queen Fam"],
@@ -977,6 +990,24 @@
                 [/\bJoe Biden\b/gi, "Senior Statesman Leader"],
                 [/\bBarack Obama\b/gi, "Eloquent Former Statesman"],
                 [/\bJordan Totten\b/gi, "Wizard Developer"],
+                [/\bGucci\b/gi, "high-fashion designer"],
+                [/\bDior\b/gi, "luxury fashion"],
+                [/\bChanel\b/gi, "high-fashion designer"],
+                [/\bLouis Vuitton\b/gi, "luxury fashion"],
+                [/\bBalenciaga\b/gi, "streetwear designer"],
+                [/\bPrada\b/gi, "luxury designer"],
+                [/\bVersace\b/gi, "luxury designer"],
+                [/\bRolex\b/gi, "luxury watch"],
+                [/\bCartier\b/gi, "Gold Wire Glasses"],
+                [/\bBurberry\b/gi, "Plaid Trench"],
+                [/\bHermes\b/gi, "luxury leather designer"],
+                [/\bHermès\b/gi, "luxury leather designer"],
+                [/\bFendi\b/gi, "luxury fashion designer"],
+                [/\bGivenchy\b/gi, "haute couture designer"],
+                [/\bSaint Laurent\b/gi, "sleek tailored fashion"],
+                [/\bYSL\b/gi, "sleek tailored fashion"],
+                [/\bPatek Philippe\b/gi, "swiss luxury timepiece"],
+                [/\bAudemars Piguet\b/gi, "octagon luxury watch"],
             ];
 
             const sanitizeRealNamesText = (text) => {
@@ -1019,6 +1050,12 @@
                 }
                 if (concept) {
                     setConcept(sanitizeRealNamesText(concept));
+                }
+                if (environmentTag) {
+                    setEnvironmentTag(sanitizeRealNamesText(environmentTag));
+                }
+                if (screenplayScript) {
+                    setScreenplayScript(sanitizeRealNamesText(screenplayScript));
                 }
                 setScenes((prev) =>
                     (prev || []).map((s) => ({
@@ -1111,7 +1148,7 @@
                     shot_index: 1,
                     duration_seconds: 10.0,
                     summary: "Entrance & Concept Setup",
-                    action: "[0-3s] Action: Establishing shot of foggy Hogwarts courtyard as Spectacled Wizard Bruv enters. Audio: Ambient wind and heavy 808 trap intro. Dialogue: Spectacled Wizard Bruv: \"I been cooking potions since first year.\"\n[3-6s] Action: Spectacled Wizard Bruv raises microphone wand as stage lights flare. Audio: Rhythmic snare trill.\n[6-10s] Action: Crowd cheering in background while fog drifts across courtyard. Audio: Full trap beat drop.",
+                    action: "[0-3s] Action: Establishing shot of foggy Gothic Academy courtyard as Spectacled Wizard Bruv enters. Audio: Ambient wind and heavy 808 trap intro. Dialogue: Spectacled Wizard Bruv: \"I been cooking potions since first year.\"\n[3-6s] Action: Spectacled Wizard Bruv raises microphone wand as stage lights flare. Audio: Rhythmic snare trill.\n[6-10s] Action: Crowd cheering in background while fog drifts across courtyard. Audio: Full trap beat drop.",
                     location: "Dimly lit stone dungeon classroom with bubbling cauldrons",
                     style_lighting: "🎨 90s Cel-Shaded Anime, vibrant flat colors with sharp ink linework",
                     framing_motion: "Static medium shot with subtle handheld drift",
@@ -1125,12 +1162,12 @@
                     shot_index: 2,
                     duration_seconds: 10.0,
                     summary: "Dramatic Action & Potion Drink",
-                    action: "[0-3s] Action: Platinum Rival Blood steps from shadows in high-gloss neon lighting. Audio: Heavy 808 trap beat drop. Dialogue: Platinum Rival Blood: \"This is Trap or Die, Potter! Let's get it!\"\n[3-6s] Action: Dynamic dolly zoom in on character face with diamond chain flashing. Audio: Sub-bass resonance.\n[6-10s] Action: Character holds up glowing potion bottle amidst green rim light. Audio: Rhythmic snare trills.",
+                    action: "[0-3s] Action: Platinum Rival Blood steps from shadows in high-gloss neon lighting. Audio: Heavy 808 trap beat drop. Dialogue: Platinum Rival Blood: \"This is Trap or Die, Bruv! Let's get it!\"\n[3-6s] Action: Dynamic dolly zoom in on character face with diamond chain flashing. Audio: Sub-bass resonance.\n[6-10s] Action: Character holds up glowing potion bottle amidst green rim light. Audio: Rhythmic snare trills.",
                     location: "Gothic potion classroom with floating candles",
                     style_lighting: "🎨 90s Cel-Shaded Anime, expressive cel shading with dramatic rim light",
                     framing_motion: "Dynamic dolly zoom in on character face",
                     audio: "[0-3s] Heavy 808 Trap Beat Drop | [3-10s] Sub-Bass and Crisp Snares",
-                    dialogue: "Platinum Rival Blood: \"This is Trap or Die, Potter! Let's get it!\"",
+                    dialogue: "Platinum Rival Blood: \"This is Trap or Die, Bruv! Let's get it!\"",
                     camera_transition: "Continuous match cut from preceding shot",
                     character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot",
                     is_seamless_loop: false
@@ -1525,6 +1562,30 @@
                         setShowScreenplayModal(false);
                         setShowStoryboardLibraryModal(false);
                         setShowRemixModal(false);
+                    } else if (e.key === "Tab") {
+                        const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+                        if (dialogs.length > 0) {
+                            const activeDialog = dialogs[dialogs.length - 1];
+                            const focusable = Array.from(
+                                activeDialog.querySelectorAll(
+                                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                                )
+                            );
+                            if (focusable.length > 0) {
+                                const firstEl = focusable[0];
+                                const lastEl = focusable[focusable.length - 1];
+                                if (!activeDialog.contains(document.activeElement)) {
+                                    e.preventDefault();
+                                    firstEl.focus();
+                                } else if (e.shiftKey && document.activeElement === firstEl) {
+                                    e.preventDefault();
+                                    lastEl.focus();
+                                } else if (!e.shiftKey && document.activeElement === lastEl) {
+                                    e.preventDefault();
+                                    firstEl.focus();
+                                }
+                            }
+                        }
                     }
                 };
                 window.addEventListener("keydown", handleKeyDown);
@@ -4453,7 +4514,7 @@
                                                 rows={2}
                                                 value={environmentTag}
                                                 onChange={(e) => setEnvironmentTag(e.target.value)}
-                                                placeholder="e.g. Gothic Hogwarts courtyard lit by neon stage lights and smoky haze"
+                                                placeholder="e.g. Gothic Academy courtyard lit by neon stage lights and smoky haze"
                                                 className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
                                             />
                                         </div>
@@ -4712,7 +4773,7 @@
                                                                         type="text"
                                                                         value={scene.dialogue || ""}
                                                                         onChange={(e) => updateScene(idx, "dialogue", e.target.value)}
-                                                                        placeholder='e.g. Harry: "I been cooking potions since first year. Burrr!"'
+                                                                        placeholder='e.g. Spectacled Wizard Bruv: "I been cooking potions since first year. Burrr!"'
                                                                         className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                                                                     />
                                                                 </div>
@@ -4731,7 +4792,7 @@
                                                                     rows={3}
                                                                     value={scene.screenplay_script || ""}
                                                                     onChange={(e) => updateScene(idx, "screenplay_script", e.target.value)}
-                                                                    placeholder='e.g. Harry: (Pulls out wand. Audio: Whoosh sfx.) "Expelliarmus!" or [0-5s] Action: ... Dialogue: ...'
+                                                                    placeholder='e.g. Spectacled Wizard Bruv: (Pulls out wand. Audio: Whoosh sfx.) "Arcane surge!" or [0-5s] Action: ... Dialogue: ...'
                                                                     className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
                                                                 />
                                                             </div>
@@ -4990,7 +5051,7 @@
                                                         type="button"
                                                         onClick={() => {
                                                             const kPrompt = "A high-fashion wizard headmaster in a silk robe standing in an opulent mahogany office, 9:16 portrait";
-                                                            const script = `Dumble Dior: (Casual, adjusting his spectacles) "Ah, blood! Thank heavens you're out the Feds!"\n\nYoTotti: (Smooth, unbothered, putting jewelry boxes into duffle bag) "They said my diamonds was so crazy that I must be committed."\n\nDumble Dior: (Deadpan) "Type shit."`;
+                                                            const script = `Headmaster Archmage: (Casual, adjusting his spectacles) "Ah, blood! Thank heavens you're out the Feds!"\n\nStreetwear Apprentice: (Smooth, unbothered, putting jewelry boxes into duffle bag) "They said my diamonds was so crazy that I must be committed."\n\nHeadmaster Archmage: (Deadpan) "Type shit."`;
                                                             setKeyframeImagePrompt(kPrompt);
                                                             setScreenplayScript(script);
                                                         }}
@@ -5015,7 +5076,7 @@
                                                     rows={5}
                                                     value={screenplayScript}
                                                     onChange={(e) => setScreenplayScript(e.target.value)}
-                                                    placeholder={`Character (Action) "Dialogue" or [Role A] (Action) "Dialogue"\n\nExample:\nDumble Dior: (Adjusts his spectacles) "Ah, blood! Thank heavens you're out the Feds!"\n\nYoTotti: (Smirks, putting jewelry into duffle bag) "They said my diamonds was so crazy that I must be committed."`}
+                                                    placeholder={`Character (Action) "Dialogue" or [Role A] (Action) "Dialogue"\n\nExample:\nHeadmaster Archmage: (Adjusts his spectacles) "Ah, blood! Thank heavens you're out the Feds!"\n\nStreetwear Apprentice: (Smirks, putting jewelry into duffle bag) "They said my diamonds was so crazy that I must be committed."`}
                                                     className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
                                                 />
                                             </div>
@@ -5620,7 +5681,7 @@
                                                                     <div className="p-6 text-center space-y-2 text-gray-300">
                                                                         <span className="text-3xl block">🖼️</span>
                                                                         <span className="text-xs font-semibold block text-gray-400">No Keyframe Art Generated Yet</span>
-                                                                        <span className="text-xs text-gray-600 block">Pre-render visual keyframe art to anchor starting visual tone</span>
+                                                                        <span className="text-xs text-gray-400 block">Pre-render visual keyframe art to anchor starting visual tone</span>
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -5722,9 +5783,9 @@
                                                                                 </span>
                                                                             </div>
                                                                         ) : (
-                                                                            <div className="w-full h-20 bg-black/50 rounded-lg border border-dashed border-gray-800 flex flex-col items-center justify-center text-center p-2 text-gray-600">
+                                                                            <div className="w-full h-20 bg-black/50 rounded-lg border border-dashed border-gray-800 flex flex-col items-center justify-center text-center p-2 text-gray-400">
                                                                                 <span className="text-xs font-semibold text-gray-300">No {"<LAST_FRAME>"} Set</span>
-                                                                                <span className="text-xs text-gray-600">Optional ending anchor</span>
+                                                                                <span className="text-xs text-gray-400">Optional ending anchor</span>
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -5997,7 +6058,7 @@
                                                                             type="text"
                                                                             value={shot.narrator_text || ""}
                                                                             onChange={(e) => updateStageShot(idx, "narrator_text", e.target.value)}
-                                                                            placeholder="e.g. In the deep dungeons of Hogwarts, a wizarding battle begins..."
+                                                                            placeholder="e.g. In the deep dungeons of the Gothic Academy, a wizarding battle begins..."
                                                                             className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none focus:border-indigo-500 text-xs"
                                                                         />
                                                                     </div>
@@ -6155,7 +6216,7 @@
                                                                             className="w-full h-full object-contain"
                                                                         />
                                                                     ) : (
-                                                                        <div className="text-center p-3 text-gray-600 text-xs italic">
+                                                                        <div className="text-center p-3 text-gray-400 text-xs italic">
                                                                             Pending Generation
                                                                         </div>
                                                                     )}
@@ -6425,7 +6486,7 @@
                                                         type="text"
                                                         value={deltaPrompt}
                                                         onChange={(e) => setDeltaPrompt(e.target.value)}
-                                                        placeholder="e.g. Change Harry's glasses to gold metallic sunglasses..."
+                                                        placeholder="e.g. Change Spectacled Wizard Bruv's glasses to gold metallic sunglasses..."
                                                         className="flex-1 bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 font-mono"
                                                     />
                                                     <button
@@ -8013,7 +8074,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                     ) : (
                                                         <div className="w-full h-36 bg-gray-900 border border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center text-xs text-gray-300 gap-1">
                                                             <span>🖼️ No Keyframe Image Generated Yet</span>
-                                                            <span className="text-xs text-gray-600">Click "Re-Generate Keyframe" below to render frame</span>
+                                                            <span className="text-xs text-gray-400">Click "Re-Generate Keyframe" below to render frame</span>
                                                         </div>
                                                     )}
                                                 </div>
