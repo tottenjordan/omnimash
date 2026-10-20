@@ -550,3 +550,20 @@ def test_storage_defaults_module():
     assert DEFAULT_CHARACTERS == REEXPORTED_CHARS
     assert any("Harry" in c["name"] for c in DEFAULT_CHARACTERS)
 
+
+def test_guess_content_type():
+    from omnimash.storage.gcs import _guess_content_type
+
+    test_cases = [
+        ("video.mp4", "video/mp4"),
+        ("audio.wav", "audio/wav"),
+        ("audio.aac", "audio/aac"),
+        ("image.png", "image/png"),
+        ("photo.jpg", "image/jpeg"),
+        ("photo.jpeg", "image/jpeg"),
+        ("manifest.json", "application/json"),
+        ("document.pdf", "application/pdf"),
+        ("unknown_blob.unregistered1234", "application/octet-stream"),
+    ]
+    for path, expected_mime in test_cases:
+        assert _guess_content_type(path) == expected_mime

@@ -5,6 +5,7 @@ import dataclasses
 from datetime import datetime, timezone
 import json
 import logging
+import mimetypes
 import os
 import re
 import threading
@@ -12,9 +13,33 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from omnimash.config import settings
+from omnimash.storage.defaults import DEFAULT_CHARACTERS
 
 logger = logging.getLogger(__name__)
 _CLIENTS_LOCK = threading.Lock()
+
+_EXTRA_MIME_TYPES: dict[str, str] = {
+    ".mp4": "video/mp4",
+    ".wav": "audio/wav",
+    ".aac": "audio/aac",
+    ".mp3": "audio/mpeg",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+}
+
+
+def _guess_content_type(path_or_filename: str, default: str = "application/octet-stream") -> str:
+    """Accurately detects MIME type using standard mimetypes with video/audio overrides."""
+    if not path_or_filename or not isinstance(path_or_filename, str):
+        return default
+    ext = os.path.splitext(path_or_filename.lower())[1]
+    if ext in _EXTRA_MIME_TYPES:
+        return _EXTRA_MIME_TYPES[ext]
+    guessed, _ = mimetypes.guess_type(path_or_filename)
+    return guessed or default
+
 
 if TYPE_CHECKING:
     from omnimash.ingestion.media_extractor import ReferenceAnalysisReport
@@ -23,9 +48,6 @@ try:
     from google.cloud import storage
 except ImportError:
     storage: Any = None
-
-
-from omnimash.storage.defaults import DEFAULT_CHARACTERS
 
 
 class GcsStorageManager:
@@ -195,16 +217,7 @@ class GcsStorageManager:
 
         try:
             if not content_type:
-                if local_path.endswith(".mp4"):
-                    content_type = "video/mp4"
-                elif local_path.endswith(".wav"):
-                    content_type = "audio/wav"
-                elif local_path.endswith(".jpg") or local_path.endswith(".jpeg"):
-                    content_type = "image/jpeg"
-                elif local_path.endswith(".png"):
-                    content_type = "image/png"
-                elif local_path.endswith(".json"):
-                    content_type = "application/json"
+                content_type = _guess_content_type(local_path, default="application/octet-stream")
 
             blob = self._bucket.blob(destination_blob_name)
             blob.upload_from_filename(local_path, content_type=content_type, timeout=self.timeout)
@@ -268,20 +281,9 @@ class GcsStorageManager:
             blob = bucket.blob(blob_path)
             raw_data = blob.download_as_bytes(timeout=self.timeout)
             data = raw_data if isinstance(raw_data, (bytes, bytearray)) else b""
-            content_type = getattr(blob, "content_type", None)
-            if not content_type:
-                if blob_path.endswith(".mp4"):
-                    content_type = "video/mp4"
-                elif blob_path.endswith(".wav"):
-                    content_type = "audio/wav"
-                elif blob_path.endswith(".jpg") or blob_path.endswith(".jpeg"):
-                    content_type = "image/jpeg"
-                elif blob_path.endswith(".png"):
-                    content_type = "image/png"
-                elif blob_path.endswith(".json"):
-                    content_type = "application/json"
-                else:
-                    content_type = "image/jpeg"
+            content_type = getattr(blob, "content_type", None) or _guess_content_type(
+                blob_path, default="image/jpeg"
+            )
             return (data, content_type)
         except Exception as exc:
             logger.warning("download_blob_bytes failed on %s/%s: %s", bucket_name, blob_path, exc)
@@ -337,18 +339,9 @@ class GcsStorageManager:
                 return None
 
             chunk = blob.download_as_bytes(start=start, end=end, timeout=self.timeout)
-            content_type = getattr(blob, "content_type", None)
-            if not content_type:
-                if blob_path.endswith(".mp4"):
-                    content_type = "video/mp4"
-                elif blob_path.endswith(".wav"):
-                    content_type = "audio/wav"
-                elif blob_path.endswith(".jpg") or blob_path.endswith(".jpeg"):
-                    content_type = "image/jpeg"
-                elif blob_path.endswith(".png"):
-                    content_type = "image/png"
-                else:
-                    content_type = "application/octet-stream"
+            content_type = getattr(blob, "content_type", None) or _guess_content_type(
+                blob_path, default="application/octet-stream"
+            )
             return (chunk, content_type, total_len, start, end)
         except Exception as exc:
             logger.warning("download_blob_range failed on %s: %s", raw_uri, exc)
@@ -365,13 +358,13 @@ class GcsStorageManager:
                 try:
                     with open(path, "rb") as f:
                         data = f.read()
-                    mime = "image/png" if path.lower().endswith(".png") else "image/jpeg"
+                    mime = _guess_content_type(path, default="image/jpeg")
                     return (data, mime)
                 except Exception as exc:
                     logger.warning("load_bytes failed on local file %s: %s", path, exc)
 
         if self.mock_mode:
-            mime = "image/png" if str(gs_uri_or_path).lower().endswith(".png") else "image/jpeg"
+            mime = _guess_content_type(str(gs_uri_or_path), default="image/jpeg")
             return (b"mock_image_bytes", mime)
 
         return (b"", "image/jpeg")
@@ -846,9 +839,7 @@ class GcsStorageManager:
         if not raw_bytes and self.mock_mode:
             raw_bytes = b"mock_keyframe_bytes"
 
-        content_type = (
-            "image/jpeg" if (fname.endswith(".jpg") or fname.endswith(".jpeg")) else "image/png"
-        )
+        content_type = _guess_content_type(fname, default="image/png")
         self.upload_bytes(raw_bytes, blob_path, content_type=content_type)
 
         if project_id:
