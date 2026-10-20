@@ -1246,13 +1246,16 @@
                 timelineLines.push(`[00:00 - 00:10] Shot #${shotNum} Visual Action: ${actionStr}`);
                 if (card && card.dialogue_text && card.dialogue_text.trim()) {
                     const speakerRole = (card && card.speaker_role) || "";
-                    if (speakerRole && (speakerRole.includes("Off-Screen Narrator") || speakerRole.includes("(off-screen)"))) {
-                        const nVoice = (card.narrator_voice && card.narrator_voice.trim()) || "Cinematic Narrator";
+                    const matchedChar = (speakerRole && charPool.find(c => c && c.role_id === speakerRole))
+                        || activeChars[0]
+                        || { role_id: speakerRole || "Role A" };
+                    if (
+                        (speakerRole && (speakerRole.includes("Off-Screen Narrator") || speakerRole.includes("(off-screen)"))) ||
+                        (matchedChar && matchedChar.is_offscreen_narrator)
+                    ) {
+                        const nVoice = (card.narrator_voice && card.narrator_voice.trim()) || matchedChar.voice_style || matchedChar.voice_profile || "Cinematic Narrator";
                         timelineLines.push(`- Offscreen Narrator (${nVoice}) (off-screen) — Do not show a narrator speaking on camera.: "${card.dialogue_text.trim()}"`);
                     } else {
-                        const matchedChar = (speakerRole && charPool.find(c => c && c.role_id === speakerRole))
-                            || activeChars[0]
-                            || { role_id: speakerRole || "Role A" };
                         const primaryVoice = matchedChar.voice_style || matchedChar.voice_profile || "";
                         const voiceTag = primaryVoice ? ` [Voice Style: ${primaryVoice}]` : "";
                         timelineLines.push(`- Spoken Dialogue (${matchedChar.role_id || speakerRole || "Role A"})${voiceTag}: "${card.dialogue_text.trim()}"`);
@@ -1753,7 +1756,31 @@
                 }
             };
 
-            const handleJourney3GenerateShot = async (card) => {
+            const handleJourney3GenerateShot = async (rawCard) => {
+                const speakerRole = (rawCard && rawCard.speaker_role) || "Role A";
+                const isOffscreenSpeaker = speakerRole.includes("Off-Screen Narrator") || speakerRole.includes("(off-screen)");
+                const rawDialogue = (rawCard && rawCard.dialogue_text) || "";
+                const trimmedDialogue = rawDialogue.trim();
+                const hasSpeakerPrefix = trimmedDialogue.includes(":");
+                const resolvedDialogueText = isOffscreenSpeaker
+                    ? ""
+                    : (trimmedDialogue && !hasSpeakerPrefix && speakerRole !== "Role A" ? `${speakerRole}: "${trimmedDialogue}"` : rawDialogue);
+                const resolvedNarratorText = isOffscreenSpeaker && trimmedDialogue
+                    ? (rawCard.narrator_text ? `${rawCard.narrator_text} ${trimmedDialogue}` : trimmedDialogue)
+                    : (rawCard.narrator_text || null);
+                const baseIncludedIds = Array.isArray(rawCard.included_character_ids)
+                    ? rawCard.included_character_ids
+                    : (j3Characters || []).map((c) => c.role_id);
+                const resolvedIncludedIds = (!isOffscreenSpeaker && speakerRole && !baseIncludedIds.includes(speakerRole))
+                    ? [speakerRole, ...baseIncludedIds]
+                    : baseIncludedIds;
+                const card = {
+                    ...rawCard,
+                    speaker_role: speakerRole,
+                    dialogue_text: resolvedDialogueText,
+                    narrator_text: resolvedNarratorText,
+                    included_character_ids: resolvedIncludedIds
+                };
                 const shotIdx = card.shot_index;
                 setJ3ShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
@@ -1765,6 +1792,7 @@
                             session_id: sessionName,
                             project_name: activeProject,
                             shot_index: shotIdx,
+                            speaker_role: card.speaker_role || "Role A",
                             action_directive: card.action_directive || "",
                             dialogue_text: card.dialogue_text || "",
                             title_card_text: card.title_card_text || null,
@@ -2206,6 +2234,18 @@
                         }
                         setCurrentVideo(data.video_url);
                         if (data.turn_id) setParentTurnId(data.turn_id);
+                        setHistory((prev) => [
+                            ...prev,
+                            {
+                                turnId: data.turn_id || `shot_${shotIdx}_turn_${prev.length}`,
+                                prompt: shot.action || shot.summary || `Shot #${shotIdx} Initial Render`,
+                                status: data.status || "OK",
+                                videoUrl: data.video_url,
+                                parent: parentTurnId || null,
+                                diff: `Shot #${shotIdx} initial render`,
+                                rawCompiledPrompt: data.raw_compiled_prompt || ""
+                            }
+                        ]);
                         return data.turn_id;
                     }
                 } catch (err) {
@@ -2244,7 +2284,20 @@
                         updateStageShot(idx, "video_url", data.video_url);
                         if (data.turn_id) {
                             updateStageShot(idx, "turn_id", data.turn_id);
+                            setParentTurnId(data.turn_id);
                         }
+                        setCurrentVideo(data.video_url);
+                        setHistory((prev) => [
+                            ...prev,
+                            {
+                                turnId: data.turn_id || `shot_${sNum}_diff_${prev.length}`,
+                                prompt: diffText,
+                                status: data.status || "OK",
+                                videoUrl: data.video_url,
+                                parent: shot.turn_id || null,
+                                diff: `Conversational diff: ${diffText}`
+                            }
+                        ]);
                         setShotDiffPrompts((prev) => ({ ...prev, [sNum]: "" }));
                     } else if (data && data.error) {
                         setLastError(data.error);
@@ -2656,7 +2709,9 @@
                 const updatedRoleIds = updated.map(ch => ch.role_id);
                 setJ3ShotCards(prev => prev.map(card => ({
                     ...card,
-                    included_character_ids: (card.included_character_ids || updatedRoleIds).filter(id => id !== removedRoleId)
+                    included_character_ids: (card.included_character_ids || updatedRoleIds).filter(id => id !== removedRoleId),
+                    speaker_role: card.speaker_role === removedRoleId ? (updatedRoleIds[0] || "Role A") : card.speaker_role,
+                    compiled_override: card.speaker_role === removedRoleId ? undefined : card.compiled_override
                 })));
                 setScenes(scenes.map(s => ({
                     ...s,
@@ -2730,7 +2785,8 @@
                 setCharSheetGenerating(prev => ({ ...prev, [idx]: true }));
                 try {
                     const promptToUse = charSheetPrompt[idx] || getDefaultTurnaroundPrompt(char);
-                    const styleToUse = stageStyleTone || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : null);
+                    const activeModeStyle = (studioMode === "journey3" ? j3StylePreset : stageStyleTone) || stageStyleTone || j3StylePreset;
+                    const styleToUse = activeModeStyle || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : null);
                     const res = await fetch("/api/characters/generate-sheet", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -2766,7 +2822,8 @@
                 if (!char) return;
                 setCharSheetGenerating(prev => ({ ...prev, [idx]: true }));
                 try {
-                    const styleToUse = stageStyleTone || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : "1930s Rubber Hose Toon");
+                    const activeModeStyle = (studioMode === "journey3" ? j3StylePreset : stageStyleTone) || stageStyleTone || j3StylePreset;
+                    const styleToUse = activeModeStyle || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : "1930s Rubber Hose Toon");
                     const res = await fetch("/api/characters/generate-sheet", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -2874,7 +2931,7 @@
                 setLoading(true);
                 try {
                     const selectedShotObj = stageShots.find(s => (s.shot_index || (stageShots.indexOf(s) + 1)) === selectedShotIndex);
-                    const shotTurnId = selectedShotObj?.turn_id || parentTurnId || null;
+                    const shotTurnId = parentTurnId || selectedShotObj?.turn_id || null;
                     const payload = {
                         user_id: "usr_studio",
                         project_id: "prj_director",
@@ -2890,7 +2947,8 @@
                         audio_stem: audioBeat,
                         vocal_delivery: vocalDelivery,
                         enable_safety_sanitization: enableSafetySanitization,
-                        aspect_ratio: aspectRatio
+                        aspect_ratio: aspectRatio,
+                        keyframe_seed: isVisualContinuityLocked ? keyframeSeedAnchor : null
                     };
                     const endpoint = shotTurnId ? "/api/diff" : "/api/generate";
                     const res = await fetch(endpoint, {
@@ -6046,7 +6104,15 @@
                                                 </label>
                                                 <select
                                                     value={selectedShotIndex}
-                                                    onChange={(e) => setSelectedShotIndex(parseInt(e.target.value))}
+                                                    onChange={(e) => {
+                                                        const nextIdx = parseInt(e.target.value);
+                                                        setSelectedShotIndex(nextIdx);
+                                                        const targetShot = stageShots.find((s, i) => (s.shot_index || (i + 1)) === nextIdx);
+                                                        if (targetShot) {
+                                                            setParentTurnId(targetShot.turn_id || null);
+                                                            if (targetShot.video_url) setCurrentVideo(targetShot.video_url);
+                                                        }
+                                                    }}
                                                     className="bg-gray-950 border border-gray-700 rounded text-xs font-mono px-3 py-1.5 text-pink-300 focus:outline-none focus:border-pink-500"
                                                 >
                                                     {stageShots.map((s, i) => {
@@ -6067,7 +6133,11 @@
                                                         <button
                                                             key={sIdx}
                                                             type="button"
-                                                            onClick={() => setSelectedShotIndex(sIdx)}
+                                                            onClick={() => {
+                                                                setSelectedShotIndex(sIdx);
+                                                                setParentTurnId(s.turn_id || null);
+                                                                if (s.video_url) setCurrentVideo(s.video_url);
+                                                            }}
                                                             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                                                                 isSelected
                                                                     ? "bg-pink-600 text-white shadow-md shadow-pink-900/50 border border-pink-400"
@@ -6238,7 +6308,7 @@
                                                         className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs px-5 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50"
                                                     >
                                                         <span>⚡</span>
-                                                        <span>{loading ? "Generating..." : "Apply Diff &amp; Render"}</span>
+                                                        <span>{loading ? "Generating..." : "Apply Diff & Render"}</span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -6273,7 +6343,7 @@
                                                         const isCurrentBranch = (parentTurnId || activeBranchTurnId) === tId;
                                                         return (
                                                             <div
-                                                                key={tId}
+                                                                key={`${tId}_${tIdx}`}
                                                                 className={`min-w-[200px] max-w-[220px] bg-gray-900 border rounded-xl p-2.5 flex flex-col justify-between space-y-1.5 transition ${
                                                                     isCurrentBranch ? "border-amber-500 bg-amber-950/20 shadow" : "border-gray-800"
                                                                 }`}
@@ -6289,6 +6359,13 @@
                                                                         setParentTurnId(tId);
                                                                         setActiveBranchTurnId(tId);
                                                                         if (turn.videoUrl) setCurrentVideo(turn.videoUrl);
+                                                                        setStageShots((prevShots) =>
+                                                                            prevShots.map((s, idx) =>
+                                                                                (s.shot_index || (idx + 1)) === selectedShotIndex
+                                                                                    ? { ...s, turn_id: tId, video_url: turn.videoUrl || s.video_url }
+                                                                                    : s
+                                                                            )
+                                                                        );
                                                                     }}
                                                                     className={`w-full text-[11px] font-bold py-1 px-2 rounded-lg border transition flex items-center justify-center gap-1 ${
                                                                         isCurrentBranch
@@ -7273,7 +7350,7 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                         </div>
 
                                         {/* 👥 Full-Featured Character Roles & Character Vault Widget */}
-                                        <CharacterRosterAndTurnaroundStudio characters={characters} j3Characters={j3Characters} {...characterRosterProps} />
+                                        <CharacterRosterAndTurnaroundStudio characters={characters} j3Characters={j3Characters} {...characterRosterProps} stageStyleTone={j3StylePreset || stageStyleTone} />
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1.5">
@@ -7889,8 +7966,23 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
                                                                     value={card.speaker_role || "Role A"}
                                                                     onChange={(e) => {
                                                                         const val = e.target.value;
+                                                                        const isOffscreen = val.includes("Off-Screen Narrator") || val.includes("(off-screen)");
                                                                         setJ3ShotCards((prev) =>
-                                                                            prev.map((c) => (c.shot_index === card.shot_index ? { ...c, speaker_role: val, compiled_override: undefined } : c))
+                                                                            prev.map((c) => {
+                                                                                if (c.shot_index !== card.shot_index) return c;
+                                                                                const baseIncluded = Array.isArray(c.included_character_ids)
+                                                                                    ? c.included_character_ids
+                                                                                    : (j3Characters || []).map((ch) => ch.role_id);
+                                                                                const nextIncluded = (!isOffscreen && val && !baseIncluded.includes(val))
+                                                                                    ? [val, ...baseIncluded]
+                                                                                    : baseIncluded;
+                                                                                return {
+                                                                                    ...c,
+                                                                                    speaker_role: val,
+                                                                                    included_character_ids: nextIncluded,
+                                                                                    compiled_override: undefined
+                                                                                };
+                                                                            })
                                                                         );
                                                                     }}
                                                                     className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-xs font-bold text-purple-200 focus:outline-none focus:border-purple-500 font-mono"
