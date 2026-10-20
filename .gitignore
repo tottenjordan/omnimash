@@ -38,6 +38,9 @@ package-lock.json
 .DS_Store
 .idea/
 .vscode/
+.agents/
+.claude/
+skills-lock.json
 
 # ADK local session database & local tool outputs
 .adk/

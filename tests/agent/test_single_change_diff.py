@@ -22,6 +22,24 @@ def test_validate_conversational_edit_single_changes():
         assert msg == ""
 
 
+def test_validate_conversational_edit_complex_single_changes():
+    agent = OmniMashAgent(mock_mode=True)
+
+    complex_single_changes = [
+        "Add a setting sun",
+        "Make the car turn left",
+        "Set camera to zoom in",
+        "Make him walk slowly, to the edge",
+        "Change jacket to blue, into the sunset",
+        "Add a panning shot of the mountains",
+    ]
+
+    for prompt in complex_single_changes:
+        is_valid, msg = agent.validate_conversational_edit(prompt)
+        assert is_valid is True, f"Expected '{prompt}' to be accepted as single change"
+        assert msg == ""
+
+
 def test_validate_conversational_edit_compound_multi_changes():
     agent = OmniMashAgent(mock_mode=True)
     expected_msg = (
