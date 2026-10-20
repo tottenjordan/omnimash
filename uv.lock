@@ -403,6 +403,15 @@ wheels = [
 ]
 
 [[package]]
+name = "execnet"
+version = "2.1.2"
+source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/simple/" }
+sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/execnet/execnet-2.1.2.tar.gz", hash = "sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd" }
+wheels = [
+    { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/execnet/execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.141.1"
 source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/simple/" }
@@ -887,6 +896,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "ty" },
 ]
@@ -911,6 +921,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.17.0" },
     { name = "ty", specifier = ">=0.0.86" },
 ]
@@ -1258,6 +1269,19 @@ dependencies = [
 sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/pytest/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313" }
 wheels = [
     { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/pytest/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c" },
+]
+
+[[package]]
+name = "pytest-xdist"
+version = "3.8.0"
+source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/simple/" }
+dependencies = [
+    { name = "execnet" },
+    { name = "pytest" },
+]
+sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/pytest-xdist/pytest_xdist-3.8.0.tar.gz", hash = "sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1" }
+wheels = [
+    { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/python-3p-limited-internal-use/pytest-xdist/pytest_xdist-3.8.0-py3-none-any.whl", hash = "sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88" },
 ]
 
 [[package]]

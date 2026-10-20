@@ -44,13 +44,20 @@ class ReferenceAnalysisReport:
 
 
 class MediaExtractor:
-    def __init__(self, mock_mode: bool | None = None, bucket_name: str | None = None):
+    def __init__(
+        self,
+        mock_mode: bool | None = None,
+        bucket_name: str | None = None,
+        storage: GcsStorageManager | None = None,
+    ):
         from omnimash.config import settings
 
         self.mock_mode = (
             mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
-        self.storage = GcsStorageManager(bucket_name=bucket_name, mock_mode=self.mock_mode)
+        self.storage = storage or GcsStorageManager(
+            bucket_name=bucket_name, mock_mode=self.mock_mode
+        )
 
     def _generate_keyframe_jpeg(self, path: str, label: str, timestamp: str, color_hex: str) -> str:
         """Generates a high-quality annotated 1280x720 JPEG keyframe image file on disk."""

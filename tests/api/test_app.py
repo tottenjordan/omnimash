@@ -970,6 +970,8 @@ def test_ui_html_syntax_and_tag_balance():
     assert len(stack) == 0, f"Unclosed JSX tags remaining on stack at end of UI_HTML: {stack}"
 
 
+@pytest.mark.slow
+@pytest.mark.browser
 def test_ui_html_renders_in_browser_without_syntax_error(tmp_path):
     import os
     import subprocess
@@ -984,7 +986,11 @@ def test_ui_html_renders_in_browser_without_syntax_error(tmp_path):
             "  const browser = await chromium.launch({ headless: true });"
             "  const page = await browser.newPage();"
             "  page.on('pageerror', err => console.log('BROWSER ERROR:', err.message));"
-            f"  await page.goto('file://{html_file}', {{ waitUntil: 'networkidle' }});"
+            f"  await page.goto('file://{html_file}', {{ waitUntil: 'domcontentloaded' }});"
+            "  await page.waitForFunction(() => {"
+            "    const el = document.querySelector('#__next');"
+            "    return el && el.innerHTML.length > 1000;"
+            "  }, { timeout: 15000 });"
             "  const html = await page.innerHTML('#__next');"
             "  if (html && html.length > 1000) console.log('INNER_HTML_OK');"
             "  await browser.close();"

@@ -232,6 +232,7 @@ def test_deconstruct_concept_3_tier_fallback():
         patch.dict("os.environ", {"GEMINI_API_KEY": "", "GOOGLE_API_KEY": ""}),
         patch.object(settings, "gemini_api_key", None),
         patch.object(settings, "google_api_key", None),
+        patch("omnimash.prompts.compiler.time.sleep"),
         patch("google.genai.Client") as mock_genai_client_cls,
     ):
         mock_pro_client = MagicMock()

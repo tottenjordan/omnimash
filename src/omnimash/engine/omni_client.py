@@ -57,15 +57,15 @@ def _generate_dynamic_audio_wav(
 
     # Check for silent video condition
     if is_silent or "silent" in lower or "mute" in lower:
-        bpm = 0
-        audio_data = [0] * total_samples
         if dirname := os.path.dirname(wav_path):
             os.makedirs(dirname, exist_ok=True)
-        with wave.open(wav_path, "wb") as wf:
+        temp_wav = f"{wav_path}.tmp.{uuid.uuid4().hex[:8]}"
+        with wave.open(temp_wav, "wb") as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(sample_rate)
-            wf.writeframes(struct.pack(f"<{len(audio_data)}h", *audio_data))
+            wf.writeframes(b"\x00\x00" * total_samples)
+        os.replace(temp_wav, wav_path)
         return 0
 
     # Resolve genre & BPM
@@ -181,11 +181,13 @@ def _generate_dynamic_audio_wav(
 
     if dirname := os.path.dirname(wav_path):
         os.makedirs(dirname, exist_ok=True)
-    with wave.open(wav_path, "wb") as wf:
+    temp_wav = f"{wav_path}.tmp.{uuid.uuid4().hex[:8]}"
+    with wave.open(temp_wav, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
         wf.writeframes(struct.pack(f"<{len(audio_data)}h", *audio_data))
+    os.replace(temp_wav, wav_path)
 
     return bpm
 
@@ -224,6 +226,7 @@ def ensure_rendered_video(
     voiceover: str | None = None,
     is_silent: bool = False,
     audio_stem: str | None = None,
+    duration: int = 1,
 ) -> None:
     """Ensures a valid playable 720p 24fps MP4 with natural human speech and crisp vector TrueType subtitles."""
     if not video_url.startswith("/static/"):
@@ -240,6 +243,7 @@ def ensure_rendered_video(
     wav_silent_path = f"static/rendered/temp_silent_{unique_id}.wav"
     txt_prompt_path = f"static/rendered/temp_prompt_{unique_id}.txt"
     txt_sub_path = f"static/rendered/temp_subtitles_{unique_id}.txt"
+    temp_mp4_path = f"{rel_path}.tmp.{unique_id}.mp4"
 
     try:
         _generate_dynamic_audio_wav(
@@ -247,6 +251,7 @@ def ensure_rendered_video(
             prompt=prompt,
             voiceover=voiceover,
             is_silent=effective_silent,
+            duration=duration,
         )
         target_audio_wav = wav_silent_path
 
@@ -277,7 +282,7 @@ def ensure_rendered_video(
         if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
             try:
                 filter_str = (
-                    f"[0:v]scale=1280:720,zoompan=z='min(1.04+0.02*abs(sin(2*PI*0.5*in_time)),1.12)':d=240:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=24,setpts=PTS-STARTPTS,"
+                    f"[0:v]scale=1280:720,fps=24,setpts=PTS-STARTPTS,"
                     f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
                     f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
                     f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
@@ -305,7 +310,7 @@ def ensure_rendered_video(
                     "-c:v",
                     "libx264",
                     "-preset",
-                    "fast",
+                    "ultrafast",
                     "-crf",
                     "18",
                     "-pix_fmt",
@@ -317,10 +322,11 @@ def ensure_rendered_video(
                     "-shortest",
                     "-movflags",
                     "+faststart",
-                    rel_path,
+                    temp_mp4_path,
                 ]
                 res = subprocess.run(cmd, capture_output=True, check=False)
-                if res.returncode == 0:
+                if res.returncode == 0 and os.path.exists(temp_mp4_path):
+                    os.replace(temp_mp4_path, rel_path)
                     return
             except Exception:
                 pass
@@ -330,7 +336,7 @@ def ensure_rendered_video(
             audio_inputs = (
                 ["-i", target_audio_wav]
                 if os.path.exists(target_audio_wav)
-                else ["-f", "lavfi", "-i", "anoisesrc=d=10:r=44100"]
+                else ["-f", "lavfi", "-i", f"anoisesrc=d={duration}:r=44100"]
             )
             filter_str = (
                 f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
@@ -354,7 +360,7 @@ def ensure_rendered_video(
                 "-c:v",
                 "libx264",
                 "-preset",
-                "fast",
+                "ultrafast",
                 "-crf",
                 "18",
                 "-pix_fmt",
@@ -364,13 +370,15 @@ def ensure_rendered_video(
                 "-shortest",
                 "-movflags",
                 "+faststart",
-                rel_path,
+                temp_mp4_path,
             ]
-            subprocess.run(cmd, capture_output=True, check=False)
+            res = subprocess.run(cmd, capture_output=True, check=False)
+            if res.returncode == 0 and os.path.exists(temp_mp4_path):
+                os.replace(temp_mp4_path, rel_path)
         except Exception:
             pass
     finally:
-        for tmp_file in (wav_silent_path, txt_prompt_path, txt_sub_path):
+        for tmp_file in (wav_silent_path, txt_prompt_path, txt_sub_path, temp_mp4_path):
             if os.path.exists(tmp_file):
                 try:
                     os.remove(tmp_file)
@@ -763,6 +771,7 @@ class OmniFlashClient:
         mock_mode: bool | None = None,
         bucket_name: str | None = None,
         retry_delay: float | None = None,
+        storage: GcsStorageManager | None = None,
     ):
         self.api_key = api_key
         self.mock_mode = (
@@ -780,7 +789,7 @@ class OmniFlashClient:
         self._vertex_client: Any = None
         self._genai_client: Any = None
         self.last_keyframe_prompt: str = ""
-        self.storage = GcsStorageManager(
+        self.storage = storage or GcsStorageManager(
             bucket_name=bucket_name,
             project_id=self.project,
             mock_mode=self.mock_mode,

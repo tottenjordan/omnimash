@@ -9749,6 +9749,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             target_duration=req.target_duration,
             characters=char_objs if char_objs else None,
             screenplay_script=req.screenplay_script,
+            mock_mode=is_mock,
         )
         return StoryboardExpandResponse(
             shots=[
@@ -11042,4 +11043,13 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+_default_app: FastAPI | None = None
+
+
+def __getattr__(name: str) -> Any:
+    global _default_app
+    if name == "app":
+        if _default_app is None:
+            _default_app = create_app()
+        return _default_app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

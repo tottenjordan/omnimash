@@ -64,6 +64,8 @@ DEFAULT_CHARACTERS: list[dict[str, Any]] = [
 class GcsStorageManager:
     """Manages persistent cloud storage for session-scoped video, audio, prompt, and reference artifacts."""
 
+    _SHARED_CLIENTS: dict[str, Any] = {}
+
     def __init__(
         self,
         bucket_name: str | None = None,
@@ -92,8 +94,11 @@ class GcsStorageManager:
 
         if not self.mock_mode and storage:
             try:
-                self._client = storage.Client(project=self.project_id)
-                self.ensure_bucket_exists()
+                client_key = self.project_id or "default"
+                if client_key not in self._SHARED_CLIENTS:
+                    self._SHARED_CLIENTS[client_key] = storage.Client(project=self.project_id)
+                self._client = self._SHARED_CLIENTS[client_key]
+                self._bucket = self._client.bucket(self.bucket_name)
             except Exception:
                 pass
 
