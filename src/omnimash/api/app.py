@@ -1,8 +1,9 @@
+from contextlib import asynccontextmanager
 import logging
 import os
 import re
 import uuid
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import quote_plus
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -69,7 +70,7 @@ class CharacterRoleModel(BaseModel):
     name: str = ""
     description: str = ""
     reference_url: str | None = None
-    aesthetic_tags: list[str] = []
+    aesthetic_tags: list[str] = Field(default_factory=list)
     voice_style: str = ""
     voice_profile: str = ""
     wardrobe: str = ""
@@ -118,7 +119,7 @@ class CreateSessionResponse(BaseModel):
 
 
 class ReferenceSheetListResponse(BaseModel):
-    reference_sheets: list[dict[str, Any]] = []
+    reference_sheets: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SessionListResponse(BaseModel):
@@ -126,7 +127,7 @@ class SessionListResponse(BaseModel):
 
 
 class CharacterListResponse(BaseModel):
-    characters: list[CharacterRoleModel] = []
+    characters: list[CharacterRoleModel] = Field(default_factory=list)
 
 
 class LoadCharacterRequest(BaseModel):
@@ -140,8 +141,8 @@ class SaveRosterRequest(BaseModel):
 
 
 class DeconstructResponse(BaseModel):
-    characters: list[CharacterRoleModel] = []
-    aesthetic_tags: list[str] = []
+    characters: list[CharacterRoleModel] = Field(default_factory=list)
+    aesthetic_tags: list[str] = Field(default_factory=list)
     environment_tag: str = ""
     camera_lighting_tag: str = ""
     audio_beat: str = ""
@@ -187,8 +188,8 @@ class GenerateRequest(BaseModel):
     compiled_override: str | None = None
     session_name: str | None = None
     concept: str | None = None
-    characters: list[CharacterRoleModel | dict] | None = None
-    scenes: list[dict] | None = None
+    characters: list[CharacterRoleModel | dict[str, Any]] | None = None
+    scenes: list[dict[str, Any]] | None = None
     aesthetic_tags: list[str] | None = None
     environment_tag: str | None = None
     vocal_delivery: str = ""
@@ -254,7 +255,7 @@ class StoryboardExpandRequest(BaseModel):
     concept: str
     style_tone: str = "Cinematic Trap Parody"
     target_duration: float = 30.0
-    characters: list[CharacterRoleModel | dict] | None = None
+    characters: list[CharacterRoleModel | dict[str, Any]] | None = None
     screenplay_script: str = ""
     directors_notes: str = ""
     camera_lighting: str | None = None
@@ -347,7 +348,7 @@ class KeyframeImageRequest(BaseModel):
     location: str = ""
     style_lighting: str = ""
     summary: str = ""
-    characters: list[CharacterRoleModel | dict] | None = None
+    characters: list[CharacterRoleModel | dict[str, Any]] | None = None
     reference_image_urls: list[str] | None = None
     anchor_keyframe_url: str | None = None
     aspect_ratio: str = "16:9"
@@ -367,7 +368,7 @@ class GenerateShotRequest(BaseModel):
     framing_motion: str = ""
     audio: str = ""
     dialogue: str = ""
-    characters: list[CharacterRoleModel | dict] | None = None
+    characters: list[CharacterRoleModel | dict[str, Any]] | None = None
     duration_seconds: float = 10.0
     parent_turn_id: str | None = None
     keyframe_image_url: str | None = None
@@ -501,7 +502,7 @@ class GenerateResponse(BaseModel):
     error: str | None = None
     generation_mode: str = "LIVE_OMNI_FLASH"
     raw_compiled_prompt: str | None = None
-    reference_analysis: dict | None = None
+    reference_analysis: dict[str, Any] | None = None
 
 
 UI_HTML = r"""<!DOCTYPE html>
@@ -9317,8 +9318,19 @@ Audio: Sound design: 140 BPM Heavy 808 Trap beat ducked beneath high-energy rap 
 """
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from omnimash.engine.omni_client import ensure_rendered_video
+
+    ensure_rendered_video(
+        "/static/rendered/mock.mp4",
+        prompt="Trapwarts trailer",
+    )
+    yield
+
+
 def create_app(mock_mode: bool | None = None) -> FastAPI:
-    app = FastAPI(title="OmniMash API", version="0.1.0")
+    app = FastAPI(title="OmniMash API", version="0.1.0", lifespan=lifespan)
     is_mock = (
         mock_mode
         if mock_mode is not None
@@ -9331,13 +9343,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     static_dir = os.path.join(os.getcwd(), "static")
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-    from omnimash.engine.omni_client import ensure_rendered_video
-
-    ensure_rendered_video(
-        "/static/rendered/mock.mp4",
-        prompt="Trapwarts trailer",
-    )
 
     @app.get("/", response_class=HTMLResponse)
     def get_dashboard() -> HTMLResponse:
@@ -9611,7 +9616,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         )
 
     @app.post("/api/upload")
-    async def upload_media_file(file: UploadFile = File(...)):
+    async def upload_media_file(file: Annotated[UploadFile, File()]):
         """Uploads a local media file (audio MP3, WAV, image, etc.) to storage and returns accessible URL."""
         try:
             max_upload_bytes = 50 * 1024 * 1024
