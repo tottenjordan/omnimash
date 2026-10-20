@@ -1,26 +1,47 @@
 import base64
+from contextvars import ContextVar
+from dataclasses import dataclass
 import json
 import logging
-import math
 import os
 import re
-import struct
 import subprocess
+import tempfile
 import time
 from typing import Any
+from urllib.parse import quote
 import uuid
-import wave
-import urllib.request
-from dataclasses import dataclass
-from urllib.parse import parse_qs, quote, urlparse
+
 from omnimash.config import settings
-from omnimash.engine.telemetry import setup_opentelemetry_genai_logging
+from omnimash.engine.guardrails import (
+    _abstract_prompt_for_responsible_ai,
+    _get_relaxed_safety_settings as _guardrails_get_relaxed_safety_settings,
+    parse_guardrail_error_guidance,
+)
+from omnimash.engine.media_loader import (
+    build_mock_keyframe_svg_data_uri,
+    build_mock_ref_sheet_svg_data_uri,
+    coerce_character_roles,
+    fetch_media_bytes,
+    render_svg_to_png_bytes,
+)
+from omnimash.engine.procedural_renderer import (
+    _generate_dynamic_audio_wav,
+    ensure_rendered_video,
+    extract_clean_dialogue_summary,
+)
+from omnimash.engine.telemetry import (
+    extract_telemetry_prompt_and_uris,
+    setup_opentelemetry_genai_logging,
+)
 from omnimash.prompts.compiler import (
+    AESTHETIC_SIGNIFIERS,
     CharacterRole,
     build_character_image_ref_tags,
     get_character_identifier,
     replace_character_in_text_image_tags,
     sanitize_real_names,
+    sort_characters_by_role_id,
 )
 from omnimash.storage.gcs import GcsStorageManager
 
@@ -30,6 +51,11 @@ try:
     from google import genai
 except ImportError:
     genai: Any = None
+
+_LAST_KEYFRAME_PROMPT_VAR: ContextVar[str] = ContextVar("_last_keyframe_prompt", default="")
+_STOP_WORDS = frozenset(
+    {"the", "and", "fam", "bruv", "chef", "blood", "star", "queen", "king", "master"}
+)
 
 
 @dataclass
@@ -43,725 +69,49 @@ class GenerationResult:
     generation_mode: str = "LIVE_OMNI_FLASH"
 
 
-def _generate_dynamic_audio_wav(
-    wav_path: str,
-    prompt: str = "",
-    voiceover: str | None = None,
-    is_silent: bool = False,
-    duration: int = 10,
-) -> int:
-    """Synthesizes dynamic multi-genre audio (BPM, bass frequency, chords, drum rhythm, speech formants, or complete silence) matching prompt directives."""
-    sample_rate = 44100
-    total_samples = sample_rate * duration
-    lower = prompt.lower()
-
-    # Check for silent video condition
-    if is_silent or "silent" in lower or "mute" in lower:
-        if dirname := os.path.dirname(wav_path):
-            os.makedirs(dirname, exist_ok=True)
-        temp_wav = f"{wav_path}.tmp.{uuid.uuid4().hex[:8]}"
-        with wave.open(temp_wav, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(sample_rate)
-            wf.writeframes(b"\x00\x00" * total_samples)
-        os.replace(temp_wav, wav_path)
-        return 0
-
-    # Resolve genre & BPM
-    if "140" in lower or "drill" in lower or "trap" in lower:
-        bpm = 140
-        style = "drill"
-    elif "anime" in lower or "vhs" in lower or "city pop" in lower or "lo-fi" in lower:
-        bpm = 85
-        style = "anime"
-    elif "cyberpunk" in lower or "synth" in lower:
-        bpm = 110
-        style = "cyberpunk"
-    else:
-        bpm = 120
-        style = "boombap"
-
-    beat_interval = 60 / bpm
-    has_vocal = bool(
-        voiceover or "voiceover" in lower or "dialogue" in lower or ":" in prompt or '"' in prompt
-    )
-
-    audio_data = []
-
-    for i in range(total_samples):
-        t = i / sample_rate
-        beat_pos = t % beat_interval
-        beat_index = int(t / beat_interval) % 4
-        val = 0.0
-
-        if style == "drill":
-            # 140 BPM UK Drill / Trap: Sliding 808 sub-bass, rapid triplet hi-hat rolls, punchy snare
-            if beat_index in [0, 2]:
-                kick_t = beat_pos
-                if kick_t < 0.2:
-                    slide_freq = 140 * math.exp(-kick_t * 15) + 38
-                    val += (
-                        0.7 * math.sin(2 * math.pi * slide_freq * kick_t) * math.exp(-kick_t * 10)
-                    )
-            if beat_index in [1, 3]:
-                snare_t = beat_pos
-                if snare_t < 0.15:
-                    noise = ((i * 1103515245 + 12345) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
-                    val += 0.5 * noise * math.exp(-snare_t * 30)
-            hat_t = t % (beat_interval / 4)
-            if hat_t < 0.03:
-                noise = ((i * 214013 + 2531011) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
-                val += 0.2 * noise * math.exp(-hat_t * 100)
-
-        elif style == "cyberpunk":
-            # 110 BPM Synthwave / Cyberpunk: Arpeggiated analog synth, sidechained saw bass
-            arp_notes = [110.0, 130.8, 164.8, 196.0, 220.0, 261.6]
-            note_idx = int(t * 8) % len(arp_notes)
-            synth_freq = arp_notes[note_idx]
-            val += (
-                0.3
-                * math.sin(2 * math.pi * synth_freq * t)
-                * (0.5 + 0.5 * math.sin(2 * math.pi * 2 * t))
-            )
-            bass_t = (t * 55.0) % 1.0
-            saw = bass_t * 2.0 - 1.0
-            val += 0.3 * saw * math.exp(-(t % beat_interval) * 5)
-
-        elif style == "anime":
-            # 85 BPM VHS City Pop / Lo-Fi: Warm vinyl saturation, mellow chords, jazz bass
-            chord_freqs = [261.63, 329.63, 392.0]
-            for f in chord_freqs:
-                val += 0.12 * math.sin(2 * math.pi * f * t)
-            if beat_index == 0 and beat_pos < 0.3:
-                val += 0.5 * math.sin(2 * math.pi * 50 * beat_pos) * math.exp(-beat_pos * 8)
-            crackle = ((i * 37911 + 71) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
-            val += 0.04 * crackle
-
-        else:
-            # 120 BPM 90s Boom-Bap Hip Hop
-            if beat_index in [0, 2]:
-                kick_t = beat_pos
-                if kick_t < 0.25:
-                    freq = 120 * math.exp(-kick_t * 20) + 45
-                    val += 0.6 * math.sin(2 * math.pi * freq * kick_t) * math.exp(-kick_t * 12)
-            if beat_index in [1, 3]:
-                snare_t = beat_pos
-                if snare_t < 0.2:
-                    noise = ((i * 1103515245 + 12345) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
-                    val += 0.4 * noise * math.exp(-snare_t * 25) + 0.3 * math.sin(
-                        2 * math.pi * 220 * snare_t
-                    ) * math.exp(-snare_t * 18)
-            hat_t = t % 0.125
-            if hat_t < 0.05:
-                noise = ((i * 214013 + 2531011) & 0x7FFFFFFF) / 0x7FFFFFFF * 2 - 1
-                val += 0.15 * noise * math.exp(-hat_t * 80)
-            bass_notes = [55, 65.4, 49, 58.2]
-            bass_freq = bass_notes[int(t / 2.0) % 4]
-            val += (
-                0.35
-                * math.sin(2 * math.pi * bass_freq * t)
-                * (0.8 + 0.2 * math.sin(2 * math.pi * 4 * t))
-            )
-
-        # Layer Spoken Dialogue / Voiceover Speech-Band Formants (300Hz–2.5kHz)
-        if has_vocal:
-            vocal_mod = 0.5 + 0.5 * math.sin(2 * math.pi * 3.5 * t)
-            # Alternate dialogue pitch if multi-character colon syntax is detected
-            speaker_pitch = 160.0 if int(t / 3.0) % 2 == 0 else 240.0
-            formant_val = (
-                0.25 * math.sin(2 * math.pi * speaker_pitch * t)
-                + 0.15 * math.sin(2 * math.pi * (speaker_pitch * 2.5) * t)
-                + 0.1 * math.sin(2 * math.pi * 1200 * t)
-            ) * vocal_mod
-            val = val * 0.18 + formant_val
-
-        val = max(-1.0, min(1.0, val))
-        audio_data.append(int(val * 32767))
-
-    if dirname := os.path.dirname(wav_path):
-        os.makedirs(dirname, exist_ok=True)
-    temp_wav = f"{wav_path}.tmp.{uuid.uuid4().hex[:8]}"
-    with wave.open(temp_wav, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(struct.pack(f"<{len(audio_data)}h", *audio_data))
-    os.replace(temp_wav, wav_path)
-
-    return bpm
-
-
-def extract_clean_dialogue_summary(prompt: str) -> str:
-    """Extracts clean character dialogue quotes or short scene summaries from structured prompts for offline simulation subtitles."""
-    if not prompt:
-        return "AI Parody Storyboard Preview"
-    import re
-
-    dialogues = re.findall(r'Dialogue:\s*"([^"]+)"', prompt, re.IGNORECASE)
-    if dialogues:
-        return " ".join(dialogues)
-
-    quotes = re.findall(r'"([^"]{4,})"', prompt)
-    if quotes:
-        return " ".join(quotes)
-
-    actions = re.findall(r"Action:\s*([^\n]+)", prompt, re.IGNORECASE)
-    if actions:
-        return actions[0][:100]
-
-    cleaned = re.sub(r"\[[A-Z\s_]+\]", "", prompt)
-    lines = [
-        line.strip()
-        for line in cleaned.splitlines()
-        if line.strip()
-        and not line.strip().startswith(("Role ", "Active Roles:", "Environment:", "Aesthetic:"))
-    ]
-    return " ".join(lines)[:100] or "AI Parody Storyboard Preview"
-
-
-def ensure_rendered_video(
-    video_url: str,
-    prompt: str = "",
-    voiceover: str | None = None,
-    is_silent: bool = False,
-    audio_stem: str | None = None,
-    duration: int = 1,
-) -> None:
-    """Ensures a valid playable 720p 24fps MP4 with natural human speech and crisp vector TrueType subtitles."""
-    if not video_url.startswith("/static/"):
-        return
-    rel_path = video_url.lstrip("/")
-    if os.path.exists(rel_path) and os.path.getsize(rel_path) > 1000:
-        return
-    os.makedirs(os.path.dirname(rel_path), exist_ok=True)
-
-    # Extract voiceover / dialogue if not explicitly passed
-    effective_silent = is_silent or "silent" in prompt.lower() or "mute" in prompt.lower()
-
-    unique_id = uuid.uuid4().hex[:8]
-    wav_silent_path = f"static/rendered/temp_silent_{unique_id}.wav"
-    txt_prompt_path = f"static/rendered/temp_prompt_{unique_id}.txt"
-    txt_sub_path = f"static/rendered/temp_subtitles_{unique_id}.txt"
-    temp_mp4_path = f"{rel_path}.tmp.{unique_id}.mp4"
-
-    try:
-        _generate_dynamic_audio_wav(
-            wav_silent_path,
-            prompt=prompt,
-            voiceover=voiceover,
-            is_silent=effective_silent,
-            duration=duration,
-        )
-        target_audio_wav = wav_silent_path
-
-        effective_voiceover = voiceover or extract_clean_dialogue_summary(prompt) or ""
-        clean_prompt = prompt.replace("'", "").replace('"', "")[:80] or "AI Parody Video"
-        clean_subtitles = effective_voiceover.replace("'", "").replace('"', "")[:100]
-
-        # Write prompt and subtitles to dedicated text files for 100% uncorrupted TrueType textfile rendering
-        with open(txt_prompt_path, "w", encoding="utf-8") as f:
-            f.write(f"PROMPT: {clean_prompt}")
-        with open(txt_sub_path, "w", encoding="utf-8") as f:
-            f.write(f"🗣️ {clean_subtitles}")
-
-        # Discover crisp vector TrueType font
-        font_arg = ""
-        font_candidates = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
-        for fc in font_candidates:
-            if os.path.exists(fc):
-                font_arg = f":fontfile={fc}"
-                break
-
-        banner_img = "imgs/omnimash_banner.png"
-
-        if os.path.exists(banner_img) and os.path.exists(target_audio_wav):
-            try:
-                filter_str = (
-                    f"[0:v]scale=1280:720,fps=24,setpts=PTS-STARTPTS,"
-                    f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
-                    f"drawtext=text='🎬 OMNIMASH • DIGITAL DIRECTORS STUDIO'{font_arg}:fontcolor=0xDE5FE9:fontsize=24:x=30:y=18,"
-                    f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
-                    f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
-                    f"drawtext=textfile={txt_prompt_path}{font_arg}:fontcolor=0x94A3B8:fontsize=18:x=90:y=h-135,"
-                    f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95[v]; [1:a]aresample=async=1:first_pts=0[a]"
-                )
-                cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-loop",
-                    "1",
-                    "-i",
-                    banner_img,
-                    "-i",
-                    target_audio_wav,
-                    "-filter_complex",
-                    filter_str,
-                    "-map",
-                    "[v]",
-                    "-map",
-                    "[a]",
-                    "-r",
-                    "24",
-                    "-c:v",
-                    "libx264",
-                    "-preset",
-                    "ultrafast",
-                    "-crf",
-                    "18",
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-c:a",
-                    "aac",
-                    "-b:a",
-                    "192k",
-                    "-shortest",
-                    "-movflags",
-                    "+faststart",
-                    temp_mp4_path,
-                ]
-                res = subprocess.run(cmd, capture_output=True, check=False)
-                if res.returncode == 0 and os.path.exists(temp_mp4_path):
-                    os.replace(temp_mp4_path, rel_path)
-                    return
-            except Exception:
-                pass
-
-        # Fallback MP4 generation with animated procedural visualizer filter and crisp TrueType subtitles
-        try:
-            audio_inputs = (
-                ["-i", target_audio_wav]
-                if os.path.exists(target_audio_wav)
-                else ["-f", "lavfi", "-i", f"anoisesrc=d={duration}:r=44100"]
-            )
-            filter_str = (
-                f"[0:a]asplit=2[a_vis][a_out];[a_vis]showwaves=s=1280x720:mode=cline:colors=0xDE5FE9|0x34A853:r=24,"
-                f"drawbox=x=0:y=0:w=iw:h=60:color=black@0.75:t=fill,"
-                f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=black@0.88:t=fill,"
-                f"drawbox=x=60:y=ih-150:w=iw-120:h=110:color=0x38BDF8:t=3,"
-                f"drawtext=textfile={txt_sub_path}{font_arg}:fontcolor=0xFACC15:fontsize=24:x=90:y=h-95,format=yuv420p[v];[a_out]aresample=async=1:first_pts=0[a]"
-            )
-            cmd = [
-                "ffmpeg",
-                "-y",
-                *audio_inputs,
-                "-filter_complex",
-                filter_str,
-                "-map",
-                "[v]",
-                "-map",
-                "[a]",
-                "-r",
-                "24",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "18",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-shortest",
-                "-movflags",
-                "+faststart",
-                temp_mp4_path,
-            ]
-            res = subprocess.run(cmd, capture_output=True, check=False)
-            if res.returncode == 0 and os.path.exists(temp_mp4_path):
-                os.replace(temp_mp4_path, rel_path)
-        except Exception:
-            pass
-    finally:
-        for tmp_file in (wav_silent_path, txt_prompt_path, txt_sub_path, temp_mp4_path):
-            if os.path.exists(tmp_file):
-                try:
-                    os.remove(tmp_file)
-                except Exception:
-                    pass
-
-
-def _abstract_prompt_for_responsible_ai(prompt: str) -> str:
-    """Transforms named individuals or copyrighted pop-culture entities into descriptive visual archetypes to guarantee 100% compliance with Vertex AI Responsible AI safety policies."""
-    if not prompt or not prompt.strip():
-        return "Cinematic high-energy music video scene with dynamic lighting and camera movement."
-
-    text = prompt.strip()
-
-    # Protect section headers ([# References ...], [# Sources ...]), image reference tags (<IMAGE_REF_N>, <FIRST_FRAME>), and character tag headers (Role A - Name) from being corrupted
-    protected_tokens: list[str] = []
-
-    def mask_token(match: re.Match[str]) -> str:
-        token = match.group(0)
-        idx = len(protected_tokens)
-        protected_tokens.append(token)
-        return f"__OMNI_PROTECT_TOKEN_{idx}__"
-
-    protected_pattern = re.compile(
-        r"\[#\s*(?:References|Sources)[^\]]*\]"
-        r"|\bRole\s+[A-Za-z0-9]+\s*-\s*[^\n:<#\(\)]+?(?=\s*(?:<(?:IMAGE_REF|FIRST_FRAME)|\bsays\b|:|\n|\(|$))"
-        r"|<(?:IMAGE_REF_\d+|FIRST_FRAME)>",
-        re.IGNORECASE,
-    )
-
-    abstracted = protected_pattern.sub(mask_token, text)
-
-    replacements = {
-        # Harry Potter Universe
-        r"\bharry\s*potter\b": "a young wizard student with round spectacles and black hair",
-        r"\bharry\b": "a young wizard with spectacles",
-        r"\bseverus\s*snape\b": "a stern potion master wizard with sleek black hair and dark robes",
-        r"\bsnape\b": "a stern potion master wizard in dark robes",
-        r"\bdraco\s*malfoy\b": "a sleek blonde rival wizard student in emerald robes",
-        r"\bdraco\b": "a blonde rival wizard student",
-        r"\bvoldemort\b": "a dark sorcerer in obsidian robes",
-        r"\bhermione\s*granger\b": "a smart young witch student with curly hair",
-        r"\bhermione\b": "a smart young witch student",
-        r"\bron\s*weasley\b": "a red-haired wizard student in robes",
-        r"\bron\b": "a red-haired wizard student",
-        r"\bdumbledore\b": "a wise elderly headmaster wizard with a long silver beard",
-        r"\bhagrid\b": "a towering friendly giant gamekeeper with a bushy beard and heavy coat",
-        r"\bswagrid\b": "a towering friendly gamekeeper in a fur coat",
-        r"\bollivander\b": "an elderly shopkeeper wandmaker wizard",
-        r"\bice[- ]vander\b": "an elderly iced-out shopkeeper wandmaker wizard",
-        r"\bmcgonagall\b": "a distinguished witch professor in emerald robes and pointed hat",
-        r"\bhogwarts\b": "a grand gothic magical stone castle academy",
-        r"\bdripwarts\b": "a high-fashion hip-hop magical castle academy",
-        # Star Wars Universe
-        r"\bdarth\s*vader\b": "an imposing dark armored galactic villain with a helmet and glowing red saber",
-        r"\bluke\s*skywalker\b": "a heroic galactic farmboy knight in robes with a glowing energy blade",
-        r"\byoda\b": "a wise small green grand master alien with large ears and a walking stick",
-        r"\bobi[- ]wan\s*kenobi\b": "a noble bearded galactic mentor knight in hooded desert robes",
-        r"\bkenobi\b": "a noble galactic knight mentor in hooded robes",
-        r"\bhan\s*solo\b": "a roguish interstellar smuggler pilot in a vest with a blaster",
-        r"\bchewbacca\b": "a tall furry bipedal alien warrior with a bandolier",
-        r"\bkylo\s*ren\b": "a conflicted masked dark galactic warrior with a crossguard red energy blade",
-        r"\bstormtrooper\b": "a futuristic galactic soldier in white armored combat gear",
-        # Superheroes (Marvel / DC)
-        r"\bbatman\b": "a masked superhero detective in dark armor and cape",
-        r"\bbruce\s*wayne\b": "a billionaire philanthropist vigilante in a sharp tailored suit",
-        r"\bjoker\b": "a flamboyant villain with green hair, pale makeup, and a purple suit",
-        r"\bsuperman\b": "a powerful superhero in a red cape and blue suit with an emblem",
-        r"\bspider[- ]man\b": "an agile superhero in a red and blue webbed suit",
-        r"\bspiderman\b": "an agile superhero in a red and blue webbed suit",
-        r"\biron\s*man\b": "a high-tech armored superhero in a red and gold powered suit",
-        r"\btony\s*stark\b": "a charismatic billionaire genius inventor in stylish tech attire",
-        r"\bthanos\b": "a towering purple galactic titan warrior in golden battle armor",
-        r"\bthor\b": "a mighty thunder warrior god with a mystical hammer and cape",
-        r"\bwolverine\b": "a fierce mutant brawler with metallic claws and a yellow leather suit",
-        r"\bcaptain\s*america\b": "a patriotic super-soldier hero carrying a star-spangled circular shield",
-        r"\bhulk\b": "a giant muscular green powerhouse behemoth",
-        # Fantasy / Lord of the Rings
-        r"\bgandalf\b": "a legendary wise gray-bearded wizard with a pointed hat and wooden staff",
-        r"\bfrodo\b": "a small brave halfling adventurer with curly hair and an elven cloak",
-        r"\bsauron\b": "a menacing dark lord in spiked black armor with a burning eye",
-        r"\bgollum\b": "a slender pale cave-dwelling creature with large luminous eyes",
-        r"\blegolas\b": "a graceful blonde elven archer in woodland attire",
-        r"\baragorn\b": "a weathered ranger king warrior with a silver sword",
-        # Gaming & Anime
-        r"\bgoku\b": "a martial arts warrior with spiky black hair in an orange gi with a glowing golden aura",
-        r"\bnaruto\b": "an energetic ninja with spiky blonde hair, a headband, and an orange tracksuit",
-        r"\bmario\b": "a cheerful plumber hero in blue overalls, red shirt, and red cap with a mustache",
-        r"\bluigi\b": "a tall cheerful plumber hero in blue overalls, green shirt, and green cap with a mustache",
-        r"\bbowser\b": "a menacing giant spiked turtle dragon king with red hair",
-        r"\bsonic\b": "a speedy blue anthropomorphic hedgehog hero with red running sneakers",
-        r"\bmaster\s*chief\b": "a futuristic armored super-soldier in green powered combat armor and gold visor helmet",
-        r"\bpikachu\b": "a cute small yellow electric rodent creature with rosy cheeks and lightning-bolt tail",
-        # Celebrities & Cultural Icons
-        r"\bgordon\s*ramsay\b": "a fiery passionate celebrity master chef in a white chef jacket",
-        r"\bjulia\s*child\b": "a classic enthusiastic television chef with an apron in a vintage kitchen",
-        r"\bsnoop\s*dogg\b": "an iconic laid-back hip-hop legend in sunglasses and stylish streetwear",
-        r"\beminem\b": "a fast-rhyming hip-hop superstar in a hoodie and baseball cap",
-        r"\bdrake\b": "a chart-topping melodic hip-hop star in designer puffer jacket and jewelry",
-        r"\bkendrick\s*lamar\b": "a visionary poetic hip-hop artist in artistic streetwear",
-        r"\bkanye\s*west\b": "an avant-garde music producer and fashion designer in oversized streetwear",
-        r"\bye\b": "an avant-garde hip-hop artist and designer in futuristic minimalist streetwear",
-        r"\bbeyonce\b": "a glamorous global pop queen superstar performing in shimmering haute couture",
-        r"\btaylor\s*swift\b": "a famous pop superstar singer with sparkling attire on a stadium stage",
-        r"\belon\s*musk\b": "a tech entrepreneur executive in a futuristic laboratory and rocket hangar",
-        r"\bdonald\s*trump\b": "a charismatic business executive and politician in a navy suit and red tie",
-        r"\bkamala\s*harris\b": "a prominent political leader in a tailored blazer and pearl necklace",
-        r"\bjoe\s*biden\b": "a senior statesman political leader in a classic suit and aviator sunglasses",
-        r"\bbarack\s*obama\b": "an eloquent former statesman leader in a crisp suit",
-        r"\bgucci\s*mane\b": "a legendary trap music pioneer wearing diamond chains and designer sunglasses",
-        r"\bjeezy\b": "a gravelly-voiced southern trap hip-hop icon in a leather jacket and snowman chain",
-        # Conflict & Action Smoothing for Parody Context
-        r"\bwizard\s*duel\b": "hip-hop wizard musical contest",
-        r"\bduel\b": "rap contest",
-        r"\bbattle\b": "parody showdown",
-        r"\bfight\b": "musical contest",
-        r"\bkill\b": "out-rap",
-        r"\bdestroy\b": "out-perform",
-        r"\battack\b": "challenge",
-        r"\bpoison\b": "glowing magical elixir",
-        r"\bpotion\b": "sparkling elixir",
-        r"\bcauldron\b": "bubbling steam kettle",
-        r"\bdungeon\b": "ancient stone academy hall",
-        r"\bdark\s*mark\b": "golden skull emblem",
-        # Syrup, Foam Cup & Substance Parody Sanitization
-        r"\b(?:basilisk\s*)?syrup\b": "magical sparkling elixir",
-        r"\bpolystyrene\s*foam\s*cup\b": "enchanted crystal chalice",
-        r"\b(?:double\s*|white\s*)*foam\s*cups?\b": "golden goblet",
-        r"\b(?:double\s*|white\s*)*styrofoam\s*cups?\b": "golden goblet",
-        r"\btriple\s*stack\s*(?:the\s*)?cups?\b": "pour the elixir",
-        r"\beating\s*straight\s*through\b": "sparkling brightly inside",
-        r"\beat\s*through\s*the\s*cup\b": "sparkle inside the goblet",
-        r"\bcube\s*blood\b": "ice cube",
-        r"\btoo\s*volatile\b": "too potent for ordinary wizards",
-        # Street Slang, Band Trademarks & Tattoo Sanitization
-        r"\bstepped\s*on\b": "diluted",
-        r"\bwidespread\s*panic\b": "vintage band emblem",
-        r"\btear\s*drop\s*tattoos?\b": "facial ink accent",
-        r"\bface\s*tattoos?\b": "artistic facial ink",
-        r"\bface\s*tatted\b": "artistic facial ink",
-        r"\b1017\b": "gold",
-    }
-
-    for pattern, archetype in replacements.items():
-        abstracted = re.sub(pattern, archetype, abstracted, flags=re.IGNORECASE)
-
-    abstracted = re.sub(r"\(Reference Image:[^)]+\)", "", abstracted)
-    abstracted = re.sub(r"gs://[^\s)\]]+", "", abstracted)
-
-    # Restore protected tokens
-    for idx, orig_token in enumerate(protected_tokens):
-        abstracted = abstracted.replace(f"__OMNI_PROTECT_TOKEN_{idx}__", orig_token)
-
-    return abstracted
-
-
-def parse_guardrail_error_guidance(
-    error_msg: str, char_objs: list | None = None, prompt_text: str = ""
-) -> dict[str, Any]:
-    """Inspects 400 policy error message, character objects, and prompt inputs to identify specific guardrail triggers and generate actionable guidance and suggested actions.
-
-    Identifies triggers:
-      - 'real_people_likeness': Real-world names (First+Last, e.g. 'Jordan Totten') or celebrity names (e.g. 'Totti', 'Yo Gotti', 'Gordon Ramsay').
-      - 'real_people_photo': Attached reference_url / reference images.
-      - 'third_party_content': Trademarked pop-culture items ('Golden Snitch', 'Lightsaber', 'Batmobile').
-    """
-    trigger_set: set[str] = set()
-    err_lower = (error_msg or "").lower()
-    prompt_lower = (prompt_text or "").lower()
-
-    char_names: list[str] = []
-    char_descs: list[str] = []
-    has_ref_photo = False
-
-    if char_objs:
-        for c in char_objs:
-            if isinstance(c, dict):
-                name = str(c.get("name", "") or "")
-                desc = str(c.get("description", "") or "")
-                ref_url = c.get("reference_url")
-            else:
-                name = str(getattr(c, "name", "") or "")
-                desc = str(getattr(c, "description", "") or "")
-                ref_url = getattr(c, "reference_url", None)
-
-            if name:
-                char_names.append(name)
-            if desc:
-                char_descs.append(desc)
-            if ref_url:
-                has_ref_photo = True
-
-    # 1. Check real_people_photo trigger
-    if (
-        has_ref_photo
-        or "<image_ref" in prompt_lower
-        or "reference_url" in err_lower
-        or "reference_image" in err_lower
-        or "reference image" in err_lower
-        or "attached photo" in err_lower
-        or "real_people_photo" in err_lower
-    ):
-        trigger_set.add("real_people_photo")
-
-    # 2. Check third_party_content trigger
-    trademarks = [
-        "golden snitch",
-        "snitch",
-        "lightsaber",
-        "light saber",
-        "batmobile",
-        "quidditch",
-        "harry potter",
-        "star wars",
-        "darth vader",
-        "slytherin",
-        "dark mark",
-        "azkaban",
-        "hogwarts",
-        "burberry",
-        "jordans",
-        "cartier",
-    ]
-    all_text_to_check = (
-        prompt_lower
-        + " "
-        + err_lower
-        + " "
-        + " ".join(char_names).lower()
-        + " "
-        + " ".join(char_descs).lower()
-    )
-    if (
-        any(tm in all_text_to_check for tm in trademarks)
-        or "third_party" in err_lower
-        or "trademark" in err_lower
-        or "third_party_content" in err_lower
-    ):
-        trigger_set.add("third_party_content")
-
-    # 3. Check real_people_likeness trigger
-    known_celebrities = [
-        "totti",
-        "francesco totti",
-        "yo gotti",
-        "gordon ramsay",
-        "drake",
-        "kanye",
-        "kanye west",
-        "taylor swift",
-        "julia child",
-        "young jeezy",
-        "travis scott",
-        "snoop dogg",
-        "eminem",
-        "beyonce",
-        "beyoncé",
-        "jay-z",
-        "rihanna",
-        "kendrick lamar",
-        "50 cent",
-        "ice cube",
-        "gucci mane",
-        "cardi b",
-        "nicki minaj",
-        "lil wayne",
-        "elon musk",
-        "donald trump",
-        "joe biden",
-        "barack obama",
-    ]
-    full_name_pattern = re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b")
-
-    has_celebrity = any(celeb in all_text_to_check for celeb in known_celebrities)
-    has_full_name = False
-
-    for name in char_names:
-        if full_name_pattern.search(name):
-            has_full_name = True
-            break
-    if not has_full_name and prompt_text:
-        clean_p = re.sub(r"\[#\s*(?:References|Sources)[^\]]*\]", "", prompt_text)
-        clean_p = re.sub(r"Role\s+[A-Za-z0-9]+\s*-\s*", "", clean_p)
-        if full_name_pattern.search(clean_p):
-            has_full_name = True
-
-    if (
-        has_celebrity
-        or has_full_name
-        or "celebrity" in err_lower
-        or "real_people_likeness" in err_lower
-        or "real people" in err_lower
-        or "likeness" in err_lower
-        or "person" in err_lower
-    ):
-        trigger_set.add("real_people_likeness")
-
-    if not trigger_set and error_msg:
-        trigger_set.add("real_people_likeness")
-
-    triggers = sorted(list(trigger_set))
-    guidance_parts: list[str] = []
-    suggested_actions: list[dict[str, str]] = []
-
-    if "real_people_likeness" in trigger_set:
-        guidance_parts.append(
-            "Safety guardrail triggered due to potential real-person likeness or celebrity reference. Avoid using full real-world names or celebrity names."
-        )
-        suggested_actions.append(
-            {
-                "action": "sanitize_real_names",
-                "label": "Sanitize Character Names",
-                "description": "Replace real person names with descriptive visual archetypes or parody identifiers.",
-            }
-        )
-
-    if "real_people_photo" in trigger_set:
-        guidance_parts.append(
-            "Reference image or photo attached may depict real individuals. Remove reference photos of real people or replace with stylized character descriptions."
-        )
-        suggested_actions.append(
-            {
-                "action": "remove_reference_photo",
-                "label": "Remove Reference Photo",
-                "description": "Remove attached reference image URLs or photo references.",
-            }
-        )
-
-    if "third_party_content" in trigger_set:
-        guidance_parts.append(
-            "Prompt contains trademarked or copyrighted pop-culture items. Abstract specific brand or item names into generic visual descriptions."
-        )
-        suggested_actions.append(
-            {
-                "action": "abstract_trademarks",
-                "label": "Abstract Trademarked Items",
-                "description": "Replace trademarked terms (e.g. 'Lightsaber', 'Golden Snitch', 'Batmobile') with generic visual descriptions (e.g. 'laser sword', 'golden flying orb', 'armored tactical vehicle').",
-            }
-        )
-
-    user_guidance = (
-        " ".join(guidance_parts)
-        if guidance_parts
-        else "Review prompt and character settings to comply with safety guardrails."
-    )
-
-    return {
-        "triggers": triggers,
-        "user_guidance": user_guidance,
-        "suggested_actions": suggested_actions,
-    }
-
-
 def _get_relaxed_safety_settings() -> list[Any] | None:
     """Configures relaxed BLOCK_NONE safety thresholds across all harm categories for unrestricted Gemini Omni Flash video generation."""
-    if genai and hasattr(genai, "types"):
-        types = genai.types
-        categories = [
-            types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-            types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-        ]
-        return [
-            types.SafetySetting(
-                category=cat,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            )
-            for cat in categories
-        ]
-
-    fallback_categories = [
-        "HARM_CATEGORY_HARASSMENT",
-        "HARM_CATEGORY_HATE_SPEECH",
-        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-        "HARM_CATEGORY_DANGEROUS_CONTENT",
-        "HARM_CATEGORY_CIVIC_INTEGRITY",
-    ]
-    return [{"category": cat, "threshold": "BLOCK_NONE"} for cat in fallback_categories]
+    return _guardrails_get_relaxed_safety_settings(genai_module=genai)
 
 
 get_relaxed_safety_settings = _get_relaxed_safety_settings
+
+
+def _is_char_in_prompt(char: CharacterRole, raw_p: str, san_p: str) -> bool:
+    """Returns True if a character's role_id, name, or sanitized name tokens appear in the prompt."""
+    r_lower = raw_p.lower()
+    s_lower = san_p.lower()
+
+    role_id = (char.role_id or "").strip()
+    if role_id and (role_id.lower() in r_lower or role_id.lower() in s_lower):
+        return True
+
+    name = (char.name or "").strip()
+    if not name:
+        return False
+
+    if name.lower() in r_lower or name.lower() in s_lower:
+        return True
+
+    words = [
+        w.lower() for w in re.split(r"\W+", name) if len(w) >= 3 and w.lower() not in _STOP_WORDS
+    ]
+    if any(w in r_lower or w in s_lower for w in words):
+        return True
+
+    san_name = sanitize_real_names(name).strip()
+    if san_name:
+        if san_name.lower() in r_lower or san_name.lower() in s_lower:
+            return True
+        san_words = [
+            w.lower()
+            for w in re.split(r"\W+", san_name)
+            if len(w) >= 3 and w.lower() not in _STOP_WORDS
+        ]
+        if any(w in r_lower or w in s_lower for w in san_words):
+            return True
+
+    return False
 
 
 class OmniFlashClient:
@@ -788,7 +138,7 @@ class OmniFlashClient:
         self._dev_client: Any = None
         self._vertex_client: Any = None
         self._genai_client: Any = None
-        self.last_keyframe_prompt: str = ""
+        self.last_keyframe_prompt = ""
         self.storage = storage or GcsStorageManager(
             bucket_name=bucket_name,
             project_id=self.project,
@@ -811,7 +161,6 @@ class OmniFlashClient:
 
             http_options = types.HttpOptions(timeout=300000)
 
-            # Strategy 1: Google AI Studio Developer API Client (API Key)
             if effective_key:
                 try:
                     self._dev_client = genai.Client(
@@ -822,7 +171,6 @@ class OmniFlashClient:
                 except Exception as exc:
                     logger.warning("Failed to initialize Developer API client: %s", exc)
 
-            # Strategy 2: Vertex AI ADC Token Client
             try:
                 self._vertex_client = genai.Client(
                     vertexai=True,
@@ -833,8 +181,15 @@ class OmniFlashClient:
             except Exception as exc:
                 logger.warning("Failed to initialize Vertex AI client: %s", exc)
 
-            # Default active client: prefer Developer API client (API key) if available, otherwise Vertex AI client
             self._genai_client = self._dev_client or self._vertex_client
+
+    @property
+    def last_keyframe_prompt(self) -> str:
+        return _LAST_KEYFRAME_PROMPT_VAR.get()
+
+    @last_keyframe_prompt.setter
+    def last_keyframe_prompt(self, value: str) -> None:
+        _LAST_KEYFRAME_PROMPT_VAR.set(value)
 
     @property
     def _api_key_client(self) -> Any:
@@ -860,152 +215,19 @@ class OmniFlashClient:
         reference_image_uris: list[str] | None = None,
         resolution: str | None = None,
         previous_interaction_id: str | None = None,
+        start_time_ns: int | None = None,
+        latency_ms: float | None = None,
     ) -> None:
-        """Logs multimodal prompt JSONL exports and OpenTelemetry GenAI inference spans to Cloud Storage and Cloud Trace.
-
-        Args:
-            session_id: Unique session identifier for input/output GCS references.
-            turn_name: Identifier for turn/action (e.g. 'keyframe', 'video_clip', 'turnaround').
-            input_prompt: Input prompt text, payload dict, or list of content objects.
-            output_data: Dictionary containing output metadata (media_url, gcs_uri, generation_mode, error_message).
-            error_code: Optional error code.
-            guardrail_type: Optional guardrail safety type.
-            characters: Optional character roles list.
-            keyframe_image_url: Optional starting keyframe seed image URI.
-            reference_image_uris: Optional explicit list of reference image URIs.
-        """
+        """Logs multimodal prompt JSONL exports and OpenTelemetry GenAI inference spans to Cloud Storage and Cloud Trace."""
         sid = session_id or "global"
         tname = turn_name or "inference"
 
-        system_instructions = "Omnimash Engine Multimodal Generation"
-        prompt_text = ""
-        ref_image_uris: list[str] = []
-
-        if reference_image_uris:
-            ref_image_uris.extend([str(u) for u in reference_image_uris if u])
-
-        if (
-            keyframe_image_url
-            and isinstance(keyframe_image_url, str)
-            and keyframe_image_url.strip()
-        ):
-            ref_image_uris.append(keyframe_image_url.strip())
-
-        if characters:
-            for c in characters:
-                if isinstance(c, dict):
-                    for uri_key in (
-                        "reference_url",
-                        "reference_image_url",
-                        "turnaround_url",
-                        "turnaround_sheet_url",
-                        "uri",
-                        "url",
-                    ):
-                        val = c.get(uri_key)
-                        if val and isinstance(val, str) and val.strip():
-                            ref_image_uris.append(val.strip())
-                else:
-                    for uri_key in (
-                        "reference_url",
-                        "reference_image_url",
-                        "turnaround_url",
-                        "turnaround_sheet_url",
-                        "uri",
-                        "url",
-                    ):
-                        val = getattr(c, uri_key, None)
-                        if val and isinstance(val, str) and val.strip():
-                            ref_image_uris.append(val.strip())
-
-        if isinstance(input_prompt, str):
-            prompt_text = input_prompt
-            found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]>\"']+", input_prompt)
-            if found_uris:
-                ref_image_uris.extend(found_uris)
-        elif isinstance(input_prompt, dict):
-            prompt_text = str(
-                input_prompt.get("prompt", input_prompt.get("text", str(input_prompt)))
-            )
-            if "system_instructions" in input_prompt:
-                system_instructions = str(input_prompt["system_instructions"])
-            if "reference_image_uris" in input_prompt and isinstance(
-                input_prompt["reference_image_uris"], list
-            ):
-                ref_image_uris.extend([str(u) for u in input_prompt["reference_image_uris"] if u])
-            elif "reference_urls" in input_prompt and isinstance(
-                input_prompt["reference_urls"], list
-            ):
-                ref_image_uris.extend([str(u) for u in input_prompt["reference_urls"] if u])
-            if "keyframe_image_url" in input_prompt and input_prompt["keyframe_image_url"]:
-                ref_image_uris.append(str(input_prompt["keyframe_image_url"]))
-            if "characters" in input_prompt and isinstance(input_prompt["characters"], list):
-                for c in input_prompt["characters"]:
-                    if isinstance(c, dict):
-                        for uri_key in (
-                            "reference_url",
-                            "reference_image_url",
-                            "turnaround_url",
-                            "turnaround_sheet_url",
-                            "uri",
-                            "url",
-                        ):
-                            val = c.get(uri_key)
-                            if val and isinstance(val, str) and val.strip():
-                                ref_image_uris.append(val.strip())
-                    else:
-                        for uri_key in (
-                            "reference_url",
-                            "reference_image_url",
-                            "turnaround_url",
-                            "turnaround_sheet_url",
-                            "uri",
-                            "url",
-                        ):
-                            val = getattr(c, uri_key, None)
-                            if val and isinstance(val, str) and val.strip():
-                                ref_image_uris.append(val.strip())
-        elif isinstance(input_prompt, list):
-            texts = []
-            for item in input_prompt:
-                if isinstance(item, str):
-                    texts.append(item)
-                    found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]>\"']+", item)
-                    if found_uris:
-                        ref_image_uris.extend(found_uris)
-                elif isinstance(item, dict):
-                    if item.get("type") == "text":
-                        t = str(item.get("text", ""))
-                        texts.append(t)
-                        found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]>\"']+", t)
-                        if found_uris:
-                            ref_image_uris.extend(found_uris)
-                    elif item.get("type") == "image":
-                        for uri_key in ("uri", "url", "gcs_uri", "reference_url"):
-                            if uri_key in item and item[uri_key]:
-                                ref_image_uris.append(str(item[uri_key]))
-                    elif (
-                        item.get("type") == "user_input"
-                        and "content" in item
-                        and isinstance(item["content"], list)
-                    ):
-                        for sub in item["content"]:
-                            if isinstance(sub, dict):
-                                if sub.get("type") == "text":
-                                    t = str(sub.get("text", ""))
-                                    texts.append(t)
-                                    found_uris = re.findall(r"(?:gs://|https?://)[^\s)\]>\"']+", t)
-                                    if found_uris:
-                                        ref_image_uris.extend(found_uris)
-                                elif sub.get("type") == "image":
-                                    for uri_key in ("uri", "url", "gcs_uri", "reference_url"):
-                                        if uri_key in sub and sub[uri_key]:
-                                            ref_image_uris.append(str(sub[uri_key]))
-            prompt_text = "\n".join(texts)
-        else:
-            prompt_text = str(input_prompt or "")
-
-        cleaned_uris = sorted(list({u for u in ref_image_uris if u and isinstance(u, str)}))
+        system_instructions, prompt_text, cleaned_uris = extract_telemetry_prompt_and_uris(
+            input_prompt=input_prompt,
+            characters=characters,
+            keyframe_image_url=keyframe_image_url,
+            reference_image_uris=reference_image_uris,
+        )
 
         input_record = {
             "system_instructions": system_instructions,
@@ -1041,13 +263,18 @@ class OmniFlashClient:
 
         session_key = f"{sid}_{tname}"
         try:
-            span = self.telemetry.start_inference_span(
-                session_id=session_key,
-                error_code=error_code,
-                guardrail_type=guardrail_type,
-                resolution=resolution,
-                previous_interaction_id=previous_interaction_id,
-            )
+            span_kwargs: dict[str, Any] = {
+                "session_id": session_key,
+                "error_code": error_code,
+                "guardrail_type": guardrail_type,
+                "resolution": resolution,
+                "previous_interaction_id": previous_interaction_id,
+            }
+            if start_time_ns is not None:
+                span_kwargs["start_time_ns"] = start_time_ns
+            if latency_ms is not None:
+                span_kwargs["latency_ms"] = latency_ms
+            span = self.telemetry.start_inference_span(**span_kwargs)
             if span:
                 span.end()
         except Exception as exc:
@@ -1066,8 +293,6 @@ class OmniFlashClient:
         image_objects: list[Any] = []
         char_img_map: dict[str, int] = {}
         curr_idx = starting_index
-
-        from omnimash.prompts.compiler import sort_characters_by_role_id
 
         sorted_chars = sort_characters_by_role_id(characters)
 
@@ -1089,11 +314,12 @@ class OmniFlashClient:
             img_bytes, mime_type = self._fetch_image_bytes(ref_url)
 
             if img_bytes:
-                if ref_url.lower().endswith(".mp4"):
+                lower_ref = ref_url.lower()
+                if lower_ref.endswith(".mp4"):
                     mime_type = "video/mp4"
-                elif ref_url.lower().endswith(".png"):
+                elif lower_ref.endswith(".png"):
                     mime_type = "image/png"
-                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
+                elif lower_ref.endswith(".jpg") or lower_ref.endswith(".jpeg"):
                     mime_type = "image/jpeg"
 
                 upload_client = (
@@ -1109,8 +335,6 @@ class OmniFlashClient:
                     and upload_client
                     and hasattr(upload_client, "files")
                 ):
-                    import tempfile
-
                     suffix = ".mp4" if mime_type == "video/mp4" else ".png"
                     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_f:
                         tmp_f.write(img_bytes)
@@ -1151,8 +375,7 @@ class OmniFlashClient:
                         candidate_keys.add(k.strip())
 
                 if r_id and n_str:
-                    combo = f"{r_id} ({n_str})"
-                    candidate_keys.add(combo)
+                    candidate_keys.add(f"{r_id} ({n_str})")
 
                 for source_n in (base_n, n_str):
                     if source_n:
@@ -1215,7 +438,7 @@ class OmniFlashClient:
         motion_ref_parts: list[dict[str, Any]] = []
         has_motion_ref = False
         if motion_reference_clip:
-            m_bytes, m_mime = self._fetch_image_bytes(motion_reference_clip)
+            m_bytes, _ = self._fetch_image_bytes(motion_reference_clip)
             if m_bytes:
                 b64_str = base64.b64encode(m_bytes).decode("utf-8")
                 motion_ref_parts.append(
@@ -1229,7 +452,7 @@ class OmniFlashClient:
 
         has_kf_seed = bool(keyframe_image_parts)
         start_ref_idx = 1
-        ref_image_parts, char_img_map = self._load_reference_images_as_input(
+        ref_image_parts, _ = self._load_reference_images_as_input(
             session_id, characters, starting_index=start_ref_idx
         )
         all_image_parts = keyframe_image_parts + motion_ref_parts + ref_image_parts
@@ -1250,19 +473,25 @@ class OmniFlashClient:
         if references_items:
             input_roles_lines.append(f"[# References {' '.join(references_items)}]")
 
-        input_roles_header = ""
-        if input_roles_lines:
-            input_roles_header = "### INPUT ROLES\n" + "\n".join(input_roles_lines) + "\n\n"
+        input_roles_header = (
+            "### INPUT ROLES\n" + "\n".join(input_roles_lines) + "\n\n" if input_roles_lines else ""
+        )
 
         tone_header = ""
         if keyframe_image_parts and "# Visual Tone & Starting Frame Anchor" not in prompt:
-            tone_header = "# Visual Tone & Starting Frame Anchor:\nAttached Image #1 is the keyframe starting concept art frame for this shot. Begin the video clip from Attached Image #1 and match its exact color palette, lighting scheme, camera angle, and aesthetic tone.\n\n"
+            tone_header = (
+                "# Visual Tone & Starting Frame Anchor:\n"
+                "Attached Image #1 is the keyframe starting concept art frame for this shot. "
+                "Begin the video clip from Attached Image #1 and match its exact color palette, "
+                "lighting scheme, camera angle, and aesthetic tone.\n\n"
+            )
 
         motion_ref_header = ""
         if has_motion_ref and "# Motion Reference Conditioning:" not in prompt:
             motion_ref_header = (
                 "# Motion Reference Conditioning:\n"
-                "Condition motion choreography, pacing, camera movement, and kinetic timing on the attached motion reference video clip (<VIDEO_REF_0>@VideoReference1).\n\n"
+                "Condition motion choreography, pacing, camera movement, and kinetic timing "
+                "on the attached motion reference video clip (<VIDEO_REF_0>@VideoReference1).\n\n"
             )
 
         notes_header = ""
@@ -1282,27 +511,12 @@ class OmniFlashClient:
         character_roster_header = ""
         if characters:
             char_lines: list[str] = ["# Character Roster & Visual Directives:"]
-            for c in characters:
+            for c in coerce_character_roles(characters):
                 char_id = get_character_identifier(c)
-                desc = (
-                    getattr(c, "description", "")
-                    if not isinstance(c, dict)
-                    else c.get("description", "")
-                )
-                raw_tags = (
-                    getattr(c, "aesthetic_tags", None)
-                    if not isinstance(c, dict)
-                    else c.get("aesthetic_tags")
-                )
-                str_tags: list[str] = (
-                    [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
-                )
-                tag_str = f" [Style: {', '.join(str_tags)}]" if str_tags else ""
-
+                tag_str = f" [Style: {', '.join(c.aesthetic_tags)}]" if c.aesthetic_tags else ""
                 tag = char_tag_map.get(char_id)
                 tag_ref_str = f" {tag}" if tag else ""
-
-                char_lines.append(f"- {char_id}{tag_ref_str}: {desc}{tag_str}")
+                char_lines.append(f"- {char_id}{tag_ref_str}: {c.description}{tag_str}")
             character_roster_header = "\n".join(char_lines) + "\n\n"
 
         clean_prompt = (
@@ -1311,8 +525,7 @@ class OmniFlashClient:
             else (prompt or "")
         )
         if char_tag_map and clean_prompt:
-            sorted_keys = sorted(char_tag_map.keys(), key=len, reverse=True)
-            for c_id in sorted_keys:
+            for c_id in sorted(char_tag_map.keys(), key=len, reverse=True):
                 tag = char_tag_map[c_id]
                 if tag not in clean_prompt and c_id in clean_prompt:
                     clean_prompt = clean_prompt.replace(c_id, f"{c_id} {tag}")
@@ -1344,8 +557,7 @@ class OmniFlashClient:
         if all_image_parts:
             text_part = {"type": "text", "text": sanitized_input}
             return [{"type": "user_input", "content": all_image_parts + [text_part]}]
-        else:
-            return sanitized_input
+        return sanitized_input
 
     def _poll_and_download_file_uri(
         self,
@@ -1369,7 +581,7 @@ class OmniFlashClient:
                     with open(target_path, "wb") as f:
                         f.write(video_bytes)
                 return video_bytes
-            elif state in ("FAILED", "ERROR") or str(state).upper() in ("FAILED", "ERROR"):
+            if state in ("FAILED", "ERROR") or str(state).upper() in ("FAILED", "ERROR"):
                 error_msg = getattr(file_info, "error", None) or "File processing failed"
                 raise RuntimeError(f"File URI processing failed: {error_msg}")
             time.sleep(poll_interval)
@@ -1437,6 +649,7 @@ class OmniFlashClient:
         max_attempts = 3
         delay = getattr(self, "retry_delay", 0.0 if self.mock_mode else 0.5)
         last_error: str | None = None
+        start_time_ns = time.time_ns()
 
         input_payload = self._build_multimodal_contents(
             prompt=prompt,
@@ -1520,6 +733,7 @@ class OmniFlashClient:
                             target_rel_path,
                             len(video_bytes),
                         )
+                        latency_ms = (time.time_ns() - start_time_ns) / 1_000_000.0
                         self._log_multimodal_inference(
                             session_id=session_id or "global",
                             turn_name="video_clip",
@@ -1534,6 +748,8 @@ class OmniFlashClient:
                             keyframe_image_url=keyframe_image_url,
                             resolution=resolution,
                             previous_interaction_id=previous_interaction_id,
+                            start_time_ns=start_time_ns,
+                            latency_ms=latency_ms,
                         )
                         return True, inter_id, None
 
@@ -1643,8 +859,6 @@ class OmniFlashClient:
                         or "UNAUTHENTICATED" in exc_str
                         or "API keys are not supported" in exc_str
                     ):
-                        import time
-
                         time.sleep(delay)
                     delay *= 2
 
@@ -1658,6 +872,7 @@ class OmniFlashClient:
         guardrail_type = (
             guardrail_info.get("triggers", [None])[0] if guardrail_info.get("triggers") else None
         )
+        latency_ms = (time.time_ns() - start_time_ns) / 1_000_000.0
         self._log_multimodal_inference(
             session_id=session_id or "global",
             turn_name="video_clip",
@@ -1674,8 +889,62 @@ class OmniFlashClient:
             keyframe_image_url=keyframe_image_url,
             resolution=resolution,
             previous_interaction_id=previous_interaction_id,
+            start_time_ns=start_time_ns,
+            latency_ms=latency_ms,
         )
         return False, None, last_error
+
+    def _finalize_video_clip_result(
+        self,
+        *,
+        success: bool,
+        inter_id: str | None,
+        fallback_thread_id: str,
+        error_message: str | None,
+        default_error: str,
+        url: str,
+        rel_path: str,
+        prompt: str,
+        session_id: str | None,
+        project_id: str | None,
+        voiceover: str | None,
+        is_silent: bool,
+        audio_stem: str | None,
+    ) -> GenerationResult:
+        """Shared post-processing for video clip generation, procedural fallback, and GCS upload."""
+        generation_mode = "LIVE_OMNI_FLASH"
+        if not success:
+            if self.mock_mode:
+                generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
+                ensure_rendered_video(
+                    url,
+                    prompt=prompt,
+                    voiceover=voiceover,
+                    is_silent=is_silent,
+                    audio_stem=audio_stem,
+                )
+            else:
+                return GenerationResult(
+                    interaction_thread_id=inter_id or fallback_thread_id,
+                    video_url="",
+                    gcs_uri=None,
+                    error_message=error_message or default_error,
+                    generation_mode="LIVE_OMNI_FLASH",
+                )
+
+        gcs_blob = self.storage.build_session_blob_path(
+            session_id, "intermediate", os.path.basename(rel_path), project_id=project_id
+        )
+        self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
+        gcs_uri = self.storage.get_gcs_uri(gcs_blob)
+
+        return GenerationResult(
+            interaction_thread_id=inter_id or fallback_thread_id,
+            video_url=url,
+            gcs_uri=gcs_uri,
+            error_message=error_message if not success else None,
+            generation_mode=generation_mode,
+        )
 
     def generate_clip(
         self,
@@ -1709,7 +978,6 @@ class OmniFlashClient:
         )
         rel_path = url.lstrip("/")
 
-        # 1. Primary: Gemini Omni Flash via Interactions API (Native Video + Audio + Reasoning)
         success, inter_id, error_message = self._generate_live_omni_flash_video(
             prompt,
             rel_path,
@@ -1721,40 +989,20 @@ class OmniFlashClient:
             resolution=resolution,
             motion_reference_clip=motion_reference_clip,
         )
-
-        generation_mode = "LIVE_OMNI_FLASH"
-        if not success:
-            if self.mock_mode:
-                generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
-                ensure_rendered_video(
-                    url,
-                    prompt=prompt,
-                    voiceover=voiceover,
-                    is_silent=is_silent,
-                    audio_stem=audio_stem,
-                )
-            else:
-                return GenerationResult(
-                    interaction_thread_id=inter_id or thread_id,
-                    video_url="",
-                    gcs_uri=None,
-                    error_message=error_message or "Gemini Omni Flash video generation failed",
-                    generation_mode="LIVE_OMNI_FLASH",
-                )
-
-        # Persist media artifact to Google Cloud Storage under session subfolder
-        gcs_blob = self.storage.build_session_blob_path(
-            session_id, "intermediate", os.path.basename(rel_path), project_id=project_id
-        )
-        self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
-        gcs_uri = self.storage.get_gcs_uri(gcs_blob)
-
-        return GenerationResult(
-            interaction_thread_id=inter_id or thread_id,
-            video_url=url,
-            gcs_uri=gcs_uri,
-            error_message=error_message if not success else None,
-            generation_mode=generation_mode,
+        return self._finalize_video_clip_result(
+            success=success,
+            inter_id=inter_id,
+            fallback_thread_id=thread_id,
+            error_message=error_message,
+            default_error="Gemini Omni Flash video generation failed",
+            url=url,
+            rel_path=rel_path,
+            prompt=prompt,
+            session_id=session_id,
+            project_id=project_id,
+            voiceover=voiceover,
+            is_silent=is_silent,
+            audio_stem=audio_stem,
         )
 
     def apply_interaction_diff(
@@ -1791,7 +1039,6 @@ class OmniFlashClient:
         )
         rel_path = url.lstrip("/")
 
-        # 1. Primary: Gemini Omni Flash stateful conversational diff via previous_interaction_id & keyframe seed anchor
         success, inter_id, error_message = self._generate_live_omni_flash_video(
             diff_prompt,
             rel_path,
@@ -1804,41 +1051,20 @@ class OmniFlashClient:
             resolution=resolution,
             motion_reference_clip=motion_reference_clip,
         )
-
-        generation_mode = "LIVE_OMNI_FLASH"
-        if not success:
-            if self.mock_mode:
-                generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
-                ensure_rendered_video(
-                    url,
-                    prompt=diff_prompt,
-                    voiceover=voiceover,
-                    is_silent=is_silent,
-                    audio_stem=audio_stem,
-                )
-            else:
-                return GenerationResult(
-                    interaction_thread_id=inter_id or interaction_thread_id,
-                    video_url="",
-                    gcs_uri=None,
-                    error_message=error_message
-                    or "Gemini Omni Flash interaction diff generation failed",
-                    generation_mode="LIVE_OMNI_FLASH",
-                )
-
-        # Persist media artifact to Google Cloud Storage under session subfolder
-        gcs_blob = self.storage.build_session_blob_path(
-            session_id, "intermediate", os.path.basename(rel_path), project_id=project_id
-        )
-        self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
-        gcs_uri = self.storage.get_gcs_uri(gcs_blob)
-
-        return GenerationResult(
-            interaction_thread_id=inter_id or interaction_thread_id,
-            video_url=url,
-            gcs_uri=gcs_uri,
-            error_message=error_message if not success else None,
-            generation_mode=generation_mode,
+        return self._finalize_video_clip_result(
+            success=success,
+            inter_id=inter_id,
+            fallback_thread_id=interaction_thread_id,
+            error_message=error_message,
+            default_error="Gemini Omni Flash interaction diff generation failed",
+            url=url,
+            rel_path=rel_path,
+            prompt=diff_prompt,
+            session_id=session_id,
+            project_id=project_id,
+            voiceover=voiceover,
+            is_silent=is_silent,
+            audio_stem=audio_stem,
         )
 
     def start_thread_from_video(
@@ -1861,201 +1087,166 @@ class OmniFlashClient:
         rel_path = url.lstrip("/")
 
         effective_base_video = base_video_url
+        stripped_path: str | None = None
         if regenerate_audio:
-            # Strip existing audio track with FFmpeg (-c:v copy -an) so Omni Flash generates completely fresh audio
             stripped_path = f"static/rendered/{thread_id}_stripped_silent.mp4"
             os.makedirs(os.path.dirname(stripped_path), exist_ok=True)
+            ffmpeg_input = (
+                base_video_url.lstrip("/")
+                if base_video_url.startswith("/static/")
+                else base_video_url
+            )
             cmd = [
                 "ffmpeg",
                 "-y",
                 "-i",
-                base_video_url,
+                ffmpeg_input,
                 "-c:v",
                 "copy",
                 "-an",
                 stripped_path,
             ]
             try:
-                subprocess.run(cmd, capture_output=True, check=False)
-                effective_base_video = stripped_path
+                res = subprocess.run(cmd, capture_output=True, check=False)
+                if getattr(res, "returncode", 1) == 0:
+                    effective_base_video = stripped_path
+                else:
+                    logger.warning(
+                        "FFmpeg audio stripping exited with non-zero code (%s) for %s",
+                        getattr(res, "returncode", None),
+                        base_video_url,
+                    )
             except Exception as exc:
                 logger.warning(
                     "Failed to strip audio via FFmpeg from base video %s: %s", base_video_url, exc
                 )
 
         prompt = initial_prompt or "Reanchored video turn"
-        success, inter_id, error_message = self._generate_live_omni_flash_video(
-            prompt,
-            rel_path,
-            characters=characters,
+        try:
+            success, inter_id, error_message = self._generate_live_omni_flash_video(
+                prompt,
+                rel_path,
+                characters=characters,
+                session_id=session_id,
+                keyframe_image_url=effective_base_video,
+                enable_safety_sanitization=enable_safety_sanitization,
+                aspect_ratio=aspect_ratio,
+                resolution=resolution,
+            )
+        finally:
+            if stripped_path and os.path.exists(stripped_path):
+                try:
+                    os.remove(stripped_path)
+                except OSError:
+                    pass
+
+        return self._finalize_video_clip_result(
+            success=success,
+            inter_id=inter_id,
+            fallback_thread_id=thread_id,
+            error_message=error_message,
+            default_error="Gemini Omni Flash video re-anchoring failed",
+            url=url,
+            rel_path=rel_path,
+            prompt=prompt,
             session_id=session_id,
-            keyframe_image_url=effective_base_video,
-            enable_safety_sanitization=enable_safety_sanitization,
-            aspect_ratio=aspect_ratio,
-            resolution=resolution,
-        )
-        generation_mode = "LIVE_OMNI_FLASH"
-        if not success:
-            if self.mock_mode:
-                generation_mode = "LOCAL_PROCEDURAL_ANIMATION"
-                ensure_rendered_video(
-                    url,
-                    prompt=prompt,
-                    voiceover=voiceover,
-                    is_silent=is_silent,
-                    audio_stem=audio_stem,
-                )
-            else:
-                return GenerationResult(
-                    interaction_thread_id=inter_id or thread_id,
-                    video_url="",
-                    gcs_uri=None,
-                    error_message=error_message or "Gemini Omni Flash video re-anchoring failed",
-                    generation_mode="LIVE_OMNI_FLASH",
-                )
-
-        # Persist media artifact to Google Cloud Storage under session subfolder
-        gcs_blob = self.storage.build_session_blob_path(
-            session_id, "intermediate", os.path.basename(rel_path), project_id=project_id
-        )
-        self.storage.upload_file(rel_path, destination_blob_name=gcs_blob)
-        gcs_uri = self.storage.get_gcs_uri(gcs_blob)
-
-        return GenerationResult(
-            interaction_thread_id=inter_id or thread_id,
-            video_url=url,
-            gcs_uri=gcs_uri,
-            error_message=error_message if not success else None,
-            generation_mode=generation_mode,
+            project_id=project_id,
+            voiceover=voiceover,
+            is_silent=is_silent,
+            audio_stem=audio_stem,
         )
 
     @staticmethod
     def _render_svg_to_png_bytes(svg_bytes: bytes | None = None) -> bytes:
-        try:
-            import io
-            from PIL import Image, ImageDraw
-
-            img = Image.new("RGB", (640, 360), color=(24, 24, 38))
-            draw = ImageDraw.Draw(img)
-            draw.rectangle([(16, 16), (624, 344)], outline=(0, 210, 255), width=2)
-            label = "OmniMash Reference Frame"
-            if svg_bytes:
-                svg_text = svg_bytes.decode("utf-8", errors="ignore")
-                text_matches = re.findall(r"<text[^>]*>(.*?)</text>", svg_text, re.IGNORECASE)
-                if text_matches:
-                    label = " | ".join(t.strip() for t in text_matches if t.strip())[:120]
-            draw.text((32, 168), label, fill=(240, 240, 255))
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue()
-        except Exception:
-            return (
-                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
-                b"\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x03\x00\x05\xfe\x02\xfe\xa7\x9a\x9a\xaa\x00\x00\x00\x00IEND\xaeB`\x82"
-            )
+        return render_svg_to_png_bytes(svg_bytes)
 
     def _fetch_image_bytes(self, ref_url: str) -> tuple[bytes, str]:
-        if not ref_url or not isinstance(ref_url, str):
-            return b"", "image/png"
-        if ref_url.lower().endswith(".svg"):
-            svg_raw = b""
-            loc_path = os.path.join(os.getcwd(), ref_url.lstrip("/"))
-            if os.path.exists(loc_path):
-                try:
-                    with open(loc_path, "rb") as sf:
-                        svg_raw = sf.read()
-                except OSError:
-                    pass
-            return self._render_svg_to_png_bytes(svg_raw), "image/png"
-        if ref_url.startswith("gs://"):
-            return self.storage.download_blob_bytes(ref_url)
-        if ref_url.startswith("https://storage.googleapis.com/"):
-            try:
-                gcs_path = ref_url.replace("https://storage.googleapis.com/", "")
-                return self.storage.download_blob_bytes(f"gs://{gcs_path}")
-            except Exception as e:
-                logger.warning("Failed to fetch authenticated GCS HTTPS image %s: %s", ref_url, e)
-        if "/api/media-proxy?uri=" in ref_url:
-            try:
-                parsed = urlparse(ref_url)
-                qs = parse_qs(parsed.query)
-                if "uri" in qs and qs["uri"]:
-                    return self.storage.download_blob_bytes(qs["uri"][0])
-            except Exception as e:
-                logger.warning("Failed to parse media-proxy url %s: %s", ref_url, e)
-        if ref_url.startswith("data:image/"):
-            try:
-                header, encoded = ref_url.split(",", 1)
-                mime = header.split(";")[0].split(":")[1] if ":" in header else "image/png"
-                if "svg" in mime.lower():
-                    svg_decoded = b""
-                    try:
-                        svg_decoded = base64.b64decode(encoded)
-                    except Exception:
-                        pass
-                    return self._render_svg_to_png_bytes(svg_decoded), "image/png"
-                return base64.b64decode(encoded), mime
-            except Exception as e:
-                logger.warning("Failed to decode data URI image: %s", e)
-        if ref_url.startswith("http://") or ref_url.startswith("https://"):
-            try:
-                import ipaddress
+        return fetch_media_bytes(ref_url, storage=self.storage)
 
-                parsed_url = urlparse(ref_url)
-                hostname = (parsed_url.hostname or "").strip().lower()
-                if not hostname or hostname in (
-                    "localhost",
-                    "metadata.google.internal",
-                ):
-                    logger.warning(
-                        "Blocked disallowed HTTP host in _fetch_image_bytes: %s", hostname
-                    )
-                    return b"", "image/png"
-                try:
-                    ip = ipaddress.ip_address(hostname)
-                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                        logger.warning(
-                            "Blocked private/loopback IP in _fetch_image_bytes: %s", hostname
-                        )
-                        return b"", "image/png"
-                except ValueError:
-                    pass
+    def _append_image_part(self, contents: list[Any], img_bytes: bytes, mime_type: str) -> None:
+        if genai and hasattr(genai, "types") and hasattr(genai.types, "Part"):
+            contents.append(genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type))
+        else:
+            contents.append(
+                {
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": base64.b64encode(img_bytes).decode("utf-8"),
+                    }
+                }
+            )
 
-                req = urllib.request.Request(ref_url, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    ct = resp.headers.get("Content-Type", "image/png")
-                    return resp.read(), ct
-            except Exception as err:
-                logger.warning("Failed to download HTTP image from %s: %s", ref_url, err)
-        if os.path.exists(ref_url) and os.path.isfile(ref_url):
-            try:
-                import tempfile
-
-                real_target = os.path.realpath(ref_url)
-                allowed_roots = (
-                    os.path.realpath("static"),
-                    os.path.realpath("/tmp"),
-                    os.path.realpath(tempfile.gettempdir()),
+    def _execute_gemini_image_generation(
+        self,
+        *,
+        contents: list[Any],
+        image_model: str,
+        aspect_ratio: str,
+        blob_prefix: str,
+        log_context: str,
+    ) -> str | None:
+        """Shared execution helper for Gemini image generation (keyframe & reference sheet) with thought-part filtering and client cleanup."""
+        effective_key = (
+            self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        )
+        if effective_key:
+            image_client = genai.Client(api_key=effective_key, vertexai=False)
+        else:
+            image_client = genai.Client(
+                vertexai=True,
+                project=self.project,
+                location="global",
+            )
+        try:
+            config = None
+            if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig"):
+                image_cfg = (
+                    genai.types.ImageConfig(aspect_ratio=aspect_ratio)
+                    if hasattr(genai.types, "ImageConfig") and aspect_ratio
+                    else None
                 )
-                if not any(
-                    real_target == root or real_target.startswith(root + os.sep)
-                    for root in allowed_roots
-                ):
-                    logger.warning(
-                        "Blocked local file read outside allowed directories: %s",
-                        ref_url,
-                    )
-                    return b"", "image/png"
-                mime_type = "image/png"
-                if ref_url.lower().endswith(".mp4"):
-                    mime_type = "video/mp4"
-                elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
-                    mime_type = "image/jpeg"
-                with open(real_target, "rb") as f:
-                    return f.read(), mime_type
-            except Exception as err:
-                logger.warning("Failed to read local image file %s: %s", ref_url, err)
-        return b"", "image/png"
+                config = genai.types.GenerateContentConfig(
+                    safety_settings=_get_relaxed_safety_settings(),
+                    image_config=image_cfg,
+                )
+
+            clean_model = image_model.strip() if image_model else ""
+            target_model = (
+                "gemini-nano-banana-2.1"
+                if not clean_model or clean_model.startswith("gemini-3.1-flash-image")
+                else clean_model
+            )
+            response = image_client.models.generate_content(
+                model=target_model,
+                contents=contents,
+                config=config,
+            )
+            if response and hasattr(response, "candidates") and response.candidates:
+                for candidate in response.candidates:
+                    content = getattr(candidate, "content", None)
+                    parts = getattr(content, "parts", []) if content else []
+                    for part in parts:
+                        if getattr(part, "thought", False) is True:
+                            continue
+                        inline_data = getattr(part, "inline_data", None)
+                        if inline_data and getattr(inline_data, "data", None):
+                            data = inline_data.data
+                            img_bytes = base64.b64decode(data) if isinstance(data, str) else data
+                            blob_name = f"{blob_prefix}_{uuid.uuid4().hex[:8]}.png"
+                            self.storage.upload_bytes(
+                                img_bytes, blob_name, content_type="image/png"
+                            )
+                            gcs_uri = self.storage.get_gcs_uri(blob_name)
+                            return f"/api/media-proxy?uri={quote(gcs_uri, safe='')}"
+        except Exception as e:
+            logger.warning("gemini-nano-banana-2.1 generation failed for %s: %s", log_context, e)
+        finally:
+            if hasattr(image_client, "close"):
+                try:
+                    image_client.close()
+                except Exception:
+                    pass
+        return None
 
     def generate_keyframe_image(
         self,
@@ -2072,97 +1263,11 @@ class OmniFlashClient:
         return_compiled_prompt: bool = False,
         session_id: str | None = None,
     ) -> Any:
-        """Generates a visual keyframe image directive using Gemini Nano Banana 2.1 (or Gemini 3 Pro Image).
-
-        Supports multimodal character reference image inputs, character roster metadata (wardrobe, aesthetic tags), and style presets.
-        """
+        """Generates a visual keyframe image directive using Gemini Nano Banana 2.1 (or Gemini 3 Pro Image)."""
         sanitized_prompt = sanitize_real_names(prompt)
         full_prompt = f"{sanitized_prompt}, style: {style_tone}" if style_tone else sanitized_prompt
 
-        all_char_objs: list[CharacterRole] = []
-        if characters:
-            for c in characters:
-                if isinstance(c, CharacterRole):
-                    all_char_objs.append(c)
-                elif isinstance(c, dict):
-                    all_char_objs.append(
-                        CharacterRole(
-                            role_id=c.get("role_id", ""),
-                            name=c.get("name", ""),
-                            description=c.get("description", ""),
-                            reference_url=c.get("reference_url"),
-                            aesthetic_tags=c.get("aesthetic_tags", []),
-                            voice_style=c.get("voice_style", ""),
-                            voice_profile=c.get("voice_profile", ""),
-                            wardrobe=c.get("wardrobe", ""),
-                        )
-                    )
-                elif hasattr(c, "role_id") or hasattr(c, "name"):
-                    raw_tags = getattr(c, "aesthetic_tags", [])
-                    str_tags = (
-                        [str(t) for t in raw_tags] if isinstance(raw_tags, (list, tuple)) else []
-                    )
-                    all_char_objs.append(
-                        CharacterRole(
-                            role_id=getattr(c, "role_id", ""),
-                            name=getattr(c, "name", ""),
-                            description=getattr(c, "description", ""),
-                            reference_url=getattr(c, "reference_url", None),
-                            aesthetic_tags=str_tags,
-                            voice_style=getattr(c, "voice_style", ""),
-                            voice_profile=getattr(c, "voice_profile", ""),
-                            wardrobe=getattr(c, "wardrobe", ""),
-                        )
-                    )
-
-        def _is_char_in_prompt(char: CharacterRole, raw_p: str, san_p: str) -> bool:
-            r_lower = raw_p.lower()
-            s_lower = san_p.lower()
-
-            role_id = (char.role_id or "").strip()
-            if role_id and (role_id.lower() in r_lower or role_id.lower() in s_lower):
-                return True
-
-            name = (char.name or "").strip()
-            if name:
-                if name.lower() in r_lower or name.lower() in s_lower:
-                    return True
-
-                stop_words = {
-                    "the",
-                    "and",
-                    "fam",
-                    "bruv",
-                    "chef",
-                    "blood",
-                    "star",
-                    "queen",
-                    "king",
-                    "master",
-                }
-                words = [
-                    w.lower()
-                    for w in re.split(r"\W+", name)
-                    if len(w) >= 3 and w.lower() not in stop_words
-                ]
-                for w in words:
-                    if w in r_lower or w in s_lower:
-                        return True
-
-                san_name = sanitize_real_names(name).strip()
-                if san_name:
-                    if san_name.lower() in r_lower or san_name.lower() in s_lower:
-                        return True
-                    san_words = [
-                        w.lower()
-                        for w in re.split(r"\W+", san_name)
-                        if len(w) >= 3 and w.lower() not in stop_words
-                    ]
-                    for w in san_words:
-                        if w in r_lower or w in s_lower:
-                            return True
-            return False
-
+        all_char_objs = coerce_character_roles(characters)
         if all_char_objs:
             char_objs = [
                 c for c in all_char_objs if _is_char_in_prompt(c, prompt, sanitized_prompt)
@@ -2173,12 +1278,11 @@ class OmniFlashClient:
             char_objs = []
 
         ordered_ref_urls: list[str] = []
-        if char_objs:
-            for c in char_objs:
-                if c.reference_url and c.reference_url.strip():
-                    u = c.reference_url.strip()
-                    if u not in ordered_ref_urls and u != anchor_keyframe_url:
-                        ordered_ref_urls.append(u)
+        for c in char_objs:
+            if c.reference_url and c.reference_url.strip():
+                u = c.reference_url.strip()
+                if u not in ordered_ref_urls and u != anchor_keyframe_url:
+                    ordered_ref_urls.append(u)
 
         if reference_image_urls:
             for u in reference_image_urls:
@@ -2194,8 +1298,6 @@ class OmniFlashClient:
 
         style_preset_header = ""
         if style_preset and style_preset.strip():
-            from omnimash.prompts.compiler import AESTHETIC_SIGNIFIERS
-
             preset_key = style_preset.lower().strip()
             if preset_key in AESTHETIC_SIGNIFIERS:
                 signifiers = AESTHETIC_SIGNIFIERS[preset_key]
@@ -2262,9 +1364,11 @@ class OmniFlashClient:
         if name_to_img_tag and full_prompt:
             full_prompt = replace_character_in_text_image_tags(full_prompt, name_to_img_tag)
 
-        anchor_instruction = ""
-        if anchor_keyframe_url:
-            anchor_instruction = "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@KeyframeSeed while rendering the new action/angle.\n\n"
+        anchor_instruction = (
+            "Maintain exact subject face, character likeness, wardrobe baseline, and environmental lighting from <FIRST_FRAME>@KeyframeSeed while rendering the new action/angle.\n\n"
+            if anchor_keyframe_url
+            else ""
+        )
 
         prompt_text = (
             f"{anchor_instruction}"
@@ -2276,70 +1380,18 @@ class OmniFlashClient:
         self.last_keyframe_prompt = prompt_text
 
         def _get_mock_keyframe() -> str:
-            clean_prompt = prompt.replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
-            clean_style = (
-                (style_preset or style_tone)
-                .replace('"', "&quot;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                if (style_preset or style_tone)
-                else ""
-            )
-            style_label = (
-                f"STYLE: {clean_style.upper()}" if clean_style else "STYLE: CINEMATIC PARODY"
+            return build_mock_keyframe_svg_data_uri(
+                prompt=prompt,
+                style_preset=style_preset,
+                style_tone=style_tone,
+                aspect_ratio=aspect_ratio,
             )
 
-            line1 = clean_prompt[:65]
-            line2 = clean_prompt[65:130] if len(clean_prompt) > 65 else ""
-
-            svg = (
-                '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">'
-                "<defs>"
-                '<linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">'
-                '<stop offset="0%" stop-color="#0b0f19"/>'
-                '<stop offset="50%" stop-color="#111827"/>'
-                '<stop offset="100%" stop-color="#1e1b4b"/>'
-                "</linearGradient>"
-                '<linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">'
-                '<stop offset="0%" stop-color="#9333ea"/>'
-                '<stop offset="100%" stop-color="#3b82f6"/>'
-                "</linearGradient>"
-                "</defs>"
-                '<rect width="100%" height="100%" fill="url(#bgGrad)"/>'
-                "<!-- Viewfinder Corner Brackets -->"
-                '<path d="M 40 80 L 40 40 L 80 40" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
-                '<path d="M 1240 80 L 1240 40 L 1200 40" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
-                '<path d="M 40 640 L 40 680 L 80 680" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
-                '<path d="M 1240 640 L 1240 680 L 1200 680" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>'
-                "<!-- Crosshairs -->"
-                '<line x1="640" y1="340" x2="640" y2="380" stroke="#38bdf8" stroke-width="2" opacity="0.4"/>'
-                '<line x1="620" y1="360" x2="660" y2="360" stroke="#38bdf8" stroke-width="2" opacity="0.4"/>'
-                "<!-- Header Badge -->"
-                '<rect x="440" y="50" width="400" height="44" rx="22" fill="url(#badgeGrad)"/>'
-                '<text x="640" y="78" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="800" font-family="system-ui, sans-serif" letter-spacing="2">KEYFRAME PREVIEW DIRECTIVE</text>'
-                "<!-- Content Frame -->"
-                '<rect x="80" y="140" width="1120" height="440" fill="#000000" fill-opacity="0.4" rx="16" stroke="#334155" stroke-width="2"/>'
-                "<!-- Main Action Directives -->"
-                '<text x="640" y="280" dominant-baseline="middle" text-anchor="middle" fill="#f8fafc" font-size="28" font-weight="700" font-family="system-ui, sans-serif">'
-                f"{line1}"
-                "</text>"
-                + (
-                    f'<text x="640" y="340" dominant-baseline="middle" text-anchor="middle" fill="#cbd5e1" font-size="24" font-weight="500" font-family="system-ui, sans-serif">{line2}</text>'
-                    if line2
-                    else ""
-                )
-                + "<!-- Style & Lighting Pill -->"
-                '<rect x="340" y="440" width="600" height="48" rx="24" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>'
-                f'<text x="640" y="470" dominant-baseline="middle" text-anchor="middle" fill="#38bdf8" font-size="18" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="1">{style_label}</text>'
-                "<!-- Footer Metadata -->"
-                '<text x="100" y="640" fill="#64748b" font-size="16" font-family="monospace">REC ● 00:00:00:00</text>'
-                f'<text x="1180" y="640" text-anchor="end" fill="#64748b" font-size="16" font-family="monospace">{aspect_ratio} | 4K UHD | 24 FPS</text>'
-                "</svg>"
-            )
-            b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
-            return f"data:image/svg+xml;base64,{b64_svg}"
-
-        def _return(url: str) -> Any:
+        def _return(
+            url: str,
+            start_ns: int | None = None,
+            lat_ms: float | None = None,
+        ) -> Any:
             url_str = (
                 url
                 if isinstance(url, str)
@@ -2354,12 +1406,15 @@ class OmniFlashClient:
                 },
                 output_data={
                     "media_url": url_str,
-                    "gcs_uri": self.storage.get_gcs_uri(url_str),
-                    "generation_mode": "KEYFRAME_IMAGE",
+                    "gcs_uri": url_str if url_str.startswith("gs://") else None,
+                    "generation_mode": "MOCK_SVG" if self.mock_mode else "LIVE_GEMINI_IMAGE",
                     "error_message": None,
                 },
                 characters=char_objs,
                 keyframe_image_url=anchor_keyframe_url,
+                reference_image_uris=list(ref_url_to_token.keys()),
+                start_time_ns=start_ns,
+                latency_ms=lat_ms,
             )
             if return_compiled_prompt:
                 return url, prompt_text
@@ -2368,122 +1423,39 @@ class OmniFlashClient:
         if self.mock_mode or not genai:
             return _return(_get_mock_keyframe())
 
+        start_time_ns = time.time_ns()
         try:
-            effective_key = (
-                self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            contents: list[Any] = []
+            if anchor_keyframe_url:
+                anchor_bytes, anchor_mime = self._fetch_image_bytes(anchor_keyframe_url)
+                if anchor_bytes:
+                    self._append_image_part(contents, anchor_bytes, anchor_mime)
+
+            if reference_image_urls:
+                for ref_url in reference_image_urls:
+                    if anchor_keyframe_url and ref_url == anchor_keyframe_url:
+                        continue
+                    img_bytes, mime_type = self._fetch_image_bytes(ref_url)
+                    if img_bytes:
+                        self._append_image_part(contents, img_bytes, mime_type)
+
+            logger.info(
+                "==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n%s\n=====================================================================",
+                prompt_text,
             )
-            if effective_key:
-                image_client = genai.Client(api_key=effective_key, vertexai=False)
-            else:
-                image_client = genai.Client(
-                    vertexai=True,
-                    project=self.project,
-                    location="global",
-                )
-            try:
-                contents: list[Any] = []
+            contents.append(prompt_text)
 
-                if anchor_keyframe_url:
-                    anchor_bytes, anchor_mime = self._fetch_image_bytes(anchor_keyframe_url)
-                    if anchor_bytes:
-                        if hasattr(genai, "types") and hasattr(genai.types, "Part"):
-                            contents.append(
-                                genai.types.Part.from_bytes(
-                                    data=anchor_bytes, mime_type=anchor_mime
-                                )
-                            )
-                        else:
-                            contents.append(
-                                {
-                                    "inline_data": {
-                                        "mime_type": anchor_mime,
-                                        "data": base64.b64encode(anchor_bytes).decode("utf-8"),
-                                    }
-                                }
-                            )
-
-                if reference_image_urls:
-                    for ref_url in reference_image_urls:
-                        if anchor_keyframe_url and ref_url == anchor_keyframe_url:
-                            continue
-                        img_bytes, mime_type = self._fetch_image_bytes(ref_url)
-                        if img_bytes:
-                            if hasattr(genai, "types") and hasattr(genai.types, "Part"):
-                                contents.append(
-                                    genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
-                                )
-                            else:
-                                contents.append(
-                                    {
-                                        "inline_data": {
-                                            "mime_type": mime_type,
-                                            "data": base64.b64encode(img_bytes).decode("utf-8"),
-                                        }
-                                    }
-                                )
-
-                logger.info(
-                    "==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n%s\n=====================================================================",
-                    prompt_text,
-                )
-                print(
-                    f"\n==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n{prompt_text}\n=====================================================================\n",
-                    flush=True,
-                )
-                contents.append(prompt_text)
-
-                config = None
-                if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig"):
-                    image_cfg = (
-                        genai.types.ImageConfig(aspect_ratio=aspect_ratio)
-                        if hasattr(genai.types, "ImageConfig") and aspect_ratio
-                        else None
-                    )
-                    config = genai.types.GenerateContentConfig(
-                        safety_settings=_get_relaxed_safety_settings(),
-                        image_config=image_cfg,
-                    )
-
-                clean_model = image_model.strip() if image_model else ""
-                target_model = (
-                    "gemini-nano-banana-2.1"
-                    if not clean_model or clean_model.startswith("gemini-3.1-flash-image")
-                    else clean_model
-                )
-                response = image_client.models.generate_content(
-                    model=target_model,
-                    contents=contents,
-                    config=config,
-                )
-                if response and hasattr(response, "candidates") and response.candidates:
-                    for candidate in response.candidates:
-                        content = getattr(candidate, "content", None)
-                        parts = getattr(content, "parts", []) if content else []
-                        for part in parts:
-                            if getattr(part, "thought", False) is True:
-                                continue
-                            inline_data = getattr(part, "inline_data", None)
-                            if inline_data and getattr(inline_data, "data", None):
-                                data = inline_data.data
-                                img_bytes = (
-                                    base64.b64decode(data) if isinstance(data, str) else data
-                                )
-                                blob_name = f"keyframes/keyframe_{uuid.uuid4().hex[:8]}.png"
-                                self.storage.upload_bytes(
-                                    img_bytes, blob_name, content_type="image/png"
-                                )
-                                gcs_uri = self.storage.get_gcs_uri(blob_name)
-                                return _return(f"/api/media-proxy?uri={quote(gcs_uri, safe='')}")
-            except Exception as e:
-                logger.warning("gemini-nano-banana-2.1 generation failed for keyframe: %s", e)
-            finally:
-                if hasattr(image_client, "close"):
-                    try:
-                        image_client.close()
-                    except Exception:
-                        pass
-
-            return _return(_get_mock_keyframe())
+            live_url = self._execute_gemini_image_generation(
+                contents=contents,
+                image_model=image_model,
+                aspect_ratio=aspect_ratio,
+                blob_prefix="keyframes/keyframe",
+                log_context="keyframe",
+            )
+            latency_ms = (time.time_ns() - start_time_ns) / 1_000_000.0
+            if live_url:
+                return _return(live_url, start_ns=start_time_ns, lat_ms=latency_ms)
+            return _return(_get_mock_keyframe(), start_ns=start_time_ns, lat_ms=latency_ms)
         except Exception as exc:
             logger.warning("Failed to generate keyframe image via GenAI client: %s", exc)
             return _return(_get_mock_keyframe())
@@ -2523,57 +1495,21 @@ class OmniFlashClient:
                 f"replicating exactly with the new character's details. No additional text."
             )
 
-        if source_image_url:
-            if "(Reference Image: @Image1)" not in prompt_text:
-                prompt_text = f"{prompt_text} (Reference Image: @Image1)"
+        if source_image_url and "(Reference Image: @Image1)" not in prompt_text:
+            prompt_text = f"{prompt_text} (Reference Image: @Image1)"
 
         def _get_mock_ref_sheet() -> str:
-            clean_name = (
-                (character_name or "Character Reference Sheet")
-                .replace('"', "&quot;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
+            return build_mock_ref_sheet_svg_data_uri(
+                character_name=character_name,
+                description=description,
+                aspect_ratio=aspect_ratio,
             )
-            clean_desc = (
-                (description or "")
-                .replace('"', "&quot;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")[:60]
-            )
-            desc_sub = f" - {clean_desc}" if clean_desc else ""
-            svg = (
-                '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">'
-                "<defs>"
-                '<linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">'
-                '<stop offset="0%" stop-color="#0f172a"/>'
-                '<stop offset="100%" stop-color="#1e293b"/>'
-                "</linearGradient>"
-                "</defs>"
-                '<rect width="100%" height="100%" fill="url(#bgGrad)"/>'
-                '<rect x="40" y="40" width="1200" height="640" rx="12" fill="#ffffff"/>'
-                '<rect x="40" y="40" width="1200" height="60" rx="12" fill="#0f172a"/>'
-                f'<text x="60" y="78" fill="#f8fafc" font-size="22" font-weight="800" font-family="system-ui, sans-serif">CHARACTER REFERENCE SHEET: {clean_name.upper()}{desc_sub}</text>'
-                f'<text x="1220" y="78" text-anchor="end" fill="#94a3b8" font-size="14" font-family="monospace">{aspect_ratio} | MULTI-PANEL LAYOUT</text>'
-                '<rect x="60" y="120" width="280" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
-                '<text x="200" y="390" text-anchor="middle" fill="#64748b" font-size="16" font-weight="700">CLOSE-UP BUST</text>'
-                '<rect x="360" y="120" width="220" height="170" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
-                '<text x="470" y="210" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FRONT HEAD BUST</text>'
-                '<rect x="360" y="305" width="220" height="170" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
-                '<text x="470" y="395" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">PROFILE HEAD BUST</text>'
-                '<rect x="360" y="490" width="220" height="170" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
-                '<text x="470" y="580" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">BACK HEAD BUST</text>'
-                '<rect x="600" y="120" width="200" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
-                '<text x="700" y="390" text-anchor="middle" fill="#64748b" font-size="16" font-weight="700">FULL-BODY FRONT</text>'
-                '<rect x="820" y="120" width="200" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
-                '<text x="920" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY 3/4 FRONT</text>'
-                '<rect x="1040" y="120" width="180" height="540" fill="#f1f5f9" rx="8" stroke="#cbd5e1" stroke-width="2"/>'
-                '<text x="1130" y="390" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">FULL-BODY 3/4 BACK</text>'
-                "</svg>"
-            )
-            b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
-            return f"data:image/svg+xml;base64,{b64_svg}"
 
-        def _return(url: str) -> Any:
+        def _return(
+            url: str,
+            start_ns: int | None = None,
+            lat_ms: float | None = None,
+        ) -> Any:
             url_str = (
                 url
                 if isinstance(url, str)
@@ -2588,10 +1524,13 @@ class OmniFlashClient:
                 },
                 output_data={
                     "media_url": url_str,
-                    "gcs_uri": self.storage.get_gcs_uri(url_str),
-                    "generation_mode": "TURNAROUND_SHEET",
+                    "gcs_uri": url_str if url_str.startswith("gs://") else None,
+                    "generation_mode": "MOCK_SVG" if self.mock_mode else "LIVE_GEMINI_IMAGE",
                     "error_message": None,
                 },
+                reference_image_uris=[source_image_url] if source_image_url else [],
+                start_time_ns=start_ns,
+                latency_ms=lat_ms,
             )
             if return_compiled_prompt:
                 return url, prompt_text
@@ -2600,94 +1539,27 @@ class OmniFlashClient:
         if self.mock_mode or not genai:
             return _return(_get_mock_ref_sheet())
 
+        start_time_ns = time.time_ns()
         try:
-            effective_key = (
-                self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            contents: list[Any] = []
+            if source_image_url:
+                img_bytes, mime_type = self._fetch_image_bytes(source_image_url)
+                if img_bytes:
+                    self._append_image_part(contents, img_bytes, mime_type)
+
+            contents.append(prompt_text)
+
+            live_url = self._execute_gemini_image_generation(
+                contents=contents,
+                image_model=image_model,
+                aspect_ratio=aspect_ratio,
+                blob_prefix="ref_sheets/ref_sheet",
+                log_context="reference sheet",
             )
-            if effective_key:
-                image_client = genai.Client(api_key=effective_key, vertexai=False)
-            else:
-                image_client = genai.Client(
-                    vertexai=True,
-                    project=self.project,
-                    location="global",
-                )
-            try:
-                contents: list[Any] = []
-
-                if source_image_url:
-                    img_bytes, mime_type = self._fetch_image_bytes(source_image_url)
-                    if img_bytes:
-                        if hasattr(genai, "types") and hasattr(genai.types, "Part"):
-                            contents.append(
-                                genai.types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
-                            )
-                        else:
-                            contents.append(
-                                {
-                                    "inline_data": {
-                                        "mime_type": mime_type,
-                                        "data": base64.b64encode(img_bytes).decode("utf-8"),
-                                    }
-                                }
-                            )
-
-                contents.append(prompt_text)
-
-                config = None
-                if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig"):
-                    image_cfg = (
-                        genai.types.ImageConfig(aspect_ratio=aspect_ratio)
-                        if hasattr(genai.types, "ImageConfig") and aspect_ratio
-                        else None
-                    )
-                    config = genai.types.GenerateContentConfig(
-                        safety_settings=_get_relaxed_safety_settings(),
-                        image_config=image_cfg,
-                    )
-
-                clean_model = image_model.strip() if image_model else ""
-                target_model = (
-                    "gemini-nano-banana-2.1"
-                    if not clean_model or clean_model.startswith("gemini-3.1-flash-image")
-                    else clean_model
-                )
-                response = image_client.models.generate_content(
-                    model=target_model,
-                    contents=contents,
-                    config=config,
-                )
-                if response and hasattr(response, "candidates") and response.candidates:
-                    for candidate in response.candidates:
-                        content = getattr(candidate, "content", None)
-                        parts = getattr(content, "parts", []) if content else []
-                        for part in parts:
-                            if getattr(part, "thought", False) is True:
-                                continue
-                            inline_data = getattr(part, "inline_data", None)
-                            if inline_data and getattr(inline_data, "data", None):
-                                data = inline_data.data
-                                img_bytes = (
-                                    base64.b64decode(data) if isinstance(data, str) else data
-                                )
-                                blob_name = f"ref_sheets/ref_sheet_{uuid.uuid4().hex[:8]}.png"
-                                self.storage.upload_bytes(
-                                    img_bytes, blob_name, content_type="image/png"
-                                )
-                                gcs_uri = self.storage.get_gcs_uri(blob_name)
-                                return _return(f"/api/media-proxy?uri={quote(gcs_uri, safe='')}")
-            except Exception as e:
-                logger.warning(
-                    "gemini-nano-banana-2.1 generation failed for reference sheet: %s", e
-                )
-            finally:
-                if hasattr(image_client, "close"):
-                    try:
-                        image_client.close()
-                    except Exception:
-                        pass
-
-            return _return(_get_mock_ref_sheet())
+            latency_ms = (time.time_ns() - start_time_ns) / 1_000_000.0
+            if live_url:
+                return _return(live_url, start_ns=start_time_ns, lat_ms=latency_ms)
+            return _return(_get_mock_ref_sheet(), start_ns=start_time_ns, lat_ms=latency_ms)
         except Exception as exc:
             logger.warning("Failed to generate character reference sheet via GenAI client: %s", exc)
             return _return(_get_mock_ref_sheet())
@@ -2722,3 +1594,17 @@ class OmniFlashClient:
 
 OmniClient = OmniFlashClient
 OmniEngineClient = OmniFlashClient
+
+__all__ = [
+    "GenerationResult",
+    "OmniClient",
+    "OmniEngineClient",
+    "OmniFlashClient",
+    "_abstract_prompt_for_responsible_ai",
+    "_generate_dynamic_audio_wav",
+    "_get_relaxed_safety_settings",
+    "ensure_rendered_video",
+    "extract_clean_dialogue_summary",
+    "get_relaxed_safety_settings",
+    "parse_guardrail_error_guidance",
+]

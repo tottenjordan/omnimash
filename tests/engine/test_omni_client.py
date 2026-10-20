@@ -2660,3 +2660,72 @@ def test_image_generation_passes_image_config_aspect_ratio_and_closes_client() -
         assert isinstance(sheet_config.image_config, types.ImageConfig)
         assert sheet_config.image_config.aspect_ratio == "16:9"
         assert mock_genai_client.close.call_count == 2
+
+
+def test_start_thread_from_video_regenerate_audio_strips_leading_slash_and_cleans_up_temp_file(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify start_thread_from_video normalizes /static/... leading slash for FFmpeg, checks returncode, and removes temporary stripped file in finally block."""
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("static/rendered", exist_ok=True)
+    rel_input = "static/rendered/clip_source.mp4"
+    with open(rel_input, "wb") as f:
+        f.write(b"source_mp4_bytes")
+
+    client = OmniFlashClient(mock_mode=True)
+    observed_kf_exists_during_call = False
+    observed_kf_url = ""
+
+    def fake_ffmpeg_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+        input_arg = cmd[cmd.index("-i") + 1]
+        assert not input_arg.startswith("/static/"), f"Unexpected leading slash: {input_arg}"
+        out_arg = cmd[-1]
+        with open(out_arg, "wb") as out_f:
+            out_f.write(b"silent_stripped_bytes")
+        return MagicMock(returncode=0)
+
+    def fake_gen_live(*args: Any, **kwargs: Any) -> tuple[bool, str, None]:
+        nonlocal observed_kf_exists_during_call, observed_kf_url
+        observed_kf_url = str(kwargs.get("keyframe_image_url") or "")
+        observed_kf_exists_during_call = os.path.exists(observed_kf_url)
+        return True, "reanchor_thread_clean", None
+
+    with (
+        patch("subprocess.run", side_effect=fake_ffmpeg_run),
+        patch.object(client, "_generate_live_omni_flash_video", side_effect=fake_gen_live),
+    ):
+        res = client.start_thread_from_video(
+            base_video_url="/static/rendered/clip_source.mp4",
+            initial_prompt="Fresh audio track",
+            regenerate_audio=True,
+        )
+
+    assert res.interaction_thread_id == "reanchor_thread_clean"
+    assert observed_kf_exists_during_call is True
+    assert not os.path.exists(observed_kf_url)
+
+
+def test_last_keyframe_prompt_is_isolated_across_concurrent_threads() -> None:
+    """Verify OmniFlashClient.last_keyframe_prompt uses ContextVar isolation so concurrent threads do not overwrite each other."""
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+
+    client = OmniFlashClient(mock_mode=True)
+    barrier = threading.Barrier(2, timeout=5.0)
+    orig_log = client._log_multimodal_inference
+
+    def synced_log(*args: Any, **kwargs: Any) -> None:
+        barrier.wait()
+        orig_log(*args, **kwargs)
+
+    def worker(idx: int) -> tuple[str, str]:
+        prompt_in = f"Unique shot action for thread {idx}"
+        client.generate_keyframe_image(prompt=prompt_in)
+        return prompt_in, client.last_keyframe_prompt
+
+    with patch.object(client, "_log_multimodal_inference", side_effect=synced_log):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(worker, [1, 2]))
+
+    for expected_substr, recorded_prompt in results:
+        assert expected_substr in recorded_prompt
