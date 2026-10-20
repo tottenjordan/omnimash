@@ -8,6 +8,7 @@ import logging
 import os
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 logger = logging.getLogger("omnimash.engine.telemetry")
 
@@ -91,7 +92,10 @@ class GenAITelemetryLogger:
             resolution=resolution,
             previous_interaction_id=previous_interaction_id,
         )
-        return self.tracer.start_span(name=span_name, attributes=labels)
+        span = self.tracer.start_span(name=span_name, attributes=labels)
+        if error_code is not None and span and hasattr(span, "set_status"):
+            span.set_status(Status(StatusCode.ERROR, str(error_code)))
+        return span
 
 
 def setup_opentelemetry_genai_logging(

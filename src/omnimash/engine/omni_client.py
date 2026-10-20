@@ -1096,10 +1096,18 @@ class OmniFlashClient:
                 elif ref_url.lower().endswith(".jpg") or ref_url.lower().endswith(".jpeg"):
                     mime_type = "image/jpeg"
 
+                upload_client = (
+                    self._genai_client
+                    if (
+                        self._genai_client
+                        and getattr(self._genai_client, "vertexai", False) is not True
+                    )
+                    else self._dev_client
+                )
                 if (
                     len(img_bytes) > 25 * 1024 * 1024
-                    and self._genai_client
-                    and hasattr(self._genai_client, "files")
+                    and upload_client
+                    and hasattr(upload_client, "files")
                 ):
                     import tempfile
 
@@ -1108,9 +1116,14 @@ class OmniFlashClient:
                         tmp_f.write(img_bytes)
                         tmp_path = tmp_f.name
                     try:
-                        file_obj = self._genai_client.files.upload(
-                            file=tmp_path, mime_type=mime_type
-                        )
+                        upload_config: Any = {"mime_type": mime_type}
+                        if (
+                            genai
+                            and hasattr(genai, "types")
+                            and hasattr(genai.types, "UploadFileConfig")
+                        ):
+                            upload_config = genai.types.UploadFileConfig(mime_type=mime_type)
+                        file_obj = upload_client.files.upload(file=tmp_path, config=upload_config)
                         image_objects.append(file_obj)
                     finally:
                         if os.path.exists(tmp_path):
@@ -2421,8 +2434,14 @@ class OmniFlashClient:
 
                 config = None
                 if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig"):
+                    image_cfg = (
+                        genai.types.ImageConfig(aspect_ratio=aspect_ratio)
+                        if hasattr(genai.types, "ImageConfig") and aspect_ratio
+                        else None
+                    )
                     config = genai.types.GenerateContentConfig(
                         safety_settings=_get_relaxed_safety_settings(),
+                        image_config=image_cfg,
                     )
 
                 clean_model = image_model.strip() if image_model else ""
@@ -2457,6 +2476,12 @@ class OmniFlashClient:
                                 return _return(f"/api/media-proxy?uri={quote(gcs_uri, safe='')}")
             except Exception as e:
                 logger.warning("gemini-nano-banana-2.1 generation failed for keyframe: %s", e)
+            finally:
+                if hasattr(image_client, "close"):
+                    try:
+                        image_client.close()
+                    except Exception:
+                        pass
 
             return _return(_get_mock_keyframe())
         except Exception as exc:
@@ -2611,8 +2636,14 @@ class OmniFlashClient:
 
                 config = None
                 if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig"):
+                    image_cfg = (
+                        genai.types.ImageConfig(aspect_ratio=aspect_ratio)
+                        if hasattr(genai.types, "ImageConfig") and aspect_ratio
+                        else None
+                    )
                     config = genai.types.GenerateContentConfig(
                         safety_settings=_get_relaxed_safety_settings(),
+                        image_config=image_cfg,
                     )
 
                 clean_model = image_model.strip() if image_model else ""
@@ -2649,6 +2680,12 @@ class OmniFlashClient:
                 logger.warning(
                     "gemini-nano-banana-2.1 generation failed for reference sheet: %s", e
                 )
+            finally:
+                if hasattr(image_client, "close"):
+                    try:
+                        image_client.close()
+                    except Exception:
+                        pass
 
             return _return(_get_mock_ref_sheet())
         except Exception as exc:
