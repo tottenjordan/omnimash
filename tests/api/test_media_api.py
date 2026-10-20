@@ -77,5 +77,5 @@ def test_media_proxy_live_range_request_fetches_only_byte_slice():
         assert res.status_code == 206
         assert res.content == b"ABCD"
         assert res.headers["Content-Range"] == "bytes 100-103/10000000"
-        mock_blob.download_as_bytes.assert_called_once_with(start=100, end=103)
+        mock_blob.download_as_bytes.assert_called_once_with(start=100, end=103, timeout=30.0)
         mock_full_download.assert_not_called()

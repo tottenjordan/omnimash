@@ -20,3 +20,10 @@ def test_omnimash_settings_explicit_bucket():
 def test_omnimash_settings_ffmpeg_timeout():
     s = OmniMashSettings()
     assert s.ffmpeg_timeout_seconds == 120.0
+
+
+def test_omnimash_settings_gcs_timeout():
+    s = OmniMashSettings(gcs_timeout_seconds=45.0)
+    assert s.gcs_timeout_seconds == 45.0
+    default_s = OmniMashSettings()
+    assert default_s.gcs_timeout_seconds == 30.0

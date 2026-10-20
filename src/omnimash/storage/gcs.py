@@ -4,13 +4,17 @@ import base64
 import dataclasses
 from datetime import datetime, timezone
 import json
+import logging
 import os
 import re
+import threading
 from typing import TYPE_CHECKING, Any
-import urllib.request
 from urllib.parse import parse_qs, unquote, urlparse
 
 from omnimash.config import settings
+
+logger = logging.getLogger(__name__)
+_CLIENTS_LOCK = threading.Lock()
 
 if TYPE_CHECKING:
     from omnimash.ingestion.media_extractor import ReferenceAnalysisReport
@@ -75,8 +79,8 @@ class GcsStorageManager:
         self.mock_mode = settings.mock_mode if mock_mode is None else mock_mode
         self.project_id = project_id or settings.google_cloud_project
         self.bucket_name = bucket_name or settings.gcs_bucket_name
-        self._client: Any = None
-        self._bucket: Any = None
+        self._client_instance: Any = None
+        self._bucket_instance: Any = None
         self._mock_analyses: dict[str, dict[str, Any]] = {}
         self._mock_session_manifests: dict[str, dict[str, Any]] = {}
         self._mock_characters: dict[str, dict[str, Any]] = {
@@ -92,29 +96,89 @@ class GcsStorageManager:
         self._mock_project_products: dict[str, list[dict[str, Any]]] = {}
         self._mock_project_reference_sheets: dict[str, list[dict[str, Any]]] = {}
 
-        if not self.mock_mode and storage:
-            try:
-                client_key = self.project_id or "default"
-                if client_key not in self._SHARED_CLIENTS:
+    @property
+    def timeout(self) -> float:
+        """Configured GCS SDK network timeout in seconds."""
+        return float(getattr(settings, "gcs_timeout_seconds", 30.0))
+
+    def _get_client(self) -> Any:
+        if self._client_instance is not None:
+            return self._client_instance
+        if self.mock_mode or storage is None:
+            return None
+        with _CLIENTS_LOCK:
+            if self._client_instance is not None:
+                return self._client_instance
+            client_key = self.project_id or "default"
+            if client_key not in self._SHARED_CLIENTS:
+                try:
                     self._SHARED_CLIENTS[client_key] = storage.Client(project=self.project_id)
-                self._client = self._SHARED_CLIENTS[client_key]
-                self._bucket = self._client.bucket(self.bucket_name)
-            except Exception:
-                pass
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to initialize GCS client for project %s: %s",
+                        self.project_id,
+                        exc,
+                    )
+                    return None
+            self._client_instance = self._SHARED_CLIENTS[client_key]
+            return self._client_instance
+
+    @property
+    def client(self) -> Any:
+        """Lazily retrieves or initializes the thread-safe GCS client singleton."""
+        return self._get_client()
+
+    @property
+    def _client(self) -> Any:
+        return self._get_client()
+
+    @_client.setter
+    def _client(self, val: Any) -> None:
+        self._client_instance = val
+
+    def _get_bucket(self) -> Any:
+        if self._bucket_instance is not None:
+            return self._bucket_instance
+        if self.mock_mode or storage is None:
+            return None
+        c = self.client
+        if c is not None:
+            try:
+                self._bucket_instance = c.bucket(self.bucket_name)
+            except Exception as exc:
+                logger.warning("Failed to get bucket %s: %s", self.bucket_name, exc)
+                return None
+        return self._bucket_instance
+
+    @property
+    def bucket(self) -> Any:
+        """Lazily retrieves or initializes the GCS bucket reference."""
+        return self._get_bucket()
+
+    @property
+    def _bucket(self) -> Any:
+        return self._get_bucket()
+
+    @_bucket.setter
+    def _bucket(self, val: Any) -> None:
+        self._bucket_instance = val
 
     def ensure_bucket_exists(self, location: str | None = None) -> bool:
         """Verifies or programmatically creates the GCS bucket in the configured GCP project."""
-        if self.mock_mode or not self._client:
+        if self.mock_mode or not self.client:
             return True
         try:
             loc = location or settings.google_cloud_region or "us-central1"
-            bucket = self._client.lookup_bucket(self.bucket_name)
+            bucket = self.client.lookup_bucket(self.bucket_name, timeout=self.timeout)
             if not bucket:
-                self._bucket = self._client.create_bucket(self.bucket_name, location=loc)
+                self._bucket = self.client.create_bucket(
+                    self.bucket_name, location=loc, timeout=self.timeout
+                )
             else:
                 self._bucket = bucket
             return True
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to ensure bucket %s exists: %s", self.bucket_name, exc)
             return False
 
     def get_public_url(self, blob_name: str) -> str:
@@ -180,9 +244,10 @@ class GcsStorageManager:
                     content_type = "application/json"
 
             blob = self._bucket.blob(destination_blob_name)
-            blob.upload_from_filename(local_path, content_type=content_type)
+            blob.upload_from_filename(local_path, content_type=content_type, timeout=self.timeout)
             return self.get_public_url(destination_blob_name)
-        except Exception:
+        except Exception as exc:
+            logger.warning("upload_file failed on %s: %s", destination_blob_name, exc)
             return self.get_public_url(destination_blob_name)
 
     def upload_bytes(
@@ -198,9 +263,10 @@ class GcsStorageManager:
 
         try:
             blob = self._bucket.blob(destination_blob_name)
-            blob.upload_from_string(data, content_type=content_type)
+            blob.upload_from_string(data, content_type=content_type, timeout=self.timeout)
             return self.get_public_url(destination_blob_name)
-        except Exception:
+        except Exception as exc:
+            logger.warning("upload_bytes failed on %s: %s", destination_blob_name, exc)
             return self.get_public_url(destination_blob_name)
 
     def download_blob_bytes(self, gs_uri: str) -> tuple[bytes, str]:
@@ -208,15 +274,7 @@ class GcsStorageManager:
         if not isinstance(gs_uri, str) or not gs_uri.strip():
             return (b"", "image/jpeg")
 
-        raw_uri = gs_uri.strip()
-        if "/api/media-proxy" in raw_uri and "uri=" in raw_uri:
-            try:
-                parsed = urlparse(raw_uri)
-                qs = parse_qs(parsed.query)
-                if "uri" in qs and qs["uri"]:
-                    raw_uri = qs["uri"][0]
-            except Exception:
-                pass
+        raw_uri = self._normalize_media_source_path(gs_uri.strip())
 
         if raw_uri.startswith("https://storage.googleapis.com/"):
             raw_uri = "gs://" + raw_uri.replace("https://storage.googleapis.com/", "")
@@ -234,13 +292,19 @@ class GcsStorageManager:
         if self.mock_mode:
             return (b"mock_image_bytes", "image/jpeg")
 
-        if not self._client:
-            return (b"", "image/jpeg")
-
         try:
-            bucket = self._client.bucket(bucket_name)
+            if self._bucket_instance is not None and getattr(
+                self._bucket_instance, "name", None
+            ) in (bucket_name, None, ""):
+                bucket = self._bucket_instance
+            elif self.client:
+                bucket = self.client.bucket(bucket_name)
+            else:
+                return (b"", "image/jpeg")
+
             blob = bucket.blob(blob_path)
-            data = blob.download_as_bytes()
+            raw_data = blob.download_as_bytes(timeout=self.timeout)
+            data = raw_data if isinstance(raw_data, (bytes, bytearray)) else b""
             content_type = getattr(blob, "content_type", None)
             if not content_type:
                 if blob_path.endswith(".mp4"):
@@ -256,7 +320,8 @@ class GcsStorageManager:
                 else:
                     content_type = "image/jpeg"
             return (data, content_type)
-        except Exception:
+        except Exception as exc:
+            logger.warning("download_blob_bytes failed on %s/%s: %s", bucket_name, blob_path, exc)
             return (b"", "image/jpeg")
 
     def download_blob_range(
@@ -281,9 +346,17 @@ class GcsStorageManager:
             return None
 
         try:
-            bucket = self._client.bucket(bucket_name)
+            if self._bucket_instance is not None and getattr(
+                self._bucket_instance, "name", None
+            ) in (bucket_name, None, ""):
+                bucket = self._bucket_instance
+            elif self.client:
+                bucket = self.client.bucket(bucket_name)
+            else:
+                return None
+
             blob = bucket.blob(blob_path)
-            blob.reload()
+            blob.reload(timeout=self.timeout)
             total_len = int(blob.size or 0)
             if total_len <= 0:
                 return None
@@ -300,7 +373,7 @@ class GcsStorageManager:
             if not (0 <= start <= end < total_len):
                 return None
 
-            chunk = blob.download_as_bytes(start=start, end=end)
+            chunk = blob.download_as_bytes(start=start, end=end, timeout=self.timeout)
             content_type = getattr(blob, "content_type", None)
             if not content_type:
                 if blob_path.endswith(".mp4"):
@@ -314,7 +387,8 @@ class GcsStorageManager:
                 else:
                     content_type = "application/octet-stream"
             return (chunk, content_type, total_len, start, end)
-        except Exception:
+        except Exception as exc:
+            logger.warning("download_blob_range failed on %s: %s", raw_uri, exc)
             return None
 
     def load_bytes(self, gs_uri_or_path: str) -> tuple[bytes, str]:
@@ -330,8 +404,8 @@ class GcsStorageManager:
                         data = f.read()
                     mime = "image/png" if path.lower().endswith(".png") else "image/jpeg"
                     return (data, mime)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("load_bytes failed on local file %s: %s", path, exc)
 
         if self.mock_mode:
             mime = "image/png" if str(gs_uri_or_path).lower().endswith(".png") else "image/jpeg"
@@ -408,14 +482,14 @@ class GcsStorageManager:
             for blob_path in candidate_paths:
                 try:
                     blob = self._bucket.blob(blob_path)
-                    if blob.exists():
-                        data = blob.download_as_text()
+                    if blob.exists(timeout=self.timeout):
+                        data = blob.download_as_text(timeout=self.timeout)
                         res: dict[str, Any] = json.loads(data)
                         self._mock_session_manifests[key] = res
                         self._mock_session_manifests[session_id] = res
                         return res
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("Failed to fetch session manifest from %s: %s", blob_path, exc)
 
         return None
 
@@ -448,30 +522,34 @@ class GcsStorageManager:
             return self._mock_analyses[session_id]
 
         if not self.mock_mode and self._bucket:
+            blob_path = self.build_session_blob_path(
+                session_id, "references", "reference_analysis.json"
+            ).lstrip("/")
             try:
-                blob_path = self.build_session_blob_path(
-                    session_id, "references", "reference_analysis.json"
-                ).lstrip("/")
                 blob = self._bucket.blob(blob_path)
-                if blob.exists():
-                    data = blob.download_as_text()
+                if blob.exists(timeout=self.timeout):
+                    data = blob.download_as_text(timeout=self.timeout)
                     res: dict[str, Any] = json.loads(data)
                     self._mock_analyses[session_id] = res
                     return res
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to fetch reference analysis from %s: %s", blob_path, exc)
 
         return None
 
     def _normalize_media_source_path(self, src: str) -> str:
         """Normalizes proxy URLs, GCS URIs, or relative paths to a raw GCS URI or local path."""
-        if not src:
+        if not src or not isinstance(src, str):
             return ""
+        src = src.strip()
         if "/api/media-proxy" in src and "uri=" in src:
-            parsed = urlparse(src)
-            qs = parse_qs(parsed.query)
-            if "uri" in qs and qs["uri"]:
-                return unquote(qs["uri"][0])
+            try:
+                parsed = urlparse(src)
+                qs = parse_qs(parsed.query)
+                if "uri" in qs and qs["uri"]:
+                    return unquote(qs["uri"][0]).strip()
+            except Exception as exc:
+                logger.warning("Failed to parse media-proxy URL %s: %s", src, exc)
         return src
 
     def save_final_master(
@@ -490,27 +568,49 @@ class GcsStorageManager:
         public_url = self.get_public_url(dest_blob_path)
         gcs_uri = self.get_gcs_uri(dest_blob_path)
 
-        if not self.mock_mode and self._bucket:
+        if not self.mock_mode and self.bucket:
             try:
-                norm_source = self._normalize_media_source_path(source_rel_path)
-                local_path = norm_source
-                if local_path.startswith("/static/"):
-                    local_path = os.path.join(os.getcwd(), local_path.lstrip("/"))
-                elif not os.path.isabs(local_path) and os.path.exists(
-                    os.path.join(os.getcwd(), local_path)
-                ):
-                    local_path = os.path.join(os.getcwd(), local_path)
+                from omnimash.engine.media_loader import validate_local_media_path
 
-                if os.path.exists(local_path):
-                    blob = self._bucket.blob(dest_blob_path)
-                    blob.upload_from_filename(local_path, content_type="video/mp4")
+                norm_source = self._normalize_media_source_path(source_rel_path)
+                safe_local = validate_local_media_path(norm_source)
+                if safe_local and os.path.isfile(safe_local):
+                    blob = self.bucket.blob(dest_blob_path)
+                    blob.upload_from_filename(
+                        safe_local, content_type="video/mp4", timeout=self.timeout
+                    )
+                elif (
+                    not norm_source.startswith("/")
+                    and not os.path.isabs(norm_source)
+                    and not norm_source.startswith("gs://")
+                ):
+                    candidate = os.path.join(os.getcwd(), norm_source)
+                    safe_local = validate_local_media_path(candidate)
+                    if safe_local and os.path.isfile(safe_local):
+                        blob = self.bucket.blob(dest_blob_path)
+                        blob.upload_from_filename(
+                            safe_local, content_type="video/mp4", timeout=self.timeout
+                        )
+                    else:
+                        src_blob_name = norm_source.replace(f"gs://{self.bucket_name}/", "").lstrip(
+                            "/"
+                        )
+                        src_blob = self.bucket.blob(src_blob_name)
+                        if src_blob.exists(timeout=self.timeout):
+                            self.bucket.copy_blob(
+                                src_blob, self.bucket, dest_blob_path, timeout=self.timeout
+                            )
                 else:
                     src_blob_name = norm_source.replace(f"gs://{self.bucket_name}/", "").lstrip("/")
-                    src_blob = self._bucket.blob(src_blob_name)
-                    if src_blob.exists():
-                        self._bucket.copy_blob(src_blob, self._bucket, dest_blob_path)
-            except Exception:
-                pass
+                    src_blob = self.bucket.blob(src_blob_name)
+                    if src_blob.exists(timeout=self.timeout):
+                        self.bucket.copy_blob(
+                            src_blob, self.bucket, dest_blob_path, timeout=self.timeout
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "save_final_master failed to upload/copy source %s: %s", source_rel_path, exc
+                )
 
         if prompt_data is not None:
             prompt_filename = f"{title_base}_prompt.json"
@@ -610,32 +710,11 @@ class GcsStorageManager:
         if isinstance(image_data, bytes):
             raw_bytes = image_data
         elif isinstance(image_data, str):
-            if image_data.startswith("data:"):
-                try:
-                    _header, encoded = image_data.split(",", 1)
-                    raw_bytes = base64.b64decode(encoded)
-                except Exception:
-                    pass
-            elif image_data.startswith("gs://"):
-                raw_bytes, _ = self.download_blob_bytes(image_data)
-            elif "/api/media-proxy" in image_data and "uri=" in image_data:
-                try:
-                    parsed = urlparse(image_data)
-                    qs = parse_qs(parsed.query)
-                    if "uri" in qs and qs["uri"]:
-                        raw_bytes, _ = self.download_blob_bytes(unquote(qs["uri"][0]))
-                except Exception:
-                    pass
-            elif image_data.startswith("http://") or image_data.startswith("https://"):
-                try:
-                    req = urllib.request.Request(image_data, headers={"User-Agent": "Mozilla/5.0"})
-                    raw_bytes = urllib.request.urlopen(req, timeout=10).read()
-                except Exception:
-                    pass
-            elif os.path.exists(image_data):
-                raw_bytes, _ = self.load_bytes(image_data)
-            else:
-                # Try decoding as raw base64 string
+            from omnimash.engine.media_loader import fetch_media_bytes
+
+            raw_bytes, _ = fetch_media_bytes(image_data, storage=self)
+            if not raw_bytes:
+                # Fallback: try decoding as raw base64 string
                 try:
                     raw_bytes = base64.b64decode(image_data)
                 except Exception:
@@ -791,22 +870,15 @@ class GcsStorageManager:
         raw_bytes = b""
         if isinstance(image_data, bytes):
             raw_bytes = image_data
-        elif isinstance(image_data, str) and os.path.exists(image_data):
-            raw_bytes, _ = self.load_bytes(image_data)
         elif isinstance(image_data, str):
-            if image_data.startswith("data:"):
-                try:
-                    _hdr, enc = image_data.split(",", 1)
-                    raw_bytes = base64.b64decode(enc)
-                except Exception:
-                    pass
-            elif image_data.startswith("gs://") or image_data.startswith("http"):
-                raw_bytes, _ = self.download_blob_bytes(image_data)
-            else:
+            from omnimash.engine.media_loader import fetch_media_bytes
+
+            raw_bytes, _ = fetch_media_bytes(image_data, storage=self)
+            if not raw_bytes:
                 try:
                     raw_bytes = base64.b64decode(image_data)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Base64 decode fallback failed for keyframe: %s", exc)
 
         if not raw_bytes and self.mock_mode:
             raw_bytes = b"mock_keyframe_bytes"
@@ -835,14 +907,16 @@ class GcsStorageManager:
 
         if not self.mock_mode and self._client and self.bucket_name:
             try:
-                blobs = self._client.list_blobs(self.bucket_name, prefix="projects/", delimiter="/")
+                blobs = self._client.list_blobs(
+                    self.bucket_name, prefix="projects/", delimiter="/", timeout=self.timeout
+                )
                 for page in blobs.pages:
                     for prefix in page.prefixes:
                         parts = prefix.rstrip("/").split("/")
                         if len(parts) >= 2 and parts[-1]:
                             projects.add(parts[-1])
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("list_projects failed: %s", exc)
 
         return sorted(list(projects))
 
@@ -865,14 +939,16 @@ class GcsStorageManager:
         if not self.mock_mode and self._client and self.bucket_name:
             try:
                 prefix = f"projects/{project_id}/sessions/"
-                blobs = self._client.list_blobs(self.bucket_name, prefix=prefix, delimiter="/")
+                blobs = self._client.list_blobs(
+                    self.bucket_name, prefix=prefix, delimiter="/", timeout=self.timeout
+                )
                 for page in blobs.pages:
                     for pfix in page.prefixes:
                         parts = pfix.rstrip("/").split("/")
                         if parts and parts[-1]:
                             sessions.add(parts[-1])
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("list_sessions failed for project %s: %s", project_id, exc)
 
         return sorted(list(sessions))
 
@@ -896,37 +972,41 @@ class GcsStorageManager:
         if not self.mock_mode and self._bucket:
             try:
                 prefix = f"projects/{project_id}/saved_characters/"
-                blobs = self._bucket.list_blobs(prefix=prefix)
+                blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
                 for blob in blobs:
                     if blob.name.endswith(".json"):
                         try:
-                            data = json.loads(blob.download_as_text())
+                            data = json.loads(blob.download_as_text(timeout=self.timeout))
                             if isinstance(data, dict):
                                 slug = self._slugify(str(data.get("name", "")))
                                 if slug not in seen_slugs:
                                     seen_slugs.add(slug)
                                     characters.append(data)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                        except Exception as exc:
+                            logger.warning("Failed to load character blob %s: %s", blob.name, exc)
+            except Exception as exc:
+                logger.warning("list_project_characters failed on prefix %s: %s", prefix, exc)
 
             try:
                 prefix_sessions = f"projects/{project_id}/sessions/"
-                blobs = self._bucket.list_blobs(prefix=prefix_sessions)
+                blobs = self._bucket.list_blobs(prefix=prefix_sessions, timeout=self.timeout)
                 for blob in blobs:
                     if "/characters/" in blob.name and blob.name.endswith(".json"):
                         try:
-                            data = json.loads(blob.download_as_text())
+                            data = json.loads(blob.download_as_text(timeout=self.timeout))
                             if isinstance(data, dict):
                                 slug = self._slugify(str(data.get("name", "")))
                                 if slug not in seen_slugs:
                                     seen_slugs.add(slug)
                                     characters.append(data)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to load session character blob %s: %s", blob.name, exc
+                            )
+            except Exception as exc:
+                logger.warning(
+                    "list_project_characters failed on session prefix %s: %s", prefix_sessions, exc
+                )
 
         if characters:
             return characters
@@ -947,20 +1027,20 @@ class GcsStorageManager:
         if not self.mock_mode and self._bucket:
             try:
                 prefix = f"projects/{project_id}/saved_products/"
-                blobs = self._bucket.list_blobs(prefix=prefix)
+                blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
                 for blob in blobs:
                     if blob.name.endswith(".json"):
                         try:
-                            data = json.loads(blob.download_as_text())
+                            data = json.loads(blob.download_as_text(timeout=self.timeout))
                             if isinstance(data, dict):
                                 slug = self._slugify(str(data.get("name", "")))
                                 if slug not in seen_slugs:
                                     seen_slugs.add(slug)
                                     products.append(data)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                        except Exception as exc:
+                            logger.warning("Failed to load product blob %s: %s", blob.name, exc)
+            except Exception as exc:
+                logger.warning("list_project_products failed on prefix %s: %s", prefix, exc)
 
         if products:
             return products
@@ -977,7 +1057,7 @@ class GcsStorageManager:
         if not self.mock_mode and self._bucket:
             try:
                 prefix = f"projects/{project_id}/saved_reference_sheets/"
-                blobs = self._bucket.list_blobs(prefix=prefix)
+                blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
                 for blob in blobs:
                     name = os.path.basename(blob.name)
                     if name and name not in seen_names:
@@ -990,8 +1070,8 @@ class GcsStorageManager:
                                 "gcs_uri": self.get_gcs_uri(blob.name),
                             }
                         )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("list_project_reference_sheets failed on prefix %s: %s", prefix, exc)
 
         if sheets:
             return sheets
@@ -1013,23 +1093,25 @@ class GcsStorageManager:
                     prefixes.append(f"sessions/{session_id}/characters/")
 
                 for prefix in prefixes:
-                    blobs = self._bucket.list_blobs(prefix=prefix)
+                    blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
                     for blob in blobs:
                         if blob.name.endswith(".json") and not blob.name.endswith("roster.json"):
                             try:
-                                data = json.loads(blob.download_as_text())
+                                data = json.loads(blob.download_as_text(timeout=self.timeout))
                                 if isinstance(data, dict):
                                     slug = self._slugify(str(data.get("name", "")))
                                     if slug not in seen_slugs:
                                         seen_slugs.add(slug)
                                         characters.append(data)
                                         self._mock_characters[slug] = data
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.warning(
+                                    "Failed to load character blob %s: %s", blob.name, exc
+                                )
                 if characters:
                     return characters
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("list_characters failed: %s", exc)
 
         return list(self._mock_characters.values())
 
@@ -1050,13 +1132,13 @@ class GcsStorageManager:
 
                 for blob_path in paths_to_try:
                     blob = self._bucket.blob(blob_path)
-                    if blob.exists():
-                        data = json.loads(blob.download_as_text())
+                    if blob.exists(timeout=self.timeout):
+                        data = json.loads(blob.download_as_text(timeout=self.timeout))
                         if isinstance(data, dict):
                             self._mock_characters[clean_slug] = data
                             return data
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("load_character failed for %s: %s", clean_slug, exc)
 
         if slug in self._mock_characters:
             return self._mock_characters[slug]
@@ -1098,13 +1180,13 @@ class GcsStorageManager:
             try:
                 blob_path = f"sessions/{session_id}/characters/roster.json"
                 blob = self._bucket.blob(blob_path)
-                if blob.exists():
-                    data = json.loads(blob.download_as_text())
+                if blob.exists(timeout=self.timeout):
+                    data = json.loads(blob.download_as_text(timeout=self.timeout))
                     if isinstance(data, list):
                         self._mock_rosters[session_id] = data
                         return data
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("load_session_roster failed for %s: %s", session_id, exc)
 
         return self._mock_rosters.get(session_id)
 
@@ -1115,7 +1197,9 @@ class GcsStorageManager:
             return default_sessions
 
         try:
-            blobs = list(self._client.list_blobs(self.bucket_name, prefix="sessions/"))
+            blobs = list(
+                self._client.list_blobs(self.bucket_name, prefix="sessions/", timeout=self.timeout)
+            )
             session_latest: dict[str, Any] = {}
             for b in blobs:
                 parts = b.name.removeprefix("sessions/").split("/")
@@ -1137,7 +1221,8 @@ class GcsStorageManager:
                 )
                 return sorted_sessions
             return default_sessions
-        except Exception:
+        except Exception as exc:
+            logger.warning("list_session_ids failed: %s", exc)
             return default_sessions
 
     def _extract_storyboard_metadata(
@@ -1201,11 +1286,11 @@ class GcsStorageManager:
                 prefixes.append("library/storyboards/")
 
                 for prefix in prefixes:
-                    blobs = self._bucket.list_blobs(prefix=prefix)
+                    blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
                     for blob in blobs:
                         if blob.name.endswith(".json"):
                             try:
-                                data = json.loads(blob.download_as_text())
+                                data = json.loads(blob.download_as_text(timeout=self.timeout))
                                 if isinstance(data, dict):
                                     slug = str(
                                         data.get("slug", "")
@@ -1218,12 +1303,14 @@ class GcsStorageManager:
                                         )
                                         storyboards.append(meta)
                                         self._mock_storyboards[slug] = data
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.warning(
+                                    "Failed to load storyboard blob %s: %s", blob.name, exc
+                                )
                 if storyboards:
                     return storyboards
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("list_storyboards failed: %s", exc)
 
         return [
             self._extract_storyboard_metadata(data, fallback_slug=slug)
@@ -1247,13 +1334,13 @@ class GcsStorageManager:
 
                 for blob_path in paths_to_try:
                     blob = self._bucket.blob(blob_path)
-                    if blob.exists():
-                        data = json.loads(blob.download_as_text())
+                    if blob.exists(timeout=self.timeout):
+                        data = json.loads(blob.download_as_text(timeout=self.timeout))
                         if isinstance(data, dict):
                             self._mock_storyboards[clean_slug] = data
                             return data
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("load_storyboard failed for %s: %s", clean_slug, exc)
 
         if slug in self._mock_storyboards:
             return self._mock_storyboards[slug]
@@ -1284,12 +1371,12 @@ class GcsStorageManager:
 
                 for blob_path in paths_to_try:
                     blob = self._bucket.blob(blob_path)
-                    if blob.exists():
-                        blob.delete()
+                    if blob.exists(timeout=self.timeout):
+                        blob.delete(timeout=self.timeout)
                         deleted = True
                         break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("delete_storyboard failed for %s: %s", clean_slug, exc)
 
         deleted_from_mock = False
         if slug in self._mock_storyboards:

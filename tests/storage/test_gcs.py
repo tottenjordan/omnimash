@@ -386,7 +386,7 @@ def test_list_project_characters_with_legacy_fallback():
         {"name": "Villain", "role_id": "Role B"}
     )
 
-    def mock_list_blobs(prefix=""):
+    def mock_list_blobs(prefix="", **kwargs):
         if prefix == "projects/p1/saved_characters/":
             return [blob_saved]
         elif prefix == "projects/p1/sessions/":
@@ -432,3 +432,111 @@ def test_get_session_manifest_reads_from_gcs_bucket_when_not_cached():
     assert loaded is not None
     assert loaded["session_id"] == "cold_start_sess"
     assert "t1" in loaded["turns"]
+
+
+def test_gcs_lazy_client_initialization_does_not_call_storage_client_on_init():
+    from unittest.mock import patch
+
+    with patch("omnimash.storage.gcs.storage") as mock_storage:
+        mgr = GcsStorageManager(bucket_name="lazy-bucket", mock_mode=False)
+        mock_storage.Client.assert_not_called()
+        client = mgr.client
+        assert client is not None
+        mock_storage.Client.assert_called_once()
+
+
+def test_gcs_shared_clients_thread_safety():
+    import threading
+    from unittest.mock import patch
+
+    with patch("omnimash.storage.gcs.storage") as mock_storage:
+        mock_storage.Client.side_effect = lambda project=None: object()
+        # Clear shared clients cache for clean test
+        GcsStorageManager._SHARED_CLIENTS.clear()
+        instances = [
+            GcsStorageManager(project_id="test-thread-safety-proj", mock_mode=False)
+            for _ in range(10)
+        ]
+        results = []
+
+        def worker(mgr):
+            results.append(mgr.client)
+
+        threads = [threading.Thread(target=worker, args=(mgr,)) for mgr in instances]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert mock_storage.Client.call_count == 1
+        assert len(results) == 10
+        assert all(c is results[0] for c in results)
+
+
+def test_save_character_sheet_blocks_ssrf_urls():
+    from unittest.mock import patch
+
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=False)
+    disallowed_urls = [
+        "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+        "http://localhost:8080/admin",
+        "http://metadata.google.internal/computeMetadata/v1/",
+    ]
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        for url in disallowed_urls:
+            pub_url, gcs_uri = storage.save_character_sheet(
+                image_data=url, custom_name="test-char", session_id="s1"
+            )
+            assert "s1/character_sheets/test_char.png" in gcs_uri
+        # Ensure urllib.request.urlopen was NEVER called with malicious URLs
+        mock_urlopen.assert_not_called()
+
+
+def test_save_final_master_blocks_path_traversal():
+    from unittest.mock import MagicMock
+
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=False)
+    mock_bucket = MagicMock()
+    storage._bucket = mock_bucket
+
+    # Path traversal attempting to read /etc/passwd or escape static
+    pub_url, gcs_uri = storage.save_final_master(
+        session_id="s1",
+        source_rel_path="/static/../../etc/passwd",
+        master_title="pwned",
+    )
+    assert "s1/final_masters/pwned.mp4" in gcs_uri
+    # upload_from_filename should NOT be called with an unconfined path
+    mock_blob = mock_bucket.blob.return_value
+    mock_blob.upload_from_filename.assert_not_called()
+
+
+def test_download_blob_bytes_unquotes_proxy_uri():
+    storage = GcsStorageManager(bucket_name="test-bucket", mock_mode=True)
+    encoded_uri = "gs%3A%2F%2Ftest-bucket%2Fsessions%2Fs1%2Fclip.mp4"
+    proxy_url = f"/api/media-proxy?uri={encoded_uri}"
+    # In mock mode, should parse gs:// URI correctly and return mock bytes
+    bytes_data, mime = storage.download_blob_bytes(proxy_url)
+    assert bytes_data == b"mock_image_bytes"
+
+
+def test_gcs_operations_pass_timeout_and_log_warnings(caplog):
+    import logging
+    from unittest.mock import MagicMock, patch
+
+    with patch("omnimash.storage.gcs.storage") as mock_storage:
+        mock_client = MagicMock()
+        mock_bucket = MagicMock()
+        mock_blob = MagicMock()
+        mock_client.bucket.return_value = mock_bucket
+        mock_bucket.blob.return_value = mock_blob
+        mock_blob.upload_from_string.side_effect = RuntimeError("GCS upload simulated error")
+        mock_storage.Client.return_value = mock_client
+
+        mgr = GcsStorageManager(bucket_name="test-timeout-bucket", mock_mode=False)
+        with caplog.at_level(logging.WARNING):
+            mgr.upload_bytes(b"data", "test/path.json", content_type="application/json")
+            mock_blob.upload_from_string.assert_called_once_with(
+                b"data", content_type="application/json", timeout=30.0
+            )
+            assert "upload_bytes failed on test/path.json" in caplog.text
