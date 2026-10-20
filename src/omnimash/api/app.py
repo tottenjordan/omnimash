@@ -2,19 +2,18 @@ from contextlib import asynccontextmanager
 import logging
 import os
 import re
-import uuid
-from typing import Annotated, Any
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from typing import Any
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from omnimash.agent.adk_pipeline import deconstruct_screenplay_with_adk
 from omnimash.agent.orchestrator import OmniMashAgent
 from omnimash.api.deps import AgentDep
+from omnimash.api.routers import media as media_router
+from omnimash.api.routers import storyboard as storyboard_router
 from omnimash.api.helpers import (
     clean_text,
     extract_reference_urls,
     normalize_character_roles,
-    parse_shot_directive_if_needed,
     stitch_and_upload_master,
 )
 from omnimash.api.models import (
@@ -27,32 +26,19 @@ from omnimash.api.models import (
     CreateSessionRequest,
     CreateSessionResponse,
     DeconstructResponse,
-    DeleteStoryboardRequest,
-    DraftBatchItem,
-    DraftBatchRequest,
-    DraftBatchResponse,
-    DraftBatchShotItem,
     ExtendSceneRequest,
-    ExtractReferenceRequest,
     GenerateCharacterSheetRequest,
     GenerateCharacterSheetResponse,
     GenerateRequest,
     GenerateResponse,
     GenerateShotRequest,
-    GenerateShotResponse,
     Journey3KeyframePromptEditRequest,
     Journey3SetupRequest,
     Journey3ShotGenerateRequest,
     Journey3StitchMasterRequest,
-    KeyframeImageRequest,
-    KeyframeImageResponse,
     LoadCharacterRequest,
-    LoadStoryboardRequest,
-    MotionReferenceRequest,
-    MotionReferenceResponse,
     ProjectListResponse,
     ReferenceSheetListResponse,
-    ResearchRequest,
     SaveCharacterRequest,
     SaveCharacterResponse,
     SaveCharacterSheetRequest,
@@ -60,22 +46,10 @@ from omnimash.api.models import (
     SaveFinalRequest,
     SaveFinalResponse,
     SaveRosterRequest,
-    SaveStoryboardRequest,
-    SaveStoryboardResponse,
     SessionListResponse,
-    StitchClipsRequest,
     StitchMasterRequest,
-    StoryboardExpandRequest,
-    StoryboardExpandResponse,
-    StoryboardListResponse,
-    StoryboardMetadataModel,
-    StoryboardShotModel,
 )
 from omnimash.engine.omni_client import parse_guardrail_error_guidance
-from omnimash.ingestion.media_extractor import (
-    ParodyResearchResult,
-    ReferenceAnalysisReport,
-)
 from omnimash.prompts.compiler import (
     CharacterRole,
     SceneDirective,
@@ -99,6 +73,14 @@ def get_ui_html() -> str:
 
 
 UI_HTML = get_ui_html()
+
+__all__ = [
+    "UI_HTML",
+    "GenerateRequest",
+    "GenerateShotRequest",
+    "StitchMasterRequest",
+    "create_app",
+]
 
 
 @asynccontextmanager
@@ -126,6 +108,9 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     static_dir = os.path.join(os.getcwd(), "static")
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    app.include_router(media_router.router)
+    app.include_router(storyboard_router.router)
 
     @app.get("/", response_class=HTMLResponse)
     def get_dashboard() -> HTMLResponse:
@@ -328,317 +313,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             video_url=pub_url,
             message=f"Final master successfully saved to {gcs_uri}",
         )
-
-    @app.post("/api/upload")
-    async def upload_media_file(file: Annotated[UploadFile, File()], agent: AgentDep):
-        """Uploads a local media file (audio MP3, WAV, image, etc.) to storage and returns accessible URL."""
-        try:
-            max_upload_bytes = 50 * 1024 * 1024
-            content = await file.read(max_upload_bytes + 1)
-            if len(content) > max_upload_bytes:
-                return JSONResponse(
-                    status_code=413,
-                    content={
-                        "success": False,
-                        "error": "File exceeds maximum upload size of 50MB",
-                    },
-                )
-            ext = os.path.splitext(file.filename or "file")[1] or ".bin"
-            filename = f"upload_{uuid.uuid4().hex[:8]}{ext}"
-
-            if agent.storage._bucket and not agent.storage.mock_mode:
-                gcs_uri = agent.storage.upload_bytes(
-                    content,
-                    f"uploads/{filename}",
-                    content_type=file.content_type or "application/octet-stream",
-                )
-                return {"success": True, "url": gcs_uri, "filename": file.filename}
-            else:
-                local_dir = os.path.join(os.getcwd(), "static", "uploads")
-                os.makedirs(local_dir, exist_ok=True)
-                local_path = os.path.join(local_dir, filename)
-                with open(local_path, "wb") as f:
-                    f.write(content)
-                return {
-                    "success": True,
-                    "url": f"/static/uploads/{filename}",
-                    "filename": file.filename,
-                }
-        except Exception as exc:
-            logger.error("File upload failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
-
-    @app.post("/api/motion-reference/upload", response_model=MotionReferenceResponse)
-    def upload_motion_reference(
-        req: MotionReferenceRequest, agent: AgentDep
-    ) -> MotionReferenceResponse:
-        """Crops a 3-second motion reference clip from input_video_path starting at start_sec."""
-        raw_path = (req.input_video_path or "").strip()
-        if not raw_path:
-            raise HTTPException(status_code=400, detail="Missing input_video_path")
-        if not (
-            raw_path.startswith("gs://") or raw_path.startswith("https://storage.googleapis.com/")
-        ):
-            import tempfile
-
-            normalized_rel = raw_path.lstrip("/") if raw_path.startswith("/static/") else raw_path
-            real_target = os.path.realpath(normalized_rel)
-            allowed_roots = (
-                os.path.realpath("static"),
-                os.path.realpath("/tmp"),
-                os.path.realpath(tempfile.gettempdir()),
-            )
-            if not any(
-                real_target == root or real_target.startswith(root + os.sep)
-                for root in allowed_roots
-            ):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid input_video_path: must reside within static/ or /tmp/ directory",
-                )
-        try:
-            clip_path = agent.media_extractor.crop_3s_motion_reference(
-                input_video_path=req.input_video_path,
-                start_sec=req.start_sec,
-            )
-            return MotionReferenceResponse(
-                success=True,
-                clip_path=clip_path,
-                message="Motion reference clip cropped successfully",
-            )
-        except Exception as exc:
-            logger.error("Motion reference cropping failed: %s", exc)
-            raise HTTPException(status_code=500, detail=str(exc))
-
-    @app.post("/api/storyboard/expand", response_model=StoryboardExpandResponse)
-    def expand_storyboard(req: StoryboardExpandRequest) -> StoryboardExpandResponse:
-        char_objs = normalize_character_roles(req.characters, sanitize=False)
-        shots = deconstruct_screenplay_with_adk(
-            concept=req.concept,
-            style_tone=req.style_tone,
-            target_duration=req.target_duration,
-            characters=char_objs if char_objs else None,
-            screenplay_script=req.screenplay_script,
-            mock_mode=is_mock,
-        )
-        return StoryboardExpandResponse(
-            shots=[
-                StoryboardShotModel(
-                    shot_index=s.shot_index,
-                    duration_seconds=s.duration_seconds,
-                    action=s.action,
-                    location=s.location,
-                    style_lighting=s.style_lighting,
-                    framing_motion=s.framing_motion,
-                    audio=s.audio,
-                    dialogue=getattr(s, "dialogue", ""),
-                    summary=s.summary,
-                    keyframe_image_url=getattr(s, "keyframe_image_url", ""),
-                    video_url=getattr(s, "video_url", ""),
-                    narrative_stage=getattr(s, "narrative_stage", "Rising Action"),
-                    preceding_context=getattr(s, "preceding_context", ""),
-                    camera_transition=getattr(s, "camera_transition", "Continuous match cut"),
-                    character_continuity=getattr(
-                        s,
-                        "character_continuity",
-                        "Maintain subject outfit, posture, and facial expression from preceding shot",
-                    ),
-                )
-                for s in shots
-            ]
-        )
-
-    @app.post("/api/storyboard/keyframe-image", response_model=KeyframeImageResponse)
-    def generate_keyframe_image(
-        req: KeyframeImageRequest, agent: AgentDep
-    ) -> KeyframeImageResponse:
-        if req.image_prompt and req.image_prompt.strip():
-            prompt = req.image_prompt.strip()
-        else:
-            prompt_parts = [p for p in [req.action, req.location] if p]
-            prompt = (
-                ", ".join(prompt_parts)
-                if prompt_parts
-                else (req.summary or f"Shot {req.shot_index}")
-            )
-        ref_urls: list[str] = list(req.reference_image_urls or [])
-        for ref in extract_reference_urls(req.characters):
-            if ref not in ref_urls:
-                ref_urls.append(ref)
-
-        image_url = agent.omni_client.generate_keyframe_image(
-            prompt,
-            style_tone=req.style_lighting,
-            reference_image_urls=ref_urls,
-            characters=req.characters,
-            anchor_keyframe_url=req.anchor_keyframe_url,
-            aspect_ratio=req.aspect_ratio,
-        )
-        return KeyframeImageResponse(success=True, keyframe_image_url=image_url)
-
-    @app.post("/api/generate-shot", response_model=GenerateShotResponse)
-    def generate_shot(req: GenerateShotRequest, agent: AgentDep) -> GenerateShotResponse:
-        sanitized_directive = (
-            sanitize_real_names(req.shot_directive)
-            if (req.shot_directive and req.enable_safety_sanitization)
-            else (req.shot_directive or "")
-        )
-        keyframe_url = req.keyframe_image_url
-
-        (
-            action_val,
-            dialogue_val,
-            audio_val,
-            location_val,
-            style_lighting_val,
-            framing_motion_val,
-        ) = parse_shot_directive_if_needed(req)
-        audio_stem_val = audio_val or req.audio_stem
-
-        char_objs = normalize_character_roles(
-            req.characters, sanitize=req.enable_safety_sanitization
-        )
-        ref_urls = extract_reference_urls(req.characters)
-
-        if req.last_frame_image_url and req.last_frame_image_url.strip():
-            has_last = any(
-                c.image_role in ("Ending Frame", "Keyframe Last Anchor") for c in char_objs
-            )
-            if not has_last:
-                char_objs.append(
-                    CharacterRole(
-                        role_id="Ending Frame",
-                        name="Ending Frame Anchor",
-                        description="Ending Frame Anchor concept image",
-                        reference_url=req.last_frame_image_url.strip(),
-                        image_role="Ending Frame",
-                    )
-                )
-
-        active_roles: list[str] = []
-        if char_objs:
-            active_roles = [c.role_id or c.name for c in char_objs if c.role_id or c.name]
-        if not active_roles:
-            active_roles = ["Role A"]
-
-        scene_directive = SceneDirective(
-            scene_number=req.shot_index,
-            active_roles=active_roles,
-            action=action_val,
-            dialogue=dialogue_val,
-            duration_seconds=req.duration_seconds,
-        )
-
-        aesthetic_tags = [
-            t
-            for t in [style_lighting_val or req.style_lighting, framing_motion_val]
-            if t and t.strip()
-        ]
-
-        if not keyframe_url and (action_val or sanitized_directive):
-            try:
-                keyframe_url = agent.omni_client.generate_keyframe_image(
-                    action_val or sanitized_directive,
-                    style_tone=req.style_lighting or style_lighting_val,
-                    reference_image_urls=ref_urls,
-                    characters=req.characters,
-                    aspect_ratio=req.aspect_ratio,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Auto keyframe image generation before video generation failed: %s",
-                    exc,
-                )
-
-        compiled_prompt = agent.taxonomy.compiler.compile_storyboard(
-            concept=action_val,
-            characters=char_objs,
-            scenes=[scene_directive],
-            aesthetic_tags=aesthetic_tags if aesthetic_tags else None,
-            environment_tag=location_val if location_val.strip() else None,
-            audio_beat=audio_stem_val,
-            has_keyframe_seed=bool(keyframe_url),
-            keyframe_image_url=keyframe_url,
-            last_frame_image_url=req.last_frame_image_url,
-            enable_sanitization=req.enable_safety_sanitization,
-            aspect_ratio=req.aspect_ratio,
-            style_preset=req.style_lighting or style_lighting_val,
-            is_seamless_loop=req.is_seamless_loop,
-        )
-
-        agent_turn = agent.process_user_turn(
-            user_id="usr_default",
-            project_id="prj_default",
-            prompt=action_val or sanitized_directive,
-            compiled_override=compiled_prompt,
-            parent_turn_id=req.parent_turn_id,
-            clip_index=req.shot_index,
-            duration_seconds=req.duration_seconds,
-            is_conversational_edit=False,
-            session_name=req.session_name,
-            characters=req.characters,
-            scenes=[scene_directive],
-            keyframe_image_url=keyframe_url,
-            voiceover=dialogue_val if dialogue_val else None,
-            audio_stem=audio_stem_val,
-            enable_sanitization=req.enable_safety_sanitization,
-            aspect_ratio=req.aspect_ratio,
-            resolution=req.resolution,
-            motion_reference_clip=req.motion_reference_clip,
-        )
-        return GenerateShotResponse(
-            success=agent_turn.success,
-            video_url=agent_turn.video_url,
-            keyframe_image_url=keyframe_url,
-            turn_id=agent_turn.turn_id,
-            status=agent_turn.status_event,
-            generation_mode=getattr(agent_turn, "generation_mode", "LIVE_OMNI_FLASH"),
-            error=agent_turn.error_message,
-            raw_compiled_prompt=agent_turn.raw_compiled_prompt or compiled_prompt,
-        )
-
-    @app.post("/api/stitch-clips", response_model=SaveFinalResponse)
-    def stitch_clips(req: StitchClipsRequest, agent: AgentDep) -> SaveFinalResponse:
-        if not req.clip_urls:
-            raise HTTPException(
-                status_code=400,
-                detail="At least one clip URL is required for stitching.",
-            )
-        stitched_path = agent.stitcher.concatenate_clips(req.clip_urls, session_id=req.session_name)
-        try:
-            _pub_url, gcs_uri = agent.storage.save_final_master(
-                session_id=req.session_name,
-                source_rel_path=stitched_path,
-                master_title=req.master_title,
-            )
-        finally:
-            if stitched_path.startswith("/tmp/") and os.path.exists(stitched_path):
-                try:
-                    os.remove(stitched_path)
-                except OSError:
-                    pass
-        return SaveFinalResponse(
-            success=True,
-            gcs_uri=gcs_uri,
-            message=f"Custom stitched master successfully saved to {gcs_uri}",
-        )
-
-    @app.post("/api/storyboard/stitch_master")
-    def stitch_storyboard_master(req: StitchMasterRequest, agent: AgentDep) -> dict[str, Any]:
-        master_path, master_url = stitch_and_upload_master(
-            agent=agent,
-            shot_clips=req.shot_clips,
-            title_cards=req.title_cards,
-            narrator_audio_paths=req.narrator_audio_paths,
-            background_music_path=req.background_music_path,
-            session_id=req.session_id,
-            aspect_ratio=req.aspect_ratio,
-        )
-        return {
-            "status": "ok",
-            "master_video_path": master_path,
-            "master_video_url": master_url,
-        }
 
     @app.post("/api/journey3/setup")
     def journey3_setup(req: Journey3SetupRequest, agent: AgentDep) -> dict[str, Any]:
@@ -1030,54 +704,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             "master_video_url": master_url,
         }
 
-    @app.post("/api/storyboard/draft-batch", response_model=DraftBatchResponse)
-    def generate_draft_batch(req: DraftBatchRequest, agent: AgentDep) -> DraftBatchResponse:
-        from concurrent.futures import ThreadPoolExecutor
-
-        session_name = req.session_name or "draft_batch_session"
-        tasks: list[tuple[DraftBatchShotItem, int]] = [
-            (shot, var_idx) for shot in req.shots for var_idx in range(req.variations_per_shot)
-        ]
-
-        def _run_draft(item: tuple[DraftBatchShotItem, int]) -> DraftBatchItem:
-            shot, var_idx = item
-            directive = shot.action
-            if shot.style_lighting:
-                directive = f"{directive}, style: {shot.style_lighting}"
-            turn = agent.process_user_turn(
-                user_id="usr_default",
-                project_id="prj_draft_room",
-                prompt=directive,
-                keyframe_image_url=shot.keyframe_image_url,
-                audio_stem=shot.audio,
-                resolution=req.resolution or "360p",
-                aspect_ratio=req.aspect_ratio,
-                clip_index=shot.shot_index,
-                session_name=session_name,
-            )
-            return DraftBatchItem(
-                shot_index=shot.shot_index,
-                variation_index=var_idx,
-                action=shot.action,
-                resolution=req.resolution or "360p",
-                status="COMPLETED" if turn.success else "FAILED",
-                video_url=turn.video_url,
-                gcs_uri=getattr(turn, "gcs_uri", None),
-                turn_id=turn.turn_id,
-                keyframe_image_url=shot.keyframe_image_url,
-            )
-
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            drafts = list(executor.map(_run_draft, tasks))
-
-        return DraftBatchResponse(
-            success=True,
-            session_name=session_name,
-            resolution=req.resolution or "360p",
-            total_drafts=len(drafts),
-            drafts=drafts,
-        )
-
     @app.post("/api/extend-scene", response_model=GenerateResponse)
     def extend_scene(req: ExtendSceneRequest, agent: AgentDep) -> GenerateResponse:
         agent_turn = agent.extend_scene(
@@ -1099,16 +725,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
             generation_mode=agent_turn.generation_mode,
             raw_compiled_prompt=agent_turn.raw_compiled_prompt,
             reference_analysis=agent_turn.reference_analysis,
-        )
-
-    @app.post("/api/research", response_model=ParodyResearchResult)
-    def research_parody(req: ResearchRequest, agent: AgentDep) -> ParodyResearchResult:
-        return agent.media_extractor.research_parody_clash(req.subject, req.aesthetic)
-
-    @app.post("/api/extract-reference", response_model=ReferenceAnalysisReport)
-    def extract_reference(req: ExtractReferenceRequest, agent: AgentDep) -> ReferenceAnalysisReport:
-        return agent.media_extractor.analyze_youtube_reference(
-            req.url, session_id=req.session_name or "default"
         )
 
     @app.post("/api/characters/save", response_model=SaveCharacterResponse)
@@ -1212,140 +828,6 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
         raw_roster = agent.storage.load_session_roster(session_name)
         characters = [CharacterRoleModel.from_storage_dict(c) for c in (raw_roster or [])]
         return CharacterListResponse(characters=characters)
-
-    @app.post("/api/storyboards/save", response_model=SaveStoryboardResponse)
-    def save_storyboard(req: SaveStoryboardRequest, agent: AgentDep) -> SaveStoryboardResponse:
-        _pub_url, gcs_uri = agent.storage.save_storyboard(
-            req.name,
-            req.storyboard_data,
-            session_id=req.session_name,
-        )
-        return SaveStoryboardResponse(
-            success=True,
-            gcs_uri=gcs_uri,
-            message=f"Storyboard saved successfully to {gcs_uri}",
-        )
-
-    @app.get("/api/storyboards", response_model=StoryboardListResponse)
-    def list_storyboards(
-        agent: AgentDep, session_name: str | None = None
-    ) -> StoryboardListResponse:
-        raw_storyboards = agent.storage.list_storyboards(session_id=session_name)
-        storyboards = [
-            StoryboardMetadataModel(
-                name=sb.get("name", ""),
-                slug=sb.get("slug", ""),
-                concept=sb.get("concept", ""),
-                shot_count=sb.get("shot_count", 0),
-                updated_at=sb.get("updated_at", ""),
-            )
-            for sb in (raw_storyboards or [])
-        ]
-        return StoryboardListResponse(storyboards=storyboards)
-
-    @app.post("/api/storyboards/load", response_model=dict[str, Any])
-    def load_storyboard(req: LoadStoryboardRequest, agent: AgentDep) -> dict[str, Any]:
-        storyboard_data = agent.storage.load_storyboard(req.slug, session_id=req.session_name)
-        if storyboard_data is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Storyboard '{req.slug}' not found",
-            )
-        return storyboard_data
-
-    @app.post("/api/storyboards/delete", response_model=dict[str, Any])
-    def delete_storyboard(req: DeleteStoryboardRequest, agent: AgentDep) -> dict[str, Any]:
-        deleted = agent.storage.delete_storyboard(req.slug, session_id=req.session_name)
-        message = (
-            f"Storyboard '{req.slug}' deleted successfully"
-            if deleted
-            else f"Storyboard '{req.slug}' not found"
-        )
-        return {"success": deleted, "message": message}
-
-    @app.get("/api/media-proxy")
-    def media_proxy(uri: str, request: Request, agent: AgentDep) -> Response:
-        if not uri:
-            raise HTTPException(status_code=400, detail="Missing URI parameter")
-
-        if uri.startswith("https://storage.googleapis.com/"):
-            parts = uri.replace("https://storage.googleapis.com/", "").split("/", 1)
-            if len(parts) == 2:
-                uri = f"gs://{parts[0]}/{parts[1]}"
-        elif uri.startswith("https://storage.cloud.google.com/"):
-            parts = uri.replace("https://storage.cloud.google.com/", "").split("/", 1)
-            if len(parts) == 2:
-                uri = f"gs://{parts[0]}/{parts[1]}"
-
-        if not uri.startswith("gs://"):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid GCS URI. Must start with gs:// or https://storage.googleapis.com/",
-            )
-        gcs_path = uri[5:]
-        if "/" in gcs_path:
-            from omnimash.config import settings
-
-            req_bucket = gcs_path.split("/", 1)[0]
-            allowed_buckets = {
-                agent.storage.bucket_name,
-                settings.gcs_bucket_name,
-                "reference-images-jt-trend-trawler",
-                "omnimash-media-hybrid-vertex",
-                "test-omnimash-bucket",
-                "bucket",
-            }
-            if req_bucket not in allowed_buckets:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Access to GCS bucket '{req_bucket}' is not permitted",
-                )
-        data, content_type = agent.storage.download_blob_bytes(uri)
-        if not data:
-            raise HTTPException(
-                status_code=404,
-                detail="Media object not found or empty",
-            )
-        total_len = len(data)
-        range_header = (
-            request.headers.get("range") if request and hasattr(request, "headers") else None
-        )
-        if range_header and range_header.strip().lower().startswith("bytes="):
-            range_spec = range_header.strip()[6:].split(",")[0].strip()
-            if "-" in range_spec:
-                start_str, end_str = range_spec.split("-", 1)
-                try:
-                    if start_str == "":
-                        suffix_len = int(end_str)
-                        start = max(0, total_len - suffix_len)
-                        end = total_len - 1
-                    else:
-                        start = int(start_str)
-                        end = int(end_str) if end_str else total_len - 1
-                    if 0 <= start <= end < total_len:
-                        chunk = data[start : end + 1]
-                        return Response(
-                            content=chunk,
-                            status_code=206,
-                            media_type=content_type,
-                            headers={
-                                "Cache-Control": "public, max-age=86400",
-                                "Accept-Ranges": "bytes",
-                                "Content-Range": f"bytes {start}-{end}/{total_len}",
-                                "Content-Length": str(len(chunk)),
-                            },
-                        )
-                except ValueError:
-                    pass
-        return Response(
-            content=data,
-            media_type=content_type,
-            headers={
-                "Cache-Control": "public, max-age=86400",
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(total_len),
-            },
-        )
 
     @app.post(
         "/api/characters/generate-sheet",
