@@ -90,12 +90,13 @@ def resolve_media_source_to_local_path(
                     with open(tmp_p, "wb") as f:
                         f.write(data)
                     return tmp_p
-            # Support mock bucket in unit tests
-            if getattr(storage, "_bucket", None) is not None:
+            # Support bucket / mock bucket in storage manager
+            bucket = getattr(storage, "bucket", None) or getattr(storage, "_bucket", None)
+            if bucket is not None:
                 bucket_name = getattr(storage, "bucket_name", "")
                 blob_name = raw.replace(f"gs://{bucket_name}/", "").lstrip("/")
                 tmp_p = os.path.join(temp_dir, f"clip_{uuid.uuid4().hex[:6]}.mp4")
-                blob = storage._bucket.blob(blob_name)
+                blob = bucket.blob(blob_name)
                 if hasattr(blob, "download_to_filename"):
                     blob.download_to_filename(tmp_p)
                 elif hasattr(blob, "download_as_bytes"):

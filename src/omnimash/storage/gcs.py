@@ -176,6 +176,64 @@ class GcsStorageManager:
         clean_blob = blob_name.lstrip("/")
         return f"gs://{self.bucket_name}/{clean_blob}"
 
+    def blob_exists(self, blob_path: str) -> bool:
+        """Returns True if the specified blob path exists in GCS."""
+        if self.mock_mode or not self._bucket:
+            return False
+        clean_path = (
+            self._normalize_media_source_path(blob_path)
+            .replace(f"gs://{self.bucket_name}/", "")
+            .lstrip("/")
+        )
+        try:
+            blob = self._bucket.blob(clean_path)
+            return bool(blob.exists(timeout=self.timeout))
+        except Exception as exc:
+            logger.warning("Failed to check existence for %s: %s", clean_path, exc)
+            return False
+
+    def get_blob_metadata(self, blob_path: str) -> dict[str, Any] | None:
+        """Retrieves blob metadata (size, content_type, updated) without downloading content."""
+        if self.mock_mode or not self._bucket:
+            return None
+        clean_path = (
+            self._normalize_media_source_path(blob_path)
+            .replace(f"gs://{self.bucket_name}/", "")
+            .lstrip("/")
+        )
+        try:
+            blob = self._bucket.get_blob(clean_path, timeout=self.timeout)
+            if not blob:
+                return None
+            return {
+                "name": blob.name,
+                "size": blob.size,
+                "content_type": blob.content_type,
+                "updated": blob.updated,
+                "metadata": blob.metadata or {},
+            }
+        except Exception as exc:
+            logger.warning("Failed to get blob metadata for %s: %s", clean_path, exc)
+            return None
+
+    def delete_blob(self, blob_path: str) -> bool:
+        """Deletes a blob from GCS if it exists."""
+        if self.mock_mode or not self._bucket:
+            return True
+        clean_path = (
+            self._normalize_media_source_path(blob_path)
+            .replace(f"gs://{self.bucket_name}/", "")
+            .lstrip("/")
+        )
+        try:
+            blob = self._bucket.blob(clean_path)
+            if blob.exists(timeout=self.timeout):
+                blob.delete(timeout=self.timeout)
+            return True
+        except Exception as exc:
+            logger.warning("Failed to delete blob %s: %s", clean_path, exc)
+            return False
+
     def build_session_blob_path(
         self,
         session_id: str | None,

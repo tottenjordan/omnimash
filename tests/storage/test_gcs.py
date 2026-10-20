@@ -590,3 +590,35 @@ def test_json_payload_helpers_and_mock_synchronization():
         mock_cache_key="s1:scene_1",
     )
     assert retrieved == payload
+
+
+def test_gcs_public_facade_methods():
+    from unittest.mock import MagicMock
+    from omnimash.storage.gcs import GcsStorageManager
+
+    storage = GcsStorageManager(bucket_name="test-facade", mock_mode=True)
+    assert storage.blob_exists("test/blob.mp4") is False
+    assert storage.get_blob_metadata("test/blob.mp4") is None
+    assert storage.delete_blob("test/blob.mp4") is True
+
+    storage_real = GcsStorageManager(bucket_name="test-facade", mock_mode=False)
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_blob.exists.return_value = True
+    mock_blob.size = 1024
+    mock_blob.content_type = "video/mp4"
+    mock_blob.name = "test/blob.mp4"
+    mock_blob.updated = "2026-10-20T00:00:00Z"
+    mock_blob.metadata = {"custom": "value"}
+    mock_bucket.blob.return_value = mock_blob
+    mock_bucket.get_blob.return_value = mock_blob
+    storage_real._bucket = mock_bucket
+
+    assert storage_real.blob_exists("test/blob.mp4") is True
+    metadata = storage_real.get_blob_metadata("test/blob.mp4")
+    assert metadata is not None
+    assert metadata["size"] == 1024
+    assert metadata["content_type"] == "video/mp4"
+
+    assert storage_real.delete_blob("test/blob.mp4") is True
+    mock_blob.delete.assert_called_once()
