@@ -122,12 +122,26 @@ def apply_dialogue_audio_ducking(
             output_path,
         ]
 
+        timeout_secs = float(getattr(settings, "ffmpeg_timeout_seconds", 120.0))
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_secs,
+            )
             if res.returncode != 0:
                 logger.warning("FFmpeg sidechain ducking failed: %s", res.stderr)
                 with open(output_path, "w") as f:
                     f.write("fallback ducked audio content")
+        except subprocess.TimeoutExpired as exc:
+            logger.warning(
+                "FFmpeg sidechain ducking timed out after %s seconds: %s",
+                timeout_secs,
+                exc,
+            )
+            with open(output_path, "w") as f:
+                f.write("fallback ducked audio content")
         except Exception as exc:
             logger.warning("Failed to execute FFmpeg dialogue audio ducking: %s", exc)
             with open(output_path, "w") as f:

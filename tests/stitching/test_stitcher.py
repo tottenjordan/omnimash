@@ -444,4 +444,53 @@ def test_concatenate_clips_path_traversal_blocked(tmp_path):
     assert "passwd" not in " ".join(cmd)
 
 
+def test_concatenate_clips_subprocess_timeout_handled(tmp_path):
+    import subprocess
+    import pytest
+
+    stitcher = VideoStitcher(mock_mode=False)
+    clip1 = tmp_path / "clip1.mp4"
+    clip1.write_bytes(b"dummy")
+
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=120.0)):
+        with pytest.raises(RuntimeError, match="timed out"):
+            stitcher.concatenate_clips([str(clip1)], output_dir=str(tmp_path))
+
+
+def test_concatenate_clips_reencode_failure_raises_runtime_error(tmp_path):
+    import pytest
+
+    stitcher = VideoStitcher(mock_mode=False)
+    clip1 = tmp_path / "clip1.mp4"
+    clip1.write_bytes(b"dummy")
+
+    fail_copy = MagicMock()
+    fail_copy.returncode = 1
+    fail_reencode = MagicMock()
+    fail_reencode.returncode = 1
+    fail_reencode.stderr = "Fatal re-encode error"
+
+    with patch("subprocess.run", side_effect=[fail_copy, fail_reencode]):
+        with pytest.raises(RuntimeError, match="FFmpeg re-encode failed"):
+            stitcher.concatenate_clips([str(clip1)], output_dir=str(tmp_path))
+
+
+def test_stitch_storyboard_master_handles_invalid_insert_at_gracefully(tmp_path):
+    stitcher = VideoStitcher(mock_mode=True)
+    shot_clips = ["/static/shot1.mp4"]
+    title_cards = [
+        {"insert_at": "not_an_int", "title": "Invalid Index Card"},
+    ]
+
+    with patch.object(stitcher.storage, "upload_file") as mock_upload:
+        mock_upload.return_value = "https://storage.googleapis.com/test/master.mp4"
+        out_path = stitcher.stitch_storyboard_master(
+            shot_clips=shot_clips,
+            title_cards=title_cards,
+            output_dir=str(tmp_path),
+        )
+        assert os.path.exists(out_path)
+
+
+
 

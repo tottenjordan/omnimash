@@ -350,3 +350,23 @@ def test_audio_overlay_path_traversal_blocked(tmp_path):
         cmd = captured_cmds[0]
         assert "etc/passwd" not in " ".join(cmd)
 
+
+def test_apply_dialogue_audio_ducking_timeout_handled(tmp_path):
+    import subprocess
+    from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
+
+    music_file = tmp_path / "music.mp3"
+    music_file.write_bytes(b"dummy")
+    dialogue_file = tmp_path / "dialogue.mp3"
+    dialogue_file.write_bytes(b"dummy")
+
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=120.0)):
+        out_path = apply_dialogue_audio_ducking(
+            music_path=str(music_file),
+            dialogue_path=str(dialogue_file),
+            output_dir=str(tmp_path),
+            mock_mode=False,
+        )
+        assert os.path.exists(out_path)
+
+
