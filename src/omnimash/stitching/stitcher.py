@@ -60,12 +60,14 @@ class VideoStitcher:
                 resolved_clips: list[str] = []
                 for clip in clip_paths:
                     norm_clip = self.storage._normalize_media_source_path(clip)
-                    if os.path.exists(norm_clip):
-                        resolved_clips.append(os.path.abspath(norm_clip))
-                    elif norm_clip.startswith("/static/"):
-                        loc = os.path.join(os.getcwd(), norm_clip.lstrip("/"))
-                        if os.path.exists(loc):
+                    if norm_clip.startswith("/static/"):
+                        from omnimash.engine.media_loader import validate_local_media_path
+
+                        loc = validate_local_media_path(norm_clip)
+                        if loc and os.path.exists(loc):
                             resolved_clips.append(loc)
+                    elif os.path.exists(norm_clip):
+                        resolved_clips.append(os.path.abspath(norm_clip))
                     elif (
                         not self.mock_mode
                         and self.storage._bucket
@@ -90,12 +92,14 @@ class VideoStitcher:
                 resolved_audio: str | None = None
                 if master_audio_path:
                     norm_audio = self.storage._normalize_media_source_path(master_audio_path)
-                    if os.path.exists(norm_audio):
-                        resolved_audio = os.path.abspath(norm_audio)
-                    elif norm_audio.startswith("/static/"):
-                        loc = os.path.join(os.getcwd(), norm_audio.lstrip("/"))
-                        if os.path.exists(loc):
+                    if norm_audio.startswith("/static/"):
+                        from omnimash.engine.media_loader import validate_local_media_path
+
+                        loc = validate_local_media_path(norm_audio)
+                        if loc and os.path.exists(loc):
                             resolved_audio = loc
+                    elif os.path.exists(norm_audio):
+                        resolved_audio = os.path.abspath(norm_audio)
                     elif (
                         not self.mock_mode
                         and self.storage._bucket
@@ -115,18 +119,36 @@ class VideoStitcher:
                         except Exception:
                             resolved_audio = norm_audio
                     elif norm_audio.startswith(("http://", "https://")):
-                        try:
-                            import urllib.request
+                        from omnimash.engine.media_loader import (
+                            fetch_media_bytes,
+                            validate_remote_media_url,
+                        )
 
-                            tmp_audio_path = os.path.join(
-                                output_dir, f"audio_{uuid.uuid4().hex[:6]}.mp3"
+                        if not validate_remote_media_url(norm_audio):
+                            logger.warning(
+                                "Blocked disallowed or private HTTP audio URL: %s",
+                                norm_audio,
                             )
-                            urllib.request.urlretrieve(norm_audio, tmp_audio_path)
-                            temp_cleanup_paths.append(tmp_audio_path)
-                            resolved_audio = tmp_audio_path
-                        except Exception as exc:
-                            logger.warning("Failed to download HTTP master audio URL: %s", exc)
-                            resolved_audio = norm_audio
+                            resolved_audio = None
+                        else:
+                            try:
+                                data, _ = fetch_media_bytes(norm_audio, storage=self.storage)
+                                if data:
+                                    tmp_audio_path = os.path.join(
+                                        output_dir, f"audio_{uuid.uuid4().hex[:6]}.mp3"
+                                    )
+                                    with open(tmp_audio_path, "wb") as f:
+                                        f.write(data)
+                                    temp_cleanup_paths.append(tmp_audio_path)
+                                    resolved_audio = tmp_audio_path
+                                else:
+                                    resolved_audio = None
+                            except Exception as exc:
+                                logger.warning(
+                                    "Failed to download HTTP master audio URL safely: %s",
+                                    exc,
+                                )
+                                resolved_audio = None
                     else:
                         resolved_audio = norm_audio
 

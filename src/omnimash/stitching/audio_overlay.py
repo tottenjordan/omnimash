@@ -61,11 +61,19 @@ def apply_dialogue_audio_ducking(
             except Exception:
                 pass
         if norm.startswith("/static/"):
-            static_loc = os.path.join(os.getcwd(), norm.lstrip("/"))
-            if os.path.exists(static_loc):
+            from omnimash.engine.media_loader import validate_local_media_path
+
+            static_loc = validate_local_media_path(norm)
+            if static_loc and os.path.exists(static_loc):
                 return static_loc
+            return ""
         if os.path.exists(norm):
-            return os.path.abspath(norm)
+            from omnimash.engine.media_loader import validate_local_media_path
+
+            confined_path = validate_local_media_path(norm)
+            if confined_path and os.path.exists(confined_path):
+                return os.path.abspath(confined_path)
+            return ""
         if norm.startswith(("gs://", "https://storage.googleapis.com/")):
             try:
                 from omnimash.storage.gcs import GcsStorageManager

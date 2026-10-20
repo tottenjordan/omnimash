@@ -382,3 +382,66 @@ def test_concatenate_clips_escapes_single_quotes_in_manifest(tmp_path):
     expected_escaped = os.path.abspath(str(clip_with_quote)).replace("'", "'\\''")
     assert captured_concat_lines == [f"file '{expected_escaped}'"]
 
+
+def test_concatenate_clips_ssrf_disallowed_url_blocked(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    clip1 = tmp_path / "clip1.mp4"
+    clip1.write_bytes(b"dummy clip")
+
+    captured_cmds = []
+
+    def fake_subproc(cmd, *args, **kwargs):
+        captured_cmds.append(cmd)
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        return mock_res
+
+    with (
+        patch("subprocess.run", side_effect=fake_subproc),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        # Metadata service URL must be blocked by SSRF check and not passed to ffmpeg
+        stitcher.concatenate_clips(
+            [str(clip1)],
+            output_dir=str(tmp_path),
+            master_audio_path="http://169.254.169.254/computeMetadata/v1/",
+        )
+
+    assert len(captured_cmds) == 1
+    # Master audio was blocked, so ffmpeg command shouldn't have -i <audio>
+    cmd = captured_cmds[0]
+    assert "169.254.169.254" not in " ".join(cmd)
+
+
+def test_concatenate_clips_path_traversal_blocked(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    valid_clip = tmp_path / "valid.mp4"
+    valid_clip.write_bytes(b"dummy clip content")
+
+    # Malicious static traversal path
+    malicious_path = "/static/../../etc/passwd"
+
+    captured_cmds = []
+
+    def fake_subproc(cmd, *args, **kwargs):
+        captured_cmds.append(cmd)
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        return mock_res
+
+    with (
+        patch("subprocess.run", side_effect=fake_subproc),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        stitcher.concatenate_clips(
+            [str(valid_clip)],
+            output_dir=str(tmp_path),
+            master_audio_path=malicious_path,
+        )
+
+    assert len(captured_cmds) == 1
+    cmd = captured_cmds[0]
+    assert "passwd" not in " ".join(cmd)
+
+
+
