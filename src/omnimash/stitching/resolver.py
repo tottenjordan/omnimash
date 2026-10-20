@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def resolve_media_source_to_local_path(
     source: str,
     temp_dir: str,
-    storage: Any,
+    storage: Any = None,
     mock_mode: bool = False,
 ) -> str | None:
     """Resolves local paths, /static/ paths, proxy URLs, GCS URIs, and remote URLs to a local file path.
@@ -71,6 +71,10 @@ def resolve_media_source_to_local_path(
                 f.write(b"mock gcs downloaded media")
             return mock_path
         try:
+            if storage is None:
+                from omnimash.storage.gcs import GcsStorageManager
+
+                storage = GcsStorageManager(mock_mode=mock_mode)
             data, _ = storage.download_blob_bytes(raw)
             if data:
                 ext = os.path.splitext(raw)[1] or ".bin"

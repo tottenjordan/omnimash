@@ -232,6 +232,8 @@ def test_apply_dialogue_audio_ducking_filter(tmp_path):
         filter_str = cmd[filter_idx + 1]
         assert "sidechaincompress" in filter_str
         assert "threshold=0.2512" in filter_str
+        assert "normalize=0" in filter_str
+        assert "dropout_transition=0" in filter_str
 
 
 def test_apply_dialogue_audio_ducking_custom_ducking_db(tmp_path):

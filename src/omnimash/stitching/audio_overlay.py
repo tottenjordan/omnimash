@@ -3,6 +3,11 @@ import os
 import subprocess
 import uuid
 
+from typing import Any
+
+from omnimash.config import settings
+from omnimash.stitching.resolver import resolve_media_source_to_local_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,8 +18,11 @@ def apply_dialogue_audio_ducking(
     output_dir: str = "/tmp",
     ducking_db: float = -12.0,
     mock_mode: bool | None = None,
+    storage: Any = None,
 ) -> str:
     """Apply FFmpeg sidechain compression filter to duck background music under dialogue audio (-12dB default).
+
+    Preserves speech dialogue volume at full loudness (0 dB) with normalize=0 while ducking background music.
 
     Args:
         music_path: File path to the background music audio.
@@ -27,8 +35,6 @@ def apply_dialogue_audio_ducking(
     Returns:
         Path to the output audio file with sidechain compression applied.
     """
-    from omnimash.config import settings
-
     if mock_mode is None:
         mock_mode = getattr(settings, "mock_mode", False)
 
@@ -48,62 +54,31 @@ def apply_dialogue_audio_ducking(
 
     temp_files: list[str] = []
 
-    def _resolve_audio_input(raw_path: str) -> str:
-        from urllib.parse import parse_qs, unquote, urlparse
-
-        norm = raw_path.strip()
-        if "/api/media-proxy" in norm and "uri=" in norm:
-            try:
-                parsed = urlparse(norm)
-                qs = parse_qs(parsed.query)
-                if "uri" in qs and qs["uri"]:
-                    norm = unquote(qs["uri"][0])
-            except Exception:
-                pass
-        if norm.startswith("/static/"):
-            from omnimash.engine.media_loader import validate_local_media_path
-
-            static_loc = validate_local_media_path(norm)
-            if static_loc and os.path.exists(static_loc):
-                return static_loc
-            return ""
-        if os.path.exists(norm):
-            from omnimash.engine.media_loader import validate_local_media_path
-
-            confined_path = validate_local_media_path(norm)
-            if confined_path and os.path.exists(confined_path):
-                return os.path.abspath(confined_path)
-            return ""
-        if norm.startswith(("gs://", "https://storage.googleapis.com/")):
-            try:
-                from omnimash.storage.gcs import GcsStorageManager
-
-                storage_mgr = GcsStorageManager(mock_mode=mock_mode)
-                data, _ = storage_mgr.download_blob_bytes(norm)
-                if data:
-                    ext = os.path.splitext(norm)[1] or ".mp3"
-                    tmp_p = os.path.join(output_dir, f"duck_in_{uuid.uuid4().hex[:8]}{ext}")
-                    with open(tmp_p, "wb") as tf:
-                        tf.write(data)
-                    temp_files.append(tmp_p)
-                    return tmp_p
-            except Exception:
-                pass
-        return norm
-
     try:
-        music_path = _resolve_audio_input(music_path)
-        dialogue_path = _resolve_audio_input(dialogue_path)
+        resolved_music = resolve_media_source_to_local_path(
+            music_path, temp_dir=output_dir, storage=storage, mock_mode=mock_mode
+        )
+        if resolved_music and resolved_music != music_path and os.path.dirname(resolved_music) == os.path.abspath(output_dir):
+            temp_files.append(resolved_music)
+        music_path = resolved_music or ""
+
+        resolved_dialogue = resolve_media_source_to_local_path(
+            dialogue_path, temp_dir=output_dir, storage=storage, mock_mode=mock_mode
+        )
+        if resolved_dialogue and resolved_dialogue != dialogue_path and os.path.dirname(resolved_dialogue) == os.path.abspath(output_dir):
+            temp_files.append(resolved_dialogue)
+        dialogue_path = resolved_dialogue or ""
 
         # Calculate compression threshold from ducking_db attenuation (-12dB default -> 0.2512 linear threshold)
         threshold = round(10.0 ** (-abs(ducking_db) / 20.0), 4)
 
         # FFmpeg sidechaincompress filter graph
         # [0:a] is background music, [1:a] is dialogue trigger signal
+        # amix normalize=0 preserves full dialogue loudness (0 dB)
         filter_complex = (
             f"[0:a][1:a]sidechaincompress="
             f"threshold={threshold}:ratio=4:attack=20:release=300[ducked];"
-            f"[ducked][1:a]amix=inputs=2:duration=first[aout]"
+            f"[ducked][1:a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
         )
 
         cmd = [
