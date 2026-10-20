@@ -130,6 +130,80 @@ def test_live_guardrail_exception_fail_closed():
     assert "Model Armor service unavailable" in (res.rejection_reason or "")
 
 
+def test_live_guardrail_invocation_failure_handling():
+    """Verify that InvocationResult.FAILURE is not silently approved (CORR-01)."""
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_sanitization = MagicMock()
+    mock_sanitization.invocation_result = modelarmor_v1.InvocationResult.FAILURE
+    mock_sanitization.filter_match_state = (
+        modelarmor_v1.FilterMatchState.FILTER_MATCH_STATE_UNSPECIFIED
+    )
+    mock_response.sanitization_result = mock_sanitization
+    mock_client.sanitize_user_prompt.return_value = mock_response
+
+    # Fail closed rejects with EXECUTION_ERROR
+    guardrail_closed = ModelArmorGuardrail(mock_mode=False, client=mock_client, fail_closed=True)
+    res_closed = guardrail_closed.validate_prompt("Any prompt during detector outage.")
+    assert res_closed.is_approved is False
+    assert res_closed.filter_match_state == "EXECUTION_ERROR"
+    assert "execution failure" in (res_closed.rejection_reason or "")
+
+    # Fail open falls back to local heuristics
+    guardrail_open = ModelArmorGuardrail(mock_mode=False, client=mock_client, fail_closed=False)
+    res_open = guardrail_open.validate_prompt("A lovely garden scene.")
+    assert res_open.is_approved is True
+
+
+def test_live_guardrail_execution_error_match_state():
+    """Verify that execution error match state is handled (CORR-01)."""
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_sanitization = MagicMock()
+    mock_sanitization.invocation_result = modelarmor_v1.InvocationResult.FAILURE
+    mock_sanitization.filter_match_state = "EXECUTION_ERROR"
+    mock_response.sanitization_result = mock_sanitization
+    mock_client.sanitize_user_prompt.return_value = mock_response
+
+    guardrail_closed = ModelArmorGuardrail(mock_mode=False, client=mock_client, fail_closed=True)
+    res = guardrail_closed.validate_prompt("Prompt with backend execution error.")
+    assert res.is_approved is False
+    assert res.filter_match_state == "EXECUTION_ERROR"
+
+
+def test_live_guardrail_empty_prompt_short_circuit():
+    """Verify empty or whitespace-only prompts short-circuit without RPC call (CORR-03)."""
+    mock_client = MagicMock()
+    guardrail = ModelArmorGuardrail(mock_mode=False, client=mock_client)
+
+    res_empty = guardrail.validate_prompt("")
+    assert res_empty.is_approved is True
+    assert res_empty.sanitized_prompt == ""
+    mock_client.sanitize_user_prompt.assert_not_called()
+
+    res_space = guardrail.validate_prompt("   \t\n  ")
+    assert res_space.is_approved is True
+    assert res_space.sanitized_prompt == ""
+    mock_client.sanitize_user_prompt.assert_not_called()
+
+
+def test_live_guardrail_timeout_propagation():
+    """Verify timeout argument is passed to sanitize_user_prompt (CORR-02)."""
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_sanitization = MagicMock()
+    mock_sanitization.filter_match_state = modelarmor_v1.FilterMatchState.NO_MATCH_FOUND
+    mock_response.sanitization_result = mock_sanitization
+    mock_client.sanitize_user_prompt.return_value = mock_response
+
+    guardrail = ModelArmorGuardrail(mock_mode=False, client=mock_client, timeout=3.5)
+    guardrail.validate_prompt("Check timeout parameter.")
+
+    mock_client.sanitize_user_prompt.assert_called_once()
+    _, kwargs = mock_client.sanitize_user_prompt.call_args
+    assert kwargs.get("timeout") == 3.5
+
+
 @pytest.mark.anyio
 async def test_live_guardrail_async_validation():
     """Verify asynchronous validate_prompt_async execution with ModelArmorAsyncClient."""
@@ -141,9 +215,11 @@ async def test_live_guardrail_async_validation():
     mock_response.sanitization_result = mock_sanitization
     mock_async_client.sanitize_user_prompt = AsyncMock(return_value=mock_response)
 
-    guardrail = ModelArmorGuardrail(mock_mode=False, async_client=mock_async_client)
+    guardrail = ModelArmorGuardrail(mock_mode=False, async_client=mock_async_client, timeout=4.0)
     res = await guardrail.validate_prompt_async("A glowing neon city in rain.")
 
     assert res.is_approved is True
     assert res.sanitized_prompt == "A glowing neon city in rain."
     mock_async_client.sanitize_user_prompt.assert_called_once()
+    _, kwargs = mock_async_client.sanitize_user_prompt.call_args
+    assert kwargs.get("timeout") == 4.0
