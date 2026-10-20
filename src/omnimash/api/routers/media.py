@@ -252,6 +252,10 @@ def research_parody(req: ResearchRequest, agent: AgentDep) -> ParodyResearchResu
 
 @router.post("/api/extract-reference", response_model=ReferenceAnalysisReport)
 def extract_reference(req: ExtractReferenceRequest, agent: AgentDep) -> ReferenceAnalysisReport:
-    return agent.media_extractor.analyze_youtube_reference(
-        req.url, session_id=req.session_name or "default"
-    )
+    from omnimash.ingestion.validators import sanitize_ingestion_session_id
+
+    try:
+        safe_sid = sanitize_ingestion_session_id(req.session_name or "default")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return agent.media_extractor.analyze_youtube_reference(req.url, session_id=safe_sid)

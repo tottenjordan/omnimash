@@ -1,267 +1,150 @@
-# 5-Axes Code Review: `src/omnimash/engine` Module
+# 5-Axes Code Review: `src/omnimash/ingestion` Module
 
-**Reviewed Module:** `src/omnimash/engine/`
-- `src/omnimash/engine/__init__.py` (0 lines)
-- `src/omnimash/engine/omni_client.py` (2,724 lines)
-- `src/omnimash/engine/telemetry.py` (130 lines)
+**Scope:**
+- [src/omnimash/ingestion/__init__.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/__init__.py) (1 line)
+- [src/omnimash/ingestion/media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py) (361 lines)
+- [tests/ingestion/test_media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/tests/ingestion/test_media_extractor.py) (185 lines)
 
-**Companion Test Suite:** `tests/engine/`
-- `tests/engine/test_omni_client.py` (2,663 lines)
-- `tests/engine/test_omni_flash_1_1.py` (206 lines)
-- `tests/engine/test_omni_retry.py` (165 lines)
-- `tests/engine/test_telemetry.py` (139 lines)
+**Review Framework:** 5-Axes Code Review (`Correctness`, `Readability & Simplicity`, `Architecture`, `Security`, `Performance`)
 
 ---
 
-## Executive Summary & Verdict
+## Executive Summary
 
-**Verdict: Request Changes**
+| Severity | Count | Summary |
+| :--- | :---: | :--- |
+| **Critical** | **3** | SSRF / arbitrary extractor invocation via unvalidated URL in `_extract_youtube_metadata` (`SEC-01`); path traversal via unsanitized `session_id` in `analyze_youtube_reference` & `process_youtube_url` (`SEC-02`); `PermissionError` crash on `/static/...` paths in `crop_3s_motion_reference` (`COR-01`) |
+| **Required** (no prefix) | **6** | Predictable `/tmp/mock_frame_*.jpg` symlink/race vulnerability & dead code (`SEC-03`); missing `NaN`/`inf`/negative duration validation in `extract_reference_video_clip` (`COR-02`); `research_parody_clash` ignoring `subject` & `aesthetic` parameters (`COR-03`); repetitive 3x keyframe boilerplate in `analyze_youtube_reference` (`RED-01`); missing public exports in `src/omnimash/ingestion/__init__.py` (`ARC-01`); redundant disk copies & sequential GCS uploads (`PER-01`) |
+| **Nit / Optional** | **2** | Lazy `from omnimash.config import settings` inside `MediaExtractor.__init__` (`NIT-01`); magic numbers for canvas dimensions and colors in `_generate_keyframe_jpeg` (`NIT-02`) |
 
-The `src/omnimash/engine` module implements the core multimodal generation client for Gemini Omni Flash 1.1 (`gemini-omni-1.1-flash-preview`), Gemini image generation (`gemini-nano-banana-2.1`, `gemini-3-pro-image`), Responsible AI prompt abstraction, procedural fallback synthesis, and OpenTelemetry GenAI span logging.
-
-While recent SDK modernizations (PR #168) aligned `Files.upload`, `ImageConfig(aspect_ratio=...)`, and OpenTelemetry error span status with `google-genai==2.31.0` and `opentelemetry-api==1.42.1`, a deep 5-axes inspection revealed **3 Critical** issues (SSRF/DoS and `.svg` path traversal in `_fetch_image_bytes`, plus broken `/static/...` path handling and temporary file leaks in `start_thread_from_video`), **7 Required** issues across correctness, architecture, performance, and readability (including a 2,724-line god module that exceeds the ~1,000-line boundary by 2.7x), **3 Optional/Consider** suggestions, and **3 Nits**.
-
----
-
-## Findings Breakdown (Ordered by Leverage & Severity)
-
-| Label | Axis | Location | Summary |
-| :--- | :--- | :--- | :--- |
-| **Critical:** | 4. Security | `omni_client.py:1947-2046` | SSRF via DNS resolution & HTTP redirects, unbounded `resp.read()` memory DoS, and `.svg` local path traversal in `_fetch_image_bytes` |
-| **Critical:** | 1. Correctness | `omni_client.py:1851-1890` | `start_thread_from_video(regenerate_audio=True)` passes leading-slash URLs to FFmpeg, ignores non-zero exit codes, and leaks temporary `.mp4` files |
-| **Critical:** | 4. Security / 1. Correctness | `omni_client.py:2279-2340`, `2531-2574` | Incomplete XML/HTML escaping (`&` and `'`) in `_get_mock_keyframe` and `_get_mock_ref_sheet` corrupts SVG DOM and allows entity injection |
-| *(Required)* | 1. Correctness | `omni_client.py:791, 2276` | Shared mutable instance attribute `self.last_keyframe_prompt` causes data races across concurrent requests |
-| *(Required)* | 1. Correctness | `omni_client.py:1042-1055` | `_log_multimodal_inference` starts and immediately ends OpenTelemetry spans post-hoc (~0ms duration) instead of timing inference execution |
-| *(Required)* | 1. Correctness | `telemetry.py:115-119`, `omni_client.py:797` | `setup_opentelemetry_genai_logging` unconditionally overwrites `os.environ` on every `OmniFlashClient` instantiation |
-| *(Required)* | 3. Architecture | `omni_client.py:1-2724` | 2,724-line God Module combining 5 distinct domains (procedural audio/video, RAI sanitization, telemetry parsing, media I/O, and GenAI client) |
-| *(Required)* | 2. Readability & Simplicity | `omni_client.py:850-1055`, `1667-1829`, `2359-2700` | Severe code duplication across character normalization (5x), image generation boilerplate (2x), and video persistence (2x) |
-| *(Required)* | 5. Performance | `omni_client.py:46-193` | Pure-Python per-sample audio synthesis loop (`441,000` iterations for 10s @ 44.1kHz) blocks the calling thread for ratusan ms |
-| *(Required)* | 5. Performance | `omni_client.py:405-535`, `653` | 78 regex patterns re-compiled and executed sequentially on every `_abstract_prompt_for_responsible_ai` and guardrail check call |
-| **Optional:** | 5. Performance | `omni_client.py:1089, 1183, 1205, 2374, 2400` | Sequential synchronous downloads in `_load_reference_images_as_input` and `generate_keyframe_image` (`N * RTT`) |
-| **Optional:** | 1. Correctness | `omni_client.py:1533-1548, 1627-1637` | Retry loop skips backoff delay on 401/404 even when `switch_to_developer_api()` returns `False` (no Developer API key configured) |
-| **Optional:** | 3. Architecture | `omni_client.py:14, 1739-1745` | `GenerationResult.duration_seconds` defaults to hardcoded `10` instead of reflecting requested `duration_seconds` |
-| **Nit:** | 2. Readability | `omni_client.py:2416-2419` | Leftover `print(..., flush=True)` duplicates `logger.info` right above it in `generate_keyframe_image` |
-| **Nit:** | 2. Readability | `omni_client.py:200, 1104, 1633, 1922, 1989, 2019` | Redundant inline `import re`, `import time`, `import tempfile` inside methods when already imported (or belong) at module top |
-| **Nit:** | 3. Architecture | `engine/__init__.py`, `omni_client.py:764, 2723-2724` | Empty `__init__.py` alongside 3 redundant class aliases (`OmniFlashClient`, `OmniClient`, `OmniEngineClient`) |
+**Verdict:** **Request Changes** — Resolve the 3 Critical and 6 Required findings before production sign-off.
 
 ---
 
-## Detailed Axis-by-Axis Analysis & Structural Remedies
+## Prioritized Findings (Ordered by Leverage)
 
-### Axis 1 & 4: Security & Correctness (Critical Findings)
+### 1. Security & Correctness Blockers (`Critical`)
 
-#### 1. **Critical:** SSRF via DNS Resolution & Redirects, Unbounded HTTP Read DoS, and `.svg` Local Path Traversal in `_fetch_image_bytes`
-- **Location:** [`src/omnimash/engine/omni_client.py:1947-2046`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L1947-L2046)
-- **Root Cause Analysis:**
-  1. **`.svg` Local Path Traversal (`lines 1947-1956`):**
-     ```python
-     if ref_url.lower().endswith(".svg"):
-         svg_raw = b""
-         loc_path = os.path.join(os.getcwd(), ref_url.lstrip("/"))
-         if os.path.exists(loc_path):
-             with open(loc_path, "rb") as sf:
-                 svg_raw = sf.read()
-     ```
-     Unlike the general local-file branch at `line 2021` (which resolves `os.path.realpath(ref_url)` and verifies it starts with `static/` or `/tmp/`), the `.svg` branch runs *first* and performs **no `realpath` or `allowed_roots` check**. A crafted `ref_url` such as `../../etc/something.svg` or `../secret.svg` bypasses directory confinement.
-  2. **DNS Resolution & HTTP Redirect SSRF (`lines 1987-2015`):**
-     `ipaddress.ip_address(hostname)` only parses literal IP strings. When `hostname` is a domain name that resolves to `127.0.0.1`, `169.254.169.254`, or private RFC1918 space (e.g., `127.0.0.1.nip.io` or an internal hostname), `ipaddress.ip_address(hostname)` raises `ValueError`, which is ignored by `except ValueError: pass` (`line 2008`). Furthermore, `urllib.request.urlopen` automatically follows HTTP `301/302/307/308` redirects to internal/loopback/metadata targets without re-validating the redirect target.
-  3. **Unbounded Memory Read (`line 2014`):**
-     `resp.read()` reads the entire HTTP response body into memory with no cap, allowing a remote server to stream an arbitrarily large payload and trigger an OOM crash.
-- **Mutation Test Finding (Step 2 Verification):**
-  Disabling the hostname check (`if False and (not hostname or ...):`) in `_fetch_image_bytes` resulted in **all 92 tests in `tests/engine/` passing** (`92 passed in 13.42s`). There is currently **zero unit test coverage in `tests/engine/`** for `_fetch_image_bytes` SSRF/path-traversal rejection.
+#### `SEC-01` — **Critical:** Unvalidated URL Scheme & Extractor Scope in `_extract_youtube_metadata` Enables SSRF and Arbitrary `yt-dlp` Extractor Execution
+- **Location:** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L69-L106)
+- **Axis:** Security
+- **Problem:**
+  `_extract_youtube_metadata(self, url: str)` passes any caller-supplied `url` directly into `yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)` without validating the URL scheme, hostname, or resolved IP address, and without restricting `allowed_extractors` in `ydl_opts`. Because `POST /api/extract-reference` ([media.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/routers/media.py#L253-L257)) forwards `req.url` directly to `analyze_youtube_reference`, an attacker when `mock_mode=False` can supply:
+  - `http://169.254.169.254/latest/meta-data/` or internal RFC-1918/loopback URLs (causing `yt-dlp`'s generic extractor to probe internal services and potentially leak page titles/metadata in `ReferenceAnalysisReport.video_title`), or
+  - `file:///...` or non-YouTube URLs.
 - **Structural Remedy:**
-  - Extract a dedicated media fetcher helper (e.g., `validate_and_resolve_local_path(path, allowed_roots)` and `safe_fetch_http_bytes(url, max_bytes=50 * 1024 * 1024)`).
-  - Resolve DNS via `socket.getaddrinfo(hostname, None)` and verify *every* resolved IP address against `ip.is_private`, `ip.is_loopback`, `ip.is_link_local`, `ip.is_reserved`, and `ip.is_multicast`.
-  - Use a custom `urllib.request.HTTPRedirectHandler` that re-validates redirect target URLs/IPs (or disables cross-host redirects), and cap reads at `max_bytes + 1` (`resp.read(MAX_FETCH_BYTES + 1)`).
-  - Apply the same `allowed_roots` (`static/`, `/tmp/`) realpath check to `.svg` files before opening them.
+  1. Validate `url` using `urllib.parse.urlparse(url)`: require `scheme in ("http", "https")`, verify the hostname belongs to an explicit YouTube host allowlist (`youtube.com`, `www.youtube.com`, `m.youtube.com`, `youtu.be`, `music.youtube.com`), and validate via `validate_remote_media_url(url)` (from `omnimash.engine.media_loader`) to block private/loopback/metadata DNS resolution.
+  2. Restrict `ydl_opts["allowed_extractors"] = ["youtube", "youtube:tab"]` so `yt-dlp` refuses to fall back to the `generic` HTTP scraper.
 
 ---
 
-#### 2. **Critical:** `start_thread_from_video(..., regenerate_audio=True)` Leading-Slash Bug, Unchecked FFmpeg Failure, and Temp File Leak
-- **Location:** [`src/omnimash/engine/omni_client.py:1850-1890`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L1850-L1890)
-- **Root Cause Analysis:**
+#### `SEC-02` — **Critical:** Path Traversal via Unsanitized `session_id` in `analyze_youtube_reference` and `process_youtube_url`
+- **Location:** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L157-L190)
+- **Axis:** Security
+- **Problem:**
+  `analyze_youtube_reference` interpolates `session_id` directly into a local filesystem directory path:
   ```python
-  effective_base_video = base_video_url
-  if regenerate_audio:
-      stripped_path = f"static/rendered/{thread_id}_stripped_silent.mp4"
-      os.makedirs(os.path.dirname(stripped_path), exist_ok=True)
-      cmd = ["ffmpeg", "-y", "-i", base_video_url, "-c:v", "copy", "-an", stripped_path]
-      try:
-          subprocess.run(cmd, capture_output=True, check=False)
-          effective_base_video = stripped_path
+  sid = session_id or "default"
+  local_dir = f"static/sessions/{sid}/references"
+  os.makedirs(local_dir, exist_ok=True)
   ```
-  1. Callers pass `base_video_url` as a web path starting with `/static/...` (e.g., `"/static/rendered/clip1.mp4"` in `test_start_thread_from_video_mock` at `line 158` and `test_omni_retry.py:147`). Passing `/static/rendered/clip1.mp4` directly to `ffmpeg -i` without `.lstrip("/")` causes FFmpeg to look at the root directory `/static/...`, which does not exist!
-  2. `subprocess.run(cmd, capture_output=True, check=False)` ignores `res.returncode` and does not check whether `stripped_path` was actually created and non-empty before overwriting `effective_base_video = stripped_path`.
-  3. `stripped_path` (`static/rendered/{thread_id}_stripped_silent.mp4`) is never cleaned up in a `finally:` block after `_generate_live_omni_flash_video` completes, leaking temporary `.mp4` files on disk on every call.
+  Furthermore, `POST /api/extract-reference` ([media.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/api/routers/media.py#L253-L257)) passes `req.session_name` directly into `analyze_youtube_reference` without calling `validate_safe_identifier`. A crafted `session_id` such as `"../../../tmp/arbitrary_dir"` escapes `static/sessions/` and writes `frame_1.jpg`, `frame_2.jpg`, and `frame_3.jpg` to arbitrary writable locations on disk.
 - **Structural Remedy:**
-  - Normalize local `/static/...` paths via `input_path = base_video_url.lstrip("/") if base_video_url.startswith("/static/") else base_video_url`.
-  - Check `if res.returncode == 0 and os.path.exists(stripped_path) and os.path.getsize(stripped_path) > 0: effective_base_video = stripped_path` (otherwise log a warning and keep `base_video_url`).
-  - Wrap `_generate_live_omni_flash_video` in a `try ... finally:` block that removes `stripped_path` if it exists.
+  Add a `_sanitize_session_id(session_id: str | None) -> str` helper in `MediaExtractor` (enforcing `^[a-zA-Z0-9_\-]+$` and raising `ValueError` on traversal characters `..`, `/`, `\`, or null bytes) and verify `os.path.realpath(local_dir)` is strictly confined under `os.path.realpath("static/sessions")`. Also validate `req.session_name` in `POST /api/extract-reference`.
 
 ---
 
-#### 3. **Critical:** Unescaped `&` and `'` in SVG Generation Corrupts XML and Enables SVG Entity/Markup Injection
-- **Location:** [`src/omnimash/engine/omni_client.py:2279-2287`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L2279-L2287) (`_get_mock_keyframe`) and [`src/omnimash/engine/omni_client.py:2531-2542`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L2531-L2542) (`_get_mock_ref_sheet`)
-- **Root Cause Analysis:**
-  ```python
-  clean_prompt = prompt.replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
-  ```
-  `&` is never escaped! Any prompt, character name, description, style preset, or `aspect_ratio` containing `&` (e.g., `"R&B & Hip-Hop"` or `"Tom & Jerry"`) produces malformed XML (`<text>...R&B...</text>`) inside the `data:image/svg+xml;base64,...` URI, causing browsers to fail to render the SVG image completely. Furthermore, `aspect_ratio` (`lines 2336, 2556`) is interpolated into the SVG without any escaping at all.
+#### `COR-01` — **Critical:** `crop_3s_motion_reference` Crashes with `PermissionError` on `/static/...` URLs Returned by `/api/upload`
+- **Location:** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L284-L343)
+- **Axis:** Correctness / Security
+- **Problem:**
+  When a user uploads a motion reference video via `POST /api/upload`, the endpoint returns `{"url": "/static/uploads/<filename>.mp4"}` (with a leading `/`). When the frontend passes that URL to `POST /api/motion-reference/upload`, `crop_3s_motion_reference` and `extract_reference_video_clip` treat `"/static/uploads/<filename>.mp4"` as an absolute OS filesystem path `/static/...` rather than the workspace-relative `static/uploads/...`:
+  1. `os.makedirs("/static/uploads", exist_ok=True)` raises `PermissionError: [Errno 13] Permission denied: '/static'` on Linux, causing `POST /api/motion-reference/upload` to fail with HTTP 500!
+  2. Even if `output_clip_path` is in a writable directory, `source_video_path = "/static/uploads/..."` does not exist at `/static/...`, so `ffmpeg` fails and falls back to writing a 24-byte `ftyp` stub.
+  3. Additionally, if `source_video_path` begins with `-`, `ffmpeg` interprets it as a CLI flag.
 - **Structural Remedy:**
-  - Replace manual `.replace(...)` chains with `html.escape(value, quote=True)` for all interpolated SVG strings (`prompt`, `style_preset`, `style_tone`, `character_name`, `description`, and `aspect_ratio`).
+  Normalize leading `/static/` paths in `crop_3s_motion_reference` and `extract_reference_video_clip` (`path.lstrip("/")` when `path.startswith("/static/")`), validate that local input and output paths resolve inside allowed roots (`static/` or `/tmp/`), reject paths starting with `-`, and preserve the `/static/...` URL prefix in the returned value when the caller passed a `/static/...` URL (or return the normalized playable path consistently).
 
 ---
 
-### Axis 1: Correctness (Required Findings)
+### 2. Required Changes (No Prefix — Must Address Before Merge)
 
-#### 4. **Required:** Shared Mutable Instance Attribute `self.last_keyframe_prompt` Race Condition
-- **Location:** [`src/omnimash/engine/omni_client.py:791, 2276`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L2276)
-- **Root Cause Analysis:**
-  `OmniFlashClient` is instantiated once per `OmniMashAgent` singleton and shared across worker threads. `generate_keyframe_image` mutates `self.last_keyframe_prompt = prompt_text` at `line 2276`. When two concurrent requests generate keyframes simultaneously, Thread B overwrites `self.last_keyframe_prompt` before Thread A reads it (note that `generate_keyframe_image` already supports `return_compiled_prompt: bool = False`, which returns `(url, prompt_text)` cleanly without shared state!).
+#### `SEC-03` — Predictable `/tmp/mock_frame_*.jpg` Writes Create Symlink/TOCTOU Risk and Cross-Worker Races
+- **Location:** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L210-L219)
+- **Axis:** Security / Correctness / Dead Code Hygiene
+- **Problem:**
+  `analyze_youtube_reference` unconditionally copies all 3 keyframes to hardcoded global paths `/tmp/mock_frame_1.jpg`, `/tmp/mock_frame_2.jpg`, and `/tmp/mock_frame_3.jpg`.
+  1. Zero callers in `src/` or `tests/` read `/tmp/mock_frame_*.jpg`.
+  2. `shutil.copyfile(src, "/tmp/mock_frame_1.jpg")` in shared `/tmp` is vulnerable to CWE-377 symlink attacks and causes concurrent `pytest-xdist` workers and concurrent requests to clobber each other's files.
 - **Structural Remedy:**
-  - Store `last_keyframe_prompt` in a `contextvars.ContextVar` (or `threading.local`) behind a `@property def last_keyframe_prompt(self) -> str` so concurrent requests never overwrite each other's prompt, while preserving backward compatibility for callers reading `client.last_keyframe_prompt`.
-
-#### 5. **Required:** `_log_multimodal_inference` Emits Post-Hoc Zero-Duration OpenTelemetry Spans
-- **Location:** [`src/omnimash/engine/omni_client.py:1042-1055`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L1042-L1055)
-- **Root Cause Analysis:**
-  ```python
-  span = self.telemetry.start_inference_span(...)
-  if span:
-      span.end()
-  ```
-  `_log_multimodal_inference` is called *after* the model call and GCS upload have already completed, and immediately calls `span.end()` on the next line. Every `gen_ai.client.inference` span exported to Cloud Trace therefore reports a near-zero (~0.01ms) duration instead of the actual inference latency.
-- **Structural Remedy:**
-  - Pass `start_time_ns: int | None = None` (or `latency_ms: float | None = None`) into `_log_multimodal_inference` / `start_inference_span` (OpenTelemetry `tracer.start_span(..., start_time=start_time_ns)` natively accepts `start_time` in nanoseconds, or record `gen_ai.client.inference.duration_ms` as a span attribute) so Cloud Trace spans accurately reflect model inference duration.
-
-#### 6. **Required:** `setup_opentelemetry_genai_logging` Unconditionally Overwrites `os.environ` on Every `OmniFlashClient` Init
-- **Location:** [`src/omnimash/engine/telemetry.py:115-119`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/telemetry.py#L115-L119) and [`src/omnimash/engine/omni_client.py:797`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L797)
-- **Root Cause Analysis:**
-  `setup_opentelemetry_genai_logging` uses direct assignment (`os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = ...`), mutating global process environment variables every time `OmniFlashClient()` is instantiated and overriding any environment configuration set by the deployment environment.
-- **Structural Remedy:**
-  - Use `os.environ.setdefault(...)` in `setup_opentelemetry_genai_logging` so existing environment overrides are respected while still setting defaults when unset.
+  Remove the dead `/tmp/mock_frame_*.jpg` copy loop entirely.
 
 ---
 
-### Axis 2 & 3: Architecture, Readability & Simplicity (Required Findings)
-
-#### 7. **Required:** 2,724-Line God Module (`src/omnimash/engine/omni_client.py`)
-- **Location:** [`src/omnimash/engine/omni_client.py:1-2724`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L1-L2724)
-- **Root Cause Analysis:**
-  At 2,724 lines, `omni_client.py` is nearly 3x the ~1,000-line module health threshold. A single file currently owns five distinct architectural concerns:
-  1. **Offline Audio & FFmpeg Procedural Renderer** (`_generate_dynamic_audio_wav`, `extract_clean_dialogue_summary`, `ensure_rendered_video` — 342 lines)
-  2. **Responsible AI Prompt Sanitizer & Guardrail Error Analyzer** (`_abstract_prompt_for_responsible_ai`, `parse_guardrail_error_guidance`, `_get_relaxed_safety_settings` — 377 lines)
-  3. **Multimodal Telemetry URI Extractor** (`_log_multimodal_inference` — 205 lines)
-  4. **Media Fetcher & Multimodal Payload Builder** (`_load_reference_images_as_input`, `_build_multimodal_contents`, `_render_svg_to_png_bytes`, `_fetch_image_bytes` — 550 lines)
-  5. **Gemini Omni Flash & Image Generation Client** (`OmniFlashClient` video & image generation methods — 1,250 lines)
-- **Structural Remedy (Split Large File into Focused Submodules):**
-  Decompose `src/omnimash/engine/` into focused modules while re-exporting public symbols from `src/omnimash/engine/omni_client.py` and `src/omnimash/engine/__init__.py` to maintain 100% backward compatibility with existing imports and test patches:
-  - `src/omnimash/engine/procedural_renderer.py`: `_generate_dynamic_audio_wav`, `extract_clean_dialogue_summary`, `ensure_rendered_video`
-  - `src/omnimash/engine/guardrails.py`: `_abstract_prompt_for_responsible_ai`, `parse_guardrail_error_guidance`, `_get_relaxed_safety_settings`
-  - `src/omnimash/engine/media_loader.py`: SSRF-safe media fetching, SVG rendering, and character normalization helpers
-  - `src/omnimash/engine/omni_client.py`: `OmniFlashClient` and `GenerationResult`
-
-#### 8. **Required:** Severe Code Duplication Across Character Extraction, Image Generation, and Video Persistence
-- **Location:**
-  - Character dict/object unpacking duplicated **5 times**: [`omni_client.py:556-573`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L556-L573), [`894-920`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L894-L920), [`943-967`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L943-L967), [`1074-1085`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L1074-L1085), [`2069-2104`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L2069-L2104).
-  - `_log_multimodal_inference` (`lines 880-1008`) uses 125 lines of deeply nested `if/elif/for` loops to extract `reference_image_uris` and `prompt_text` from `str | dict | list`.
-  - `generate_keyframe_image` (`lines 2359-2489`) and `generate_character_reference_sheet` (`lines 2579-2693`) duplicate ~110 lines of `genai.Client` creation, `Part.from_bytes` wrapping, `GenerateContentConfig` construction, candidate `thought=True` filtering, base64 decoding, and GCS upload.
-  - `generate_clip` (`lines 1667-1745`) and `apply_interaction_diff` (`lines 1747-1829`) duplicate 95% of their body (path sanitization, calling `_generate_live_omni_flash_video`, mock procedural fallback, and GCS intermediate upload).
+#### `COR-02` — Missing Validation for `NaN`, `inf`, and Non-Positive `duration_seconds` in `extract_reference_video_clip`
+- **Location:** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L284-L312)
+- **Axis:** Correctness
+- **Problem:**
+  - `start_time_seconds = max(0.0, float(start_time_seconds))` does not check `math.isfinite(...)`, allowing `float("nan")` or `float("inf")` to be passed to `ffmpeg -ss`.
+  - `duration_seconds` is never validated or clamped: passing `duration_seconds <= 0` or `NaN`/`inf` causes `ffmpeg -t` to fail immediately.
 - **Structural Remedy:**
-  - Extract a single canonical `_ coerce_character_roles(characters)` / `_extract_character_uris(characters)` helper.
-  - Extract `_extract_telemetry_prompt_and_uris(input_prompt, characters, keyframe_image_url, reference_image_uris)` to replace the 125-line nested conditional block in `_log_multimodal_inference`.
-  - Extract `_execute_gemini_image_generation(contents, prompt_text, image_model, aspect_ratio, blob_prefix, fallback_fn)` shared by `generate_keyframe_image` and `generate_character_reference_sheet`.
+  Validate both `start_time_seconds` and `duration_seconds` with `math.isfinite(...)`, clamp `start_time_seconds >= 0.0`, and clamp `duration_seconds` to a valid range (e.g., `0.1 <= duration_seconds <= 60.0`, defaulting to `3.0` if non-finite or `<= 0`).
 
 ---
 
-### Axis 5: Performance (Required Findings)
-
-#### 9. **Required:** Pure-Python Per-Sample Audio Synthesis Loop (`_generate_dynamic_audio_wav`)
-- **Location:** [`src/omnimash/engine/omni_client.py:46-193`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L46-L193)
-- **Root Cause Analysis:**
-  `_generate_dynamic_audio_wav` defaults to `duration: int = 10` at `sample_rate = 44100`, running `for i in range(441_000):` in pure Python bytecode with multiple `math.sin`, `math.exp`, and `audio_data.append(...)` calls per sample (~300ms of CPU-bound GIL contention for a 10s clip). Notice also that `struct.pack(f"<{len(audio_data)}h", *audio_data)` at `line 189` unpacks a 441,000-element list into `*args` on the CPython call stack!
+#### `COR-03` — `research_parody_clash` Completely Ignores `subject` and `aesthetic` Inputs
+- **Location:** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L268-L282)
+- **Axis:** Correctness
+- **Problem:**
+  `research_parody_clash(self, subject: str, aesthetic: str) -> ParodyResearchResult` ignores both `subject` and `aesthetic` parameters and always returns a static Harry Potter / Atlanta Trap synopsis even when the user queries a completely different subject or aesthetic via `POST /api/research`.
 - **Structural Remedy:**
-  - Synthesize a single 2-bar loop cycle (`loop_samples = int(sample_rate * min(duration, 2.0))`) into an `array.array("h")` buffer and tile/slice it to `total_samples` before writing with `wf.writeframes(buf.tobytes())`. This cuts CPU time and memory allocations by **5x** for 10-second clips and eliminates the 441,000-arg `*audio_data` stack unpacking.
+  Incorporate cleaned `subject` and `aesthetic` inputs into `ParodyResearchResult` (`synopsis`, `suggested_vibe`, `suggested_audio`, `suggested_dialogue`, and `suggested_props`) when custom inputs are provided while preserving the rich Hogwarts/Atlanta Trap defaults when those inputs match or are empty.
 
-#### 10. **Required:** Repeated Compilation of 78 Regex Patterns on Every Call (`_abstract_prompt_for_responsible_ai` & `parse_guardrail_error_guidance`)
-- **Location:** [`src/omnimash/engine/omni_client.py:405-535`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L405-L535) and [`653`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L653)
-- **Root Cause Analysis:**
-  `_abstract_prompt_for_responsible_ai` reconstructs a 75-key dictionary and calls `re.compile` / `re.sub` 78 times on every invocation. `parse_guardrail_error_guidance` also calls `re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b")` on every invocation.
+---
+
+#### `RED-01` — Duplicated 3x Keyframe Generation, Upload, and Annotation Blocks in `analyze_youtube_reference`
+- **Location:** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L187-L263)
+- **Axis:** Readability & Simplicity
+- **Problem:**
+  `analyze_youtube_reference` manually writes out `f1_path`, `f2_path`, `f3_path`, 3 calls to `_generate_keyframe_jpeg`, 3 calls to `self.storage.upload_file`, and 3 `KeyframeAnnotation` objects across 75 lines of repetitive code.
 - **Structural Remedy:**
-  - Hoist `_PROTECTED_TOKEN_PATTERN`, `_RAI_REPLACEMENT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...]`, `_REF_IMAGE_TAG_PATTERN`, `_GS_URI_PATTERN`, and `_FULL_NAME_PATTERN` to module-level pre-compiled constants.
+  Replace the 3x copy-pasted blocks with a declarative `_REFERENCE_KEYFRAME_SPECS` tuple and a single loop or comprehension.
 
 ---
 
-### Optional / Consider Findings
-
-1. **Optional:** **Parallelize Reference Image Downloads (`omni_client.py:1089, 2396`):**
-   - When loading multiple character reference sheets (`_load_reference_images_as_input` and `generate_keyframe_image`), fetching `gs://` blobs sequentially incurs `N * RTT`. Consider fetching multiple reference URLs concurrently with a bounded `ThreadPoolExecutor(max_workers=4)` while preserving deterministic character role ordering.
-2. **Optional:** **Respect Backoff Delay on 401/404 When No Developer API Fallback Exists (`omni_client.py:1533-1548, 1627-1637`):**
-   - When a `401` or `404` occurs on Vertex AI, `self.switch_to_developer_api()` is called and `time.sleep(delay)` is skipped so the Developer API client can be tried immediately. However, if `self._dev_client` is `None` (`switch_to_developer_api()` returns `False`), skipping `time.sleep(delay)` causes the loop to retry the same failing Vertex AI client immediately. Consider only skipping `time.sleep(delay)` when `switched_client` is `True`.
-3. **Optional:** **Propagate `duration_seconds` into `GenerationResult` (`omni_client.py:1667-1829`):**
-   - `GenerationResult.duration_seconds` is always `10` because `generate_clip` and `apply_interaction_diff` do not pass `duration_seconds` when constructing `GenerationResult`.
-
----
-
-### Nit Findings
-
-1. **Nit:** Remove duplicate `print(f"\n==================== [KEYFRAME PROMPT SENT TO GEMINI] ...", flush=True)` at [`omni_client.py:2416-2419`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/omni_client.py#L2416-L2419) since `logger.info` already logs the exact same banner on `lines 2412-2415`.
-2. **Nit:** Remove redundant inline imports (`import re` at `line 200`, `import tempfile` at `lines 1104, 2019`, `import time` at `line 1633`) and move `import io`, `import ipaddress`, `import tempfile`, and `import html` to the top of the module.
-3. **Nit:** Export `OmniFlashClient`, `OmniClient`, `OmniEngineClient`, `GenerationResult`, and `GenAITelemetryLogger` in [`src/omnimash/engine/__init__.py`](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/engine/__init__.py) with an explicit `__all__`.
+#### `ARC-01` — `src/omnimash/ingestion/__init__.py` Exports No Public Symbols
+- **Location:** [__init__.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/__init__.py#L1)
+- **Axis:** Architecture
+- **Problem:**
+  Unlike `src/omnimash/engine/__init__.py`, `src/omnimash/ingestion/__init__.py` does not re-export `MediaExtractor`, `ExtractedReference`, `KeyframeAnnotation`, `ParodyResearchResult`, or `ReferenceAnalysisReport`, nor does it define `__all__`.
+- **Structural Remedy:**
+  Re-export the public dataclasses and `MediaExtractor` in `src/omnimash/ingestion/__init__.py` with an explicit `__all__`.
 
 ---
 
-## Dead Code Hygiene
-
-During inspection of `src/omnimash/engine/`, the following unused/redundant elements were identified:
-1. **`audio_stem: str | None = None` parameter in `ensure_rendered_video` (`omni_client.py:228`):**
-   - Passed by `generate_clip`, `apply_interaction_diff`, and `start_thread_from_video`, but never referenced anywhere inside `ensure_rendered_video`. (Kept in signature for caller compatibility, or can be wired/documented.)
-2. **Duplicate alias exports in `omni_client.py` (`lines 764, 2723-2724`):**
-   - `get_relaxed_safety_settings = _get_relaxed_safety_settings`
-   - `OmniClient = OmniFlashClient`
-   - `OmniEngineClient = OmniFlashClient`
-   - *Note:* `OmniClient` and `OmniEngineClient` are still imported in `tests/engine/test_omni_client.py` (`lines 9, 2234`) and `src/omnimash/agent/orchestrator.py`, so they should remain as backward-compatible aliases until callers are consolidated.
+#### `PER-01` — Sequential Keyframe Generation & GCS Uploads in `analyze_youtube_reference`
+- **Location:** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L191-L239)
+- **Axis:** Performance
+- **Problem:**
+  In live mode, `analyze_youtube_reference` uploads 3 keyframe JPEGs to GCS sequentially (`upload_file` × 3), multiplying network RTT by 3, and performs 3 redundant synchronous file copies to `/tmp/mock_frame_*.jpg`.
+- **Structural Remedy:**
+  Eliminate the redundant `/tmp/mock_frame_*.jpg` copies (`SEC-03`) and execute the 3 keyframe generation + GCS upload tasks concurrently via `concurrent.futures.ThreadPoolExecutor(max_workers=3)` when `not self.storage.mock_mode` (or in a clean helper).
 
 ---
 
-## The Review Checklist
+### 3. Nits & Optional Suggestions
 
-### Context
-- [x] I understand what this module does and why
+- **`NIT-01` (Nit):** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L60) imports `from omnimash.config import settings` inside `__init__`. Moving `from omnimash.config import settings` to module top-level matches the rest of the codebase.
+- **`NIT-02` (Nit):** [media_extractor.py](file:///usr/local/google/home/jordantotten/omnimash/src/omnimash/ingestion/media_extractor.py#L122-L154) uses inline magic numbers (`1280`, `720`, `90`) in `_generate_keyframe_jpeg`; extracting named module constants (`KEYFRAME_WIDTH = 1280`, `KEYFRAME_HEIGHT = 720`, `JPEG_QUALITY = 90`) improves self-documentation.
 
-### Correctness
-- [x] Change matches spec/task requirements
-- [ ] Edge cases handled (`start_thread_from_video` `/static/` leading-slash & FFmpeg exit code check needed)
-- [ ] Error paths handled (`start_thread_from_video` temp file cleanup needed)
-- [ ] Tests cover the module adequately (missing SSRF/path-traversal unit tests on `_fetch_image_bytes`, verified via mutation testing)
+---
 
-### Readability
-- [x] Names are clear and consistent
-- [ ] Logic is straightforward (`_log_multimodal_inference` URI extraction and duplicated image/video generation methods need simplification)
-- [ ] No unnecessary complexity
+## Review Checklist
 
-### Architecture
-- [x] Follows existing patterns
-- [x] No unnecessary coupling or dependencies
-- [ ] Appropriate abstraction level
-- [ ] File stays within a healthy size (`omni_client.py` is 2,724 lines; needs decomposition into focused modules)
-
-### Security
-- [x] No secrets in code
-- [ ] Input validated at boundaries (`_fetch_image_bytes` needs `.svg` realpath confinement, DNS-resolved IP validation, redirect validation, and bounded HTTP read size; SVG generators need `html.escape`)
-- [ ] No injection vulnerabilities (SVG `&` / XML escaping needed)
-- [x] Auth checks in place
-- [ ] External data sources treated as untrusted (HTTP image fetch needs `MAX_FETCH_BYTES` cap)
-
-### Performance
-- [x] No N+1 patterns
-- [ ] No unbounded operations (`resp.read()` in `_fetch_image_bytes`; 441,000-sample Python loop in `_generate_dynamic_audio_wav`; repeated regex compilation in `_abstract_prompt_for_responsible_ai`)
-- [x] Pagination on list endpoints (N/A for engine module)
-
-### Verification
-- [x] Existing tests pass (`92 passed` in `tests/engine/`)
-- [x] Linter and type checker pass (`uv run ruff check`, `uv run ty check`)
-- [x] Mutation testing performed on `_fetch_image_bytes`
-
-### Verdict
-- [ ] **Approve** — Ready to merge
-- [x] **Request changes** — Critical and Required issues documented above should be addressed
+- [x] **Context:** Reviewed `src/omnimash/ingestion` (`__init__.py`, `media_extractor.py`) and all callers (`orchestrator.py`, `api/routers/media.py`, `tests/ingestion/test_media_extractor.py`).
+- [ ] **Correctness:** `COR-01`, `COR-02`, and `COR-03` must be resolved.
+- [ ] **Readability:** `RED-01` (3x duplicated keyframe generation/upload blocks) should be collapsed into a data-driven loop.
+- [ ] **Architecture:** `ARC-01` (`__init__.py` public exports) should be added.
+- [ ] **Security:** `SEC-01` (URL/extractor validation in `_extract_youtube_metadata`), `SEC-02` (`session_id` path traversal prevention), and `SEC-03` (removal of predictable `/tmp/mock_frame_*.jpg` writes) must be resolved.
+- [ ] **Performance:** `PER-01` (remove redundant `/tmp` copies and parallelize live GCS uploads).
+- [x] **Verification:** Existing 8 unit tests in `tests/ingestion/test_media_extractor.py` pass; new regression tests are needed for `SEC-01`, `SEC-02`, `COR-01`, `COR-02`, and `COR-03`.
