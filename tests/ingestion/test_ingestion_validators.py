@@ -39,6 +39,7 @@ def test_sanitize_ingestion_session_id_blocks_path_traversal():
     assert sanitize_ingestion_session_id(None) == "default"
     assert sanitize_ingestion_session_id("") == "default"
     assert sanitize_ingestion_session_id("sess_123-abc") == "sess_123-abc"
+    assert sanitize_ingestion_session_id("u_yt:p_yt") == "u_yt:p_yt"
 
     for malicious in ["../etc", "../../tmp/pwn", "sess/../../root", "bad\x00id"]:
         with pytest.raises(ValueError, match="Invalid session_id"):
