@@ -11,7 +11,7 @@ from omnimash.prompts.compiler import (
 
 
 def test_omni_flash_1_1_config_defaults():
-    assert settings.omni_model_id == "gemini-omni-1.1-flash-preview"
+    assert settings.omni_model_id == "gemini-omni-1.1-flash"
     assert settings.default_resolution == "720p"
     assert settings.draft_resolution == "360p"
     assert settings.master_resolution == "4k"
@@ -204,3 +204,29 @@ def test_compile_storyboard_with_last_frame_url():
 
     assert "<FIRST_FRAME>@Image1" in prompt
     assert "<LAST_FRAME>@Image2" in prompt
+
+
+def test_dev_client_normalizes_preview_model_id_to_gemini_omni_1_1_flash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    from unittest.mock import MagicMock
+
+    client = OmniFlashClient(mock_mode=False, retry_delay=0.0)
+    mock_dev = MagicMock()
+    mock_interactions = MagicMock()
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_dev_11", output_video=MagicMock(data=b"fake_mp4_bytes")
+    )
+    mock_dev.interactions = mock_interactions
+    client._dev_client = mock_dev
+    client._genai_client = mock_dev
+
+    monkeypatch.setattr(settings, "omni_model_id", "gemini-omni-1.1-flash-preview")
+    target_file = str(tmp_path / "out_dev.mp4")
+    ok, inter_id, err = client._generate_live_omni_flash_video(
+        prompt="Origami fox leaping", target_rel_path=target_file
+    )
+    assert ok is True
+    assert inter_id == "inter_dev_11"
+    assert err is None
+    assert mock_interactions.create.call_args.kwargs["model"] == "gemini-omni-1.1-flash"

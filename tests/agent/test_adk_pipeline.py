@@ -101,7 +101,7 @@ def test_adk_agents_use_configured_models_and_4_block_instructions():
     assert "[SUBJECT ANCHOR]" not in STORYBOARD_COMPILER_DEFAULT_INSTRUCTION
     assert "4-Block Meta-Prompt" in STORYBOARD_COMPILER_DEFAULT_INSTRUCTION
     assert "4-Block Meta-Prompt" in SHOT_EXECUTION_WORKER_DEFAULT_INSTRUCTION
-    assert settings.omni_model_id == "gemini-omni-1.1-flash-preview"
+    assert settings.omni_model_id == "gemini-omni-1.1-flash"
 
 
 def test_adk_script_deconstructor_expands_storyboard():
