@@ -38,6 +38,7 @@ def test_deploy_to_agent_engine_packages_omnimash_and_dependencies(monkeypatch):
         patch.object(deploy_mod.vertexai, "init") as mock_init,
         patch.object(deploy_mod.agent_engines, "AdkApp") as mock_adk_app,
         patch.object(deploy_mod.agent_engines, "create", side_effect=_fake_create) as mock_create,
+        patch.object(deploy_mod, "prune_orphan_agent_engines"),
     ):
         deploy_mod.deploy_to_agent_engine(
             project_id="hybrid-vertex",
@@ -133,6 +134,7 @@ def test_deploy_to_agent_engine_handles_whitespace_bucket_and_omnimash_gcs_bucke
         patch.object(deploy_mod.vertexai, "init") as mock_init,
         patch.object(deploy_mod.agent_engines, "AdkApp"),
         patch.object(deploy_mod.agent_engines, "create") as mock_create,
+        patch.object(deploy_mod, "prune_orphan_agent_engines"),
     ):
         deploy_mod.deploy_to_agent_engine(
             project_id="hybrid-vertex",
@@ -147,4 +149,108 @@ def test_deploy_to_agent_engine_handles_whitespace_bucket_and_omnimash_gcs_bucke
     assert (
         mock_create.call_args.kwargs["env_vars"]["OMNIMASH_GCS_BUCKET"]
         == "fallback-omnimash-bucket"
+    )
+
+
+def test_prune_orphan_agent_engines_deletes_only_matching_orphans():
+    """Verifies prune_orphan_agent_engines deletes only older matching instances, sparing the newest."""
+    deploy_mod = _load_deploy_module()
+
+    active_eng = MagicMock()
+    active_eng.display_name = "omnimash-agent-production"
+    active_eng.resource_name = "projects/123/locations/us-central1/reasoningEngines/newest"
+    active_eng.create_time = "2026-10-21 20:00:00"
+
+    orphan1 = MagicMock()
+    orphan1.display_name = "omnimash-agent-production"
+    orphan1.resource_name = "projects/123/locations/us-central1/reasoningEngines/old1"
+    orphan1.create_time = "2026-10-21 16:00:00"
+
+    orphan2 = MagicMock()
+    orphan2.display_name = "omnimash-agent-production"
+    orphan2.resource_name = "projects/123/locations/us-central1/reasoningEngines/old2"
+    orphan2.create_time = "2026-10-21 12:00:00"
+
+    unrelated = MagicMock()
+    unrelated.display_name = "other-agent"
+    unrelated.resource_name = "projects/123/locations/us-central1/reasoningEngines/other"
+    unrelated.create_time = "2026-10-21 10:00:00"
+
+    with (
+        patch.object(deploy_mod.vertexai, "init") as mock_init,
+        patch.object(
+            deploy_mod.agent_engines,
+            "list",
+            return_value=[orphan1, unrelated, active_eng, orphan2],
+        ),
+    ):
+        deleted = deploy_mod.prune_orphan_agent_engines(
+            project_id="hybrid-vertex",
+            location="us-central1",
+            display_name="omnimash-agent-production",
+            dry_run=False,
+        )
+
+    mock_init.assert_called_once_with(project="hybrid-vertex", location="us-central1")
+    assert deleted == [orphan1.resource_name, orphan2.resource_name]
+    active_eng.delete.assert_not_called()
+    unrelated.delete.assert_not_called()
+    orphan1.delete.assert_called_once_with(force=True)
+    orphan2.delete.assert_called_once_with(force=True)
+
+
+def test_prune_orphan_agent_engines_dry_run_does_not_delete():
+    """Verifies dry_run=True returns candidate orphans without calling delete."""
+    deploy_mod = _load_deploy_module()
+
+    active_eng = MagicMock()
+    active_eng.display_name = "omnimash-agent-production"
+    active_eng.resource_name = "projects/123/locations/us-central1/reasoningEngines/newest"
+    active_eng.create_time = "2026-10-21 20:00:00"
+
+    orphan = MagicMock()
+    orphan.display_name = "omnimash-agent-production"
+    orphan.resource_name = "projects/123/locations/us-central1/reasoningEngines/old"
+    orphan.create_time = "2026-10-21 16:00:00"
+
+    with (
+        patch.object(deploy_mod.vertexai, "init"),
+        patch.object(deploy_mod.agent_engines, "list", return_value=[orphan, active_eng]),
+    ):
+        deleted = deploy_mod.prune_orphan_agent_engines(
+            display_name="omnimash-agent-production",
+            keep_resource_name=active_eng.resource_name,
+            dry_run=True,
+        )
+
+    assert deleted == [orphan.resource_name]
+    orphan.delete.assert_not_called()
+    active_eng.delete.assert_not_called()
+
+
+def test_deploy_to_agent_engine_auto_prunes_orphans(monkeypatch):
+    """Verifies deploy_to_agent_engine calls prune_orphan_agent_engines after successful creation."""
+    deploy_mod = _load_deploy_module()
+
+    mock_remote = MagicMock()
+    mock_remote.resource_name = "projects/123/locations/us-central1/reasoningEngines/newly_created"
+
+    with (
+        patch.object(deploy_mod.vertexai, "init"),
+        patch.object(deploy_mod.agent_engines, "AdkApp"),
+        patch.object(deploy_mod.agent_engines, "create", return_value=mock_remote),
+        patch.object(deploy_mod, "prune_orphan_agent_engines") as mock_prune,
+    ):
+        deploy_mod.deploy_to_agent_engine(
+            project_id="hybrid-vertex",
+            location="us-central1",
+            display_name="omnimash-agent-production",
+            auto_prune_orphans=True,
+        )
+
+    mock_prune.assert_called_once_with(
+        project_id="hybrid-vertex",
+        location="us-central1",
+        display_name="omnimash-agent-production",
+        keep_resource_name="projects/123/locations/us-central1/reasoningEngines/newly_created",
     )

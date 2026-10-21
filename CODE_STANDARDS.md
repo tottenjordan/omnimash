@@ -41,6 +41,7 @@ This document outlines the mandatory engineering standards, tooling rules, and d
 
 ## ☁️ Cloud Resources & Deployment Policy
 - **Explicit Approval Required for Redeployments**: Never redeploy any cloud resources (e.g. Cloud Run deployments via `./scripts/deploy_cloud_run.sh` or `gcloud run deploy`, Cloud Storage modifications, or Vertex AI Agent Engine deployments) without explicit, direct user approval.
+- **Agent Engine Lifecycle & Orphan Pruning**: When deploying new revisions of OmniMash to Vertex AI Agent Engine (`omnimash-agent-production`), always prune superseded reasoning engine instances with the same display name (`.delete(force=True)`) to prevent orphan container resource accumulation. Never delete or modify reasoning engines with other display names or belonging to other projects.
 
 ---
 
