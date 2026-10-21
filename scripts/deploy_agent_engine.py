@@ -36,9 +36,14 @@ def deploy_to_agent_engine(
     display_name: str = "omnimash-agent-production",
 ) -> None:
     """Deploys the root_agent to Vertex AI Agent Engine."""
-    staging_bucket = os.environ.get("GCS_BUCKET_NAME", f"gs://omnimash-media-{project_id}")
+    raw_bucket = (
+        os.environ.get("GCS_BUCKET_NAME", "").strip()
+        or os.environ.get("OMNIMASH_GCS_BUCKET", "").strip()
+    )
+    staging_bucket = raw_bucket or f"gs://omnimash-media-{project_id}"
     if not staging_bucket.startswith("gs://"):
         staging_bucket = f"gs://{staging_bucket}"
+    bucket_name = staging_bucket.removeprefix("gs://").strip("/")
 
     print(
         f"🚀 Initializing Vertex AI client for project '{project_id}' in '{location}' with staging bucket '{staging_bucket}'..."
@@ -70,6 +75,7 @@ def deploy_to_agent_engine(
                 "GOOGLE_CLOUD_LOCATION": "global",
                 "GEMINI_LOCATION": "global",
                 "GCP_REGION": location,
+                "OMNIMASH_GCS_BUCKET": bucket_name,
             },
         )
         print("✅ OmniMash successfully deployed to Vertex AI Agent Engine!")
