@@ -18,6 +18,7 @@ Always refer to [CODE_STANDARDS.md](CODE_STANDARDS.md) when writing code, making
 - **Git Commits & PRs:** Never add `Co-Authored-By` trailers in commit messages or pull requests. Use Conventional Commits formatting.
 - **Branching & PR Workflow:** ALWAYS create feature branches (`feature/<name>`, `fix/<name>`, `refactor/<name>`) and open Pull Requests with detailed, comprehensive descriptions (including background context, root cause analysis, implementation details, and verification steps) for user review. NEVER commit or push directly to `main`. NEVER merge any Pull Request until the user has explicitly reviewed it and given direct approval to merge.
 - **Cloud Redeployments:** Never redeploy any cloud resources (Cloud Run via `./scripts/deploy_cloud_run.sh`, Cloud Storage, Vertex AI) without explicit user approval.
+- **Agent Engine Lifecycle & Orphan Pruning:** When deploying new revisions of OmniMash to Vertex AI Agent Engine (`omnimash-agent-production`), always prune superseded reasoning engine instances with the same display name (`.delete(force=True)`) to prevent orphan container resource accumulation. Never delete or modify reasoning engines with other display names or belonging to other projects.
 
 ---
 
