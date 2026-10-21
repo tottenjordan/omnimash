@@ -828,6 +828,104 @@
             }, [activeProject]);
 
             // Act 1: The Concept & Cast Manager State
+            const TRAPWARTS_VAULT_AUDIT_PRESET = {
+                name: "🏰 Trapwarts: The Headmaster's Vault Audit",
+                concept: "Inside a candlelit Gothic Academy headmaster's vault office, Dumble Dior and YoTotti calmly inspect stacks of glowing gold galleons while tiny Accountant Elves in green visors run high-speed money-counting machines to a 140 BPM orchestral trap beat.",
+                keyframePrompt: "Inside a candlelit Gothic Academy headmaster's vault office, Dumble Dior in a custom silk monogram wizard robe and YoTotti in blue-shaded aviator sunglasses and black designer tracksuit inspect glowing gold galleons while tiny Accountant Elves in green visors run mechanical coin-counting machines, emerald-green and purple neon vault uplighting, 35mm anamorphic lens",
+                screenplayScript: `Role A (Dumble Dior): (Adjusting his diamond half-moon spectacles and tapping a glowing ledger with his wand) "The tuition ledger is immaculate, fam—every vault in the academy is overflowing."\n\nRole B (YoTotti): (Leaning back unfazed in a velvet throne, flashing his diamond rings with a calm nod) "Light work, Headmaster. Tell the elves to double the count."\n\nRole C (Accountant Elves): (Frantically feeding stacks of glowing gold coins through clicking mechanical counters across the mahogany desk)`,
+                styleTone: "🎬 Cinematic Trap Parody",
+                environment: "Candlelit Gothic Academy headmaster's vault office with mahogany desk, stacked gold galleons, and emerald-purple neon uplighting",
+                cameraLighting: "In a single continuous shot. No scene cuts. Smooth 35mm anamorphic dolly-in and slow low-angle orbit across the marble vault desk, warm floating candle chandeliers clashing with emerald-green and purple neon vault uplighting",
+                audioBeat: "140 BPM dark orchestral Atlanta trap beat with booming 808 sub-bass, crisp hi-hat rolls, and haunting gothic choir stabs",
+                vocalDelivery: "Sharp vigorous Oxford English cadence traded with calm unfazed East London delivery",
+                aestheticTags: [
+                    "🎬 Cinematic Trap Parody",
+                    "Gothic Academy Vault",
+                    "140 BPM Orchestral Trap",
+                    "Emerald & Purple Neon Uplighting"
+                ],
+                characters: [
+                    {
+                        role_id: "Role A",
+                        name: "Dumble Dior",
+                        description: "Elderly high-fashion wizard headmaster with a long silver beard, diamond half-moon spectacles, black-diamond pinky ring, heavy DD diamond chain, and a floor-length custom silk monogram wizard robe",
+                        reference_url: "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/dumble_dior_office_sheet_v13.png",
+                        aesthetic_tags: ["black-diamond pinky ring", "diamond half-moon spectacles", "championship-style rings", "DD diamond chain"],
+                        voice_style: "Sharp, vigorous Oxford English cadence",
+                        voice_profile: "Oxford English, elderly but vigorous and sharp",
+                        wardrobe: "Floor-length custom silk monogram wizard robe, diamond half-moon spectacles, DD diamond chain",
+                        image_role: "Character Reference",
+                        is_offscreen_narrator: false
+                    },
+                    {
+                        role_id: "Role B",
+                        name: "YoTotti",
+                        description: "Confident young wizard radiating unfazed zen energy, wearing blue-shaded oversized aviator sunglasses, tailored black designer tracksuit, heavy diamond chains, and massive diamond rings",
+                        reference_url: "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/yototti_office_sheet_v13.png",
+                        aesthetic_tags: ["diamond chains", "big diamond rings", "blue shaded large aviator sunglasses", "black Designer track suit"],
+                        voice_style: "Calm, unfazed East London cadence",
+                        voice_profile: "British, East London accent",
+                        wardrobe: "Tailored black designer tracksuit, blue-shaded oversized aviator sunglasses, heavy diamond chains",
+                        image_role: "Character Reference",
+                        is_offscreen_narrator: false
+                    },
+                    {
+                        role_id: "Role C",
+                        name: "Accountant Elves",
+                        description: "Small busy fantasy house elves dressed in tiny tailored business suits and green accountant visors, operating high-speed mechanical coin-counting machines and sorting piles of jewels",
+                        reference_url: "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/accountant_elves_office_sheet_v13.png",
+                        aesthetic_tags: ["tiny tailored suits", "green visors", "spectacles", "fantasy accountant"],
+                        voice_style: "Fast-paced, high-pitched muttering and frantic whispering",
+                        voice_profile: "High-pitched fantasy clerk muttering",
+                        wardrobe: "Tiny tailored business suits, green accountant visors, spectacles",
+                        image_role: "Character Reference",
+                        is_offscreen_narrator: false
+                    }
+                ],
+                scenes: [
+                    {
+                        scene_number: 1,
+                        mode: "guided",
+                        active_roles: ["Role A", "Role B", "Role C"],
+                        action: "[0-3s] Wide-to-medium tracking shot enters the candlelit Gothic Academy vault office; Role C (Accountant Elves) frantically feed stacks of glowing gold coins through clicking mechanical counters across a mahogany desk. [3-7s] Camera dollies in to a low-angle two-shot as Role A (Dumble Dior) adjusts his diamond half-moon spectacles and taps a ledger with his wand, while Role B (YoTotti) leans back unfazed in a velvet throne, flashing his diamond rings with a calm nod. [7-10s] Push-in close-up as Role A (Dumble Dior) and Role B (YoTotti) exchange a slow, victorious salute while a fountain of golden sparks and floating galleons erupts behind the desk on the downbeat.",
+                        dialogue: "Role A (Dumble Dior): \"The tuition ledger is immaculate, fam—every vault in the academy is overflowing.\" Role B (YoTotti): \"Light work, Headmaster. Tell the elves to double the count.\"",
+                        screenplay_script: ""
+                    }
+                ],
+                stageShots: [
+                    {
+                        shot_index: 1,
+                        duration_seconds: 10.0,
+                        summary: "Vault Entrance & Mechanical Coin Count",
+                        action: "[0-3s] Wide-to-medium tracking shot enters the candlelit Gothic Academy vault office; Role C (Accountant Elves) frantically feed stacks of glowing gold coins through clicking mechanical counters across a mahogany desk.\n[3-7s] Camera dollies in to a low-angle two-shot as Role A (Dumble Dior) adjusts his diamond half-moon spectacles and taps a ledger with his wand, while Role B (YoTotti) leans back unfazed in a velvet throne, flashing his diamond rings with a calm nod.\n[7-10s] Push-in close-up as Role A (Dumble Dior) and Role B (YoTotti) exchange a slow, victorious salute while a fountain of golden sparks and floating galleons erupts behind the desk on the downbeat.",
+                        location: "Candlelit Gothic Academy headmaster's vault office with mahogany desk and emerald-purple neon uplighting",
+                        style_lighting: "🎬 Cinematic Trap Parody, warm floating candle chandeliers clashing with emerald-green and purple neon vault uplighting",
+                        framing_motion: "In a single continuous shot. No scene cuts. Smooth 35mm anamorphic dolly-in and slow low-angle orbit across the marble vault desk",
+                        audio: "140 BPM dark orchestral Atlanta trap beat with booming 808 sub-bass | Rapid mechanical clicking of money-counting machines and metallic gold coin clinks",
+                        dialogue: "Role A (Dumble Dior): \"The tuition ledger is immaculate, fam—every vault in the academy is overflowing.\" Role B (YoTotti): \"Light work, Headmaster. Tell the elves to double the count.\"",
+                        camera_transition: "Continuous match cut from preceding shot",
+                        character_continuity: "Maintain subject outfit, posture, and facial expression from preceding shot",
+                        is_seamless_loop: false
+                    }
+                ],
+                j3ShotCards: [
+                    {
+                        shot_index: 1,
+                        image_prompt: "Candlelit Gothic Academy vault office, Dumble Dior in silk monogram robe and YoTotti in aviator sunglasses inspecting glowing gold galleons while tiny Accountant Elves in green visors operate mechanical coin-counting machines",
+                        action_directive: "[0-3s] Role C (Accountant Elves) feed stacks of glowing gold coins through clicking mechanical counters across the mahogany desk. [3-7s] Role A (Dumble Dior) adjusts his diamond half-moon spectacles and taps the ledger with his wand while Role B (YoTotti) leans back unfazed flashing his diamond rings. [7-10s] Role A (Dumble Dior) and Role B (YoTotti) exchange a victorious salute as golden sparks erupt behind the desk.",
+                        dialogue_text: "The tuition ledger is immaculate, fam—every vault in the academy is overflowing.",
+                        speaker_role: "Role A",
+                        audio_mode: "global",
+                        audio_stem: "",
+                        keyframe_image_url: "",
+                        keyframe_role: "Strict First Frame",
+                        video_url: "",
+                        cumulative_state: ["Vault coin counters running at full speed", "Glowing gold galleon stacks on mahogany desk"],
+                        included_character_ids: ["Role A", "Role B", "Role C"]
+                    }
+                ]
+            };
+
             const QUICK_PRESET_TEMPLATES = [
                 {
                     name: "🪄 Hip-Hop Wand Shop",
@@ -2222,6 +2320,28 @@
                 }
                 if (src.screenplay_script !== undefined) setScreenplayScript(src.screenplay_script);
                 if (src.scenes !== undefined) setScenes(src.scenes);
+            };
+
+            const handleLoadTrapwartsVaultDefault = () => {
+                const p = TRAPWARTS_VAULT_AUDIT_PRESET;
+                lastDeconstructedConceptRef.current = p.concept;
+                setConcept(p.concept);
+                setJ3MasterDescription(p.concept);
+                setKeyframeImagePrompt(p.keyframePrompt);
+                setScreenplayScript(p.screenplayScript);
+                setStageStyleTone(p.styleTone);
+                setJ3StylePreset("Cinematic Trap Parody");
+                setEnvironmentTag(p.environment);
+                setCameraLightingTag(p.cameraLighting);
+                setAudioBeat(p.audioBeat);
+                setVocalDelivery(p.vocalDelivery);
+                setAestheticTags(p.aestheticTags);
+                setCharacters(p.characters);
+                setJ3Characters(p.characters);
+                setScenes(p.scenes);
+                setStageShots(p.stageShots);
+                setJ3ShotCards(p.j3ShotCards);
+                addToast("Loaded Trapwarts Vault Audit default (Dumble Dior, YoTotti & Accountant Elves)", "success");
             };
 
             const getShotTimecodeRange = (shots, idx) => {
@@ -4613,6 +4733,14 @@
                                     <div>
                                         <span className="text-[11px] text-gray-400 font-medium block mb-2">⚡ Example Concept Chips (Click to load &amp; deconstruct):</span>
                                         <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleLoadTrapwartsVaultDefault}
+                                                className="bg-amber-950/80 border border-amber-500/80 hover:border-amber-400 text-amber-200 font-bold px-3 py-1.5 rounded-lg text-xs transition text-left shadow"
+                                                title="Load saved Trapwarts Vault Audit characters, reference sheets &amp; 4-Block prompt"
+                                            >
+                                                🏰 Load Trapwarts Vault Default (Dumble Dior, YoTotti &amp; Elves)
+                                            </button>
                                             {exampleConcepts.map((ex, i) => (
                                                 <button
                                                     key={i}
@@ -5619,6 +5747,14 @@
 
                                             <div className="flex flex-wrap items-center gap-1.5 mt-2">
                                                 <span className="text-[11px] text-gray-400 font-medium">Quick Concept Presets:</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleLoadTrapwartsVaultDefault}
+                                                    className="bg-amber-600/30 border border-amber-400 hover:bg-amber-600/50 text-amber-100 font-extrabold text-[11px] px-3 py-1 rounded-lg transition shadow"
+                                                    title="Load saved Trapwarts Vault Audit characters, reference sheets &amp; 4-Block prompt"
+                                                >
+                                                    🏰 Load Trapwarts Vault Default (Saved Cast &amp; Sheets)
+                                                </button>
                                                 {QUICK_PRESET_TEMPLATES.map((item, idx) => (
                                                     <button
                                                         key={idx}
@@ -7925,7 +8061,17 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
 
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="text-xs font-bold text-gray-300 block mb-1">Master Concept Description:</label>
+                                            <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                                                <label className="text-xs font-bold text-gray-300 block">Master Concept Description:</label>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleLoadTrapwartsVaultDefault}
+                                                    className="bg-amber-600/30 border border-amber-400 hover:bg-amber-600/50 text-amber-100 font-extrabold text-xs px-3 py-1 rounded-lg transition shadow"
+                                                    title="Load saved Trapwarts Vault Audit characters, reference sheets &amp; 4-Block prompt"
+                                                >
+                                                    🏰 Load Trapwarts Vault Default (Saved Cast &amp; Sheets)
+                                                </button>
+                                            </div>
                                             <textarea
                                                 value={j3MasterDescription}
                                                 onChange={(e) => setJ3MasterDescription(e.target.value)}

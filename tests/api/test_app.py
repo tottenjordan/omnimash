@@ -2824,3 +2824,15 @@ def test_ui_html_pr2_express_flow_and_mode3_step_filter_browser_dom(tmp_path) ->
     output = res.stdout + res.stderr
     assert res.returncode == 0, f"Playwright PR2 journey test failed: {output}"
     assert "PR2_JOURNEY_BROWSER_OK" in output
+
+
+def test_ui_html_contains_trapwarts_vault_audit_default_preset() -> None:
+    """Verify UI_HTML includes the Trapwarts Vault Audit default preset with saved characters and reference sheets."""
+    from omnimash.api.app import UI_HTML
+
+    assert "TRAPWARTS_VAULT_AUDIT_PRESET" in UI_HTML
+    assert "handleLoadTrapwartsVaultDefault" in UI_HTML
+    assert "Load Trapwarts Vault Default" in UI_HTML
+    assert "dumble_dior_office_sheet_v13.png" in UI_HTML
+    assert "yototti_office_sheet_v13.png" in UI_HTML
+    assert "accountant_elves_office_sheet_v13.png" in UI_HTML
