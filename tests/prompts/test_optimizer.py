@@ -32,17 +32,76 @@ def test_prompt_optimizer_empty_prompt():
 
 
 def test_prompt_optimizer_tier2_mock_llm():
-    """Verify LLM pass is invoked when requested and compiler client is available."""
+    """Verify LLM pass is invoked and validates canonical 4-Block headers."""
     mock_compiler = MagicMock()
     mock_response = MagicMock()
-    mock_response.text = (
-        "Refined qualitative directive [ROLE DEFINITIONS]: Role A is Severus Snape."
+    canonical_llm_out = (
+        "### INPUT ROLES & REFERENCES\n"
+        "[# References <IMAGE_REF_0>@Image1]\n\n"
+        "### CHARACTER PROFILES\n"
+        "- Role A (Severus Snape) <IMAGE_REF_0>@Image1: Gothic Potion Master.\n\n"
+        "### SCENE INSTRUCTIONS\n"
+        "Camera & Lighting: In a single continuous shot. No scene cuts.\n"
+        "Audio: Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+        "Background beat (instrumental 120 BPM beat) is subtly ducked in the background beneath dialogue.\n\n"
+        "### TIMELINE\n"
+        "- [0-3s] Role A steps into frame. [3-6s] Role A stirs cauldron. [6-10s] Role A glares at camera."
     )
+    mock_response.text = canonical_llm_out
     mock_compiler._flash_regional_client.models.generate_content.return_value = mock_response
 
     optimizer = PromptOptimizer(compiler=mock_compiler)
     result = optimizer.optimize(
-        "[ROLE DEFINITIONS]: Role A is Snape. Audio: (ducked at 15% volume under dialogue)",
+        "### INPUT ROLES & REFERENCES\nNone.\n\n"
+        "### CHARACTER PROFILES\n- Role A: Snape.\n\n"
+        "### SCENE INSTRUCTIONS\nAudio: (ducked at 15% volume under dialogue)\n\n"
+        "### TIMELINE\n- [0-10s] Scene 1 [Role A]: Action.",
         use_llm=True,
     )
-    assert result == "Refined qualitative directive [ROLE DEFINITIONS]: Role A is Severus Snape."
+    assert result == canonical_llm_out
+
+
+def test_prompt_optimizer_tier2_rejects_legacy_role_definitions_without_4_blocks():
+    """Verify LLM output with legacy [ROLE DEFINITIONS] instead of canonical 4-Block headers falls back to Tier 1."""
+    mock_compiler = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = "Refined directive [ROLE DEFINITIONS]: Role A is Severus Snape."
+    mock_compiler._flash_regional_client.models.generate_content.return_value = mock_response
+
+    optimizer = PromptOptimizer(compiler=mock_compiler)
+    tier1_input = (
+        "### INPUT ROLES & REFERENCES\nNone.\n\n"
+        "### CHARACTER PROFILES\n- Role A: Snape.\n\n"
+        "### SCENE INSTRUCTIONS\nAudio: (ducked at 15% volume under dialogue)\n\n"
+        "### TIMELINE\n- [0-10s] Scene 1 [Role A]: Action."
+    )
+    result = optimizer.optimize(tier1_input, use_llm=True)
+    assert "### INPUT ROLES & REFERENCES" in result
+    assert "(subtly ducked in the background beneath dialogue)" in result
+    assert "[ROLE DEFINITIONS]" not in result
+
+
+def test_prompt_optimizer_tier2_rejects_llm_output_that_strips_temporal_beats():
+    """Verify LLM output that keeps 4-Block headers but strips [0-3s]/[3-6s]/[6-10s] beats falls back to Tier 1."""
+    mock_compiler = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = (
+        "### INPUT ROLES & REFERENCES\nNone.\n\n"
+        "### CHARACTER PROFILES\n- Role A: Snape.\n\n"
+        "### SCENE INSTRUCTIONS\nCamera & Lighting: Continuous shot.\n\n"
+        "### TIMELINE\n- [0-10s] Role A stirs potion in one smooth motion."
+    )
+    mock_compiler._flash_regional_client.models.generate_content.return_value = mock_response
+
+    optimizer = PromptOptimizer(compiler=mock_compiler)
+    tier1_input = (
+        "### INPUT ROLES & REFERENCES\nNone.\n\n"
+        "### CHARACTER PROFILES\n- Role A: Snape.\n\n"
+        "### SCENE INSTRUCTIONS\nAudio: (ducked at 15% volume under dialogue)\n\n"
+        "### TIMELINE\n- [0-10s] Scene 1 [Role A]: [0-3s] Enters. [3-6s] Stirs. [6-10s] Glares."
+    )
+    result = optimizer.optimize(tier1_input, use_llm=True)
+    assert "[0-3s]" in result
+    assert "[3-6s]" in result
+    assert "[6-10s]" in result
+    assert "(subtly ducked in the background beneath dialogue)" in result

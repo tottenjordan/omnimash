@@ -1765,17 +1765,26 @@ def test_prompt_optimizer_passes_system_instruction_in_generate_content_config()
     compiler = PromptCompiler(mock_mode=True)
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_response.text = "[IMAGE ROLES]\n[ROLE DEFINITIONS]\nOptimized prompt text"
+    mock_response.text = (
+        "### INPUT ROLES & REFERENCES\nNone.\n\n"
+        "### CHARACTER PROFILES\n- Role A: Lead.\n\n"
+        "### SCENE INSTRUCTIONS\nOptimized scene instructions.\n\n"
+        "### TIMELINE\n- [0-3s] Beat 1. [3-6s] Beat 2. [6-10s] Beat 3."
+    )
     mock_client.models.generate_content.return_value = mock_response
     compiler._flash_regional_client = mock_client
 
     optimizer = PromptOptimizer(compiler=compiler)
     result = optimizer.optimize("Original prompt", use_llm=True)
-    assert "[ROLE DEFINITIONS]" in result
+    assert "### INPUT ROLES & REFERENCES" in result
+    assert "### CHARACTER PROFILES" in result
+    assert "### SCENE INSTRUCTIONS" in result
+    assert "### TIMELINE" in result
 
     call_kwargs = mock_client.models.generate_content.call_args.kwargs
     config = call_kwargs.get("config")
     assert config is not None
     assert config.system_instruction is not None
     assert "expert multimodal prompt engineer" in config.system_instruction
+    assert "### INPUT ROLES & REFERENCES" in config.system_instruction
     assert "[PROMPT TO OPTIMIZE]:\nOriginal prompt" == call_kwargs.get("contents")

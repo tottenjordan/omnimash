@@ -43,7 +43,9 @@ class PromptOptimizer:
                         "You are an expert multimodal prompt engineer for Gemini Omni Flash. "
                         "Refine and condense the following structured storyboard prompt into a clear, "
                         "vivid, single-pass generation directive. "
-                        "CRITICAL: Keep all [IMAGE ROLES] and [ROLE DEFINITIONS] blocks intact."
+                        "CRITICAL: Keep all canonical 4-Block headers "
+                        "(### INPUT ROLES & REFERENCES, ### CHARACTER PROFILES, ### SCENE INSTRUCTIONS, ### TIMELINE) "
+                        "and temporal [0-3s] / [3-6s] / [6-10s] beats intact."
                     )
                     # Pass system_instruction via types.GenerateContentConfig per google-genai SDK docs
                     # Source: https://googleapis.github.io/python-genai/genai.html#google.genai.types.GenerateContentConfig
@@ -57,7 +59,20 @@ class PromptOptimizer:
                     )
                     if response and getattr(response, "text", None):
                         llm_out = response.text.strip()
-                        if llm_out and "[ROLE DEFINITIONS]" in llm_out:
+                        has_canonical_4_blocks = (
+                            (
+                                "### INPUT ROLES & REFERENCES" in llm_out
+                                or "### INPUT ROLES" in llm_out
+                            )
+                            and "### CHARACTER PROFILES" in llm_out
+                            and "### SCENE INSTRUCTIONS" in llm_out
+                            and "### TIMELINE" in llm_out
+                        )
+                        input_beats = [
+                            beat for beat in ("[0-3s]", "[3-6s]", "[6-10s]") if beat in optimized
+                        ]
+                        preserves_temporal_beats = all(beat in llm_out for beat in input_beats)
+                        if llm_out and has_canonical_4_blocks and preserves_temporal_beats:
                             return llm_out
                 except Exception as exc:
                     logger.warning(

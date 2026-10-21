@@ -127,3 +127,29 @@ def test_adk_script_deconstructor_expands_storyboard():
     assert shots[0].shot_index == 1
     assert shots[0].duration_seconds == 5.0
     assert "Neon street" in shots[0].summary or "Neon street" in shots[0].action
+
+
+def test_adk_pipeline_forwards_camera_aesthetic_audio_vocal_and_environment():
+    from omnimash.agent.adk_pipeline import deconstruct_screenplay_with_adk
+
+    shots = deconstruct_screenplay_with_adk(
+        concept="Cyberpunk noodle battle",
+        style_tone="Cyberpunk Drift",
+        target_duration=30.0,
+        camera_lighting="Handheld anamorphic tracking shot",
+        aesthetic_tags=["Neon Steam", "Holographic Menus"],
+        audio_beat="128 BPM Synthwave Bass",
+        vocal_delivery="Intense theatrical projection",
+        environment="Midnight Tokyo alleyway noodle stall",
+        mock_mode=True,
+    )
+    assert len(shots) == 3
+    for s in shots:
+        assert "Midnight Tokyo alleyway noodle stall" in s.location
+        assert "Handheld anamorphic tracking shot" in s.framing_motion
+        assert "Neon Steam" in s.style_lighting
+        assert "128 BPM Synthwave Bass" in s.audio
+        assert "Intense theatrical projection" in s.audio
+        assert "[0-3s]" in s.action
+        assert "[3-6s]" in s.action
+        assert "[6-10s]" in s.action

@@ -133,6 +133,16 @@ class SaveRosterRequest(BaseModel):
     characters: list[CharacterRoleModel]
 
 
+class DeconstructedSceneModel(BaseModel):
+    scene_number: int = 1
+    active_roles: list[str] = Field(default_factory=lambda: ["Role A"])
+    action: str = ""
+    dialogue: str = ""
+    audio_cues: str = ""
+    timecode: str = "0-10s"
+    duration_seconds: float = 10.0
+
+
 class DeconstructResponse(BaseModel):
     characters: list[CharacterRoleModel] = Field(default_factory=list)
     aesthetic_tags: list[str] = Field(default_factory=list)
@@ -140,6 +150,9 @@ class DeconstructResponse(BaseModel):
     camera_lighting_tag: str = ""
     audio_beat: str = ""
     vocal_delivery: str = ""
+    keyframe_image_prompt: str = ""
+    screenplay_script: str = ""
+    scenes: list[DeconstructedSceneModel] = Field(default_factory=list)
 
 
 class ConceptDeconstructRequest(BaseModel):

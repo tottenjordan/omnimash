@@ -2564,7 +2564,7 @@ def test_ui_html_pr3_browser_dom_interactions(tmp_path) -> None:
         "  if (!toastText.includes('Please enter a valid project name.')) {"
         "    throw new Error('Expected non-blocking toast notification on empty project name, got: ' + toastText);"
         "  }"
-        '  const renderedToasts = await toastRegion.locator(\'button[aria-label="Dismiss notification"]\').count();'
+        "  const renderedToasts = await toastRegion.locator('button[aria-label=\"Dismiss notification\"]').count();"
         "  if (renderedToasts !== 4) {"
         "    throw new Error('Expected toast stack to cap at 4 items, got: ' + renderedToasts);"
         "  }"
@@ -2585,3 +2585,71 @@ def test_ui_html_pr3_browser_dom_interactions(tmp_path) -> None:
     assert res.returncode == 0, f"Playwright PR3 interaction test failed: {output}"
     assert "PR3_BROWSER_INTERACTIONS_OK" in output
 
+
+def test_minimal_intent_prompt_engine_end_to_end():
+    """Verify minimal 1-sentence intent produces optimal [0-3s]/[3-6s]/[6-10s] beats and 4-Block prompts across deconstruct, expand, and generate."""
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    # 1. /api/deconstruct-concept
+    res_deconstruct = client.post(
+        "/api/deconstruct-concept",
+        json={"concept": "Gordon Ramsay vs Julia Child in a cyberpunk iron chef battle"},
+    )
+    assert res_deconstruct.status_code == 200
+    dec_data = res_deconstruct.json()
+    assert dec_data["keyframe_image_prompt"] != ""
+    assert "[0-3s]" in dec_data["screenplay_script"]
+    assert "[3-6s]" in dec_data["screenplay_script"]
+    assert "[6-10s]" in dec_data["screenplay_script"]
+    assert len(dec_data["scenes"]) >= 1
+    assert "[0-3s]" in dec_data["scenes"][0]["action"]
+    assert "[3-6s]" in dec_data["scenes"][0]["action"]
+    assert "[6-10s]" in dec_data["scenes"][0]["action"]
+    assert dec_data["scenes"][0]["dialogue"] != ""
+
+    # 2. /api/storyboard/expand forwarding taxonomy fields
+    res_expand = client.post(
+        "/api/storyboard/expand",
+        json={
+            "concept": "Gordon Ramsay vs Julia Child in a cyberpunk iron chef battle",
+            "style_tone": "Cyberpunk Glow",
+            "target_duration": 30.0,
+            "camera_lighting": dec_data["camera_lighting_tag"],
+            "aesthetic_tags": dec_data["aesthetic_tags"],
+            "audio_beat": dec_data["audio_beat"],
+            "vocal_delivery": dec_data["vocal_delivery"],
+            "environment": dec_data["environment_tag"],
+        },
+    )
+    assert res_expand.status_code == 200
+    exp_shots = res_expand.json()["shots"]
+    assert len(exp_shots) == 3
+    for s in exp_shots:
+        assert "[0-3s]" in s["action"]
+        assert "[3-6s]" in s["action"]
+        assert "[6-10s]" in s["action"]
+        assert dec_data["environment_tag"] in s["location"]
+        assert dec_data["audio_beat"] in s["audio"]
+
+    # 3. /api/generate with bare minimal prompt
+    res_gen = client.post(
+        "/api/generate",
+        json={
+            "user_id": "usr_min",
+            "project_id": "prj_min",
+            "prompt": "A neon samurai vs a cyborg ninja in an arcade showdown",
+            "clip_index": 0,
+        },
+    )
+    assert res_gen.status_code == 200
+    gen_data = res_gen.json()
+    assert gen_data["success"] is True
+    raw_prompt = gen_data["raw_compiled_prompt"]
+    assert "### INPUT ROLES" in raw_prompt
+    assert "### CHARACTER PROFILES" in raw_prompt
+    assert "### SCENE INSTRUCTIONS" in raw_prompt
+    assert "### TIMELINE" in raw_prompt
+    assert "[0-3s]" in raw_prompt
+    assert "[3-6s]" in raw_prompt
+    assert "[6-10s]" in raw_prompt

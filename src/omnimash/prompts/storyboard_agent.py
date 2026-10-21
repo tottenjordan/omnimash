@@ -178,12 +178,38 @@ class StoryboardAgent:
             location=getattr(settings, "gemini_location", "global")
         )
 
+    @staticmethod
+    def _ensure_shot_temporal_beats(action: str) -> str:
+        clean = (action or "").strip()
+        if not clean:
+            return clean
+        if "[0-3s]" in clean and "[3-6s]" in clean and "[6-10s]" in clean:
+            return clean
+        if "[0-3s]" in clean:
+            result = clean.rstrip(".") + "."
+        else:
+            stripped_leading = re.sub(r"^\[\d+(?:\.\d+)?-\d+(?:\.\d+)?s?\]\s*", "", clean).rstrip(
+                "."
+            )
+            base = stripped_leading if stripped_leading else clean.rstrip(".")
+            result = f"[0-3s] {base}."
+        if "[3-6s]" not in result:
+            result = f"{result} [3-6s] Camera tracks smoothly as the subject escalates the kinetic action in frame."
+        if "[6-10s]" not in result:
+            result = f"{result} [6-10s] Subject settles into a decisive visual resolution pose as lighting peaks."
+        return result
+
     def _generate_mock_shots(
         self,
         concept: str,
         style_tone: str,
         target_duration: float,
         characters: list[CharacterRole] | None = None,
+        camera_lighting: str | None = None,
+        aesthetic_tags: list[str] | None = None,
+        audio_beat: str | None = None,
+        vocal_delivery: str | None = None,
+        environment: str | None = None,
     ) -> list[StoryboardShot]:
         num_shots = max(3, min(6, int(math.ceil(target_duration / 10.0))))
         per_shot_dur = min(10.0, round(target_duration / num_shots, 1))
@@ -193,55 +219,108 @@ class StoryboardAgent:
             if characters
             else []
         )
+        lead_ref = char_refs[0] if char_refs else "Key characters"
+        second_ref = (
+            char_refs[1] if len(char_refs) > 1 else (char_refs[0] if char_refs else "Subject")
+        )
+        group_ref = ", ".join(char_refs) if char_refs else "Secondary characters"
+
+        tags_suffix = f", {', '.join(aesthetic_tags)}" if aesthetic_tags else ""
+        cam_suffix = (
+            f", {camera_lighting.strip()}" if camera_lighting and camera_lighting.strip() else ""
+        )
+        effective_style = f"{style_tone}{tags_suffix}{cam_suffix}"
+        env_override = environment.strip() if environment and environment.strip() else None
+        framing_override = (
+            camera_lighting.strip() if camera_lighting and camera_lighting.strip() else None
+        )
+
+        def _build_audio(default_audio: str) -> str:
+            base_aud = audio_beat.strip() if audio_beat and audio_beat.strip() else default_audio
+            if vocal_delivery and vocal_delivery.strip():
+                return f"{base_aud} | Vocal Delivery: {vocal_delivery.strip()}"
+            return base_aud
 
         mock_templates = [
             (
                 "Entrance & Setup",
-                f"Establishing shot for concept: '{concept}'. {char_refs[0] if char_refs else 'Key characters'} enter the scene.",
-                "A dimly lit stone dungeon classroom with bubbling cauldrons and soft ambient smoke",
-                f"{style_tone}, cinematic high-contrast lighting with warm shadows",
-                "Static medium shot with subtle handheld drift",
-                "Slow heavy 808 trap beat with bubbling liquid sound and quiet vinyl crackle",
+                (
+                    f"[0-3s] Establishing shot for concept: '{concept}'. {lead_ref} enter the scene. "
+                    f"[3-6s] Camera tracks smoothly as {lead_ref} step into the spotlight. "
+                    f"[6-10s] {lead_ref} lock eyes with the lens as ambient smoke swirls."
+                ),
+                env_override
+                or "A dimly lit stone dungeon classroom with bubbling cauldrons and soft ambient smoke",
+                f"{effective_style}, cinematic high-contrast lighting with warm shadows",
+                framing_override or "Static medium shot with subtle handheld drift",
+                _build_audio(
+                    "Slow heavy 808 trap beat with bubbling liquid sound and quiet vinyl crackle"
+                ),
             ),
             (
                 "Dramatic Action & Potion Consumption",
-                f"{char_refs[0] if char_refs else 'Key character'} performs the central dramatic action or consumes a potion, reacting in surprise.",
-                "Gothic potion classroom with floating candles and glowing mystical symbols",
-                f"{style_tone}, vibrant dramatic color grading and neon rim lights",
-                "Dynamic dolly zoom in on character face",
-                "Trap beat drop with sub-bass and crisp snare trills",
+                (
+                    f"[0-3s] {lead_ref} performs the central dramatic action or consumes a potion. "
+                    f"[3-6s] {lead_ref} reacts in surprise as kinetic energy surges across the set. "
+                    f"[6-10s] {lead_ref} gestures emphatically toward the camera under neon rim lights."
+                ),
+                env_override
+                or "Gothic potion classroom with floating candles and glowing mystical symbols",
+                f"{effective_style}, vibrant dramatic color grading and neon rim lights",
+                framing_override or "Dynamic dolly zoom in on character face",
+                _build_audio("Trap beat drop with sub-bass and crisp snare trills"),
             ),
             (
                 "Transformation Reveal & Aesthetic Drip",
-                f"{char_refs[1] if len(char_refs) > 1 else (char_refs[0] if char_refs else 'Subject')} is transformed, stepping forward in upgraded aesthetic wardrobe with high confidence.",
-                "High contrast Hogwarts courtyard with dramatic stage smoke and ambient flares",
-                f"{style_tone}, polished commercial lighting and anamorphic lens flares",
-                "Low angle pedestal shot moving upward slowly",
-                "Aggressive 90s hip hop beat with heavy kick drum and vocal sample",
+                (
+                    f"[0-3s] {second_ref} is transformed, stepping forward in upgraded aesthetic wardrobe. "
+                    f"[3-6s] {second_ref} showcases bold visual presence with confident rhythmic motion. "
+                    f"[6-10s] {second_ref} hits a commanding hero stance as anamorphic flares bloom."
+                ),
+                env_override
+                or "High contrast Hogwarts courtyard with dramatic stage smoke and ambient flares",
+                f"{effective_style}, polished commercial lighting and anamorphic lens flares",
+                framing_override or "Low angle pedestal shot moving upward slowly",
+                _build_audio("Aggressive 90s hip hop beat with heavy kick drum and vocal sample"),
             ),
             (
                 "Secondary Reaction & High-Energy Clash",
-                f"{', '.join(char_refs) if char_refs else 'Secondary characters'} react in awe as the scene reaches high energy performance.",
-                "Grand hall entrance with towering archways and laser fog reflections",
-                f"{style_tone}, pulse-synced strobing spotlights and atmospheric beam flares",
-                "Fast whip pan between subjects",
-                "Blown-out 808 bass slides with rapid 16th-note trap hi-hats",
+                (
+                    f"[0-3s] {group_ref} react in awe as the scene reaches high energy performance. "
+                    f"[3-6s] {group_ref} trade rapid expressive gestures across the stage. "
+                    f"[6-10s] {group_ref} converge toward the center frame as spotlights pulse."
+                ),
+                env_override
+                or "Grand hall entrance with towering archways and laser fog reflections",
+                f"{effective_style}, pulse-synced strobing spotlights and atmospheric beam flares",
+                framing_override or "Fast whip pan between subjects",
+                _build_audio("Blown-out 808 bass slides with rapid 16th-note trap hi-hats"),
             ),
             (
                 "Group Synchronized Pose & Motion",
-                f"{', '.join(char_refs) if char_refs else 'Group'} dynamic shot with synchronized gestures and striking visual poses.",
-                "Rain-slicked cobblestone alleyway lit by atmospheric green and purple lights",
-                f"{style_tone}, wet asphalt reflections and sharp rim highlights",
-                "Widescreen tracking shot following group motion",
-                "Synthesizer arpeggios layering over heavy boom-bap rhythm",
+                (
+                    f"[0-3s] {group_ref} launch into synchronized gestures in widescreen formation. "
+                    f"[3-6s] Camera tracks alongside {group_ref} as kinetic choreography builds. "
+                    f"[6-10s] {group_ref} lock into striking visual poses under wet neon reflections."
+                ),
+                env_override
+                or "Rain-slicked cobblestone alleyway lit by atmospheric green and purple lights",
+                f"{effective_style}, wet asphalt reflections and sharp rim highlights",
+                framing_override or "Widescreen tracking shot following group motion",
+                _build_audio("Synthesizer arpeggios layering over heavy boom-bap rhythm"),
             ),
             (
                 "Climactic Freeze-Frame & Outro",
-                f"{char_refs[0] if char_refs else 'Climactic'} resolution pose facing the camera directly as scene fades out.",
-                "Spotlit center stage with receding back-lighting and lingering smoke effect",
-                f"{style_tone}, golden hour backlight with volumetric rim light",
-                "Slow push-in zoom settling into final freeze-frame pose",
-                "Final booming kick drum hit with long reverb tail",
+                (
+                    f"[0-3s] {lead_ref} steps into the center spotlight for the finale. "
+                    f"[3-6s] Slow push-in zoom captures {lead_ref} delivering a final signature gesture. "
+                    f"[6-10s] {lead_ref} holds a climactic resolution pose facing the camera directly."
+                ),
+                env_override
+                or "Spotlit center stage with receding back-lighting and lingering smoke effect",
+                f"{effective_style}, golden hour backlight with volumetric rim light",
+                framing_override or "Slow push-in zoom settling into final freeze-frame pose",
+                _build_audio("Final booming kick drum hit with long reverb tail"),
             ),
         ]
 
@@ -275,14 +354,16 @@ class StoryboardAgent:
     def optimize_shot_prompt(
         self, raw_directive: str, style_tone: str = "Cinematic Trap Parody"
     ) -> str:
-        """Optimizes a brief shot directive into a single concise, vivid cinematic visual prompt (max 40 words).
+        """Optimizes a shot directive into a vivid cinematic visual prompt while preserving [0-3s] / [3-6s] / [6-10s] temporal beats.
 
         In mock mode: returns an enriched prompt string combining style tone and directive with anamorphic lens flare
-        and cinematic lighting signifiers.
-        In live mode: calls Gemini SDK to expand the directive into a visual scene prompt.
+        and cinematic lighting signifiers while keeping all timecode beats intact.
+        In live mode: calls Gemini SDK to expand the directive into a visual scene prompt while preserving temporal beats.
         """
         if not raw_directive or not raw_directive.strip():
             return raw_directive
+
+        input_timecodes = re.findall(r"\[\d+(?:\.\d+)?-\d+(?:\.\d+)?s?\]", raw_directive)
 
         if self.mock_mode or not self._genai_client:
             enriched = (
@@ -296,13 +377,16 @@ class StoryboardAgent:
                 "You are an expert Hollywood cinematographer. "
                 "Include explicit camera angles, cinematic lighting, and visual atmosphere "
                 "(such as anamorphic lens flares and volumetric light). "
-                "Output ONLY the final concise prompt (max 40 words) without commentary or quotes."
+                "CRITICAL: Preserve all [0-3s], [3-6s], and [6-10s] temporal micro-action beats intact; "
+                "never strip timecodes. Output ONLY the final vivid cinematic prompt without commentary or quotes."
             )
             prompt = (
-                "You are an expert Hollywood cinematographer. Expand the following brief shot directive into a single concise, vivid cinematic prompt (maximum 40 words) for AI video generation.\n"
+                "You are an expert Hollywood cinematographer. Expand and refine the following shot directive into a vivid cinematic prompt for AI video generation.\n"
                 f'Style & Tone: "{style_tone}"\n'
                 f'Shot Directive: "{raw_directive.strip()}"\n'
-                "Include explicit camera angles, cinematic lighting, and visual atmosphere (such as anamorphic lens flares and volumetric light). Output ONLY the final concise prompt (max 40 words) without commentary or quotes."
+                "Include explicit camera angles, cinematic lighting, and visual atmosphere (such as anamorphic lens flares and volumetric light). "
+                "CRITICAL: If the shot directive includes [0-3s], [3-6s], [6-10s] temporal beats, you MUST keep every [0-3s], [3-6s], [6-10s] timecode marker intact. "
+                "Output ONLY the final cinematic prompt without commentary or quotes."
             )
             from google.genai import types
             from omnimash.engine.omni_client import get_relaxed_safety_settings
@@ -324,6 +408,8 @@ class StoryboardAgent:
             ):
                 text = text[1:-1].strip()
             if text:
+                if input_timecodes and not all(tc in text for tc in input_timecodes):
+                    text = f"{raw_directive.strip()} ({text})"
                 return sanitize_real_names(text)
         except Exception as exc:
             logger.warning("optimize_shot_prompt live call failed: %s", exc)
@@ -335,10 +421,11 @@ class StoryboardAgent:
         return sanitize_real_names(enriched)
 
     def _optimize_shots(self, shots: list[StoryboardShot], style_tone: str) -> None:
-        """Optimizes action directives across storyboard shots, running concurrently when live."""
+        """Optimizes action directives across storyboard shots while ensuring [0-3s]/[3-6s]/[6-10s] temporal beats are preserved."""
 
         def _optimize(s: StoryboardShot) -> None:
-            s.action = self.optimize_shot_prompt(s.action, style_tone=style_tone)
+            seeded_action = self._ensure_shot_temporal_beats(s.action)
+            s.action = self.optimize_shot_prompt(seeded_action, style_tone=style_tone)
 
         if len(shots) > 1 and not self.mock_mode and self._genai_client:
             with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(shots))) as executor:
@@ -354,30 +441,65 @@ class StoryboardAgent:
         target_duration: float = 30.0,
         characters: list[CharacterRole] | None = None,
         screenplay_script: str = "",
+        camera_lighting: str | None = None,
+        aesthetic_tags: list[str] | None = None,
+        audio_beat: str | None = None,
+        vocal_delivery: str | None = None,
+        environment: str | None = None,
     ) -> list[StoryboardShot]:
         """Expands a vision concept into 3-6 distinct <=10s shot directives formatted in Gemini Omni Flash timing blocks."""
         validate_prompt_input_lengths(concept=concept, screenplay_script=screenplay_script)
         shots: list[StoryboardShot] = []
         from omnimash.prompts.compiler import PromptCompiler
 
+        tags_suffix = f", {', '.join(aesthetic_tags)}" if aesthetic_tags else ""
+        effective_style_tone = f"{style_tone}{tags_suffix}"
+
         if screenplay_script and screenplay_script.strip():
             derived = (
-                PromptCompiler(mock_mode=True).deconstruct_concept(concept) if concept else None
+                PromptCompiler(mock_mode=self.mock_mode).deconstruct_concept(concept)
+                if concept
+                else None
             )
             env_default = (
-                derived.environment_tag
-                if derived and getattr(derived, "environment_tag", None)
-                else None
-            ) or f"{concept} setting"
+                (environment.strip() if environment and environment.strip() else None)
+                or (
+                    derived.environment_tag
+                    if derived and getattr(derived, "environment_tag", None)
+                    else None
+                )
+                or f"{concept} setting"
+            )
             lighting_default = (
-                derived.camera_lighting_tag
-                if derived and getattr(derived, "camera_lighting_tag", None)
-                else None
-            ) or f"{style_tone}, cinematic high-contrast lighting"
-            framing_default = "Static medium shot with subtle handheld drift"
+                (
+                    f"{effective_style_tone}, {camera_lighting.strip()}"
+                    if camera_lighting and camera_lighting.strip()
+                    else None
+                )
+                or (
+                    f"{effective_style_tone}, {derived.camera_lighting_tag}"
+                    if derived and getattr(derived, "camera_lighting_tag", None)
+                    else None
+                )
+                or f"{effective_style_tone}, cinematic high-contrast lighting"
+            )
+            framing_default = (
+                camera_lighting.strip()
+                if camera_lighting and camera_lighting.strip()
+                else "Static medium shot with subtle handheld drift"
+            )
+            base_audio_default = (
+                (audio_beat.strip() if audio_beat and audio_beat.strip() else None)
+                or (
+                    derived.audio_beat if derived and getattr(derived, "audio_beat", None) else None
+                )
+                or "Slow heavy 808 trap beat with sub-bass"
+            )
             audio_default = (
-                derived.audio_beat if derived and getattr(derived, "audio_beat", None) else None
-            ) or "Slow heavy 808 trap beat with sub-bass"
+                f"{base_audio_default} | Vocal Delivery: {vocal_delivery.strip()}"
+                if vocal_delivery and vocal_delivery.strip()
+                else base_audio_default
+            )
             parsed_timecodes = parse_timecoded_script(
                 screenplay_script, default_duration=target_duration
             )
@@ -394,14 +516,18 @@ class StoryboardAgent:
                         "Dramatic Action",
                         env_default,
                         f"{lighting_default}, vibrant dramatic rim lights",
-                        "Dynamic dolly zoom in on character face",
+                        camera_lighting.strip()
+                        if camera_lighting and camera_lighting.strip()
+                        else "Dynamic dolly zoom in on character face",
                         f"{audio_default} with crisp snare trills",
                     ),
                     (
                         "Transformation Reveal",
                         env_default,
                         f"{lighting_default}, polished anamorphic lens flares",
-                        "Low angle pedestal shot moving upward slowly",
+                        camera_lighting.strip()
+                        if camera_lighting and camera_lighting.strip()
+                        else "Low angle pedestal shot moving upward slowly",
                         f"Aggressive beat: {audio_default}",
                     ),
                 ]
@@ -442,14 +568,22 @@ class StoryboardAgent:
                             character_continuity="Maintain subject outfit, posture, and facial expression from preceding shot",
                         )
                     )
-                self._optimize_shots(shots, style_tone=style_tone)
+                self._optimize_shots(shots, style_tone=effective_style_tone)
                 return shots
 
         if self.mock_mode or not self._genai_client:
             shots = self._generate_mock_shots(
-                concept, style_tone, target_duration, characters=characters
+                concept,
+                style_tone,
+                target_duration,
+                characters=characters,
+                camera_lighting=camera_lighting,
+                aesthetic_tags=aesthetic_tags,
+                audio_beat=audio_beat,
+                vocal_delivery=vocal_delivery,
+                environment=environment,
             )
-            self._optimize_shots(shots, style_tone=style_tone)
+            self._optimize_shots(shots, style_tone=effective_style_tone)
             return shots
 
         try:
@@ -463,20 +597,34 @@ class StoryboardAgent:
                     + "\nIncorporate these character role references (e.g. 'Role A (Name)') into the action directives.\n"
                 )
 
+            extra_directives: list[str] = []
+            if environment and environment.strip():
+                extra_directives.append(f'Environment / Setting: "{environment.strip()}"')
+            if camera_lighting and camera_lighting.strip():
+                extra_directives.append(f'Camera & Lighting: "{camera_lighting.strip()}"')
+            if aesthetic_tags:
+                extra_directives.append(f'Aesthetic Tags: "{", ".join(aesthetic_tags)}"')
+            if audio_beat and audio_beat.strip():
+                extra_directives.append(f'Audio Beat: "{audio_beat.strip()}"')
+            if vocal_delivery and vocal_delivery.strip():
+                extra_directives.append(f'Vocal Delivery: "{vocal_delivery.strip()}"')
+            extra_context = ("\n" + "\n".join(extra_directives) + "\n") if extra_directives else ""
+
             system_instruction = (
                 "You are an expert storyboard director for Gemini Omni Flash. "
                 "CRITICAL SAFETY RULE: Do NOT use real celebrity or public figure full names in the output JSON. "
                 "Replace any real celebrity names with descriptive fictional parody visual roles. "
-                "Each shot MUST be <= 10.0 seconds in duration and structure framing with "
-                "'In a single continuous shot. No scene cuts.'."
+                "Each shot MUST be <= 10.0 seconds in duration, choreograph action into [0-3s], [3-6s], and [6-10s] micro-action beats, "
+                "and structure framing with 'In a single continuous shot. No scene cuts.'."
             )
             prompt = (
-                f"Expand the following video concept into exactly {num_shots} storyboard shots for a {target_duration}s video formatted into Gemini Omni Flash timing blocks [X-Ys].\n"
+                f"Expand the following video concept into exactly {num_shots} storyboard shots for a {target_duration}s video formatted into Gemini Omni Flash timing blocks [0-3s] / [3-6s] / [6-10s].\n"
                 f'Concept: "{concept}"\n'
-                f'Style & Tone: "{style_tone}"\n'
+                f'Style & Tone: "{effective_style_tone}"\n'
+                f"{extra_context}"
                 f"{char_info}\n"
                 f"CRITICAL SAFETY RULE: Do NOT use real celebrity or public figure full names in the output JSON. Replace any real celebrity names with descriptive fictional parody visual roles (e.g., use 'Fiery Master Chef' instead of 'Gordon Ramsay', 'Atlanta Rap Legend' instead of 'Jeezy', 'Melodic Rap Star' instead of 'Drake').\n\n"
-                f"Each shot MUST be <= 10.0 seconds in duration.\n"
+                f"Each shot MUST be <= 10.0 seconds in duration and structure its action field with [0-3s], [3-6s], and [6-10s] micro-action beats.\n"
                 f"Structure framing and camera movement directives with continuous shot camera instructions ('In a single continuous shot. No scene cuts.')."
             )
             from google.genai import types
@@ -523,8 +671,30 @@ class StoryboardAgent:
                     item = item_model.model_dump()
                     raw_summary = str(item.get("summary", ""))
                     raw_action = str(item.get("action", ""))
-                    raw_location = str(item.get("location", ""))
-                    raw_framing = _ensure_continuous_shot(str(item.get("framing_motion", "")))
+                    raw_location = str(item.get("location", "")) or (
+                        environment.strip() if environment and environment.strip() else ""
+                    )
+                    raw_framing = _ensure_continuous_shot(
+                        str(item.get("framing_motion", ""))
+                        or (
+                            camera_lighting.strip()
+                            if camera_lighting and camera_lighting.strip()
+                            else ""
+                        )
+                    )
+                    raw_audio = str(item.get("audio", "")) or (
+                        audio_beat.strip() if audio_beat and audio_beat.strip() else ""
+                    )
+                    if (
+                        vocal_delivery
+                        and vocal_delivery.strip()
+                        and vocal_delivery.strip() not in raw_audio
+                    ):
+                        raw_audio = (
+                            f"{raw_audio} | Vocal Delivery: {vocal_delivery.strip()}"
+                            if raw_audio
+                            else f"Vocal Delivery: {vocal_delivery.strip()}"
+                        )
                     formatted_summary = _format_character_references(raw_summary, characters)
                     formatted_action = _format_character_references(raw_action, characters)
                     formatted_location = _format_character_references(raw_location, characters)
@@ -539,12 +709,14 @@ class StoryboardAgent:
                             end_seconds=end_sec,
                             summary=sanitize_real_names(formatted_summary),
                             action=sanitize_real_names(formatted_action),
+                            dialogue=sanitize_real_names(str(item.get("dialogue", ""))),
                             location=sanitize_real_names(formatted_location),
                             style_lighting=sanitize_real_names(
-                                str(item.get("style_lighting", style_tone))
+                                str(item.get("style_lighting", effective_style_tone))
+                                or effective_style_tone
                             ),
                             framing_motion=sanitize_real_names(raw_framing),
-                            audio=sanitize_real_names(str(item.get("audio", ""))),
+                            audio=sanitize_real_names(raw_audio),
                             narrative_stage=sanitize_real_names(
                                 str(item.get("narrative_stage", "Rising Action"))
                             ),
@@ -568,13 +740,21 @@ class StoryboardAgent:
                             else None,
                         )
                     )
-                self._optimize_shots(shots, style_tone=style_tone)
+                self._optimize_shots(shots, style_tone=effective_style_tone)
                 return shots
         except Exception as exc:
             logger.warning("Live expand_vision failed, falling back to mock: %s", exc)
 
         shots = self._generate_mock_shots(
-            concept, style_tone, target_duration, characters=characters
+            concept,
+            style_tone,
+            target_duration,
+            characters=characters,
+            camera_lighting=camera_lighting,
+            aesthetic_tags=aesthetic_tags,
+            audio_beat=audio_beat,
+            vocal_delivery=vocal_delivery,
+            environment=environment,
         )
-        self._optimize_shots(shots, style_tone=style_tone)
+        self._optimize_shots(shots, style_tone=effective_style_tone)
         return shots
