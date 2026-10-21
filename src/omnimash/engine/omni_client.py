@@ -414,7 +414,13 @@ class OmniFlashClient:
             motion_reference_clip=motion_reference_clip,
         )
 
-        model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash-preview")
+        model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash")
+        if (
+            self._genai_client is not None
+            and self._genai_client is self._dev_client
+            and model_id == "gemini-omni-1.1-flash-preview"
+        ):
+            model_id = "gemini-omni-1.1-flash"
         kwargs: dict[str, Any] = {
             "model": model_id,
             "input": input_payload,
@@ -527,6 +533,8 @@ class OmniFlashClient:
                         exc_str,
                     )
                     self.switch_to_developer_api()
+                    if kwargs.get("model") == "gemini-omni-1.1-flash-preview":
+                        kwargs["model"] = "gemini-omni-1.1-flash"
                 elif any(
                     k in exc_str.lower()
                     for k in (

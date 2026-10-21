@@ -12,7 +12,7 @@ class OmniMashSettings(BaseSettings):
     omnimash_gcs_bucket: str | None = None
     google_api_key: str | None = None
     gemini_api_key: str | None = None
-    omni_model_id: str = "gemini-omni-1.1-flash-preview"
+    omni_model_id: str = "gemini-omni-1.1-flash"
     pro_model_id: str = "gemini-4-argon"
     flash_model_id: str = "gemini-3.8-flash"
     image_model_id: str = "gemini-nano-banana-2.1"
