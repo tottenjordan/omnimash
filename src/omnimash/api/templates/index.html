@@ -58,7 +58,7 @@
     <div id="__next"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         const getDisplayableRefUrl = (url) => {
             if (!url) return "";
@@ -1196,6 +1196,9 @@
 
             // Tab 3: Journey 3 Multi-Shot Continuity Studio State
             const [activeTab, setActiveTab] = useState("journey3");
+            const [j3StepFilter, setJ3StepFilter] = useState("all");
+            const visualConcept = concept;
+            const setVisualConcept = setConcept;
 
             const [j3MasterDescription, setJ3MasterDescription] = useState(() => {
                 return localStorage.getItem("omnimash_j3_master_description") || "Cyberpunk wizard battle in Tokyo street";
@@ -1234,6 +1237,56 @@
                     localStorage.setItem("omnimash_j3_style_preset", j3StylePreset);
                 }
             }, [j3StylePreset]);
+
+            // Bidirectional cross-mode sync: visualConcept (concept) <-> j3MasterDescription and aestheticTags <-> j3StylePreset
+            const lastDeconstructedConceptRef = useRef("");
+            const prevConceptSyncRef = useRef(visualConcept);
+            const prevJ3DescSyncRef = useRef(j3MasterDescription);
+            useEffect(() => {
+                if (visualConcept !== prevConceptSyncRef.current) {
+                    prevConceptSyncRef.current = visualConcept;
+                    if (typeof visualConcept === "string" && visualConcept !== j3MasterDescription) {
+                        prevJ3DescSyncRef.current = visualConcept;
+                        setJ3MasterDescription(visualConcept);
+                    }
+                }
+            }, [visualConcept, j3MasterDescription]);
+
+            useEffect(() => {
+                if (j3MasterDescription !== prevJ3DescSyncRef.current) {
+                    prevJ3DescSyncRef.current = j3MasterDescription;
+                    if (typeof j3MasterDescription === "string" && j3MasterDescription !== visualConcept) {
+                        prevConceptSyncRef.current = j3MasterDescription;
+                        setVisualConcept(j3MasterDescription);
+                        setKeyframeImagePrompt(j3MasterDescription);
+                    }
+                }
+            }, [j3MasterDescription, visualConcept]);
+
+            const prevAestheticSyncRef = useRef((aestheticTags && aestheticTags[0]) || "");
+            const prevJ3StyleSyncRef = useRef(j3StylePreset);
+            useEffect(() => {
+                const primaryTag = (aestheticTags && aestheticTags.length > 0) ? aestheticTags[0] : "";
+                if (primaryTag && primaryTag !== prevAestheticSyncRef.current) {
+                    prevAestheticSyncRef.current = primaryTag;
+                    setStageStyleTone(primaryTag);
+                    if (primaryTag !== j3StylePreset) {
+                        prevJ3StyleSyncRef.current = primaryTag;
+                        setJ3StylePreset(primaryTag);
+                    }
+                }
+            }, [aestheticTags, j3StylePreset]);
+
+            useEffect(() => {
+                if (j3StylePreset && j3StylePreset !== prevJ3StyleSyncRef.current) {
+                    prevJ3StyleSyncRef.current = j3StylePreset;
+                    setStageStyleTone(j3StylePreset);
+                    if (!aestheticTags || aestheticTags[0] !== j3StylePreset) {
+                        prevAestheticSyncRef.current = j3StylePreset;
+                        setAestheticTags((prev) => [j3StylePreset, ...(prev || []).filter((t) => t !== j3StylePreset)]);
+                    }
+                }
+            }, [j3StylePreset, aestheticTags]);
 
             const [j3ImageModel, setJ3ImageModel] = useState(() => {
                 const saved = localStorage.getItem("omnimash_j3_image_model");
@@ -2221,6 +2274,15 @@
                             image_prompt: s.image_prompt || `${s.action || s.summary}. Setting: ${s.location || environmentTag || concept}. Lighting: ${cameraLightingTag || stageStyleTone}`
                         }));
                         setStageShots(shotsWithPrompts);
+                        const defaultRoles = (characters && characters.length > 0)
+                            ? characters.map(c => c.role_id)
+                            : ["Role A", "Role B"];
+                        setScenes(shotsWithPrompts.map((s, idx) => ({
+                            scene_number: idx + 1,
+                            active_roles: defaultRoles,
+                            action: s.action || s.summary || "",
+                            dialogue: s.dialogue || ""
+                        })));
                         setActiveShotIdx(0);
                         setActiveStage(2);
                     }
@@ -2236,41 +2298,76 @@
                 setExpandLoading(true);
                 setLastError(null);
                 try {
-                    if (concept && concept.trim()) {
-                        await handleDeconstructConcept(concept);
+                    const targetConcept = (concept || keyframeImagePrompt || screenplayScript || "").trim();
+                    let deconstructed = null;
+                    if (targetConcept) {
+                        deconstructed = await handleDeconstructConcept(targetConcept);
                     }
+                    const decData = (deconstructed && deconstructed.data) || {};
+                    const effectiveChars = (deconstructed && deconstructed.formattedChars) || characters;
+                    const effectiveCam = decData.camera_lighting_tag || cameraLightingTag;
+                    const effectiveTags = (Array.isArray(decData.aesthetic_tags) && decData.aesthetic_tags.length > 0) ? decData.aesthetic_tags : aestheticTags;
+                    const effectiveAudio = decData.audio_beat || audioBeat;
+                    const effectiveVocal = decData.vocal_delivery || vocalDelivery;
+                    const effectiveEnv = decData.environment_tag || environmentTag;
+                    const effectiveScript = decData.screenplay_script || screenplayScript;
                     const res = await fetch("/api/storyboard/expand", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            concept: concept || "Parody music video clash",
-                            style_tone: stageStyleTone || cameraLightingTag || "Gritty 90s Cyberpunk",
+                            concept: targetConcept || "Parody music video clash",
+                            style_tone: stageStyleTone || effectiveCam || "Gritty 90s Cyberpunk",
                             target_duration: parseFloat(stageTargetDuration) || 30.0,
-                            characters: characters,
-                            screenplay_script: screenplayScript,
-                            aspect_ratio: aspectRatio
+                            characters: effectiveChars,
+                            screenplay_script: effectiveScript,
+                            aspect_ratio: aspectRatio,
+                            camera_lighting: effectiveCam,
+                            aesthetic_tags: effectiveTags,
+                            audio_beat: effectiveAudio,
+                            vocal_delivery: effectiveVocal,
+                            environment: effectiveEnv
                         })
                     });
                     const data = await res.json();
                     if (data && data.shots && data.shots.length > 0) {
                         const updatedShots = data.shots.map((s, idx) => ({
                             ...s,
-                            action: s.action || `[0-3s] Action: ${concept} shot ${idx + 1}. Audio: ${audioBeat || "Heavy 808 beat"}. Dialogue: ${vocalDelivery || "Energetic"}`,
-                            framing_motion: s.framing_motion || cameraLightingTag || "Static medium shot with subtle drift",
-                            style_lighting: s.style_lighting || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : "🎨 90s Cel-Shaded Anime, vibrant flat colors"),
-                            audio: s.audio || audioBeat || "[0-3s] Heavy 808 Trap Beat Drop | [3-10s] Sub-Bass and Snares"
+                            action: s.action || `[0-3s] Action: ${targetConcept || concept} shot ${idx + 1}. [3-6s] Action: Mid-shot escalation. [6-10s] Action: Climax finish.`,
+                            framing_motion: s.framing_motion || effectiveCam || "Static medium shot with subtle drift",
+                            style_lighting: s.style_lighting || ((effectiveTags && effectiveTags.length > 0) ? effectiveTags.join(", ") : "🎨 90s Cel-Shaded Anime, vibrant flat colors"),
+                            audio: s.audio || effectiveAudio || "[0-3s] Heavy 808 Trap Beat Drop | [3-10s] Sub-Bass and Snares"
                         }));
                         setStageShots(updatedShots);
+                        const defaultRoles = (effectiveChars && effectiveChars.length > 0)
+                            ? effectiveChars.map(c => c.role_id)
+                            : ["Role A", "Role B"];
+                        setScenes(updatedShots.map((s, idx) => ({
+                            scene_number: idx + 1,
+                            active_roles: defaultRoles,
+                            action: s.action || s.summary || "",
+                            dialogue: s.dialogue || ""
+                        })));
                         setActiveShotIdx(0);
-                        setActiveStage(2);
+                        if (studioMode === "stages") {
+                            setActiveStage(2);
+                        }
                     } else if (stageShots && stageShots.length > 0) {
                         const syncedShots = stageShots.map(s => ({
                             ...s,
-                            framing_motion: cameraLightingTag || s.framing_motion || "Static medium shot with subtle drift",
-                            style_lighting: (aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : (s.style_lighting || "🎨 90s Cel-Shaded Anime"),
-                            audio: audioBeat ? `[0-3s] ${audioBeat} | [3-10s] Sub-Bass` : s.audio
+                            framing_motion: effectiveCam || s.framing_motion || "Static medium shot with subtle drift",
+                            style_lighting: (effectiveTags && effectiveTags.length > 0) ? effectiveTags.join(", ") : (s.style_lighting || "🎨 90s Cel-Shaded Anime"),
+                            audio: effectiveAudio ? `[0-3s] ${effectiveAudio} | [3-10s] Sub-Bass` : s.audio
                         }));
                         setStageShots(syncedShots);
+                        const defaultRoles = (effectiveChars && effectiveChars.length > 0)
+                            ? effectiveChars.map(c => c.role_id)
+                            : ["Role A", "Role B"];
+                        setScenes(syncedShots.map((s, idx) => ({
+                            scene_number: idx + 1,
+                            active_roles: defaultRoles,
+                            action: s.action || s.summary || "",
+                            dialogue: s.dialogue || ""
+                        })));
                     }
                 } catch (err) {
                     console.error("Storyboard re-sync failed:", err);
@@ -2507,6 +2604,8 @@
 
             const handleGlobalStyleToneChange = (newTone, applyToAllShots = true) => {
                 setStageStyleTone(newTone);
+                setJ3StylePreset(newTone);
+                setAestheticTags((prev) => (prev && prev.includes(newTone)) ? prev : [newTone, ...(prev || [])]);
                 if (applyToAllShots) {
                     setStageShots((prevShots) =>
                         prevShots.map((shot) => ({
@@ -2572,7 +2671,7 @@
             };
 
             const handleProceedToStage4 = async () => {
-                setActiveStage(4);
+                setActiveStage(3);
                 setTimeout(() => {
                     handleStageSaveFinal();
                 }, 50);
@@ -2638,7 +2737,7 @@
             // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
             const handleDeconstructConcept = async (conceptOverride) => {
                 const targetConcept = (typeof conceptOverride === "string" && conceptOverride.trim()) ? conceptOverride : (concept || keyframeImagePrompt || screenplayScript || "");
-                if (!targetConcept || !targetConcept.trim()) return;
+                if (!targetConcept || !targetConcept.trim()) return null;
                 setParentTurnId(null);
                 setRawCompiledPrompt("");
                 setDeconstructLoading(true);
@@ -2649,8 +2748,10 @@
                         body: JSON.stringify({ concept: targetConcept })
                     });
                     const data = await res.json();
+                    lastDeconstructedConceptRef.current = targetConcept.trim();
+                    let formattedChars = characters;
                     if (data.characters && data.characters.length > 0) {
-                        const formattedChars = data.characters.map(c => ({
+                        formattedChars = data.characters.map(c => ({
                             ...c,
                             aesthetic_tags: c.aesthetic_tags || [],
                             voice_style: c.voice_style || "",
@@ -2659,14 +2760,38 @@
                         }));
                         setCharacters(formattedChars);
                         setJ3Characters(formattedChars);
-                        const newScenes = formattedChars.map((char, idx) => ({
-                            scene_number: idx + 1,
-                            active_roles: [char.role_id],
-                            action: `${char.name || char.role_id} in action sequence`,
-                            dialogue: ""
-                        }));
-                        if (newScenes.length > 0) setScenes(newScenes);
                     }
+                    let structuredScenes = scenes;
+                    if (Array.isArray(data.scenes) && data.scenes.length > 0) {
+                        const defaultRoles = (formattedChars && formattedChars.length > 0)
+                            ? formattedChars.map(c => c.role_id)
+                            : ["Role A", "Role B"];
+                        structuredScenes = data.scenes.map((sc, idx) => ({
+                            scene_number: sc.scene_number || (idx + 1),
+                            active_roles: (Array.isArray(sc.active_roles) && sc.active_roles.length > 0) ? sc.active_roles : defaultRoles,
+                            action: sc.action || "",
+                            dialogue: sc.dialogue || ""
+                        }));
+                        setScenes(structuredScenes);
+                        const firstSc = structuredScenes[0];
+                        setStageShots((prevShots) => {
+                            const baseShots = (prevShots && prevShots.length > 0) ? [...prevShots] : [{ shot_index: 1, duration_seconds: 10.0 }];
+                            baseShots[0] = {
+                                ...baseShots[0],
+                                shot_index: baseShots[0].shot_index || 1,
+                                action: firstSc.action || baseShots[0].action,
+                                dialogue: firstSc.dialogue || baseShots[0].dialogue,
+                                location: data.environment_tag || baseShots[0].location || environmentTag,
+                                style_lighting: (data.aesthetic_tags && data.aesthetic_tags.length > 0) ? data.aesthetic_tags.join(", ") : baseShots[0].style_lighting,
+                                framing_motion: data.camera_lighting_tag || baseShots[0].framing_motion || cameraLightingTag,
+                                audio: data.audio_beat || baseShots[0].audio || audioBeat,
+                                image_prompt: data.keyframe_image_prompt || baseShots[0].image_prompt || firstSc.action
+                            };
+                            return baseShots;
+                        });
+                    }
+                    if (data.keyframe_image_prompt) setKeyframeImagePrompt(data.keyframe_image_prompt);
+                    if (data.screenplay_script) setScreenplayScript(data.screenplay_script);
                     if (data.aesthetic_tags) setAestheticTags(data.aesthetic_tags);
                     if (data.environment_tag) setEnvironmentTag(data.environment_tag);
                     if (data.camera_lighting_tag) setCameraLightingTag(data.camera_lighting_tag);
@@ -2677,8 +2802,14 @@
                     } else {
                         setJ3DiffPrompt("Make background darker with glowing blue neon");
                     }
+                    return {
+                        data,
+                        formattedChars,
+                        structuredScenes
+                    };
                 } catch (err) {
                     console.error("Deconstruction failed:", err);
+                    return null;
                 } finally {
                     setDeconstructLoading(false);
                 }
@@ -3169,6 +3300,150 @@
                     setLastError(err.message || String(err));
                 } finally {
                     setLoading(false);
+                }
+            };
+
+            const handleStage1GenerateKeyframeAnchor = async () => {
+                if (keyframeLoadingMap[1]) return null;
+                const shot0 = (stageShots && stageShots[0]) ? stageShots[0] : { shot_index: 1, duration_seconds: 10.0 };
+                const effectiveImgPrompt = keyframeImagePrompt || concept || shot0.image_prompt || "";
+                const kfUrl = await handleGenerateKeyframeImage(0, {
+                    ...shot0,
+                    shot_index: shot0.shot_index || 1,
+                    image_prompt: effectiveImgPrompt,
+                    action: screenplayScript || shot0.action || concept || "",
+                    location: environmentTag || shot0.location || "",
+                    style_lighting: stageStyleTone || shot0.style_lighting || ""
+                });
+                if (kfUrl) {
+                    setStageRefImage(kfUrl);
+                    if (effectiveImgPrompt) {
+                        updateStageShot(0, "image_prompt", effectiveImgPrompt);
+                    }
+                }
+                return kfUrl;
+            };
+
+            const handleExpressRenderSingleVideo = async () => {
+                if (loading || shotGeneratingMap[1] || isBatchGeneratingVideos) return;
+                setLoading(true);
+                setShotGeneratingMap((prev) => ({ ...prev, 1: true }));
+                setLastError(null);
+                try {
+                    const targetConcept = (concept || keyframeImagePrompt || screenplayScript || "").trim();
+                    let deconstructed = null;
+                    if (targetConcept && !(screenplayScript && screenplayScript.trim()) && lastDeconstructedConceptRef.current !== targetConcept) {
+                        deconstructed = await handleDeconstructConcept(targetConcept);
+                    }
+                    const decData = (deconstructed && deconstructed.data) || {};
+                    const effectiveChars = (deconstructed && deconstructed.formattedChars) || characters;
+                    const effectiveScenes = (deconstructed && deconstructed.structuredScenes) || scenes;
+                    const effectiveTags = (Array.isArray(decData.aesthetic_tags) && decData.aesthetic_tags.length > 0) ? decData.aesthetic_tags : aestheticTags;
+                    const effectiveEnv = decData.environment_tag || environmentTag;
+                    const effectiveCam = decData.camera_lighting_tag || cameraLightingTag;
+                    const effectiveAudio = decData.audio_beat || audioBeat;
+                    const effectiveVocal = decData.vocal_delivery || vocalDelivery;
+
+                    const defaultRoles = (effectiveChars && effectiveChars.length > 0)
+                        ? effectiveChars.map(c => c.role_id)
+                        : ["Role A", "Role B"];
+                    const firstSceneAction = (effectiveScenes && effectiveScenes[0] && effectiveScenes[0].action) || targetConcept || "Single continuous 10s scene";
+                    const firstSceneDialogue = (effectiveScenes && effectiveScenes[0] && effectiveScenes[0].dialogue) || "";
+                    const expressScenes = (screenplayScript && screenplayScript.trim())
+                        ? [{
+                            scene_number: 1,
+                            active_roles: defaultRoles,
+                            action: firstSceneAction,
+                            dialogue: firstSceneDialogue,
+                            mode: "screenplay",
+                            screenplay_script: screenplayScript
+                        }]
+                        : (deconstructed
+                            ? effectiveScenes
+                            : (targetConcept && lastDeconstructedConceptRef.current !== targetConcept
+                                ? [{
+                                    scene_number: 1,
+                                    active_roles: defaultRoles,
+                                    action: targetConcept,
+                                    dialogue: ""
+                                }]
+                                : effectiveScenes));
+                    const anchorSeed = (stageShots && stageShots[0] && stageShots[0].keyframe_image_url)
+                        || stageRefImage
+                        || (isVisualContinuityLocked ? keyframeSeedAnchor : null);
+                    const payload = {
+                        user_id: "usr_studio",
+                        project_id: "prj_director",
+                        prompt: screenplayScript || targetConcept || "Single 10s video clip",
+                        clip_index: 0,
+                        parent_turn_id: null,
+                        session_name: sessionName,
+                        concept: targetConcept,
+                        characters: effectiveChars,
+                        scenes: expressScenes,
+                        aesthetic_tags: effectiveTags,
+                        environment_tag: effectiveEnv,
+                        audio_stem: effectiveAudio,
+                        vocal_delivery: effectiveVocal,
+                        enable_safety_sanitization: enableSafetySanitization,
+                        aspect_ratio: aspectRatio,
+                        keyframe_seed: anchorSeed
+                    };
+                    const res = await fetch("/api/generate", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (res.status === 400 || (data && data.guardrail_guidance)) {
+                        setGuardrailGuidance(data.guardrail_guidance || null);
+                    }
+                    if (data.generation_mode) setGenerationMode(data.generation_mode);
+                    setLastError(data.error || null);
+                    if (data && data.success) {
+                        const compiled = data.raw_compiled_prompt || compileStoryboardPreview();
+                        if (compiled) setRawCompiledPrompt(compiled);
+                        const newTurn = {
+                            turnId: data.turn_id,
+                            prompt: payload.prompt,
+                            status: data.status,
+                            videoUrl: data.video_url,
+                            parent: null,
+                            lock: "Maintain character role likeness, aesthetic tags, and scene sequence.",
+                            diff: "Express 10s video render from Step 1",
+                            rawCompiledPrompt: compiled
+                        };
+                        setHistory((prev) => [...prev, newTurn]);
+                        setCurrentVideo(data.video_url);
+                        setParentTurnId(data.turn_id);
+                        setStatus(data.status);
+                        setSelectedShotIndex(1);
+                        const primaryExpressScene = (expressScenes && expressScenes[0]) || {};
+                        setStageShots((prevShots) => {
+                            const updated = (prevShots && prevShots.length > 0) ? [...prevShots] : [{ shot_index: 1, duration_seconds: 10.0 }];
+                            updated[0] = {
+                                ...updated[0],
+                                shot_index: updated[0].shot_index || 1,
+                                action: primaryExpressScene.action || payload.prompt,
+                                dialogue: primaryExpressScene.dialogue !== undefined ? primaryExpressScene.dialogue : (updated[0].dialogue || ""),
+                                location: effectiveEnv || updated[0].location || "",
+                                style_lighting: (effectiveTags && effectiveTags.length > 0) ? effectiveTags.join(", ") : (updated[0].style_lighting || stageStyleTone),
+                                framing_motion: effectiveCam || updated[0].framing_motion || "",
+                                audio: effectiveAudio || updated[0].audio || "",
+                                video_url: data.video_url,
+                                turn_id: data.turn_id,
+                                raw_compiled_prompt: compiled
+                            };
+                            return updated;
+                        });
+                        setActiveStage(3);
+                    }
+                } catch (err) {
+                    console.error("Express render failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setLoading(false);
+                    setShotGeneratingMap((prev) => ({ ...prev, 1: false }));
                 }
             };
 
@@ -4017,17 +4292,8 @@
                         </div>
                     </header>
 
-                    {/* Navigation Bar based on Studio Mode */}
-                    {activeTab === "journey3" || studioMode === "journey3" ? (
-                        <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-4">
-                            <button
-                                onClick={() => { setActiveTab("journey3"); setStudioMode("journey3"); }}
-                                className="flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition bg-blue-600/30 text-blue-300 border border-blue-500 shadow-lg shadow-blue-900/20"
-                            >
-                                <span>🚀 Mode 3: Continuity Studio</span>
-                            </button>
-                        </div>
-                    ) : studioMode === "acts" ? (
+                    {/* Navigation Bar based on Studio Mode (Mode 3 uses its own Step Filter bar) */}
+                    {studioMode === "acts" && activeTab !== "journey3" && (
                         <div className="bg-gray-900/60 border-b border-gray-800/80 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-6">
                             <button
                                 onClick={() => setActiveAct(1)}
@@ -4067,7 +4333,8 @@
                                 <span>Act 3: The Screening Room &amp; Branching</span>
                             </button>
                         </div>
-                    ) : (
+                    )}
+                    {studioMode === "stages" && activeTab !== "journey3" && (
                         <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-2.5 flex items-center justify-center space-x-2 sm:space-x-4">
                             <button
                                 onClick={() => setActiveStage(1)}
@@ -4102,18 +4369,6 @@
                                 }`}
                             >
                                 <span>🎬 Step 3: Render & Stitch Master Video</span>
-                                {activeStage > 3 && <span className="text-xs bg-green-950 text-green-400 px-1.5 rounded border border-green-800">✓</span>}
-                            </button>
-                            <span className="text-gray-700 font-bold">➔</span>
-                            <button
-                                onClick={handleProceedToStage4}
-                                className={`flex items-center space-x-2 px-4 py-1.5 rounded-xl text-xs font-bold transition ${
-                                    activeStage === 4
-                                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500 shadow-md shadow-emerald-900/20"
-                                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/40"
-                                }`}
-                            >
-                                <span>🏆 Stage 4: The Final Cut</span>
                             </button>
                         </div>
                     )}
@@ -4201,7 +4456,7 @@
                         {/* ========================================================= */}
                         {/* 🎭 MODE 2: SCREENPLAY STORYBOARD STUDIO                   */}
                         {/* ========================================================= */}
-                        {studioMode === "acts" && (
+                        {studioMode === "acts" && activeTab !== "journey3" && (
                             <div className="space-y-6">
                                 {/* Mode 2 Standardized Mode Header Card */}
                                 <div className="studio-panel rounded-2xl p-5 shadow-xl space-y-4">
@@ -4346,7 +4601,10 @@
                                     <textarea
                                         rows={3}
                                         value={concept}
-                                        onChange={(e) => setConcept(e.target.value)}
+                                        onChange={(e) => {
+                                            setConcept(e.target.value);
+                                            setKeyframeImagePrompt(e.target.value);
+                                        }}
                                         placeholder="e.g. Fiery Executive Chef vs Classic French Pastry Master in a cyberpunk iron chef battle..."
                                         className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-pink-500 font-mono"
                                     />
@@ -4361,6 +4619,7 @@
                                                     type="button"
                                                     onClick={() => {
                                                         setConcept(ex);
+                                                        setKeyframeImagePrompt(ex);
                                                         handleDeconstructConcept(ex);
                                                     }}
                                                     className="bg-gray-950 border border-gray-800 hover:border-pink-500/70 text-gray-300 hover:text-pink-200 px-3 py-1.5 rounded-lg text-xs transition text-left"
@@ -4376,19 +4635,10 @@
                                             type="button"
                                             disabled={deconstructLoading || !concept.trim()}
                                             onClick={() => handleDeconstructConcept(concept)}
-                                            className="bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition disabled:opacity-50 text-white"
+                                            className="bg-gradient-to-r from-blue-600 to-indigo-600 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition disabled:opacity-50 text-white"
                                         >
                                             <span>⚡</span>
                                             <span>{deconstructLoading ? "Syncing Defaults..." : "⚡ Sync Intuitive Defaults from Vision Prompt"}</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={deconstructLoading || !concept.trim()}
-                                            onClick={() => handleDeconstructConcept()}
-                                            className="bg-gradient-to-r from-blue-600 to-indigo-600 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition disabled:opacity-50"
-                                        >
-                                            <span>✨</span>
-                                            <span>{deconstructLoading ? "Deconstructing Concept..." : "✨ Deconstruct Concept"}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -4854,13 +5104,266 @@
                                 </div>
                         </div>
                         )}
+
+                        {/* ========================================================= */}
+                        {/* 🎬 ACT 3: THE SCREENING ROOM & BRANCHING (COLOCATED)      */}
+                        {/* ========================================================= */}
+                        {studioMode === "acts" && activeAct === 3 && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-r from-amber-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+                                    <div>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
+                                                <span>🎬</span>
+                                                <span>Act 3: The Screening Room &amp; Branching</span>
+                                            </h2>
+                                            {/* Generation Status Pill Badge */}
+                                            {generationMode === "LIVE_OMNI_FLASH" ? (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-950/90 text-green-400 border border-green-700/80 shadow-md">
+                                                    <span>🟢</span>
+                                                    <span>Live Gemini Omni Flash</span>
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-950/90 text-amber-400 border border-amber-700/80 shadow-md">
+                                                    <span>🟠</span>
+                                                    <span>Procedural Fallback Animation</span>
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Review the rendered parody cut, inspect the version tree timeline, and apply conversational diffs.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveAct(2)}
+                                        className="bg-gray-900 border border-gray-700 text-xs text-amber-300 px-3 py-1.5 rounded-lg hover:bg-gray-800"
+                                    >
+                                        🎛️ Adjust Storyboard Directing
+                                    </button>
+                                </div>
+
+                                {/* Active Error Mitigation Banner */}
+                                {lastError && (
+                                    <div className="bg-red-950/40 border-2 border-red-500/70 rounded-2xl p-4 shadow-xl text-red-200 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 font-bold text-red-300 text-xs uppercase tracking-wider">
+                                                <span className="text-base">⚠️</span>
+                                                <span>Active Error Mitigation Banner</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setLastError(null)}
+                                                className="text-red-400 hover:text-red-200 text-xs font-bold px-2 py-0.5 rounded border border-red-800/80 bg-red-950 hover:bg-red-900"
+                                            >
+                                                ✕ Dismiss
+                                            </button>
+                                        </div>
+                                        <div className="bg-black/60 border border-red-900/80 rounded-xl p-3 text-xs font-mono text-red-300 break-words whitespace-pre-wrap">
+                                            <span className="text-red-400 font-bold block mb-1">Gemini Omni Flash Error / Trace:</span>
+                                            {lastError}
+                                        </div>
+                                        <p className="text-[11px] text-amber-300/90 font-medium flex items-center gap-1.5 pt-0.5">
+                                            <span>🛡️</span>
+                                            <span>Automated exponential backoff retries &amp; Developer API auth switch executed.</span>
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* GCS Export Success Banner */}
+                                {savedGcsUri && (
+                                    <div className="bg-green-950/60 border-2 border-green-500/70 rounded-2xl p-4 shadow-xl text-green-200 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-2xl">💾</span>
+                                            <div>
+                                                <h4 className="font-bold text-xs text-green-300 uppercase tracking-wider">Final Master Saved to GCS</h4>
+                                                <p className="text-xs font-mono text-green-200/90 mt-0.5 break-all">{savedGcsUri}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSavedGcsUri(null)}
+                                            className="text-green-400 hover:text-white text-xs font-bold px-2 py-1 rounded bg-green-900/60 border border-green-700"
+                                        >
+                                            ✕ Dismiss
+                                        </button>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                    {/* Left 8 Cols: Video Player, Action Toolbar, Prompt Viewer, & Delta Prompt */}
+                                    <div className="lg:col-span-8 space-y-4">
+                                        <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden shadow-2xl relative">
+                                            <video
+                                                src={currentVideo}
+                                                controls
+                                                loop
+                                                className={`w-full ${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} object-contain bg-black`}
+                                            />
+                                            <div className="p-4 bg-gray-900/90 border-t border-gray-800 flex flex-wrap items-center justify-between gap-3">
+                                                <div className="flex items-center space-x-2 text-xs">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                                                    <span className="font-bold text-gray-300">Live Parody Cut</span>
+                                                    <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono">
+                                                        Turn: {parentTurnId || "None"}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center space-x-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSaveModalMode("clip");
+                                                            setMasterTitle("active_clip_master");
+                                                            setShowSaveModal(true);
+                                                        }}
+                                                        className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                    >
+                                                        <span>💾</span>
+                                                        <span>Save Active Clip to GCS</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (selectedClipUrls.length === 0 && history.length > 0) {
+                                                                setSelectedClipUrls(history.map(h => h.videoUrl));
+                                                            }
+                                                            setShowStitchModal(true);
+                                                        }}
+                                                        className="text-xs bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                    >
+                                                        <span>🎬</span>
+                                                        <span>Stitch & Combine Selected Clips</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSaveModalMode("master");
+                                                            setMasterTitle("official_rap_battle_master");
+                                                            setShowSaveModal(true);
+                                                        }}
+                                                        className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                    >
+                                                        <span>🎬</span>
+                                                        <span>Stitch & Save Master (30–60s) to GCS</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={extendLoading}
+                                                        onClick={handleExtendScene}
+                                                        className="text-xs bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition disabled:opacity-50"
+                                                    >
+                                                        <span>➕</span>
+                                                        <span>{extendLoading ? "Extending..." : "Extend Video / Next Scene"}</span>
+                                                    </button>
+                                                    <a
+                                                        href={currentVideo}
+                                                        download="omnimash_parody_cut.mp4"
+                                                        className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1"
+                                                    >
+                                                        <span>⬇️ Download MP4</span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 🧠 Final Generation Prompt (Active Version) */}
+                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>🧠</span>
+                                                    <span>Final Generation Prompt (Active Version)</span>
+                                                </h3>
+                                                <span className="text-xs bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800 font-mono">
+                                                    Gemini Omni Directives
+                                                </span>
+                                            </div>
+                                            <pre className="bg-gray-950 border border-gray-800 rounded-xl p-3 text-[11px] text-gray-300 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar leading-relaxed">
+                                                {rawCompiledPrompt || "No compiled prompt available for active version."}
+                                            </pre>
+                                        </div>
+
+                                        {/* Conversational Delta Chat Bar */}
+                                        <form onSubmit={handleGenerate} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl flex gap-3 items-center">
+                                            <div className="text-xl">💬</div>
+                                            <input
+                                                type="text"
+                                                value={deltaPrompt}
+                                                onChange={(e) => setDeltaPrompt(e.target.value)}
+                                                placeholder="Direct the scene (e.g. Make Role A's glasses darker and add laser smoke)..."
+                                                className="flex-1 bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-amber-500 font-mono"
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={loading || !deltaPrompt}
+                                                className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 text-black font-bold text-xs py-3 px-5 rounded-xl shadow flex items-center gap-2 transition disabled:opacity-50"
+                                            >
+                                                <span>⚡</span>
+                                                <span>{loading ? "Applying..." : "Apply Delta Edit"}</span>
+                                            </button>
+                                        </form>
+                                    </div>
+
+                                    {/* Right 4 Cols: Chronological Version Tree */}
+                                    <div className="lg:col-span-4 bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl flex flex-col h-[640px]">
+                                        <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
+                                            <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                                                <span>🍰</span>
+                                                <span>Version Tree &amp; Timeline</span>
+                                            </h3>
+                                            <span className="text-xs bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800">
+                                                Chronological Edit History
+                                            </span>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                                            {history.map((turn, i) => (
+                                                <div
+                                                    key={i}
+                                                    onClick={() => {
+                                                        setCurrentVideo(turn.videoUrl);
+                                                        setParentTurnId(turn.turnId);
+                                                        if (turn.rawCompiledPrompt) {
+                                                            setRawCompiledPrompt(turn.rawCompiledPrompt);
+                                                        }
+                                                    }}
+                                                    className={`p-3 rounded-xl border text-left cursor-pointer transition ${
+                                                        parentTurnId === turn.turnId
+                                                            ? "bg-amber-950/40 border-amber-500 shadow-md"
+                                                            : "bg-gray-950/80 border-gray-800 hover:border-gray-700"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between text-xs font-mono text-gray-400 mb-1.5">
+                                                        <span>Turn #{i + 1} ({turn.turnId})</span>
+                                                        <span className="bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">{turn.status}</span>
+                                                    </div>
+                                                    <p className="text-xs font-bold text-gray-200 mb-2">{turn.prompt}</p>
+                                                    <div className="space-y-1.5 text-xs font-mono">
+                                                        <div className="bg-black/60 p-1.5 rounded border border-gray-800/80 text-pink-300">
+                                                            <span className="font-bold">🔒 Lock:</span> {turn.lock}
+                                                        </div>
+                                                        <div className="bg-black/60 p-1.5 rounded border border-gray-800/80 text-purple-300">
+                                                            <span className="font-bold">🎯 Diff:</span> {turn.diff}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {history.length === 0 && (
+                                                <div className="text-xs text-gray-300 italic p-4 text-center border border-dashed border-gray-800 rounded-xl">
+                                                    No turn history yet. Generate your first video to start building the version tree.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                     )}
 
                         {/* ========================================================= */}
-                        {/* 🎬 DEDICATED 4-STAGE STORYBOARD JOURNEY WORKFLOW          */}
+                        {/* 🎬 DEDICATED 3-STAGE STORYBOARD JOURNEY WORKFLOW          */}
                         {/* ========================================================= */}
-                        {studioMode === "stages" && (
+                        {studioMode === "stages" && activeTab !== "journey3" && (
                             <div className="space-y-6">
                                 {/* Mode 1 Standardized Mode Header Card */}
                                 <div className="studio-panel rounded-xl p-5 space-y-4">
@@ -5020,20 +5523,53 @@
                                             </div>
                                             {/* Primary Input 1: Dedicated Keyframe Image Generation Prompt */}
                                             <div className="space-y-1.5">
-                                                <div className="flex items-center justify-between">
+                                                <div className="flex items-center justify-between flex-wrap gap-2">
                                                     <label className="text-xs font-bold text-amber-400 uppercase tracking-wider border-l-4 border-amber-500 pl-3 flex items-center gap-1.5">
                                                         <span>🖼️</span>
                                                         <span>Keyframe Image Generation Prompt</span>
                                                     </label>
-                                                    <span className="text-xs text-gray-400 font-mono">Initial frame visual setup, lighting &amp; character layout</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-gray-400 font-mono">Initial frame visual setup, lighting &amp; character layout</span>
+                                                        <button
+                                                            type="button"
+                                                            disabled={!!keyframeLoadingMap[1] || !(keyframeImagePrompt || concept || "").trim()}
+                                                            onClick={handleStage1GenerateKeyframeAnchor}
+                                                            className="bg-amber-950/80 hover:bg-amber-900 border border-amber-600/80 text-amber-200 font-bold text-xs py-1 px-3 rounded-lg shadow flex items-center gap-1.5 transition disabled:opacity-50"
+                                                        >
+                                                            <span>🖼️</span>
+                                                            <span>{keyframeLoadingMap[1] ? "Generating Anchor..." : "🖼️ Generate Keyframe Anchor"}</span>
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 <textarea
                                                     rows={3}
-                                                    value={keyframeImagePrompt || concept}
-                                                    onChange={(e) => setKeyframeImagePrompt(e.target.value)}
+                                                    value={keyframeImagePrompt !== "" ? keyframeImagePrompt : concept}
+                                                    onChange={(e) => {
+                                                        setKeyframeImagePrompt(e.target.value);
+                                                        setConcept(e.target.value);
+                                                    }}
                                                     placeholder="Specify the exact keyframe frame visual setup, environment lighting, aspect ratio, and initial character layout before motion begins..."
-                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-amber-500 font-mono"
                                                 />
+                                                {stageShots && stageShots[0] && stageShots[0].keyframe_image_url && (
+                                                    <div className="bg-gray-950 border border-amber-800/60 rounded-xl p-2.5 flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <img
+                                                                src={getDisplayableRefUrl(stageShots[0].keyframe_image_url)}
+                                                                alt="Stage 1 Keyframe Anchor Preview"
+                                                                className="w-20 h-12 object-cover rounded-lg border border-amber-600/70"
+                                                            />
+                                                            <span className="text-xs font-mono text-amber-300">✓ Keyframe Anchor Ready: {stageShots[0].keyframe_image_url}</span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleClearShotKeyframe(0)}
+                                                            className="text-xs text-red-300 hover:text-white bg-red-950/60 border border-red-800/80 px-2 py-1 rounded-lg"
+                                                        >
+                                                            ✕ Clear
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Primary Input 2: 10s Screenplay Script Directive */}
@@ -5077,7 +5613,7 @@
                                                     value={screenplayScript}
                                                     onChange={(e) => setScreenplayScript(e.target.value)}
                                                     placeholder={`Character (Action) "Dialogue" or [Role A] (Action) "Dialogue"\n\nExample:\nHeadmaster Archmage: (Adjusts his spectacles) "Ah, blood! Thank heavens you're out the Feds!"\n\nStreetwear Apprentice: (Smirks, putting jewelry into duffle bag) "They said my diamonds was so crazy that I must be committed."`}
-                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+                                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-amber-500 font-mono"
                                                 />
                                             </div>
 
@@ -5199,7 +5735,7 @@
                                                             setMasterAudioUrl(e.target.value);
                                                         }}
                                                         placeholder="https://example.com/beat.mp3 or gs://... or upload local file above"
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-400 focus:outline-none focus:border-purple-500"
                                                     />
                                                 </div>
 
@@ -5220,7 +5756,7 @@
                                                         value={stageRefImage}
                                                         onChange={(e) => setStageRefImage(e.target.value)}
                                                         placeholder="https://example.com/character.jpg or gs://..."
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-pink-500 mb-2"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-400 focus:outline-none focus:border-pink-500 mb-2"
                                                     />
                                                     <div className="flex items-center justify-between mb-1">
                                                         <label className="text-[11px] font-bold text-gray-400">📹 Motion Reference Clip (3s MP4 Video)</label>
@@ -5239,7 +5775,7 @@
                                                         value={motionReferenceClip}
                                                         onChange={(e) => setMotionReferenceClip(e.target.value)}
                                                         placeholder="Upload reference video or specify cropped 3s clip path..."
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-400 focus:outline-none focus:border-indigo-500"
                                                     />
                                                 </div>
                                             </div>
@@ -5252,13 +5788,13 @@
                                             <div className="pt-3 flex flex-wrap justify-end gap-3">
                                                 <button
                                                     type="button"
-                                                    disabled={deconstructLoading || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
-                                                    onClick={() => handleDeconstructConcept(concept || keyframeImagePrompt || screenplayScript)}
-                                                    className="bg-gray-900 hover:bg-gray-800 border border-purple-800 text-purple-300 font-bold text-xs py-3 px-5 rounded-xl shadow-lg flex items-center gap-2 transition disabled:opacity-50"
-                                                    title="Analyze concept prompt to automatically extract characters, aesthetics, audio beat, and style tags"
+                                                    disabled={loading || !!shotGeneratingMap[1] || isBatchGeneratingVideos || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
+                                                    onClick={handleExpressRenderSingleVideo}
+                                                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 transition disabled:opacity-50"
+                                                    title="Render single 10s video clip immediately and open Step 3 Screening Room"
                                                 >
-                                                    <span>✨</span>
-                                                    <span>{deconstructLoading ? "Deconstructing Concept..." : "Deconstruct & Extract Cast (AI)"}</span>
+                                                    <span>🎬</span>
+                                                    <span>{(loading || shotGeneratingMap[1]) ? "Rendering 10s Video..." : "🎬 Express Render 10s Video Now →"}</span>
                                                 </button>
                                                 <button
                                                     type="button"
@@ -6234,11 +6770,11 @@
                                                 <div className="pt-2">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setActiveStage(4)}
+                                                        onClick={() => setActiveStage(3)}
                                                         className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-teal-600 hover:from-pink-500 hover:to-teal-500 text-white font-extrabold text-xs py-3 px-5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition"
                                                     >
                                                         <span>🍿</span>
-                                                        <span>Proceed to Stage 4 Final Master Stitch ➔</span>
+                                                        <span>Proceed to Step 3: Render &amp; Stitch Master Video ➔</span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -6570,50 +7106,7 @@
                                             </div>
                                         </div>
 
-                                        <div className="pt-3 flex justify-between items-center">
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowCommitModal(true)}
-                                                className="bg-amber-950/60 hover:bg-amber-900 border border-amber-700 text-amber-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2"
-                                            >
-                                                <span>⚓</span>
-                                                <span>Commit &amp; Re-Anchor Keyframe</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={handleProceedToStage4}
-                                                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2"
-                                            >
-                                                <span>🏆</span>
-                                                <span>Proceed to Stage 4: The Final Cut ➔</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* STAGE 4: THE FINAL CUT & GCS EXPORT */}
-                                {activeStage === 4 && (
-                                    <div className="space-y-6">
-                                        <div className="bg-gradient-to-r from-emerald-950/40 via-teal-950/40 to-cyan-950/40 border border-emerald-800/50 rounded-2xl p-5 shadow-xl">
-                                            <h2 className="text-base font-bold text-emerald-200 flex items-center gap-2">
-                                                <span>🏆</span>
-                                                <span>Stage 4: The Final Cut &amp; Master GCS Export</span>
-                                            </h2>
-                                            <p className="text-xs text-gray-400 mt-1">
-                                                Review your full 30–60s stitched master video, configure master audio track overlay, and export to Google Cloud Storage.
-                                            </p>
-                                        </div>
-
-                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-bold text-emerald-300">Stitched 30–60s Master Video Player</span>
-                                                <span className="text-[11px] font-mono text-gray-400">Master: {masterTitle}.mp4</span>
-                                            </div>
-                                            <div className={`${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} bg-black rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center max-w-4xl mx-auto`}>
-                                                <video src={getDisplayableRefUrl(currentVideo)} controls className="w-full h-full object-contain" />
-                                            </div>
-                                        </div>
-
+                                        {/* Master Audio Overlay & GCS Export Settings (Folded into Step 3) */}
                                         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
                                             <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Master Audio Overlay &amp; GCS Export Settings</h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -6624,7 +7117,7 @@
                                                         value={masterTitle}
                                                         onChange={(e) => setMasterTitle(e.target.value)}
                                                         placeholder="official_rap_battle_master"
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-emerald-500"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-400 focus:outline-none focus:border-emerald-500"
                                                     />
                                                 </div>
                                                 <div>
@@ -6634,7 +7127,7 @@
                                                         value={masterAudioUrl}
                                                         onChange={(e) => setMasterAudioUrl(e.target.value)}
                                                         placeholder="gs://my-bucket/master_beat.mp3 or local path"
-                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-emerald-500"
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-400 focus:outline-none focus:border-emerald-500"
                                                     />
                                                 </div>
                                             </div>
@@ -6646,7 +7139,15 @@
                                                 </div>
                                             )}
 
-                                            <div className="pt-2 flex justify-end">
+                                            <div className="pt-2 flex flex-wrap justify-between items-center gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowCommitModal(true)}
+                                                    className="bg-amber-950/60 hover:bg-amber-900 border border-amber-700 text-amber-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2"
+                                                >
+                                                    <span>⚓</span>
+                                                    <span>Commit &amp; Re-Anchor Keyframe</span>
+                                                </button>
                                                 <button
                                                     type="button"
                                                     disabled={stageSaveLoading}
@@ -6660,259 +7161,7 @@
                                         </div>
                                     </div>
                                 )}
-                            </div>
-                        )}
-
-                        {/* ========================================================= */}
-                        {/* 🎬 ACT 3: THE SCREENING ROOM & BRANCHING                  */}
-                        {/* ========================================================= */}
-                        {studioMode === "acts" && activeAct === 3 && (
-                            <div className="space-y-6">
-                                <div className="bg-gradient-to-r from-amber-950/40 to-purple-950/40 border border-amber-800/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
-                                    <div>
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            <h2 className="text-base font-bold text-amber-200 flex items-center gap-2">
-                                                <span>🎬</span>
-                                                <span>Act 3: The Screening Room &amp; Branching</span>
-                                            </h2>
-                                            {/* Generation Status Pill Badge */}
-                                            {generationMode === "LIVE_OMNI_FLASH" ? (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-950/90 text-green-400 border border-green-700/80 shadow-md">
-                                                    <span>🟢</span>
-                                                    <span>Live Gemini Omni Flash</span>
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-950/90 text-amber-400 border border-amber-700/80 shadow-md">
-                                                    <span>🟠</span>
-                                                    <span>Procedural Fallback Animation</span>
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-gray-400 mt-1">
-                                            Review the rendered parody cut, inspect the version tree timeline, and apply conversational diffs.
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveAct(2)}
-                                        className="bg-gray-900 border border-gray-700 text-xs text-amber-300 px-3 py-1.5 rounded-lg hover:bg-gray-800"
-                                    >
-                                        🎛️ Adjust Storyboard Directing
-                                    </button>
-                                </div>
-
-                                {/* Active Error Mitigation Banner */}
-                                {lastError && (
-                                    <div className="bg-red-950/40 border-2 border-red-500/70 rounded-2xl p-4 shadow-xl text-red-200 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2 font-bold text-red-300 text-xs uppercase tracking-wider">
-                                                <span className="text-base">⚠️</span>
-                                                <span>Active Error Mitigation Banner</span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setLastError(null)}
-                                                className="text-red-400 hover:text-red-200 text-xs font-bold px-2 py-0.5 rounded border border-red-800/80 bg-red-950 hover:bg-red-900"
-                                            >
-                                                ✕ Dismiss
-                                            </button>
-                                        </div>
-                                        <div className="bg-black/60 border border-red-900/80 rounded-xl p-3 text-xs font-mono text-red-300 break-words whitespace-pre-wrap">
-                                            <span className="text-red-400 font-bold block mb-1">Gemini Omni Flash Error / Trace:</span>
-                                            {lastError}
-                                        </div>
-                                        <p className="text-[11px] text-amber-300/90 font-medium flex items-center gap-1.5 pt-0.5">
-                                            <span>🛡️</span>
-                                            <span>Automated exponential backoff retries &amp; Developer API auth switch executed.</span>
-                                        </p>
-                                    </div>
-                                )}
-
-                                {/* GCS Export Success Banner */}
-                                {savedGcsUri && (
-                                    <div className="bg-green-950/60 border-2 border-green-500/70 rounded-2xl p-4 shadow-xl text-green-200 flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-2xl">💾</span>
-                                            <div>
-                                                <h4 className="font-bold text-xs text-green-300 uppercase tracking-wider">Final Master Saved to GCS</h4>
-                                                <p className="text-xs font-mono text-green-200/90 mt-0.5 break-all">{savedGcsUri}</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSavedGcsUri(null)}
-                                            className="text-green-400 hover:text-white text-xs font-bold px-2 py-1 rounded bg-green-900/60 border border-green-700"
-                                        >
-                                            ✕ Dismiss
-                                        </button>
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                                    {/* Left 8 Cols: Video Player, Action Toolbar, Prompt Viewer, & Delta Prompt */}
-                                    <div className="lg:col-span-8 space-y-4">
-                                        <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden shadow-2xl relative">
-                                            <video
-                                                src={currentVideo}
-                                                controls
-                                                loop
-                                                className={`w-full ${aspectRatio === "9:16" ? "aspect-[9/16]" : aspectRatio === "1:1" ? "aspect-square" : aspectRatio === "21:9" ? "aspect-[21/9]" : "aspect-video"} object-contain bg-black`}
-                                            />
-                                            <div className="p-4 bg-gray-900/90 border-t border-gray-800 flex flex-wrap items-center justify-between gap-3">
-                                                <div className="flex items-center space-x-2 text-xs">
-                                                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
-                                                    <span className="font-bold text-gray-300">Live Parody Cut</span>
-                                                    <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono">
-                                                        Turn: {parentTurnId || "None"}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center space-x-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setSaveModalMode("clip");
-                                                            setMasterTitle("active_clip_master");
-                                                            setShowSaveModal(true);
-                                                        }}
-                                                        className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
-                                                    >
-                                                        <span>💾</span>
-                                                        <span>Save Active Clip to GCS</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            if (selectedClipUrls.length === 0 && history.length > 0) {
-                                                                setSelectedClipUrls(history.map(h => h.videoUrl));
-                                                            }
-                                                            setShowStitchModal(true);
-                                                        }}
-                                                        className="text-xs bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
-                                                    >
-                                                        <span>🎬</span>
-                                                        <span>Stitch & Combine Selected Clips</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setSaveModalMode("master");
-                                                            setMasterTitle("official_rap_battle_master");
-                                                            setShowSaveModal(true);
-                                                        }}
-                                                        className="text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
-                                                    >
-                                                        <span>🎬</span>
-                                                        <span>Stitch & Save Master (30–60s) to GCS</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        disabled={extendLoading}
-                                                        onClick={handleExtendScene}
-                                                        className="text-xs bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition disabled:opacity-50"
-                                                    >
-                                                        <span>➕</span>
-                                                        <span>{extendLoading ? "Extending..." : "Extend Video / Next Scene"}</span>
-                                                    </button>
-                                                    <a
-                                                        href={currentVideo}
-                                                        download="omnimash_parody_cut.mp4"
-                                                        className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1"
-                                                    >
-                                                        <span>⬇️ Download MP4</span>
-                                                    </a>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* 🧠 Final Generation Prompt (Active Version) */}
-                                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
-                                                    <span>🧠</span>
-                                                    <span>Final Generation Prompt (Active Version)</span>
-                                                </h3>
-                                                <span className="text-xs bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800 font-mono">
-                                                    Gemini Omni Directives
-                                                </span>
-                                            </div>
-                                            <pre className="bg-gray-950 border border-gray-800 rounded-xl p-3 text-[11px] text-gray-300 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar leading-relaxed">
-                                                {rawCompiledPrompt || "No compiled prompt available for active version."}
-                                            </pre>
-                                        </div>
-
-                                        {/* Conversational Delta Chat Bar */}
-                                        <form onSubmit={handleGenerate} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-xl flex gap-3 items-center">
-                                            <div className="text-xl">💬</div>
-                                            <input
-                                                type="text"
-                                                value={deltaPrompt}
-                                                onChange={(e) => setDeltaPrompt(e.target.value)}
-                                                placeholder="Direct the scene (e.g. Make Role A's glasses darker and add laser smoke)..."
-                                                className="flex-1 bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 font-mono"
-                                            />
-                                            <button
-                                                type="submit"
-                                                disabled={loading || !deltaPrompt}
-                                                className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 text-black font-bold text-xs py-3 px-5 rounded-xl shadow flex items-center gap-2 transition disabled:opacity-50"
-                                            >
-                                                <span>⚡</span>
-                                                <span>{loading ? "Applying..." : "Apply Delta Edit"}</span>
-                                            </button>
-                                        </form>
-                                    </div>
-
-                                    {/* Right 4 Cols: Chronological Version Tree */}
-                                    <div className="lg:col-span-4 bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl flex flex-col h-[640px]">
-                                        <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
-                                            <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
-                                                <span>🍰</span>
-                                                <span>Version Tree &amp; Timeline</span>
-                                            </h3>
-                                            <span className="text-xs bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800">
-                                                Chronological Edit History
-                                            </span>
-                                        </div>
-
-                                        <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
-                                            {history.map((turn, i) => (
-                                                <div
-                                                    key={i}
-                                                    onClick={() => {
-                                                        setCurrentVideo(turn.videoUrl);
-                                                        setParentTurnId(turn.turnId);
-                                                        if (turn.rawCompiledPrompt) {
-                                                            setRawCompiledPrompt(turn.rawCompiledPrompt);
-                                                        }
-                                                    }}
-                                                    className={`p-3 rounded-xl border text-left cursor-pointer transition ${
-                                                        parentTurnId === turn.turnId
-                                                            ? "bg-amber-950/40 border-amber-500 shadow-md"
-                                                            : "bg-gray-950/80 border-gray-800 hover:border-gray-700"
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center justify-between text-xs font-mono text-gray-400 mb-1.5">
-                                                        <span>Turn #{i + 1} ({turn.turnId})</span>
-                                                        <span className="bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">{turn.status}</span>
-                                                    </div>
-                                                    <p className="text-xs font-bold text-gray-200 mb-2">{turn.prompt}</p>
-                                                    <div className="space-y-1.5 text-xs font-mono">
-                                                        <div className="bg-black/60 p-1.5 rounded border border-gray-800/80 text-pink-300">
-                                                            <span className="font-bold">🔒 Lock:</span> {turn.lock}
-                                                        </div>
-                                                        <div className="bg-black/60 p-1.5 rounded border border-gray-800/80 text-purple-300">
-                                                            <span className="font-bold">🎯 Diff:</span> {turn.diff}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {history.length === 0 && (
-                                                <div className="text-xs text-gray-300 italic p-4 text-center border border-dashed border-gray-800 rounded-xl">
-                                                    No turn history yet. Generate your first video to start building the version tree.
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
+                                {/* Stage 3 End Boundary — {activeStage === 4 && ( folded into Stage 3 */}
                             </div>
                         )}
 
@@ -7602,23 +7851,60 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                 Multi-shot conversational continuity studio using frame anchors and turn history for iterative video editing.
                                             </p>
                                         </div>
+                                        {/* Mode 3 Step Filter Bar */}
+                                        <div className="flex flex-wrap items-center gap-2 bg-gray-950/90 border border-gray-800 rounded-xl p-1.5" role="group" aria-label="Mode 3 Section Filter">
+                                            {[
+                                                { id: "all", label: "All Sections" },
+                                                { id: "step1", label: "1. Master Setup & Cast" },
+                                                { id: "step2", label: "2. Keyframes & Shots" },
+                                                { id: "step3", label: "3. Master Stitch" }
+                                            ].map((tab) => (
+                                                <button
+                                                    key={tab.id}
+                                                    type="button"
+                                                    onClick={() => setJ3StepFilter(tab.id)}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                                        j3StepFilter === tab.id
+                                                            ? "bg-blue-600 text-white shadow border border-blue-400"
+                                                            : "text-gray-300 hover:text-white hover:bg-gray-800/60"
+                                                    }`}
+                                                >
+                                                    {tab.label}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                        <div
+                                            onClick={() => setJ3StepFilter("step1")}
+                                            className={`bg-gray-950/60 border rounded-xl p-3 flex items-center gap-3 cursor-pointer transition ${
+                                                j3StepFilter === "step1" ? "border-blue-500 bg-blue-950/30" : "border-gray-800 hover:border-gray-700"
+                                            }`}
+                                        >
                                             <span className="bg-blue-500/20 text-blue-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-blue-500/30 shrink-0">1</span>
                                             <div>
                                                 <span className="text-xs font-bold text-gray-200 block">Step 1: Master Setup &amp; Roster</span>
                                                 <span className="text-[11px] text-gray-400">Describe continuous concept &amp; configure character references</span>
                                             </div>
                                         </div>
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                        <div
+                                            onClick={() => setJ3StepFilter("step2")}
+                                            className={`bg-gray-950/60 border rounded-xl p-3 flex items-center gap-3 cursor-pointer transition ${
+                                                j3StepFilter === "step2" ? "border-blue-500 bg-blue-950/30" : "border-gray-800 hover:border-gray-700"
+                                            }`}
+                                        >
                                             <span className="bg-blue-500/20 text-blue-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-blue-500/30 shrink-0">2</span>
                                             <div>
                                                 <span className="text-xs font-bold text-gray-200 block">Step 2: Sequential Shot Generation &amp; Keyframe Anchors</span>
                                                 <span className="text-[11px] text-gray-400">Generate keyframes, lock visual continuity &amp; render shot sequence</span>
                                             </div>
                                         </div>
-                                        <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                        <div
+                                            onClick={() => setJ3StepFilter("step3")}
+                                            className={`bg-gray-950/60 border rounded-xl p-3 flex items-center gap-3 cursor-pointer transition ${
+                                                j3StepFilter === "step3" ? "border-blue-500 bg-blue-950/30" : "border-gray-800 hover:border-gray-700"
+                                            }`}
+                                        >
                                             <span className="bg-blue-500/20 text-blue-400 font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center border border-blue-500/30 shrink-0">3</span>
                                             <div>
                                                 <span className="text-xs font-bold text-gray-200 block">Step 3: Turn History &amp; Conversational Diffing</span>
@@ -7628,6 +7914,8 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                     </div>
                                 </div>
 
+                                {(j3StepFilter === "all" || j3StepFilter === "step1") && (
+                                <div className="space-y-6">
                                 {/* STEP 1: CONCEPT & REFERENCE UPLOADERS */}
                                 <div className="border-gray-800 bg-gray-900/80 backdrop-blur p-5 rounded-2xl shadow-xl space-y-4">
                                     <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
@@ -7893,9 +8181,10 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                         </div>
                                     )}
                                 </div>
+                                </div>
+                                )}
 
-                                {/* STEP 2: SHOT CARD WORKSTATION */}
-
+                                {(j3StepFilter === "all" || j3StepFilter === "step2") && (
                                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-3.5">
                                         <div className="flex items-center gap-2.5">
@@ -8397,7 +8686,10 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                         ))}
                                     </div>
                                 </div>
+                                )}
 
+                                {(j3StepFilter === "all" || j3StepFilter === "step3") && (
+                                <div className="space-y-6">
                                 {/* MODE 3 TURN HISTORY CAROUSEL & POST /api/diff CONTINUITY CONTROLS */}
                                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
                                     <div className="flex flex-wrap items-center justify-between border-b border-gray-800 pb-3 gap-2">
@@ -8574,6 +8866,8 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                         </div>
                                     </div>
                                 </div>
+                                </div>
+                                )}
                             </div>
                         )}
 

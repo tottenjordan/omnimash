@@ -2653,3 +2653,174 @@ def test_minimal_intent_prompt_engine_end_to_end():
     assert "[0-3s]" in raw_prompt
     assert "[3-6s]" in raw_prompt
     assert "[6-10s]" in raw_prompt
+
+
+def test_ui_html_pr2_user_journeys_express_flow_and_cross_mode_sync() -> None:
+    """Verify PR 2 frontend user journey refactoring, simultaneous Mode 1+3 render fix, Express 1-Click Flow, Mode 2 Act 3 colocation, cross-mode sync, and Mode 3 Step Filter bar."""
+    from omnimash.api.app import UI_HTML
+
+    # 1. Simultaneous Mode 1 + Mode 3 render bug fixed via activeTab !== "journey3"
+    assert '{studioMode === "acts" && activeTab !== "journey3" && (' in UI_HTML
+    assert '{studioMode === "stages" && activeTab !== "journey3" && (' in UI_HTML
+    assert "🏆 Stage 4: The Final Cut" not in UI_HTML
+    assert "Proceed to Stage 4" not in UI_HTML
+    assert "setActiveStage(4)" not in UI_HTML
+
+    # 2. handleDeconstructConcept populates scenes from data.scenes without dummy overwrite
+    assert "in action sequence" not in UI_HTML
+    assert "Array.isArray(data.scenes) && data.scenes.length > 0" in UI_HTML
+    assert (
+        "if (data.keyframe_image_prompt) setKeyframeImagePrompt(data.keyframe_image_prompt);"
+        in UI_HTML
+    )
+    assert "if (data.screenplay_script) setScreenplayScript(data.screenplay_script);" in UI_HTML
+
+    # 3. Mode 1 Stage 1 Express Render 10s Video Now CTA & Generate Keyframe Anchor button
+    assert "🎬 Express Render 10s Video Now →" in UI_HTML
+    assert "handleExpressRenderSingleVideo" in UI_HTML
+    assert "🖼️ Generate Keyframe Anchor" in UI_HTML
+    assert "handleStage1GenerateKeyframeAnchor" in UI_HTML
+    assert "Deconstruct & Extract Cast (AI)" not in UI_HTML
+
+    # 4. Mode 2 handleReSyncStoryboardDefaults updates setScenes and Act 3 is colocated inside Mode 2 before Mode 1
+    mode2_start = UI_HTML.find(
+        '{studioMode === "acts" && activeTab !== "journey3" && (', UI_HTML.find("<main")
+    )
+    mode1_start = UI_HTML.find(
+        '{studioMode === "stages" && activeTab !== "journey3" && (', UI_HTML.find("<main")
+    )
+    act3_pos = UI_HTML.find('{studioMode === "acts" && activeAct === 3 && (')
+    assert mode2_start != -1 and mode1_start != -1 and act3_pos != -1
+    assert mode2_start < act3_pos < mode1_start
+
+    # 5. Cross-mode state sync & Mode 3 Step Filter bar
+    assert 'const [j3StepFilter, setJ3StepFilter] = useState("all");' in UI_HTML
+    assert "const visualConcept = concept;" in UI_HTML
+    assert "1. Master Setup & Cast" in UI_HTML
+    assert "2. Keyframes & Shots" in UI_HTML
+    assert "3. Master Stitch" in UI_HTML
+
+
+@pytest.mark.slow
+@pytest.mark.browser
+def test_ui_html_pr2_express_flow_and_mode3_step_filter_browser_dom(tmp_path) -> None:
+    """Verify in headless Chromium that startup only renders Mode 3 (not Mode 1+3 simultaneously), Mode 3 Step Filter works, bidirectional cross-mode sync works, Stage 2->3 navigation works, and Mode 1 Express CTA auto-deconstructs and renders."""
+    import os
+    import subprocess
+    from omnimash.api.app import UI_HTML
+
+    skill_dir = "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill"
+    if not os.path.exists(skill_dir):
+        pytest.skip("Playwright skill dir not available")
+
+    html_file = tmp_path / "ui_pr2_journey_check.html"
+    html_file.write_text(UI_HTML, encoding="utf-8")
+    inline_js = (
+        "const { chromium } = require('playwright');"
+        "(async () => {"
+        "  const browser = await chromium.launch({ headless: true });"
+        "  const page = await browser.newPage();"
+        "  page.on('pageerror', err => { console.error('BROWSER ERROR:', err.message); process.exit(2); });"
+        f"  await page.goto('file://{html_file}', {{ waitUntil: 'domcontentloaded' }});"
+        "  await page.waitForFunction(() => {"
+        "    const el = document.querySelector('#__next');"
+        "    return el && el.innerHTML.length > 1000;"
+        "  }, { timeout: 15000 });"
+        "  await page.evaluate(() => {"
+        "    window.__capturedGeneratePayload = null;"
+        "    const origFetch = window.fetch;"
+        "    window.fetch = async (url, opts) => {"
+        "      const u = String(url);"
+        "      if (u.includes('/api/deconstruct-concept')) {"
+        "        const body = JSON.parse(opts.body || '{}');"
+        "        return new Response(JSON.stringify({"
+        "          characters: [{ role_id: 'Role A', name: 'Mars Grandmaster', description: 'Astronaut in chrome suit', aesthetic_tags: ['Sci-Fi'], voice_style: 'Calm', wardrobe: 'Spacesuit' }],"
+        "          aesthetic_tags: ['Retro Sci-Fi Cinema'],"
+        "          environment_tag: 'Red cratered Mars plateau',"
+        "          camera_lighting_tag: 'Anamorphic lens with warm Martian rim lighting',"
+        "          audio_beat: '120 BPM Synthwave Pulse',"
+        "          vocal_delivery: 'Deadpan astronaut commentary',"
+        "          keyframe_image_prompt: 'Wide establishing frame: ' + (body.concept || ''),"
+        "          screenplay_script: '[0-3s] Action: Opening move on Mars.\\n[3-6s] Action: Tension rises.\\n[6-10s] Action: Checkmate.',"
+        "          scenes: [{ scene_number: 1, active_roles: ['Role A'], action: '[0-3s] Action: Mars Grandmaster moves rook. [3-6s] Action: Zero-G dust swirls. [6-10s] Action: Triumphant checkmate.', dialogue: 'Mars Grandmaster: \"Checkmate on Olympus Mons.\"' }]"
+        "        }), { status: 200, headers: { 'Content-Type': 'application/json' } });"
+        "      }"
+        "      if (u.includes('/api/generate')) {"
+        "        window.__capturedGeneratePayload = JSON.parse(opts.body || '{}');"
+        "        return new Response(JSON.stringify({"
+        "          success: true,"
+        "          status: 'OK',"
+        "          turn_id: 'turn_express_01',"
+        "          video_url: 'https://storage.googleapis.com/mock/express_10s.mp4',"
+        "          raw_compiled_prompt: '### INPUT ROLES & REFERENCES\\nNone.\\n\\n### CHARACTER PROFILES\\n- Role A (Mars Grandmaster)\\n\\n### SCENE INSTRUCTIONS\\nMars\\n\\n### TIMELINE\\n- [0-3s] [3-6s] [6-10s]'"
+        "        }), { status: 200, headers: { 'Content-Type': 'application/json' } });"
+        "      }"
+        "      return origFetch(url, opts);"
+        "    };"
+        "  });"
+        "  const mainTextOnStartup = await page.locator('main').textContent();"
+        "  if (!mainTextOnStartup.includes('Mode 3: Continuity Studio')) {"
+        "    throw new Error('Expected Mode 3 to be rendered on startup');"
+        "  }"
+        "  if (mainTextOnStartup.includes('Expand Vision into 5-Part Storyboard Grid')) {"
+        "    throw new Error('Simultaneous Mode 1 + Mode 3 render bug detected on startup!');"
+        "  }"
+        "  await page.getByRole('button', { name: '2. Keyframes & Shots' }).click();"
+        "  const step2Text = await page.locator('main').textContent();"
+        "  if (step2Text.includes('Step 1: Master Concept & Character Roles Manager') || !step2Text.includes('Step 2: Shot Card Workstation')) {"
+        "    throw new Error('Mode 3 Step Filter (2. Keyframes & Shots) did not filter sections properly');"
+        "  }"
+        "  await page.getByRole('button', { name: 'All Sections' }).click();"
+        "  const j3Textarea = page.locator('textarea[placeholder*=\"Describe the multi-shot continuous scene\"]');"
+        "  await j3Textarea.fill('Synced Cross-Mode Dragon Chef Showdown');"
+        "  await page.getByRole('button', { name: /Mode 1: Guided Fine-Tune/i }).first().click();"
+        "  const mode1Textarea = page.locator('textarea[placeholder*=\"Specify the exact keyframe frame visual setup\"]');"
+        "  const mode1ValAfterJ3 = await mode1Textarea.inputValue();"
+        "  if (mode1ValAfterJ3 !== 'Synced Cross-Mode Dragon Chef Showdown') {"
+        "    throw new Error('Expected Mode 3 -> Mode 1 concept sync, got: ' + mode1ValAfterJ3);"
+        "  }"
+        "  await mode1Textarea.fill('');"
+        "  if ((await mode1Textarea.inputValue()) !== '') {"
+        "    throw new Error('Expected Mode 1 textarea to clear cleanly to empty string without snapping back');"
+        "  }"
+        "  await mode1Textarea.fill('Mode 1 Updated Mars Chess Battle');"
+        "  await page.getByRole('button', { name: /Mode 2: Screenplay Storyboard/i }).first().click();"
+        "  const mode2Textarea = page.locator('textarea[placeholder*=\"Fiery Executive Chef\"]');"
+        "  if ((await mode2Textarea.inputValue()) !== 'Mode 1 Updated Mars Chess Battle') {"
+        "    throw new Error('Expected Mode 1 -> Mode 2 concept sync, got: ' + (await mode2Textarea.inputValue()));"
+        "  }"
+        "  await page.getByRole('button', { name: /Mode 1: Guided Fine-Tune/i }).first().click();"
+        "  await page.getByRole('button', { name: /Step 2: Shot Card Workstation/i }).click();"
+        "  await page.getByRole('button', { name: /Proceed to Step 3: Render & Stitch Master Video/i }).click();"
+        "  const stage3NavText = await page.locator('main').textContent();"
+        "  if (!stage3NavText.includes('Select Shot Card to Inspect & Diff') || !stage3NavText.includes('Master Audio Overlay & GCS Export Settings')) {"
+        "    throw new Error('Stage 2 Proceed to Step 3 button did not render Stage 3 properly');"
+        "  }"
+        "  await page.getByRole('button', { name: /Step 1: Visual Concept & Characters/i }).click();"
+        "  await page.getByRole('button', { name: /Express Render 10s Video Now/i }).click();"
+        "  await page.waitForFunction(() => !!window.__capturedGeneratePayload, { timeout: 5000 });"
+        "  const genPayload = await page.evaluate(() => window.__capturedGeneratePayload);"
+        "  if (!genPayload || !genPayload.scenes || !genPayload.scenes[0].action.includes('[0-3s] Action: Mars Grandmaster moves rook.')) {"
+        "    throw new Error('Expected Express Render to auto-deconstruct new concept before /api/generate, got: ' + JSON.stringify(genPayload));"
+        "  }"
+        "  const afterExpressText = await page.locator('main').textContent();"
+        "  if (!afterExpressText.includes('Checkmate on Olympus Mons') || !afterExpressText.includes('Red cratered Mars plateau')) {"
+        "    throw new Error('Expected Stage 3 Shot #1 prompt preview to show newly deconstructed scene metadata');"
+        "  }"
+        "  const bodyText = await page.locator('body').textContent();"
+        "  if (bodyText.includes('Stage 4: The Final Cut')) {"
+        "    throw new Error('Expected dead Stage 4 tab to be removed');"
+        "  }"
+        "  console.log('PR2_JOURNEY_BROWSER_OK');"
+        "  await browser.close();"
+        "})();"
+    )
+    res = subprocess.run(
+        ["node", "-e", inline_js],
+        cwd=skill_dir,
+        capture_output=True,
+        text=True,
+    )
+    output = res.stdout + res.stderr
+    assert res.returncode == 0, f"Playwright PR2 journey test failed: {output}"
+    assert "PR2_JOURNEY_BROWSER_OK" in output
