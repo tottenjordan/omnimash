@@ -2646,7 +2646,7 @@ def test_minimal_intent_prompt_engine_end_to_end():
     gen_data = res_gen.json()
     assert gen_data["success"] is True
     raw_prompt = gen_data["raw_compiled_prompt"]
-    assert "### INPUT ROLES" in raw_prompt
+    assert "### INPUT ROLES & REFERENCES" in raw_prompt
     assert "### CHARACTER PROFILES" in raw_prompt
     assert "### SCENE INSTRUCTIONS" in raw_prompt
     assert "### TIMELINE" in raw_prompt

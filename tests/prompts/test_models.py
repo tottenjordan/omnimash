@@ -40,7 +40,7 @@ def test_compiled_prompt_parts_generation():
         voiceover="The city never sleeps.",
     )
     full = parts.to_full_prompt()
-    assert "### INPUT ROLES" in full
+    assert "### INPUT ROLES & REFERENCES" in full
     assert "### CHARACTER PROFILES" in full
     assert "### SCENE INSTRUCTIONS" in full
     assert "### TIMELINE" in full
@@ -81,3 +81,20 @@ def test_deconstructed_schemas():
     )
     assert len(concept.characters) == 1
     assert concept.characters[0].role_id == "Role A"
+
+
+def test_compiled_prompt_parts_acoustic_progression():
+    """Verify CompiledPromptParts formats seamless acoustic progression without instrumental or Sound design prefixes."""
+    parts = CompiledPromptParts(
+        subject_anchor="Hero in desert",
+        aesthetic_injection="Cinematic lighting",
+        environment="Dune ridge",
+        camera_lighting="Widescreen tracking shot",
+        motion="Walking slowly forward",
+        audio_track="Seamless acoustic progression from prior ambient audio",
+    )
+    full = parts.to_full_prompt()
+    assert "Audio: Seamless acoustic progression from prior ambient audio." in full
+    assert "instrumental" not in full
+    assert "Sound design:" not in full
+

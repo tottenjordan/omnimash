@@ -989,18 +989,26 @@ class PromptCompiler:
                 sound_desc = "Sound design: Silent video. No background music, no audio."
                 scene_inst_parts.append(f"Audio: {sound_desc}")
             else:
-                if not audio_beat_clean.lower().startswith("instrumental"):
-                    instr_audio = f"instrumental {audio_beat_clean}"
-                else:
-                    instr_audio = audio_beat_clean
-
-                if has_dialogue:
-                    sound_desc = (
-                        f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
-                        f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
+                if "seamless acoustic progression" in audio_beat_clean.lower():
+                    clean_dir = (
+                        re.sub(r"^Audio:\s*", "", audio_beat_clean, flags=re.IGNORECASE)
+                        .strip()
+                        .rstrip(".")
                     )
+                    sound_desc = f"{clean_dir}."
                 else:
-                    sound_desc = f"Sound design: {instr_audio}."
+                    if not audio_beat_clean.lower().startswith("instrumental"):
+                        instr_audio = f"instrumental {audio_beat_clean}"
+                    else:
+                        instr_audio = audio_beat_clean
+
+                    if has_dialogue:
+                        sound_desc = (
+                            f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                            f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
+                        )
+                    else:
+                        sound_desc = f"Sound design: {instr_audio}."
                 scene_inst_parts.append(f"Audio: {sound_desc}")
         elif has_dialogue:
             scene_inst_parts.append(
@@ -1202,7 +1210,7 @@ class PromptCompiler:
         timeline_str = "\n".join(timeline_lines) if timeline_lines else "- No scenes"
 
         compiled_result = (
-            f"### INPUT ROLES\n{input_roles_str}\n\n"
+            f"### INPUT ROLES & REFERENCES\n{input_roles_str}\n\n"
             f"### CHARACTER PROFILES\n{char_profiles_str}\n\n"
             f"### SCENE INSTRUCTIONS\n{scene_instructions_str}\n\n"
             f"### TIMELINE\n{timeline_str}"

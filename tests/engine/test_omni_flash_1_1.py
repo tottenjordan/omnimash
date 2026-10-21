@@ -62,7 +62,7 @@ def test_last_frame_without_first_frame_raises_value_error():
 
 def test_validate_compiled_prompt_pairing_rule():
     valid_prompt = (
-        "### INPUT ROLES\n<FIRST_FRAME>@Image1\n<LAST_FRAME>@Image2\n\n"
+        "### INPUT ROLES & REFERENCES\n<FIRST_FRAME>@Image1\n<LAST_FRAME>@Image2\n\n"
         "### CHARACTER PROFILES\nNone.\n\n"
         "### SCENE INSTRUCTIONS\nEnvironment: Studio\n\n"
         "### TIMELINE\n[0-3s] Action: Transition."
@@ -70,7 +70,7 @@ def test_validate_compiled_prompt_pairing_rule():
     validate_compiled_prompt(valid_prompt)
 
     invalid_prompt = (
-        "### INPUT ROLES\n<LAST_FRAME>@Image2\n\n"
+        "### INPUT ROLES & REFERENCES\n<LAST_FRAME>@Image2\n\n"
         "### CHARACTER PROFILES\nNone.\n\n"
         "### SCENE INSTRUCTIONS\nEnvironment: Studio\n\n"
         "### TIMELINE\n[0-3s] Action: Transition."
