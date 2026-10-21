@@ -48,7 +48,7 @@ ignore = ["E501"]
 python-version = "3.12"
 
 [tool.ty.src]
-include = ["src", "tests"]
+include = ["src", "tests", "scripts"]
 
 [tool.ty.rules]
 deprecated = "ignore"
