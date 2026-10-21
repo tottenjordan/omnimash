@@ -615,3 +615,44 @@ def test_expand_vision_applies_forwarded_camera_aesthetic_audio_vocal_and_enviro
         assert "Chrome Armor" in s.style_lighting
         assert "135 BPM Industrial Techno" in s.audio
         assert "Resonant stoic baritone" in s.audio
+
+
+def test_optimize_shot_prompt_partial_llm_timecode_preserves_all_input_beats():
+    from unittest.mock import MagicMock
+
+    live_agent = StoryboardAgent(mock_mode=True)
+    live_agent.mock_mode = False
+    mock_client = MagicMock()
+    mock_resp = MagicMock()
+    # LLM keeps [0-3s] but drops [3-6s] and [6-10s]
+    mock_resp.text = "[0-3s] Wide anamorphic tracking shot as chef enters the neon kitchen."
+    mock_client.models.generate_content.return_value = mock_resp
+    live_agent._genai_client = mock_client
+
+    raw_timed = "[0-3s] Chef enters. [3-6s] Chef flips wok. [6-10s] Chef plates neon ramen."
+    optimized = live_agent.optimize_shot_prompt(raw_timed, style_tone="Cyberpunk")
+    assert "[0-3s]" in optimized
+    assert "[3-6s]" in optimized
+    assert "[6-10s]" in optimized
+
+    # Verify _ensure_shot_temporal_beats does not duplicate partial timecodes
+    partial = "[0-3s] Enters arena. [3-6s] Draws blade."
+    beat_fixed = live_agent._ensure_shot_temporal_beats(partial)
+    assert beat_fixed.count("[0-3s]") == 1
+    assert beat_fixed.count("[3-6s]") == 1
+    assert beat_fixed.count("[6-10s]") == 1
+
+
+def test_expand_vision_with_screenplay_script_preserves_aesthetic_tags_in_style_lighting():
+    agent = StoryboardAgent(mock_mode=True)
+    shots = agent.expand_vision(
+        concept="Samurai duel",
+        style_tone="Cyberpunk Drift",
+        aesthetic_tags=["Chrome Armor", "Laser Fog"],
+        screenplay_script="[0-5s]\nACTION: Samurai draws blade.\n[5-10s]\nACTION: Samurai strikes.",
+    )
+    assert len(shots) == 2
+    for s in shots:
+        assert "Cyberpunk Drift" in s.style_lighting
+        assert "Chrome Armor" in s.style_lighting
+        assert "Laser Fog" in s.style_lighting

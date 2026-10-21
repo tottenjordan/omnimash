@@ -85,6 +85,11 @@ class OmniMashAgent:
         target_duration: float = 30.0,
         characters: list[CharacterRole] | None = None,
         screenplay_script: str = "",
+        camera_lighting: str | None = None,
+        aesthetic_tags: list[str] | None = None,
+        audio_beat: str | None = None,
+        vocal_delivery: str | None = None,
+        environment: str | None = None,
     ) -> list[StoryboardShot]:
         return self.storyboard_agent.expand_vision(
             concept,
@@ -92,6 +97,11 @@ class OmniMashAgent:
             target_duration=target_duration,
             characters=characters,
             screenplay_script=screenplay_script,
+            camera_lighting=camera_lighting,
+            aesthetic_tags=aesthetic_tags,
+            audio_beat=audio_beat,
+            vocal_delivery=vocal_delivery,
+            environment=environment,
         )
 
     def validate_conversational_edit(self, edit_prompt: str) -> tuple[bool, str]:
@@ -459,65 +469,78 @@ class OmniMashAgent:
                     raw_concept = (
                         concept or guard_res.sanitized_prompt or prompt or "Cinematic parody scene"
                     ).strip()
-                    deconstructed = self.compiler.deconstruct_concept(raw_concept)
-                    clean_func = _clean if enable_sanitization else None
-                    char_objs = [
-                        normalize_character_role(c, clean_fn=clean_func)
-                        for c in deconstructed.characters
-                    ]
-                    scene_objs = list(deconstructed.scenes)
-                    if not scene_objs:
-                        active_roles = [c.role_id for c in char_objs if c.role_id] or ["Role A"]
-                        scene_objs = [
-                            SceneDirective(
-                                scene_number=1,
-                                active_roles=active_roles,
-                                action=self.compiler._ensure_temporal_micro_beats(
-                                    raw_concept,
-                                    env_tag=deconstructed.environment_tag,
-                                    cam_tag=deconstructed.camera_lighting_tag,
-                                ),
-                                duration_seconds=duration_seconds,
-                            )
-                        ]
-                    if (voiceover and voiceover.strip()) or (
-                        on_screen_text and on_screen_text.strip()
-                    ):
-                        first_s = scene_objs[0]
-                        scene_objs[0] = SceneDirective(
-                            scene_number=first_s.scene_number,
-                            active_roles=list(first_s.active_roles),
-                            action=first_s.action,
-                            dialogue=voiceover.strip()
-                            if (voiceover and voiceover.strip())
-                            else first_s.dialogue,
-                            screenplay_text=first_s.screenplay_text,
-                            audio_cues=first_s.audio_cues,
-                            timecode=first_s.timecode,
-                            duration_seconds=first_s.duration_seconds,
-                            title_card_text=on_screen_text.strip()
-                            if (on_screen_text and on_screen_text.strip())
-                            else first_s.title_card_text,
-                            title_card_subtitle=first_s.title_card_subtitle,
-                            narrator_text=first_s.narrator_text,
-                        )
-                    meta_prompt = self.compiler.compile_storyboard(
-                        concept=raw_concept,
-                        characters=char_objs,
-                        scenes=scene_objs,
-                        aesthetic_tags=aesthetic_tags or deconstructed.aesthetic_tags,
-                        environment_tag=environment_tag or deconstructed.environment_tag,
-                        audio_beat=(
-                            "Silent video. No background music, no audio."
-                            if is_silent
-                            else (audio_stem or deconstructed.audio_beat)
-                        ),
-                        vocal_delivery=vocal_delivery or deconstructed.vocal_delivery,
-                        has_keyframe_seed=bool(keyframe_image_url),
-                        keyframe_image_url=keyframe_image_url,
-                        enable_sanitization=enable_sanitization,
-                        aspect_ratio=aspect_ratio,
+                    is_precompiled_4_block = (
+                        "### INPUT ROLES" in raw_concept
+                        and "### CHARACTER PROFILES" in raw_concept
+                        and "### SCENE INSTRUCTIONS" in raw_concept
+                        and "### TIMELINE" in raw_concept
                     )
+                    if is_precompiled_4_block:
+                        meta_prompt = raw_concept
+                    else:
+                        deconstructed = self.compiler.deconstruct_concept(raw_concept)
+                        clean_func = _clean if enable_sanitization else None
+                        char_objs = [
+                            normalize_character_role(c, clean_fn=clean_func)
+                            for c in deconstructed.characters
+                        ]
+                        scene_objs = list(deconstructed.scenes)
+                        if not scene_objs:
+                            active_roles = [c.role_id for c in char_objs if c.role_id] or ["Role A"]
+                            scene_objs = [
+                                SceneDirective(
+                                    scene_number=1,
+                                    active_roles=active_roles,
+                                    action=self.compiler._ensure_temporal_micro_beats(
+                                        raw_concept,
+                                        env_tag=deconstructed.environment_tag,
+                                        cam_tag=deconstructed.camera_lighting_tag,
+                                    ),
+                                    duration_seconds=duration_seconds,
+                                )
+                            ]
+                        has_explicit_voiceover = bool(voiceover and voiceover.strip())
+                        has_explicit_text = bool(on_screen_text and on_screen_text.strip())
+                        if has_explicit_voiceover or has_explicit_text or is_silent:
+                            first_s = scene_objs[0]
+                            scene_objs[0] = SceneDirective(
+                                scene_number=first_s.scene_number,
+                                active_roles=list(first_s.active_roles),
+                                action=first_s.action,
+                                dialogue=voiceover.strip()
+                                if has_explicit_voiceover
+                                else ("" if is_silent else first_s.dialogue),
+                                screenplay_text=first_s.screenplay_text,
+                                audio_cues=first_s.audio_cues,
+                                timecode=first_s.timecode,
+                                duration_seconds=first_s.duration_seconds,
+                                title_card_text=on_screen_text.strip()
+                                if has_explicit_text
+                                else first_s.title_card_text,
+                                title_card_subtitle=first_s.title_card_subtitle,
+                                narrator_text=first_s.narrator_text,
+                            )
+                        meta_prompt = self.compiler.compile_storyboard(
+                            concept=raw_concept,
+                            characters=char_objs,
+                            scenes=scene_objs,
+                            aesthetic_tags=aesthetic_tags or deconstructed.aesthetic_tags,
+                            environment_tag=environment_tag or deconstructed.environment_tag,
+                            audio_beat=(
+                                "Silent video. No background music, no audio."
+                                if is_silent
+                                else (audio_stem or deconstructed.audio_beat)
+                            ),
+                            vocal_delivery=(
+                                ""
+                                if (is_silent and not has_explicit_voiceover)
+                                else (vocal_delivery or deconstructed.vocal_delivery)
+                            ),
+                            has_keyframe_seed=bool(keyframe_image_url),
+                            keyframe_image_url=keyframe_image_url,
+                            enable_sanitization=enable_sanitization,
+                            aspect_ratio=aspect_ratio,
+                        )
             if optimize_prompt:
                 meta_prompt = self.taxonomy.compiler.optimize_prompt_for_omni_flash(
                     meta_prompt, use_llm=True

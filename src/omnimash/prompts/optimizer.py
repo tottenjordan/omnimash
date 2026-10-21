@@ -68,7 +68,11 @@ class PromptOptimizer:
                             and "### SCENE INSTRUCTIONS" in llm_out
                             and "### TIMELINE" in llm_out
                         )
-                        if llm_out and has_canonical_4_blocks:
+                        input_beats = [
+                            beat for beat in ("[0-3s]", "[3-6s]", "[6-10s]") if beat in optimized
+                        ]
+                        preserves_temporal_beats = all(beat in llm_out for beat in input_beats)
+                        if llm_out and has_canonical_4_blocks and preserves_temporal_beats:
                             return llm_out
                 except Exception as exc:
                     logger.warning(

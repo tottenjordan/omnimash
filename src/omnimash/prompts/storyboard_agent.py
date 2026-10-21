@@ -185,12 +185,19 @@ class StoryboardAgent:
             return clean
         if "[0-3s]" in clean and "[3-6s]" in clean and "[6-10s]" in clean:
             return clean
-        base = clean.rstrip(".")
-        return (
-            f"[0-3s] {base}. "
-            "[3-6s] Camera tracks smoothly as the subject escalates the kinetic action in frame. "
-            "[6-10s] Subject settles into a decisive visual resolution pose as lighting peaks."
-        )
+        if "[0-3s]" in clean:
+            result = clean.rstrip(".") + "."
+        else:
+            stripped_leading = re.sub(r"^\[\d+(?:\.\d+)?-\d+(?:\.\d+)?s?\]\s*", "", clean).rstrip(
+                "."
+            )
+            base = stripped_leading if stripped_leading else clean.rstrip(".")
+            result = f"[0-3s] {base}."
+        if "[3-6s]" not in result:
+            result = f"{result} [3-6s] Camera tracks smoothly as the subject escalates the kinetic action in frame."
+        if "[6-10s]" not in result:
+            result = f"{result} [6-10s] Subject settles into a decisive visual resolution pose as lighting peaks."
+        return result
 
     def _generate_mock_shots(
         self,
@@ -356,7 +363,7 @@ class StoryboardAgent:
         if not raw_directive or not raw_directive.strip():
             return raw_directive
 
-        has_input_timecodes = bool(re.search(r"\[\d+(?:\.\d+)?-\d+(?:\.\d+)?s?\]", raw_directive))
+        input_timecodes = re.findall(r"\[\d+(?:\.\d+)?-\d+(?:\.\d+)?s?\]", raw_directive)
 
         if self.mock_mode or not self._genai_client:
             enriched = (
@@ -401,9 +408,7 @@ class StoryboardAgent:
             ):
                 text = text[1:-1].strip()
             if text:
-                if has_input_timecodes and not re.search(
-                    r"\[\d+(?:\.\d+)?-\d+(?:\.\d+)?s?\]", text
-                ):
+                if input_timecodes and not all(tc in text for tc in input_timecodes):
                     text = f"{raw_directive.strip()} ({text})"
                 return sanitize_real_names(text)
         except Exception as exc:
@@ -472,7 +477,7 @@ class StoryboardAgent:
                     else None
                 )
                 or (
-                    derived.camera_lighting_tag
+                    f"{effective_style_tone}, {derived.camera_lighting_tag}"
                     if derived and getattr(derived, "camera_lighting_tag", None)
                     else None
                 )

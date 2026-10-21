@@ -200,12 +200,104 @@ class PromptCompiler:
             return clean
         env_phrase = f" in {env_tag}" if env_tag else ""
         cam_phrase = f" under {cam_tag}" if cam_tag else ""
-        base_action = clean.rstrip(".") if clean else f"{char_label} enters the frame{env_phrase}"
-        return (
-            f"[0-3s] {base_action}. "
-            f"[3-6s] {char_label} escalates the performance with dynamic kinetic motion{cam_phrase}. "
+        beat_2_default = f"[3-6s] {char_label} escalates the performance with dynamic kinetic motion{cam_phrase}."
+        beat_3_default = (
             f"[6-10s] {char_label} locks into a high-impact climactic pose as lighting peaks."
         )
+        if "[0-3s]" in clean:
+            result = clean.rstrip(".") + "."
+        else:
+            stripped_leading = re.sub(r"^\[\d+(?:\.\d+)?-\d+(?:\.\d+)?s?\]\s*", "", clean).rstrip(
+                "."
+            )
+            base_action = (
+                stripped_leading
+                if stripped_leading
+                else f"{char_label} enters the frame{env_phrase}"
+            )
+            result = f"[0-3s] {base_action}."
+        if "[3-6s]" not in result:
+            result = f"{result} {beat_2_default}"
+        if "[6-10s]" not in result:
+            result = f"{result} {beat_3_default}"
+        return result
+
+    @staticmethod
+    def _synthesize_scene_and_script_defaults(
+        concept: str,
+        chars: list[CharacterRole],
+        aesthetic_tags: list[str],
+        env_tag: str,
+        cam_tag: str,
+        audio_beat: str,
+    ) -> tuple[str, str, list[SceneDirective], str]:
+        clean_concept = (concept or "").strip() or "Cinematic parody scene"
+        active_roles = [c.role_id for c in chars] or ["Role A"]
+        if len(chars) >= 2:
+            char_a = f"{chars[0].role_id} ({chars[0].name})"
+            char_b = f"{chars[1].role_id} ({chars[1].name})"
+            beat_1_desc = (
+                f"Establishing tracking shot in {env_tag} as {char_a} steps forward into the spotlight "
+                f"while {char_b} locks eyes from across the set ({clean_concept})."
+            )
+            beat_2_desc = (
+                f"{char_a} gestures emphatically toward the lens as {char_b} counters "
+                f"with kinetic energy under {cam_tag}."
+            )
+            beat_3_desc = (
+                f"Both {char_a} and {char_b} hit a synchronized high-impact climactic pose "
+                f"as atmospheric rim lighting peaks."
+            )
+            dialogue_line = (
+                f'{chars[0].name}: "Watch the masterclass unfold right now!" / '
+                f'{chars[1].name}: "Turn the energy up, this stage is mine!"'
+            )
+        else:
+            lead = (
+                chars[0]
+                if chars
+                else CharacterRole(
+                    role_id="Role A",
+                    name="Lead Subject",
+                    description="A distinct cinematic character",
+                )
+            )
+            char_a = f"{lead.role_id} ({lead.name})"
+            beat_1_desc = (
+                f"Establishing tracking shot in {env_tag} as {char_a} enters frame and commands "
+                f"the spotlight ({clean_concept})."
+            )
+            beat_2_desc = (
+                f"{char_a} performs expressive dynamic motion toward the camera under {cam_tag}."
+            )
+            beat_3_desc = (
+                f"{char_a} locks into a bold hero resolution pose as volumetric rim lights peak."
+            )
+            dialogue_line = f'{lead.name}: "Every beat hits different when you own the frame!"'
+
+        action_beats = f"[0-3s] {beat_1_desc} [3-6s] {beat_2_desc} [6-10s] {beat_3_desc}"
+        screenplay_script = (
+            f"[0-3s]\nACTION: {beat_1_desc}\nAUDIO: {audio_beat}\n\n"
+            f"[3-6s]\nACTION: {beat_2_desc}\nAUDIO: {audio_beat}\n\n"
+            f"[6-10s]\nACTION: {beat_3_desc}\nAUDIO: {audio_beat}\nDIALOGUE: {dialogue_line}"
+        )
+        char_summary = ", ".join(f"{c.name} ({c.description})" for c in chars)
+        keyframe_image_prompt = (
+            f"Cinematic 16:9 keyframe anchor for '{clean_concept}': {char_summary} in {env_tag}. "
+            f"Style: {', '.join(aesthetic_tags)}. Camera & Lighting: {cam_tag}."
+        )
+        scenes = [
+            SceneDirective(
+                scene_number=1,
+                active_roles=active_roles,
+                action=action_beats,
+                dialogue=dialogue_line,
+                audio_cues=audio_beat,
+                timecode="0-10s",
+                duration_seconds=10.0,
+            )
+        ]
+        return keyframe_image_prompt, screenplay_script, scenes, dialogue_line
 
     def _try_gemini_deconstruction(
         self, client: Any, model_name: str, concept: str, tier_name: str
@@ -311,19 +403,35 @@ class PromptCompiler:
                 cam_tag = data.get("camera_lighting_tag") or fallback_tags.camera_lighting_tag
                 audio_beat = data.get("audio_beat") or fallback_tags.audio_beat
                 vocal_delivery = data.get("vocal_delivery") or fallback_tags.vocal_delivery
-                keyframe_image_prompt = (
-                    data.get("keyframe_image_prompt") or fallback_tags.keyframe_image_prompt
+
+                synth_keyframe, synth_script, synth_scenes, synth_dialogue = (
+                    self._synthesize_scene_and_script_defaults(
+                        concept=concept,
+                        chars=chars,
+                        aesthetic_tags=aesthetic_tags,
+                        env_tag=env_tag,
+                        cam_tag=cam_tag,
+                        audio_beat=audio_beat,
+                    )
                 )
-                screenplay_script = data.get("screenplay_script") or fallback_tags.screenplay_script
+
+                keyframe_image_prompt = (
+                    str(data.get("keyframe_image_prompt") or "").strip() or synth_keyframe
+                )
+                raw_script = str(data.get("screenplay_script") or "").strip()
+                if (
+                    raw_script
+                    and "[0-3s]" in raw_script
+                    and "[3-6s]" in raw_script
+                    and "[6-10s]" in raw_script
+                ):
+                    screenplay_script = raw_script
+                else:
+                    screenplay_script = synth_script
 
                 active_role_ids = [c.role_id for c in chars] or ["Role A"]
                 char_label = (
                     f"{chars[0].role_id} ({chars[0].name})" if chars else "Role A (Lead Subject)"
-                )
-                fb_dialogue = (
-                    fallback_tags.scenes[0].dialogue
-                    if fallback_tags.scenes
-                    else f'{chars[0].name if chars else "Lead Subject"}: "Watch this unfold!"'
                 )
 
                 scenes: list[SceneDirective] = []
@@ -336,7 +444,7 @@ class PromptCompiler:
                             env_tag=env_tag,
                             cam_tag=cam_tag,
                         )
-                        s_dialogue = str(s_data.get("dialogue") or "").strip() or fb_dialogue
+                        s_dialogue = str(s_data.get("dialogue") or "").strip() or synth_dialogue
                         s_roles = s_data.get("active_roles") or active_role_ids
                         scenes.append(
                             SceneDirective(
@@ -350,7 +458,7 @@ class PromptCompiler:
                             )
                         )
                 else:
-                    scenes = fallback_tags.scenes
+                    scenes = synth_scenes
 
                 return MetaPromptTags(
                     characters=chars,
@@ -872,19 +980,28 @@ class PromptCompiler:
             scene_inst_parts.append(f"Audio: {sound_desc}")
         elif audio_beat and audio_beat.strip():
             audio_beat_clean = audio_beat.strip()
-            if not audio_beat_clean.lower().startswith("instrumental"):
-                instr_audio = f"instrumental {audio_beat_clean}"
+            if audio_beat_clean.lower() in (
+                "none",
+                "mute",
+                "silent",
+                "silent video. no background music, no audio.",
+            ) or audio_beat_clean.lower().startswith("silent video"):
+                sound_desc = "Sound design: Silent video. No background music, no audio."
+                scene_inst_parts.append(f"Audio: {sound_desc}")
             else:
-                instr_audio = audio_beat_clean
+                if not audio_beat_clean.lower().startswith("instrumental"):
+                    instr_audio = f"instrumental {audio_beat_clean}"
+                else:
+                    instr_audio = audio_beat_clean
 
-            if has_dialogue:
-                sound_desc = (
-                    f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
-                    f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
-                )
-            else:
-                sound_desc = f"Sound design: {instr_audio}."
-            scene_inst_parts.append(f"Audio: {sound_desc}")
+                if has_dialogue:
+                    sound_desc = (
+                        f"Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix. "
+                        f"Background beat ({instr_audio}) is subtly ducked in the background beneath dialogue."
+                    )
+                else:
+                    sound_desc = f"Sound design: {instr_audio}."
+                scene_inst_parts.append(f"Audio: {sound_desc}")
         elif has_dialogue:
             scene_inst_parts.append(
                 "Audio: Sound design: Foreground spoken voiceover/dialogue is dominant, crystal-clear, and front-of-mix."
@@ -1433,7 +1550,23 @@ class PromptCompiler:
             ),
         }
 
-        matched_keys = [k for k in known_lore if k in lower]
+        known_lore_aliases: dict[str, tuple[str, ...]] = {
+            "harry": ("harry", "spectacled wizard"),
+            "draco": ("draco", "platinum rival", "rival wizard"),
+            "snape": ("snape", "potion master"),
+            "dumbledore": ("dumbledore", "venerable high wizard"),
+            "voldemort": ("voldemort", "dark sorcerer"),
+            "ramsay": ("ramsay", "fiery chef"),
+            "julia": ("julia", "classic chef"),
+            "samurai": ("samurai",),
+            "ninja": ("ninja",),
+        }
+
+        matched_keys = [
+            k
+            for k in known_lore
+            if any(alias in lower for alias in known_lore_aliases.get(k, (k,)))
+        ]
         if matched_keys:
             for idx, k in enumerate(matched_keys):
                 name, desc = known_lore[k]
@@ -1499,7 +1632,20 @@ class PromptCompiler:
             vocal_delivery = "High-energy back-and-forth rap battle delivery with synchronized lip-sync and punchy cadence"
             env_tag = (
                 "Gothic Hogwarts courtyard lit by neon stage lights and smoky haze"
-                if ("harry" in lower or "draco" in lower or "hogwarts" in lower or "snape" in lower)
+                if any(
+                    w in lower
+                    for w in (
+                        "harry",
+                        "draco",
+                        "hogwarts",
+                        "snape",
+                        "spectacled wizard",
+                        "platinum rival",
+                        "rival wizard",
+                        "potion master",
+                        "gothic academy",
+                    )
+                )
                 else "Urban street alley with neon stage lights and atmospheric fog"
             )
             cam_tag = "Low-angle 90s fisheye tracking shot with high-contrast green and purple neon rim lights"
@@ -1601,66 +1747,16 @@ class PromptCompiler:
             env_tag = "Atmospheric stage set with dramatic directional lighting and smoke effects"
             cam_tag = "Cinematic 16:9 tracking shot with balanced ambient lighting and crisp depth of field"
 
-        clean_concept = concept.strip() or "Cinematic parody scene"
-        active_roles = [c.role_id for c in chars] or ["Role A"]
-        if len(chars) >= 2:
-            char_a = f"{chars[0].role_id} ({chars[0].name})"
-            char_b = f"{chars[1].role_id} ({chars[1].name})"
-            beat_1 = (
-                f"[0-3s] Establishing tracking shot in {env_tag}: {char_a} steps forward into the spotlight "
-                f"while {char_b} locks eyes from across the set ({clean_concept})."
+        keyframe_image_prompt, screenplay_script, scenes, _ = (
+            self._synthesize_scene_and_script_defaults(
+                concept=concept,
+                chars=chars,
+                aesthetic_tags=aesthetic_tags,
+                env_tag=env_tag,
+                cam_tag=cam_tag,
+                audio_beat=audio_beat,
             )
-            beat_2 = (
-                f"[3-6s] {char_a} gestures emphatically toward the lens as {char_b} counters "
-                f"with kinetic energy under {cam_tag}."
-            )
-            beat_3 = (
-                f"[6-10s] Both {char_a} and {char_b} hit a synchronized high-impact climactic pose "
-                f"as atmospheric rim lighting peaks."
-            )
-            dialogue_line = (
-                f'{chars[0].name}: "Watch the masterclass unfold right now!" / '
-                f'{chars[1].name}: "Turn the energy up, this stage is mine!"'
-            )
-        else:
-            lead = (
-                chars[0]
-                if chars
-                else CharacterRole(
-                    role_id="Role A",
-                    name="Lead Subject",
-                    description="A distinct cinematic character",
-                )
-            )
-            char_a = f"{lead.role_id} ({lead.name})"
-            beat_1 = (
-                f"[0-3s] Establishing tracking shot in {env_tag}: {char_a} enters frame and commands "
-                f"the spotlight ({clean_concept})."
-            )
-            beat_2 = f"[3-6s] {char_a} performs expressive dynamic motion toward the camera under {cam_tag}."
-            beat_3 = f"[6-10s] {char_a} locks into a bold hero resolution pose as volumetric rim lights peak."
-            dialogue_line = f'{lead.name}: "Every beat hits different when you own the frame!"'
-
-        action_beats = f"{beat_1} {beat_2} {beat_3}"
-        screenplay_script = (
-            f"{beat_1}\n{beat_2}\n{beat_3}\nAUDIO: {audio_beat}\nDIALOGUE: {dialogue_line}"
         )
-        char_summary = ", ".join(f"{c.name} ({c.description})" for c in chars)
-        keyframe_image_prompt = (
-            f"Cinematic 16:9 keyframe anchor for '{clean_concept}': {char_summary} in {env_tag}. "
-            f"Style: {', '.join(aesthetic_tags)}. Camera & Lighting: {cam_tag}."
-        )
-        scenes = [
-            SceneDirective(
-                scene_number=1,
-                active_roles=active_roles,
-                action=action_beats,
-                dialogue=dialogue_line,
-                audio_cues=audio_beat,
-                timecode="0-10s",
-                duration_seconds=10.0,
-            )
-        ]
 
         return MetaPromptTags(
             characters=chars,

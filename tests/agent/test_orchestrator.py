@@ -655,3 +655,68 @@ def test_bare_prompt_fallback_with_voiceover_on_screen_text_and_silent_mode():
     assert "The case is never closed." in compiled
     assert "CASE FILE #404" in compiled
     assert "Silent video" in compiled
+
+
+def test_bare_prompt_precompiled_4_block_is_not_double_wrapped():
+    agent = OmniMashAgent(mock_mode=True)
+    precompiled = (
+        "### INPUT ROLES\n"
+        "- Role A: Neon Samurai\n\n"
+        "### CHARACTER PROFILES\n"
+        "- Role A (Neon Samurai): Stoic cyber warrior.\n\n"
+        "### SCENE INSTRUCTIONS\n"
+        "Setting: Rainy neon rooftop.\n"
+        "Camera & Lighting: In a single continuous shot. No scene cuts.\n\n"
+        "### TIMELINE\n"
+        "- [0-10s] Scene 1 [Role A]: [0-3s] Enters. [3-6s] Draws katana. [6-10s] Poses."
+    )
+    res = agent.process_user_turn(
+        user_id="u_pre",
+        project_id="p_pre",
+        prompt=precompiled,
+        clip_index=0,
+    )
+    assert res.success is True
+    assert res.raw_compiled_prompt is not None
+    assert res.raw_compiled_prompt.count("### INPUT ROLES") == 1
+    assert res.raw_compiled_prompt.count("### CHARACTER PROFILES") == 1
+    assert res.raw_compiled_prompt.count("### SCENE INSTRUCTIONS") == 1
+    assert res.raw_compiled_prompt.count("### TIMELINE") == 1
+
+
+def test_bare_prompt_silent_mode_without_voiceover_omits_instrumental_and_auto_dialogue():
+    agent = OmniMashAgent(mock_mode=True)
+    res = agent.process_user_turn(
+        user_id="u_silent",
+        project_id="p_silent",
+        prompt="A lone samurai walking in the rain",
+        is_silent=True,
+        clip_index=0,
+    )
+    assert res.success is True
+    assert res.raw_compiled_prompt is not None
+    compiled = res.raw_compiled_prompt
+    assert "Audio: Sound design: Silent video. No background music, no audio." in compiled
+    assert "instrumental Silent video" not in compiled
+    assert "says in a " not in compiled
+
+
+def test_agent_expand_storyboard_forwards_all_taxonomy_parameters():
+    agent = OmniMashAgent(mock_mode=True)
+    shots = agent.expand_storyboard(
+        concept="Cyberpunk duel",
+        style_tone="Neon Noir",
+        target_duration=30.0,
+        camera_lighting="Low-angle anamorphic crane shot",
+        aesthetic_tags=["Chrome Armor", "Holographic Rain"],
+        audio_beat="135 BPM Dark Synth",
+        vocal_delivery="Gravelly cybernetic baritone",
+        environment="Rooftop helipad above Neo-Tokyo",
+    )
+    assert len(shots) == 3
+    for shot in shots:
+        assert "Rooftop helipad above Neo-Tokyo" in shot.location
+        assert "Low-angle anamorphic crane shot" in shot.framing_motion
+        assert "Chrome Armor" in shot.style_lighting
+        assert "135 BPM Dark Synth" in shot.audio
+        assert "Gravelly cybernetic baritone" in shot.audio
