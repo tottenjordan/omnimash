@@ -1548,8 +1548,8 @@ def test_build_multimodal_contents_four_block_omni_flash() -> None:
     text_part = content[-1]
     text_val = text_part["text"]
 
-    # 1. Verify ### INPUT ROLES section header
-    assert "### INPUT ROLES" in text_val
+    # 1. Verify ### INPUT ROLES & REFERENCES section header
+    assert "### INPUT ROLES & REFERENCES" in text_val
 
     # 2. Verify explicit image role tags matching CharacterRole.image_role
     assert "[# Sources <FIRST_FRAME>@Image1]" in text_val
@@ -1613,7 +1613,7 @@ def test_four_block_official_image_ref_tags() -> None:
     assert isinstance(payload, list)
     text_val = payload[0]["content"][-1]["text"]
 
-    assert "### INPUT ROLES" in text_val
+    assert "### INPUT ROLES & REFERENCES" in text_val
     assert "[# Sources <FIRST_FRAME>@KeyframeSeed]" in text_val
     assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in text_val
     assert "- Potion Master Dawg <IMAGE_REF_0>: Gaunt potion master wizard" in text_val
@@ -1623,7 +1623,7 @@ def test_four_block_official_image_ref_tags() -> None:
 def test_abstract_prompt_preserves_character_tags_and_image_refs() -> None:
     """Verify _abstract_prompt_for_responsible_ai preserves character tags, IMAGE_REF tags, and bracketed section headers intact while replacing character names in descriptions and general text."""
     prompt = (
-        "### INPUT ROLES\n"
+        "### INPUT ROLES & REFERENCES\n"
         "[# References <IMAGE_REF_0>@Image1]\n\n"
         "### CHARACTER PROFILES\n"
         "- Role A - Snape Dawg <IMAGE_REF_0>: Severus Snape brewing potion in dark robes.\n\n"
@@ -2443,7 +2443,7 @@ def test_build_multimodal_contents_with_motion_reference_video() -> None:
     # Verify text prompt contains <VIDEO_REF_0> reference and input roles header
     text_part = user_content[-1]
     prompt_text = text_part.get("text", "")
-    assert "### INPUT ROLES" in prompt_text
+    assert "### INPUT ROLES & REFERENCES" in prompt_text
     assert "<VIDEO_REF_0>" in prompt_text
     assert "[# References <VIDEO_REF_0>@VideoReference1]" in prompt_text
 
@@ -2729,3 +2729,71 @@ def test_last_keyframe_prompt_is_isolated_across_concurrent_threads() -> None:
 
     for expected_substr, recorded_prompt in results:
         assert expected_substr in recorded_prompt
+
+
+def test_generate_live_omni_flash_video_injects_task_in_generation_config(tmp_path: Any) -> None:
+    """Verify _generate_live_omni_flash_video injects task into kwargs['generation_config']['video_config']['task']."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_task_test", output_video=MagicMock(data=fake_video_bytes)
+    )
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "test_task.mp4")
+    success, inter_id, error = client._generate_live_omni_flash_video(
+        prompt="A magical wizard continuation",
+        target_rel_path=target_file,
+        task="extend",
+        generation_config={"temperature": 0.5},
+    )
+
+    assert success is True
+    assert mock_interactions.create.called
+    call_kwargs = mock_interactions.create.call_args.kwargs
+    assert "generation_config" in call_kwargs
+    gen_cfg = call_kwargs["generation_config"]
+    assert gen_cfg["temperature"] == 0.5
+    assert gen_cfg["video_config"]["task"] == "extend"
+
+
+def test_generate_clip_and_apply_interaction_diff_propagate_task() -> None:
+    """Verify generate_clip and apply_interaction_diff pass task down to _generate_live_omni_flash_video."""
+    client = OmniFlashClient(mock_mode=True)
+
+    with patch.object(
+        client, "_generate_live_omni_flash_video", return_value=(True, "thread_123", None)
+    ) as mock_gen_live:
+        res1 = client.generate_clip(
+            prompt="Initial scene prompt",
+            task="text_to_video",
+            last_frame_image_url="http://example.com/end.png",
+            is_seamless_loop=True,
+        )
+        assert res1.video_url is not None
+        assert res1.error_message is None
+        mock_gen_live.assert_called_once()
+        gen_call_kwargs = mock_gen_live.call_args.kwargs
+        assert gen_call_kwargs["task"] == "text_to_video"
+        assert gen_call_kwargs["last_frame_image_url"] == "http://example.com/end.png"
+        assert gen_call_kwargs["is_seamless_loop"] is True
+
+    with patch.object(
+        client, "_generate_live_omni_flash_video", return_value=(True, "thread_456", None)
+    ) as mock_gen_live2:
+        res2 = client.apply_interaction_diff(
+            interaction_thread_id="thread_123",
+            diff_prompt="[PRESERVATION LOCK] | [ISOLATED DIFF] change lighting",
+            task="edit",
+        )
+        assert res2.video_url is not None
+        assert res2.error_message is None
+        mock_gen_live2.assert_called_once()
+        diff_call_kwargs = mock_gen_live2.call_args.kwargs
+        assert diff_call_kwargs["task"] == "edit"

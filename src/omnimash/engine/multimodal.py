@@ -158,8 +158,31 @@ def build_multimodal_contents(
     fetch_image_fn: Callable[[str], tuple[bytes, str]] | None = None,
     genai_client: Any | None = None,
     dev_client: Any | None = None,
+    last_frame_image_url: str | None = None,
+    is_seamless_loop: bool = False,
 ) -> list[dict[str, Any]] | str:
     """Assembles keyframe seed image, motion reference video clip, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
+    if is_seamless_loop and keyframe_image_url:
+        # KeyframeSeed serves as both FIRST and LAST frame for seamless loop
+        pass
+    elif last_frame_image_url and last_frame_image_url.strip():
+        char_list: list[Any] = list(characters) if characters is not None else []
+        has_last = any(
+            (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", ""))
+            in ("Ending Frame", "Keyframe Last Anchor")
+            for c in char_list
+        )
+        if not has_last:
+            char_list.append(
+                CharacterRole(
+                    role_id="Ending Frame",
+                    name="Ending Frame Anchor",
+                    description="Ending Frame Anchor concept image",
+                    reference_url=last_frame_image_url.strip(),
+                    image_role="Ending Frame",
+                )
+            )
+        characters = char_list
     keyframe_image_parts: list[dict[str, Any]] = []
     if keyframe_image_url and fetch_image_fn:
         img_bytes, mime_type = fetch_image_fn(keyframe_image_url)
@@ -193,7 +216,18 @@ def build_multimodal_contents(
             )
             has_motion_ref = True
 
-    has_kf_seed = bool(keyframe_image_parts)
+    is_video_kf = any(
+        (getattr(p, "get", lambda k: None)("type") == "video")
+        for p in (keyframe_image_parts or [])
+    ) or bool(
+        keyframe_image_url
+        and keyframe_image_url.lower().endswith((".mp4", ".mov", ".webm", ".avi", ".mkv"))
+    )
+
+    has_kf_seed = (not is_video_kf) and (
+        bool(keyframe_image_parts)
+        or bool(keyframe_image_url)
+    )
     start_ref_idx = 1
     ref_image_parts, _ = load_reference_images_as_input(
         session_id,
@@ -215,6 +249,10 @@ def build_multimodal_contents(
     if has_motion_ref:
         references_items.append("<VIDEO_REF_0>@VideoReference1")
 
+    if is_seamless_loop and has_kf_seed:
+        if "<LAST_FRAME>@KeyframeSeed" not in sources_items:
+            sources_items.append("<LAST_FRAME>@KeyframeSeed")
+
     input_roles_lines: list[str] = []
     if sources_items:
         input_roles_lines.append(f"[# Sources {' '.join(sources_items)}]")
@@ -222,11 +260,13 @@ def build_multimodal_contents(
         input_roles_lines.append(f"[# References {' '.join(references_items)}]")
 
     input_roles_header = (
-        "### INPUT ROLES\n" + "\n".join(input_roles_lines) + "\n\n" if input_roles_lines else ""
+        "### INPUT ROLES & REFERENCES\n" + "\n".join(input_roles_lines) + "\n\n"
+        if input_roles_lines
+        else ""
     )
 
     tone_header = ""
-    if keyframe_image_parts and "# Visual Tone & Starting Frame Anchor" not in prompt:
+    if keyframe_image_parts and not is_video_kf and "# Visual Tone & Starting Frame Anchor" not in prompt:
         tone_header = (
             "# Visual Tone & Starting Frame Anchor:\n"
             "Attached Image #1 is the keyframe starting concept art frame for this shot. "
@@ -273,13 +313,13 @@ def build_multimodal_contents(
     if char_tag_map and clean_prompt:
         for c_id in sorted(char_tag_map.keys(), key=len, reverse=True):
             tag = char_tag_map[c_id]
-            if tag not in clean_prompt and c_id in clean_prompt:
-                clean_prompt = clean_prompt.replace(c_id, f"{c_id} {tag}")
+            if tag not in clean_prompt and re.search(rf"\b{re.escape(c_id)}\b", clean_prompt):
+                clean_prompt = re.sub(rf"\b{re.escape(c_id)}\b", f"{c_id} {tag}", clean_prompt)
 
     if "### INPUT ROLES" in clean_prompt and input_roles_header:
         clean_prompt = re.sub(
-            r"### INPUT ROLES\n.*?\n\n",
-            input_roles_header,
+            r"### INPUT ROLES(?: & REFERENCES)?\n.*?(?=\n###|\Z)",
+            input_roles_header.rstrip("\n") + "\n\n",
             clean_prompt,
             flags=re.DOTALL,
         )
@@ -290,6 +330,138 @@ def build_multimodal_contents(
         or "### CHARACTER PROFILES" in clean_prompt
     ):
         character_roster_header = ""
+
+    has_first_frame = (
+        ((bool(keyframe_image_parts) or bool(keyframe_image_url)) and not is_video_kf)
+        or any("<FIRST_FRAME>" in s for s in sources_items)
+        or ("<FIRST_FRAME>" in clean_prompt)
+        or any(
+            (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", ""))
+            in ("Starting Frame", "Keyframe Seed Anchor")
+            for c in (characters or [])
+        )
+    )
+
+    has_last_frame = (
+        bool(last_frame_image_url)
+        or any("<LAST_FRAME>" in s for s in sources_items)
+        or ("<LAST_FRAME>" in clean_prompt)
+        or any(
+            (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", ""))
+            in ("Ending Frame", "Keyframe Last Anchor")
+            for c in (characters or [])
+        )
+    )
+
+    prompt_first_tags = set(re.findall(r"<FIRST_FRAME>@([^\s\]]+)", clean_prompt))
+    prompt_last_tags = set(re.findall(r"<LAST_FRAME>@([^\s\]]+)", clean_prompt))
+    sources_first_tags = {
+        m.group(1)
+        for s in sources_items
+        for m in [re.search(r"<FIRST_FRAME>@([^\s\]]+)", s)]
+        if m
+    }
+    sources_last_tags = {
+        m.group(1)
+        for s in sources_items
+        for m in [re.search(r"<LAST_FRAME>@([^\s\]]+)", s)]
+        if m
+    }
+
+    has_same_char_keyframe_urls = bool(characters) and any(
+        (getattr(c1, "image_role", "") if not isinstance(c1, dict) else c1.get("image_role", ""))
+        in ("Starting Frame", "Keyframe Seed Anchor")
+        and (getattr(c2, "image_role", "") if not isinstance(c2, dict) else c2.get("image_role", ""))
+        in ("Ending Frame", "Keyframe Last Anchor")
+        and bool(getattr(c1, "reference_url", "") if not isinstance(c1, dict) else c1.get("reference_url", ""))
+        and (getattr(c1, "reference_url", "") if not isinstance(c1, dict) else c1.get("reference_url", "")).strip()
+        == (getattr(c2, "reference_url", "") if not isinstance(c2, dict) else c2.get("reference_url", "")).strip()
+        for c1 in characters
+        for c2 in characters
+    )
+
+    is_loop = (
+        bool(is_seamless_loop)
+        or ("<LAST_FRAME>@KeyframeSeed" in clean_prompt)
+        or any("<LAST_FRAME>@KeyframeSeed" in s for s in sources_items)
+        or bool(prompt_first_tags and (prompt_first_tags & prompt_last_tags))
+        or bool(sources_first_tags and (sources_first_tags & sources_last_tags))
+        or has_same_char_keyframe_urls
+        or (
+            bool(keyframe_image_url and last_frame_image_url)
+            and keyframe_image_url.strip() == last_frame_image_url.strip()
+        )
+    )
+
+    is_dual_keyframe = has_first_frame and has_last_frame and not is_loop
+
+    has_image_refs = (
+        any("<IMAGE_REF_" in r for r in references_items)
+        or ("<IMAGE_REF_" in clean_prompt)
+        or any(
+            (
+                getattr(c, "reference_url", None)
+                if not isinstance(c, dict)
+                else c.get("reference_url")
+            )
+            and (
+                getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", "")
+            )
+            not in (
+                "Starting Frame",
+                "Keyframe Seed Anchor",
+                "Ending Frame",
+                "Keyframe Last Anchor",
+            )
+            for c in (characters or [])
+        )
+    )
+
+    has_video_refs = (
+        has_motion_ref
+        or bool(motion_reference_clip)
+        or any("<VIDEO_REF_" in r for r in references_items)
+        or ("<VIDEO_REF_" in clean_prompt)
+    )
+
+    guiding_lines: list[str] = []
+
+    if is_loop:
+        directive = "Use this image as the first frame and the last frame."
+        if directive not in clean_prompt:
+            guiding_lines.append(directive)
+    elif is_dual_keyframe:
+        directive = (
+            "Use the first image as the starting frame and the second image as the ending frame."
+        )
+        if directive not in clean_prompt:
+            guiding_lines.append(directive)
+    elif has_first_frame:
+        directive = "Use this image as the starting frame."
+        if directive not in clean_prompt:
+            guiding_lines.append(directive)
+
+    if has_image_refs:
+        directive = (
+            "Use the given image(s) as references for video generation. "
+            "The images should not be used as literal initial frames."
+        )
+        if directive not in clean_prompt:
+            guiding_lines.append(directive)
+
+    if has_video_refs:
+        directive = (
+            "Use the given video(s) as references. Do not use them as a source for video editing."
+        )
+        if directive not in clean_prompt:
+            guiding_lines.append(directive)
+
+    if guiding_lines:
+        guiding_block = "\n".join(guiding_lines)
+        if clean_prompt.strip():
+            clean_prompt = clean_prompt.rstrip() + "\n\n" + guiding_block + "\n"
+        else:
+            clean_prompt = guiding_block + "\n"
 
     sanitized_input = (
         input_roles_header

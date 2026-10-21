@@ -622,7 +622,7 @@ def test_bare_prompt_fallback_auto_deconstructs_into_canonical_4_block_prompt():
     assert res.success is True
     assert res.raw_compiled_prompt is not None
     compiled = res.raw_compiled_prompt
-    assert "### INPUT ROLES" in compiled
+    assert "### INPUT ROLES & REFERENCES" in compiled
     assert "### CHARACTER PROFILES" in compiled
     assert "### SCENE INSTRUCTIONS" in compiled
     assert "### TIMELINE" in compiled
@@ -648,7 +648,7 @@ def test_bare_prompt_fallback_with_voiceover_on_screen_text_and_silent_mode():
     assert res.success is True
     assert res.raw_compiled_prompt is not None
     compiled = res.raw_compiled_prompt
-    assert "### INPUT ROLES" in compiled
+    assert "### INPUT ROLES & REFERENCES" in compiled
     assert "### CHARACTER PROFILES" in compiled
     assert "### SCENE INSTRUCTIONS" in compiled
     assert "### TIMELINE" in compiled
@@ -660,7 +660,7 @@ def test_bare_prompt_fallback_with_voiceover_on_screen_text_and_silent_mode():
 def test_bare_prompt_precompiled_4_block_is_not_double_wrapped():
     agent = OmniMashAgent(mock_mode=True)
     precompiled = (
-        "### INPUT ROLES\n"
+        "### INPUT ROLES & REFERENCES\n"
         "- Role A: Neon Samurai\n\n"
         "### CHARACTER PROFILES\n"
         "- Role A (Neon Samurai): Stoic cyber warrior.\n\n"
@@ -678,7 +678,7 @@ def test_bare_prompt_precompiled_4_block_is_not_double_wrapped():
     )
     assert res.success is True
     assert res.raw_compiled_prompt is not None
-    assert res.raw_compiled_prompt.count("### INPUT ROLES") == 1
+    assert res.raw_compiled_prompt.count("### INPUT ROLES & REFERENCES") == 1
     assert res.raw_compiled_prompt.count("### CHARACTER PROFILES") == 1
     assert res.raw_compiled_prompt.count("### SCENE INSTRUCTIONS") == 1
     assert res.raw_compiled_prompt.count("### TIMELINE") == 1
@@ -720,3 +720,107 @@ def test_agent_expand_storyboard_forwards_all_taxonomy_parameters():
         assert "Chrome Armor" in shot.style_lighting
         assert "135 BPM Dark Synth" in shot.audio
         assert "Gravelly cybernetic baritone" in shot.audio
+
+
+def test_reset_extension_timecode_to_zero() -> None:
+    """Verify _reset_extension_timecode_to_zero correctly shifts timestamps to 0.00s."""
+    from omnimash.agent.orchestrator import _reset_extension_timecode_to_zero
+
+    assert _reset_extension_timecode_to_zero("") == "[0.00s]"
+    assert _reset_extension_timecode_to_zero("Hero walks away.") == "[0.00s] Hero walks away."
+    assert (
+        _reset_extension_timecode_to_zero("[10.00s-15.00s] Hero walks away.")
+        == "[0.00s-5.00s] Hero walks away."
+    )
+    assert (
+        _reset_extension_timecode_to_zero("[0.00s-5.00s] Hero walks away.")
+        == "[0.00s-5.00s] Hero walks away."
+    )
+    assert (
+        _reset_extension_timecode_to_zero("[10s] Enters. [13s] Turns.")
+        == "[0.00s] Enters. [3.00s] Turns."
+    )
+
+
+def test_extend_scene_resets_timecode_sets_task_and_acoustic_progression() -> None:
+    """Verify extend_scene sets task=extend, resets timecode to 0.00s, and injects seamless acoustic progression."""
+    from unittest.mock import patch
+
+    agent = OmniMashAgent(mock_mode=True)
+    r1 = agent.process_user_turn("u_ext", "p_ext", "Hero standing in desert", 0)
+    assert r1.success is True
+
+    orig_exec = agent._execute_turn_generation
+    captured_kwargs: dict = {}
+
+    def spy_exec(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return orig_exec(*args, **kwargs)
+
+    with patch.object(agent, "_execute_turn_generation", side_effect=spy_exec):
+        ext_res = agent.extend_scene(
+            session_name="default_session",
+            turn_id=r1.turn_id,
+            next_scene_action="[10.00s-15.00s] Hero boards speeder and drives into sunset.",
+            user_id="u_ext",
+            project_id="p_ext",
+        )
+
+    assert ext_res.success is True
+    assert captured_kwargs.get("task") == "extend"
+    assert ext_res.raw_compiled_prompt is not None
+    prompt = ext_res.raw_compiled_prompt
+    assert "[0.00s-5.00s]" in prompt
+    assert "[10.00s-15.00s]" not in prompt
+    assert "Audio: Seamless acoustic progression from prior ambient audio." in prompt
+
+
+def test_extend_scene_resolves_last_turn_when_turn_id_omitted() -> None:
+    """Verify extend_scene defaults to the session's latest turn when turn_id is not passed."""
+    agent = OmniMashAgent(mock_mode=True)
+    sess_name = "test_sess_auto_resolve"
+    r1 = agent.process_user_turn("u_ext", "p_ext", "First scene", 0, session_name=sess_name)
+    assert r1.success is True
+
+    ext_res = agent.extend_scene(
+        session_name=sess_name,
+        next_scene_action="Hero draws energy sword and strikes.",
+        user_id="u_ext",
+        project_id="p_ext",
+    )
+    assert ext_res.success is True
+    assert ext_res.raw_compiled_prompt is not None
+    prompt = ext_res.raw_compiled_prompt
+    assert "### INPUT ROLES & REFERENCES" in prompt
+    assert "Audio: Seamless acoustic progression from prior ambient audio." in prompt
+    assert "[0.00s] Hero draws energy sword and strikes." in prompt
+    # Ensure no default template dialogue is hallucinated
+    assert "Every beat hits different when you own the frame!" not in prompt
+
+
+def test_multi_chunk_continuation_propagates_extend_task() -> None:
+    """Verify process_user_turn with duration > 10s propagates task='extend' to chunk continuations."""
+    from unittest.mock import patch
+
+    agent = OmniMashAgent(mock_mode=True)
+    orig_exec = agent._execute_turn_generation
+    captured_tasks: list[str | None] = []
+
+    def spy_exec(*args, **kwargs):
+        captured_tasks.append(kwargs.get("task"))
+        return orig_exec(*args, **kwargs)
+
+    with patch.object(agent, "_execute_turn_generation", side_effect=spy_exec):
+        res = agent.process_user_turn(
+            user_id="u_long",
+            project_id="p_long",
+            prompt="Epic 20-second continuous aerial journey across neon metropolis",
+            duration_seconds=20.0,
+            task="text_to_video",
+        )
+
+    assert res.success is True
+    assert len(captured_tasks) == 2
+    assert captured_tasks[0] == "text_to_video"
+    assert captured_tasks[1] == "extend"
+

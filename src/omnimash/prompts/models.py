@@ -42,13 +42,13 @@ class CompiledPromptParts:
         else:
             camera_header = cam_clean
 
-        # 1. ### INPUT ROLES
+        # 1. ### INPUT ROLES & REFERENCES
         input_roles_str = "\n".join(self.input_roles).strip() if self.input_roles else ""
         if not input_roles_str and self.character_references:
             input_roles_str = "\n".join(self.character_references).strip()
         if not input_roles_str:
             input_roles_str = "None."
-        block_input = f"### INPUT ROLES\n{input_roles_str}"
+        block_input = f"### INPUT ROLES & REFERENCES\n{input_roles_str}"
 
         # 2. ### CHARACTER PROFILES
         char_profiles_str = (
@@ -62,6 +62,13 @@ class CompiledPromptParts:
         lower_audio = self.audio_track.lower().strip()
         if self.is_silent or lower_audio in ("none", "mute", "silent"):
             sound_desc = "Sound design: Silent video. No background music, no audio."
+        elif "seamless acoustic progression" in lower_audio:
+            clean_dir = (
+                re.sub(r"^Audio:\s*", "", self.audio_track.strip(), flags=re.IGNORECASE)
+                .strip()
+                .rstrip(".")
+            )
+            sound_desc = f"{clean_dir}."
         else:
             audio_track_clean = self.audio_track.strip()
             if not audio_track_clean.lower().startswith("instrumental"):

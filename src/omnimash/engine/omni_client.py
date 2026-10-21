@@ -1,4 +1,5 @@
 import base64
+import copy
 import json
 import logging
 import os
@@ -298,6 +299,8 @@ class OmniFlashClient:
         directors_notes: dict[str, Any] | str | None = None,
         enable_safety_sanitization: bool = True,
         motion_reference_clip: str | None = None,
+        last_frame_image_url: str | None = None,
+        is_seamless_loop: bool = False,
     ) -> list[dict[str, Any]] | str:
         return build_multimodal_contents(
             prompt=prompt,
@@ -310,6 +313,8 @@ class OmniFlashClient:
             fetch_image_fn=self._fetch_image_bytes,
             genai_client=self._genai_client,
             dev_client=self._dev_client,
+            last_frame_image_url=last_frame_image_url,
+            is_seamless_loop=is_seamless_loop,
         )
 
     def _poll_and_download_file_uri(
@@ -357,6 +362,10 @@ class OmniFlashClient:
         resolution: str = "720p",
         duration_seconds: int | float | None = None,
         motion_reference_clip: str | None = None,
+        task: str | None = None,
+        generation_config: dict[str, Any] | None = None,
+        last_frame_image_url: str | None = None,
+        is_seamless_loop: bool = False,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash 1.1 Preview via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -412,6 +421,8 @@ class OmniFlashClient:
             directors_notes=directors_notes,
             enable_safety_sanitization=enable_safety_sanitization,
             motion_reference_clip=motion_reference_clip,
+            last_frame_image_url=last_frame_image_url,
+            is_seamless_loop=is_seamless_loop,
         )
 
         model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash")
@@ -427,6 +438,16 @@ class OmniFlashClient:
         }
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id
+
+        if generation_config is not None:
+            kwargs["generation_config"] = copy.deepcopy(generation_config)
+
+        if task is not None:
+            if "generation_config" not in kwargs:
+                kwargs["generation_config"] = {}
+            if "video_config" not in kwargs["generation_config"]:
+                kwargs["generation_config"]["video_config"] = {}
+            kwargs["generation_config"]["video_config"]["task"] = task
 
         response_format: dict[str, Any] = {
             "type": "video",
@@ -722,6 +743,10 @@ class OmniFlashClient:
         resolution: str = "720p",
         motion_reference_clip: str | None = None,
         project_id: str | None = None,
+        task: str | None = None,
+        generation_config: dict[str, Any] | None = None,
+        last_frame_image_url: str | None = None,
+        is_seamless_loop: bool = False,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -749,6 +774,10 @@ class OmniFlashClient:
             aspect_ratio=aspect_ratio,
             resolution=resolution,
             motion_reference_clip=motion_reference_clip,
+            task=task,
+            generation_config=generation_config,
+            last_frame_image_url=last_frame_image_url,
+            is_seamless_loop=is_seamless_loop,
         )
         return self._finalize_video_clip_result(
             success=success,
@@ -782,6 +811,8 @@ class OmniFlashClient:
         resolution: str = "720p",
         motion_reference_clip: str | None = None,
         project_id: str | None = None,
+        task: str | None = None,
+        generation_config: dict[str, Any] | None = None,
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -811,6 +842,8 @@ class OmniFlashClient:
             aspect_ratio=aspect_ratio,
             resolution=resolution,
             motion_reference_clip=motion_reference_clip,
+            task=task,
+            generation_config=generation_config,
         )
         return self._finalize_video_clip_result(
             success=success,
@@ -842,6 +875,8 @@ class OmniFlashClient:
         resolution: str = "720p",
         regenerate_audio: bool = False,
         project_id: str | None = None,
+        task: str | None = None,
+        generation_config: dict[str, Any] | None = None,
     ) -> GenerationResult:
         thread_id = f"reanchored_thread_{uuid.uuid4().hex[:8]}"
         url = f"/static/rendered/{thread_id}_turn0.mp4"
@@ -893,6 +928,8 @@ class OmniFlashClient:
                 enable_safety_sanitization=enable_safety_sanitization,
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
+                task=task,
+                generation_config=generation_config,
             )
         finally:
             if stripped_path and os.path.exists(stripped_path):

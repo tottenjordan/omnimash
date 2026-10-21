@@ -53,6 +53,41 @@ class AgentTurnResponse:
     reference_analysis: dict | None = None
 
 
+def _reset_extension_timecode_to_zero(text: str) -> str:
+    """Ensures extension segment timecode starts at 0.00s according to Gemini Omni extension rules."""
+    s_text = (text or "").strip()
+    if not s_text:
+        return "[0.00s]"
+
+    matches = list(
+        re.finditer(
+            r"\[\s*(\d+(?:\.\d+)?)\s*s?(?:\s*-\s*(\d+(?:\.\d+)?)\s*s?)?\s*\]",
+            s_text,
+        )
+    )
+    if not matches:
+        return f"[0.00s] {s_text}"
+
+    first_start = float(matches[0].group(1))
+    if first_start == 0.0 and "[0.00s" in matches[0].group(0):
+        return s_text
+
+    def _shift_match(m: re.Match[str]) -> str:
+        s = float(m.group(1))
+        new_s = max(0.0, s - first_start)
+        if m.group(2) is not None:
+            e = float(m.group(2))
+            new_e = max(new_s, e - first_start)
+            return f"[{new_s:.2f}s-{new_e:.2f}s]"
+        return f"[{new_s:.2f}s]"
+
+    return re.sub(
+        r"\[\s*(\d+(?:\.\d+)?)\s*s?(?:\s*-\s*(\d+(?:\.\d+)?)\s*s?)?\s*\]",
+        _shift_match,
+        s_text,
+    )
+
+
 class OmniMashAgent:
     def __init__(self, mock_mode: bool | None = None):
         self.mock_mode = (
@@ -263,6 +298,7 @@ class OmniMashAgent:
         aspect_ratio: str = "16:9",
         resolution: str = "720p",
         motion_reference_clip: str | None = None,
+        task: str | None = None,
     ) -> AgentTurnResponse:
         session = self.session_manager.get_or_create_session(
             user_id, project_id, session_name=session_name
@@ -294,7 +330,13 @@ class OmniMashAgent:
                     is_chunk_continuation=(c_idx > 0),
                     is_scene_extension=(is_scene_extension if c_idx == 0 else False),
                     reference_url=reference_url,
-                    audio_stem=audio_stem,
+                    audio_stem=(
+                        audio_stem
+                        if c_idx == 0
+                        else (
+                            audio_stem or "Seamless acoustic progression from prior ambient audio"
+                        )
+                    ),
                     voiceover=voiceover,
                     is_silent=is_silent,
                     on_screen_text=on_screen_text,
@@ -312,6 +354,7 @@ class OmniMashAgent:
                     aspect_ratio=aspect_ratio,
                     resolution=resolution,
                     motion_reference_clip=motion_reference_clip,
+                    task=("extend" if c_idx > 0 else task),
                 )
                 if not turn_resp.success:
                     return turn_resp
@@ -391,6 +434,10 @@ class OmniMashAgent:
         parent_turn = session.turns.get(parent_turn_id) if parent_turn_id else None
         parent_thread_id = parent_turn.interaction_thread_id if parent_turn else parent_turn_id
 
+        effective_task = task or (
+            "extend" if is_scene_extension else ("edit" if is_conversational_edit else None)
+        )
+
         if is_conversational_edit and (parent_turn or parent_thread_id):
             is_valid, edit_err = self.validate_conversational_edit(guard_res.sanitized_prompt)
             if not is_valid:
@@ -424,6 +471,7 @@ class OmniMashAgent:
                 resolution=resolution,
                 motion_reference_clip=motion_reference_clip,
                 project_id=session.project_id,
+                task=effective_task,
             )
         else:
             if characters or scenes:
@@ -431,19 +479,57 @@ class OmniMashAgent:
                 if scenes:
                     for s in scenes:
                         if isinstance(s, SceneDirective):
-                            scene_objs.append(s)
+                            s_action = (
+                                _reset_extension_timecode_to_zero(s.action)
+                                if is_scene_extension and s.action
+                                else s.action
+                            )
+                            s_timecode = (
+                                _reset_extension_timecode_to_zero(s.timecode)
+                                if is_scene_extension and s.timecode
+                                else s.timecode
+                            )
+                            scene_objs.append(
+                                SceneDirective(
+                                    scene_number=s.scene_number,
+                                    active_roles=list(s.active_roles),
+                                    action=s_action,
+                                    dialogue=s.dialogue,
+                                    screenplay_text=s.screenplay_text,
+                                    audio_cues=s.audio_cues,
+                                    timecode=s_timecode,
+                                    duration_seconds=s.duration_seconds,
+                                    title_card_text=s.title_card_text,
+                                    title_card_subtitle=s.title_card_subtitle,
+                                    narrator_text=s.narrator_text,
+                                )
+                            )
                         elif isinstance(s, dict):
                             sp_script = s.get("screenplay_text") or s.get("screenplay_script")
+                            raw_act = s.get("action", "")
+                            raw_tc = s.get("timecode")
+                            s_action = (
+                                _reset_extension_timecode_to_zero(raw_act)
+                                if is_scene_extension and raw_act
+                                else raw_act
+                            )
+                            s_timecode = (
+                                _reset_extension_timecode_to_zero(raw_tc)
+                                if is_scene_extension and raw_tc
+                                else raw_tc
+                            )
                             scene_objs.append(
                                 SceneDirective(
                                     scene_number=s.get("scene_number", 0),
                                     active_roles=s.get("active_roles", []),
-                                    action=s.get("action", ""),
+                                    action=s_action,
                                     dialogue=s.get("dialogue", ""),
                                     screenplay_text=sp_script
                                     if isinstance(sp_script, str)
                                     else None,
                                     audio_cues=s.get("audio_cues", ""),
+                                    timecode=s_timecode,
+                                    duration_seconds=s.get("duration_seconds", 10.0),
                                     title_card_text=s.get("title_card_text"),
                                     title_card_subtitle=s.get("title_card_subtitle"),
                                     narrator_text=s.get("narrator_text"),
@@ -455,7 +541,18 @@ class OmniMashAgent:
                     scenes=scene_objs,
                     aesthetic_tags=aesthetic_tags,
                     environment_tag=environment_tag,
-                    audio_beat=audio_stem,
+                    audio_beat=(
+                        "Silent video. No background music, no audio."
+                        if is_silent
+                        else (
+                            audio_stem
+                            or (
+                                "Seamless acoustic progression from prior ambient audio"
+                                if is_scene_extension
+                                else None
+                            )
+                        )
+                    ),
                     vocal_delivery=vocal_delivery,
                     edit_instruction=prompt if (is_conversational_edit and parent_turn) else None,
                     enable_sanitization=enable_sanitization,
@@ -485,8 +582,24 @@ class OmniMashAgent:
                             for c in deconstructed.characters
                         ]
                         scene_objs = list(deconstructed.scenes)
-                        if not scene_objs:
-                            active_roles = [c.role_id for c in char_objs if c.role_id] or ["Role A"]
+                        active_roles = [c.role_id for c in char_objs if c.role_id] or ["Role A"]
+                        if is_scene_extension:
+                            scene_action = _reset_extension_timecode_to_zero(raw_concept)
+                            scene_action = re.sub(
+                                r"^\[(?!\d)(?:Role\s+[A-Za-z0-9_]+|[^\]]+)\]\s*", "", scene_action
+                            ).strip()
+                            if not scene_action.startswith("["):
+                                scene_action = f"[0.00s] {scene_action}"
+                            scene_objs = [
+                                SceneDirective(
+                                    scene_number=1,
+                                    active_roles=active_roles,
+                                    action=scene_action,
+                                    timecode="0.00s",
+                                    duration_seconds=duration_seconds,
+                                )
+                            ]
+                        elif not scene_objs:
                             scene_objs = [
                                 SceneDirective(
                                     scene_number=1,
@@ -529,7 +642,14 @@ class OmniMashAgent:
                             audio_beat=(
                                 "Silent video. No background music, no audio."
                                 if is_silent
-                                else (audio_stem or deconstructed.audio_beat)
+                                else (
+                                    audio_stem
+                                    or (
+                                        "Seamless acoustic progression from prior ambient audio"
+                                        if is_scene_extension
+                                        else deconstructed.audio_beat
+                                    )
+                                )
                             ),
                             vocal_delivery=(
                                 ""
@@ -569,6 +689,7 @@ class OmniMashAgent:
                 resolution=resolution,
                 motion_reference_clip=motion_reference_clip,
                 project_id=session.project_id,
+                task=effective_task,
             )
 
         if gen_res.error_message and not gen_res.video_url:
@@ -692,6 +813,7 @@ class OmniMashAgent:
         resolution: str = "720p",
         motion_reference_clip: str | None = None,
         project_id: str | None = None,
+        task: str | None = None,
     ) -> Any:
         if parent_thread_id:
             return self.omni_client.apply_interaction_diff(
@@ -709,6 +831,7 @@ class OmniMashAgent:
                 resolution=resolution,
                 motion_reference_clip=motion_reference_clip,
                 project_id=project_id,
+                task=task,
             )
         return self.omni_client.generate_clip(
             prompt,
@@ -724,6 +847,7 @@ class OmniMashAgent:
             resolution=resolution,
             motion_reference_clip=motion_reference_clip,
             project_id=project_id,
+            task=task,
         )
 
     def _get_session(self, session_id: str | None) -> Any | None:
@@ -835,31 +959,39 @@ class OmniMashAgent:
     ) -> AgentTurnResponse:
         session = self._get_session(session_name)
         turn = session.turns.get(turn_id) if (session and turn_id) else None
-        prev_inter_id = turn.interaction_thread_id if turn else turn_id
+        if not turn and session and getattr(session, "turns", None) and not turn_id:
+            turn = list(session.turns.values())[-1]
+            turn_id = turn.turn_id
+
+        clean_action = (
+            _reset_extension_timecode_to_zero(next_scene_action) if next_scene_action else ""
+        )
 
         prompt_parts = []
         if active_roles:
             roles_str = ", ".join(active_roles)
             prompt_parts.append(f"[{roles_str}]")
-        if next_scene_action:
-            prompt_parts.append(next_scene_action)
+        if clean_action:
+            prompt_parts.append(clean_action)
         if dialogue:
             prompt_parts.append(f'Dialogue: "{dialogue}"')
 
-        combined_prompt = " ".join(prompt_parts) if prompt_parts else next_scene_action
+        combined_prompt = " ".join(prompt_parts) if prompt_parts else clean_action
         clip_idx = (turn.clip_index + 1) if turn else 1
 
         return self.process_user_turn(
             user_id=user_id,
             project_id=project_id,
-            prompt=combined_prompt or next_scene_action,
+            prompt=combined_prompt or clean_action,
             clip_index=clip_idx,
             parent_turn_id=turn_id,
             session_name=session_name,
             voiceover=dialogue,
             vocal_delivery=vocal_delivery,
             is_conversational_edit=False,
-            is_scene_extension=True if prev_inter_id else False,
+            is_scene_extension=True,
+            task="extend",
+            audio_stem="Seamless acoustic progression from prior ambient audio",
             aspect_ratio="16:9",
             resolution=resolution,
         )
@@ -892,6 +1024,7 @@ def build_adk_agent(
         keyframe_image_url: str | None = None,
         is_conversational_edit: bool = False,
         audio_stem: str | None = None,
+        task: str | None = None,
     ) -> dict[str, Any]:
         """Generates a parody video clip, scene extension, or conversational diff branch using Gemini Omni 1.1 Flash.
 
@@ -908,6 +1041,7 @@ def build_adk_agent(
             keyframe_image_url: Optional starting keyframe image URI or prior video URL.
             is_conversational_edit: Set True for single-change delta diffs, False for new shot generations.
             audio_stem: Optional genre, BPM, or music style reference for joint acoustic generation.
+            task: Optional Gemini Omni task ('text_to_video', 'image_to_video', 'reference_to_video', 'edit', 'extend').
 
         Returns:
             A dictionary containing status, success flag, video URL, turn ID, edit depth, status event, and error message.
@@ -925,6 +1059,7 @@ def build_adk_agent(
             keyframe_image_url=keyframe_image_url,
             is_conversational_edit=is_conversational_edit,
             audio_stem=audio_stem,
+            task=task,
         )
         return {
             "status": "success" if res.success else "error",

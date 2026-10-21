@@ -402,10 +402,10 @@ def test_compile_multi_role_prompt_with_clean_image_role_tags():
         scenes=scenes,
     )
 
-    assert compiled.startswith("### INPUT ROLES\n")
+    assert compiled.startswith("### INPUT ROLES & REFERENCES\n")
     assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in compiled
     assert "### CHARACTER PROFILES" in compiled
-    assert compiled.index("### INPUT ROLES") < compiled.index("### CHARACTER PROFILES")
+    assert compiled.index("### INPUT ROLES & REFERENCES") < compiled.index("### CHARACTER PROFILES")
 
     assert "gs://bucket/harry.jpg" not in compiled
     assert "http://example.com/ollivander.jpg" not in compiled
@@ -655,7 +655,7 @@ def test_compile_prompt_four_block_omni_flash_template():
     full_prompt = parts.to_full_prompt()
 
     # 1. Verify four-block section headers
-    assert "### INPUT ROLES" in full_prompt
+    assert "### INPUT ROLES & REFERENCES" in full_prompt
     assert "### CHARACTER PROFILES" in full_prompt
     assert "### SCENE INSTRUCTIONS" in full_prompt
     assert "### TIMELINE" in full_prompt
@@ -719,7 +719,7 @@ def test_compile_multi_role_prompt_four_block_structure():
     )
 
     # 1. Four-block section headers
-    assert "### INPUT ROLES" in prompt
+    assert "### INPUT ROLES & REFERENCES" in prompt
     assert "### CHARACTER PROFILES" in prompt
     assert "### SCENE INSTRUCTIONS" in prompt
     assert "### TIMELINE" in prompt
@@ -806,7 +806,7 @@ def test_four_block_official_image_ref_tags():
     )
     full_prompt = parts.to_full_prompt()
 
-    assert "### INPUT ROLES" in full_prompt
+    assert "### INPUT ROLES & REFERENCES" in full_prompt
     assert "### CHARACTER PROFILES" in full_prompt
     assert "### SCENE INSTRUCTIONS" in full_prompt
     assert "### TIMELINE" in full_prompt
@@ -993,7 +993,7 @@ def test_compile_storyboard_single_shot_directive():
         aesthetic_tags=["90s Trap Video"],
         environment_tag="Hogwarts Dungeon",
     )
-    assert "### INPUT ROLES" in compiled
+    assert "### INPUT ROLES & REFERENCES" in compiled
     assert "### CHARACTER PROFILES" in compiled
     assert "### SCENE INSTRUCTIONS" in compiled
     assert "### TIMELINE" in compiled
