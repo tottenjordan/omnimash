@@ -2653,3 +2653,112 @@ def test_minimal_intent_prompt_engine_end_to_end():
     assert "[0-3s]" in raw_prompt
     assert "[3-6s]" in raw_prompt
     assert "[6-10s]" in raw_prompt
+
+
+def test_ui_html_pr2_user_journeys_express_flow_and_cross_mode_sync() -> None:
+    """Verify PR 2 frontend user journey refactoring, simultaneous Mode 1+3 render fix, Express 1-Click Flow, Mode 2 Act 3 colocation, cross-mode sync, and Mode 3 Step Filter bar."""
+    from omnimash.api.app import UI_HTML
+
+    # 1. Simultaneous Mode 1 + Mode 3 render bug fixed via activeTab !== "journey3"
+    assert '{studioMode === "acts" && activeTab !== "journey3" && (' in UI_HTML
+    assert '{studioMode === "stages" && activeTab !== "journey3" && (' in UI_HTML
+    assert "🏆 Stage 4: The Final Cut" not in UI_HTML
+    assert "Proceed to Stage 4: The Final Cut" not in UI_HTML
+
+    # 2. handleDeconstructConcept populates scenes from data.scenes without dummy overwrite
+    assert "in action sequence" not in UI_HTML
+    assert "Array.isArray(data.scenes) && data.scenes.length > 0" in UI_HTML
+    assert (
+        "if (data.keyframe_image_prompt) setKeyframeImagePrompt(data.keyframe_image_prompt);"
+        in UI_HTML
+    )
+    assert "if (data.screenplay_script) setScreenplayScript(data.screenplay_script);" in UI_HTML
+
+    # 3. Mode 1 Stage 1 Express Render 10s Video Now CTA & Generate Keyframe Anchor button
+    assert "🎬 Express Render 10s Video Now →" in UI_HTML
+    assert "handleExpressRenderSingleVideo" in UI_HTML
+    assert "🖼️ Generate Keyframe Anchor" in UI_HTML
+    assert "handleStage1GenerateKeyframeAnchor" in UI_HTML
+    assert "Deconstruct & Extract Cast (AI)" not in UI_HTML
+
+    # 4. Mode 2 handleReSyncStoryboardDefaults updates setScenes and Act 3 is colocated inside Mode 2 before Mode 1
+    mode2_start = UI_HTML.find(
+        '{studioMode === "acts" && activeTab !== "journey3" && (', UI_HTML.find("<main")
+    )
+    mode1_start = UI_HTML.find(
+        '{studioMode === "stages" && activeTab !== "journey3" && (', UI_HTML.find("<main")
+    )
+    act3_pos = UI_HTML.find('{studioMode === "acts" && activeAct === 3 && (')
+    assert mode2_start != -1 and mode1_start != -1 and act3_pos != -1
+    assert mode2_start < act3_pos < mode1_start
+
+    # 5. Cross-mode state sync & Mode 3 Step Filter bar
+    assert 'const [j3StepFilter, setJ3StepFilter] = useState("all");' in UI_HTML
+    assert "const visualConcept = concept;" in UI_HTML
+    assert "1. Master Setup & Cast" in UI_HTML
+    assert "2. Keyframes & Shots" in UI_HTML
+    assert "3. Master Stitch" in UI_HTML
+
+
+@pytest.mark.slow
+@pytest.mark.browser
+def test_ui_html_pr2_express_flow_and_mode3_step_filter_browser_dom(tmp_path) -> None:
+    """Verify in headless Chromium that startup only renders Mode 3 (not Mode 1+3 simultaneously), Mode 3 Step Filter works, and cross-mode sync + Mode 1 Express CTA work."""
+    import os
+    import subprocess
+    from omnimash.api.app import UI_HTML
+
+    skill_dir = "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill"
+    if not os.path.exists(skill_dir):
+        pytest.skip("Playwright skill dir not available")
+
+    html_file = tmp_path / "ui_pr2_journey_check.html"
+    html_file.write_text(UI_HTML, encoding="utf-8")
+    inline_js = (
+        "const { chromium } = require('playwright');"
+        "(async () => {"
+        "  const browser = await chromium.launch({ headless: true });"
+        "  const page = await browser.newPage();"
+        "  page.on('pageerror', err => { console.error('BROWSER ERROR:', err.message); process.exit(2); });"
+        f"  await page.goto('file://{html_file}', {{ waitUntil: 'domcontentloaded' }});"
+        "  await page.waitForFunction(() => {"
+        "    const el = document.querySelector('#__next');"
+        "    return el && el.innerHTML.length > 1000;"
+        "  }, { timeout: 15000 });"
+        "  const mainTextOnStartup = await page.locator('main').textContent();"
+        "  if (!mainTextOnStartup.includes('Mode 3: Continuity Studio')) {"
+        "    throw new Error('Expected Mode 3 to be rendered on startup');"
+        "  }"
+        "  if (mainTextOnStartup.includes('Expand Vision into 5-Part Storyboard Grid')) {"
+        "    throw new Error('Simultaneous Mode 1 + Mode 3 render bug detected on startup!');"
+        "  }"
+        "  await page.getByRole('button', { name: '2. Keyframes & Shots' }).click();"
+        "  const step2Text = await page.locator('main').textContent();"
+        "  if (step2Text.includes('Step 1: Master Concept & Character Roles Manager') || !step2Text.includes('Step 2: Shot Card Workstation')) {"
+        "    throw new Error('Mode 3 Step Filter (2. Keyframes & Shots) did not filter sections properly');"
+        "  }"
+        "  await page.getByRole('button', { name: 'All Sections' }).click();"
+        "  const j3Textarea = page.locator('textarea[placeholder*=\"Describe the multi-shot continuous scene\"]');"
+        "  await j3Textarea.fill('Synced Cross-Mode Dragon Chef Showdown');"
+        "  await page.getByRole('button', { name: /Mode 1: Guided Fine-Tune/i }).first().click();"
+        "  const mode1Text = await page.locator('main').textContent();"
+        "  if (!mode1Text.includes('Express Render 10s Video Now') || !mode1Text.includes('Generate Keyframe Anchor')) {"
+        "    throw new Error('Expected Express Render 10s Video Now and Generate Keyframe Anchor in Mode 1 Stage 1');"
+        "  }"
+        "  const bodyText = await page.locator('body').textContent();"
+        "  if (bodyText.includes('Stage 4: The Final Cut')) {"
+        "    throw new Error('Expected dead Stage 4 tab to be removed');"
+        "  }"
+        "  console.log('PR2_JOURNEY_BROWSER_OK');"
+        "  await browser.close();"
+        "})();"
+    )
+    res = subprocess.run(
+        ["node", "-e", inline_js],
+        cwd=skill_dir,
+        capture_output=True,
+        text=True,
+    )
+    output = res.stdout + res.stderr
+    assert res.returncode == 0, f"Playwright PR2 journey test failed: {output}"
+    assert "PR2_JOURNEY_BROWSER_OK" in output
