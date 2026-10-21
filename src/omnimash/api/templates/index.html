@@ -1239,12 +1239,13 @@
             }, [j3StylePreset]);
 
             // Bidirectional cross-mode sync: visualConcept (concept) <-> j3MasterDescription and aestheticTags <-> j3StylePreset
+            const lastDeconstructedConceptRef = useRef("");
             const prevConceptSyncRef = useRef(visualConcept);
             const prevJ3DescSyncRef = useRef(j3MasterDescription);
             useEffect(() => {
                 if (visualConcept !== prevConceptSyncRef.current) {
                     prevConceptSyncRef.current = visualConcept;
-                    if (visualConcept && visualConcept !== j3MasterDescription) {
+                    if (typeof visualConcept === "string" && visualConcept !== j3MasterDescription) {
                         prevJ3DescSyncRef.current = visualConcept;
                         setJ3MasterDescription(visualConcept);
                     }
@@ -1254,9 +1255,10 @@
             useEffect(() => {
                 if (j3MasterDescription !== prevJ3DescSyncRef.current) {
                     prevJ3DescSyncRef.current = j3MasterDescription;
-                    if (j3MasterDescription && j3MasterDescription !== visualConcept) {
+                    if (typeof j3MasterDescription === "string" && j3MasterDescription !== visualConcept) {
                         prevConceptSyncRef.current = j3MasterDescription;
                         setVisualConcept(j3MasterDescription);
+                        setKeyframeImagePrompt(j3MasterDescription);
                     }
                 }
             }, [j3MasterDescription, visualConcept]);
@@ -1267,6 +1269,7 @@
                 const primaryTag = (aestheticTags && aestheticTags.length > 0) ? aestheticTags[0] : "";
                 if (primaryTag && primaryTag !== prevAestheticSyncRef.current) {
                     prevAestheticSyncRef.current = primaryTag;
+                    setStageStyleTone(primaryTag);
                     if (primaryTag !== j3StylePreset) {
                         prevJ3StyleSyncRef.current = primaryTag;
                         setJ3StylePreset(primaryTag);
@@ -2295,38 +2298,48 @@
                 setExpandLoading(true);
                 setLastError(null);
                 try {
-                    if (concept && concept.trim()) {
-                        await handleDeconstructConcept(concept);
+                    const targetConcept = (concept || keyframeImagePrompt || screenplayScript || "").trim();
+                    let deconstructed = null;
+                    if (targetConcept) {
+                        deconstructed = await handleDeconstructConcept(targetConcept);
                     }
+                    const decData = (deconstructed && deconstructed.data) || {};
+                    const effectiveChars = (deconstructed && deconstructed.formattedChars) || characters;
+                    const effectiveCam = decData.camera_lighting_tag || cameraLightingTag;
+                    const effectiveTags = (Array.isArray(decData.aesthetic_tags) && decData.aesthetic_tags.length > 0) ? decData.aesthetic_tags : aestheticTags;
+                    const effectiveAudio = decData.audio_beat || audioBeat;
+                    const effectiveVocal = decData.vocal_delivery || vocalDelivery;
+                    const effectiveEnv = decData.environment_tag || environmentTag;
+                    const effectiveScript = decData.screenplay_script || screenplayScript;
                     const res = await fetch("/api/storyboard/expand", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            concept: concept || "Parody music video clash",
-                            style_tone: stageStyleTone || cameraLightingTag || "Gritty 90s Cyberpunk",
+                            concept: targetConcept || "Parody music video clash",
+                            style_tone: stageStyleTone || effectiveCam || "Gritty 90s Cyberpunk",
                             target_duration: parseFloat(stageTargetDuration) || 30.0,
-                            characters: characters,
-                            screenplay_script: screenplayScript,
+                            characters: effectiveChars,
+                            screenplay_script: effectiveScript,
                             aspect_ratio: aspectRatio,
-                            camera_lighting: cameraLightingTag,
-                            aesthetic_tags: aestheticTags,
-                            audio_beat: audioBeat,
-                            vocal_delivery: vocalDelivery,
-                            environment: environmentTag
+                            camera_lighting: effectiveCam,
+                            aesthetic_tags: effectiveTags,
+                            audio_beat: effectiveAudio,
+                            vocal_delivery: effectiveVocal,
+                            environment: effectiveEnv
                         })
                     });
                     const data = await res.json();
                     if (data && data.shots && data.shots.length > 0) {
                         const updatedShots = data.shots.map((s, idx) => ({
                             ...s,
-                            action: s.action || `[0-3s] Action: ${concept} shot ${idx + 1}. [3-6s] Action: Mid-shot escalation. [6-10s] Action: Climax finish.`,
-                            framing_motion: s.framing_motion || cameraLightingTag || "Static medium shot with subtle drift",
-                            style_lighting: s.style_lighting || ((aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : "🎨 90s Cel-Shaded Anime, vibrant flat colors"),
-                            audio: s.audio || audioBeat || "[0-3s] Heavy 808 Trap Beat Drop | [3-10s] Sub-Bass and Snares"
+                            action: s.action || `[0-3s] Action: ${targetConcept || concept} shot ${idx + 1}. [3-6s] Action: Mid-shot escalation. [6-10s] Action: Climax finish.`,
+                            framing_motion: s.framing_motion || effectiveCam || "Static medium shot with subtle drift",
+                            style_lighting: s.style_lighting || ((effectiveTags && effectiveTags.length > 0) ? effectiveTags.join(", ") : "🎨 90s Cel-Shaded Anime, vibrant flat colors"),
+                            audio: s.audio || effectiveAudio || "[0-3s] Heavy 808 Trap Beat Drop | [3-10s] Sub-Bass and Snares"
                         }));
                         setStageShots(updatedShots);
-                        const defaultRoles = (characters && characters.length > 0)
-                            ? characters.map(c => c.role_id)
+                        const defaultRoles = (effectiveChars && effectiveChars.length > 0)
+                            ? effectiveChars.map(c => c.role_id)
                             : ["Role A", "Role B"];
                         setScenes(updatedShots.map((s, idx) => ({
                             scene_number: idx + 1,
@@ -2341,11 +2354,20 @@
                     } else if (stageShots && stageShots.length > 0) {
                         const syncedShots = stageShots.map(s => ({
                             ...s,
-                            framing_motion: cameraLightingTag || s.framing_motion || "Static medium shot with subtle drift",
-                            style_lighting: (aestheticTags && aestheticTags.length > 0) ? aestheticTags.join(", ") : (s.style_lighting || "🎨 90s Cel-Shaded Anime"),
-                            audio: audioBeat ? `[0-3s] ${audioBeat} | [3-10s] Sub-Bass` : s.audio
+                            framing_motion: effectiveCam || s.framing_motion || "Static medium shot with subtle drift",
+                            style_lighting: (effectiveTags && effectiveTags.length > 0) ? effectiveTags.join(", ") : (s.style_lighting || "🎨 90s Cel-Shaded Anime"),
+                            audio: effectiveAudio ? `[0-3s] ${effectiveAudio} | [3-10s] Sub-Bass` : s.audio
                         }));
                         setStageShots(syncedShots);
+                        const defaultRoles = (effectiveChars && effectiveChars.length > 0)
+                            ? effectiveChars.map(c => c.role_id)
+                            : ["Role A", "Role B"];
+                        setScenes(syncedShots.map((s, idx) => ({
+                            scene_number: idx + 1,
+                            active_roles: defaultRoles,
+                            action: s.action || s.summary || "",
+                            dialogue: s.dialogue || ""
+                        })));
                     }
                 } catch (err) {
                     console.error("Storyboard re-sync failed:", err);
@@ -2715,7 +2737,7 @@
             // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
             const handleDeconstructConcept = async (conceptOverride) => {
                 const targetConcept = (typeof conceptOverride === "string" && conceptOverride.trim()) ? conceptOverride : (concept || keyframeImagePrompt || screenplayScript || "");
-                if (!targetConcept || !targetConcept.trim()) return;
+                if (!targetConcept || !targetConcept.trim()) return null;
                 setParentTurnId(null);
                 setRawCompiledPrompt("");
                 setDeconstructLoading(true);
@@ -2726,6 +2748,7 @@
                         body: JSON.stringify({ concept: targetConcept })
                     });
                     const data = await res.json();
+                    lastDeconstructedConceptRef.current = targetConcept.trim();
                     let formattedChars = characters;
                     if (data.characters && data.characters.length > 0) {
                         formattedChars = data.characters.map(c => ({
@@ -2738,11 +2761,12 @@
                         setCharacters(formattedChars);
                         setJ3Characters(formattedChars);
                     }
+                    let structuredScenes = scenes;
                     if (Array.isArray(data.scenes) && data.scenes.length > 0) {
                         const defaultRoles = (formattedChars && formattedChars.length > 0)
                             ? formattedChars.map(c => c.role_id)
                             : ["Role A", "Role B"];
-                        const structuredScenes = data.scenes.map((sc, idx) => ({
+                        structuredScenes = data.scenes.map((sc, idx) => ({
                             scene_number: sc.scene_number || (idx + 1),
                             active_roles: (Array.isArray(sc.active_roles) && sc.active_roles.length > 0) ? sc.active_roles : defaultRoles,
                             action: sc.action || "",
@@ -2778,8 +2802,14 @@
                     } else {
                         setJ3DiffPrompt("Make background darker with glowing blue neon");
                     }
+                    return {
+                        data,
+                        formattedChars,
+                        structuredScenes
+                    };
                 } catch (err) {
                     console.error("Deconstruction failed:", err);
+                    return null;
                 } finally {
                     setDeconstructLoading(false);
                 }
@@ -3274,55 +3304,87 @@
             };
 
             const handleStage1GenerateKeyframeAnchor = async () => {
+                if (keyframeLoadingMap[1]) return null;
                 const shot0 = (stageShots && stageShots[0]) ? stageShots[0] : { shot_index: 1, duration_seconds: 10.0 };
+                const effectiveImgPrompt = keyframeImagePrompt || concept || shot0.image_prompt || "";
                 const kfUrl = await handleGenerateKeyframeImage(0, {
                     ...shot0,
                     shot_index: shot0.shot_index || 1,
-                    image_prompt: keyframeImagePrompt || concept || shot0.image_prompt || "",
+                    image_prompt: effectiveImgPrompt,
                     action: screenplayScript || shot0.action || concept || "",
                     location: environmentTag || shot0.location || "",
                     style_lighting: stageStyleTone || shot0.style_lighting || ""
                 });
                 if (kfUrl) {
                     setStageRefImage(kfUrl);
+                    if (effectiveImgPrompt) {
+                        updateStageShot(0, "image_prompt", effectiveImgPrompt);
+                    }
                 }
                 return kfUrl;
             };
 
             const handleExpressRenderSingleVideo = async () => {
+                if (loading || shotGeneratingMap[1] || isBatchGeneratingVideos) return;
                 setLoading(true);
+                setShotGeneratingMap((prev) => ({ ...prev, 1: true }));
                 setLastError(null);
                 try {
-                    const defaultRoles = (characters && characters.length > 0)
-                        ? characters.map(c => c.role_id)
+                    const targetConcept = (concept || keyframeImagePrompt || screenplayScript || "").trim();
+                    let deconstructed = null;
+                    if (targetConcept && !(screenplayScript && screenplayScript.trim()) && lastDeconstructedConceptRef.current !== targetConcept) {
+                        deconstructed = await handleDeconstructConcept(targetConcept);
+                    }
+                    const decData = (deconstructed && deconstructed.data) || {};
+                    const effectiveChars = (deconstructed && deconstructed.formattedChars) || characters;
+                    const effectiveScenes = (deconstructed && deconstructed.structuredScenes) || scenes;
+                    const effectiveTags = (Array.isArray(decData.aesthetic_tags) && decData.aesthetic_tags.length > 0) ? decData.aesthetic_tags : aestheticTags;
+                    const effectiveEnv = decData.environment_tag || environmentTag;
+                    const effectiveCam = decData.camera_lighting_tag || cameraLightingTag;
+                    const effectiveAudio = decData.audio_beat || audioBeat;
+                    const effectiveVocal = decData.vocal_delivery || vocalDelivery;
+
+                    const defaultRoles = (effectiveChars && effectiveChars.length > 0)
+                        ? effectiveChars.map(c => c.role_id)
                         : ["Role A", "Role B"];
+                    const firstSceneAction = (effectiveScenes && effectiveScenes[0] && effectiveScenes[0].action) || targetConcept || "Single continuous 10s scene";
+                    const firstSceneDialogue = (effectiveScenes && effectiveScenes[0] && effectiveScenes[0].dialogue) || "";
                     const expressScenes = (screenplayScript && screenplayScript.trim())
                         ? [{
                             scene_number: 1,
                             active_roles: defaultRoles,
-                            action: (scenes && scenes[0] && scenes[0].action) || concept || "Single continuous 10s scene",
-                            dialogue: (scenes && scenes[0] && scenes[0].dialogue) || "",
+                            action: firstSceneAction,
+                            dialogue: firstSceneDialogue,
                             mode: "screenplay",
                             screenplay_script: screenplayScript
                         }]
-                        : scenes;
+                        : (deconstructed
+                            ? effectiveScenes
+                            : (targetConcept && lastDeconstructedConceptRef.current !== targetConcept
+                                ? [{
+                                    scene_number: 1,
+                                    active_roles: defaultRoles,
+                                    action: targetConcept,
+                                    dialogue: ""
+                                }]
+                                : effectiveScenes));
                     const anchorSeed = (stageShots && stageShots[0] && stageShots[0].keyframe_image_url)
                         || stageRefImage
                         || (isVisualContinuityLocked ? keyframeSeedAnchor : null);
                     const payload = {
                         user_id: "usr_studio",
                         project_id: "prj_director",
-                        prompt: screenplayScript || concept || keyframeImagePrompt || "Single 10s video clip",
+                        prompt: screenplayScript || targetConcept || "Single 10s video clip",
                         clip_index: 0,
                         parent_turn_id: null,
                         session_name: sessionName,
-                        concept: concept || keyframeImagePrompt,
-                        characters: characters,
+                        concept: targetConcept,
+                        characters: effectiveChars,
                         scenes: expressScenes,
-                        aesthetic_tags: aestheticTags,
-                        environment_tag: environmentTag,
-                        audio_stem: audioBeat,
-                        vocal_delivery: vocalDelivery,
+                        aesthetic_tags: effectiveTags,
+                        environment_tag: effectiveEnv,
+                        audio_stem: effectiveAudio,
+                        vocal_delivery: effectiveVocal,
                         enable_safety_sanitization: enableSafetySanitization,
                         aspect_ratio: aspectRatio,
                         keyframe_seed: anchorSeed
@@ -3356,12 +3418,18 @@
                         setParentTurnId(data.turn_id);
                         setStatus(data.status);
                         setSelectedShotIndex(1);
+                        const primaryExpressScene = (expressScenes && expressScenes[0]) || {};
                         setStageShots((prevShots) => {
                             const updated = (prevShots && prevShots.length > 0) ? [...prevShots] : [{ shot_index: 1, duration_seconds: 10.0 }];
                             updated[0] = {
                                 ...updated[0],
                                 shot_index: updated[0].shot_index || 1,
-                                action: payload.prompt,
+                                action: primaryExpressScene.action || payload.prompt,
+                                dialogue: primaryExpressScene.dialogue !== undefined ? primaryExpressScene.dialogue : (updated[0].dialogue || ""),
+                                location: effectiveEnv || updated[0].location || "",
+                                style_lighting: (effectiveTags && effectiveTags.length > 0) ? effectiveTags.join(", ") : (updated[0].style_lighting || stageStyleTone),
+                                framing_motion: effectiveCam || updated[0].framing_motion || "",
+                                audio: effectiveAudio || updated[0].audio || "",
                                 video_url: data.video_url,
                                 turn_id: data.turn_id,
                                 raw_compiled_prompt: compiled
@@ -3375,6 +3443,7 @@
                     setLastError(err.message || String(err));
                 } finally {
                     setLoading(false);
+                    setShotGeneratingMap((prev) => ({ ...prev, 1: false }));
                 }
             };
 
@@ -4532,7 +4601,10 @@
                                     <textarea
                                         rows={3}
                                         value={concept}
-                                        onChange={(e) => setConcept(e.target.value)}
+                                        onChange={(e) => {
+                                            setConcept(e.target.value);
+                                            setKeyframeImagePrompt(e.target.value);
+                                        }}
                                         placeholder="e.g. Fiery Executive Chef vs Classic French Pastry Master in a cyberpunk iron chef battle..."
                                         className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-pink-500 font-mono"
                                     />
@@ -4547,6 +4619,7 @@
                                                     type="button"
                                                     onClick={() => {
                                                         setConcept(ex);
+                                                        setKeyframeImagePrompt(ex);
                                                         handleDeconstructConcept(ex);
                                                     }}
                                                     className="bg-gray-950 border border-gray-800 hover:border-pink-500/70 text-gray-300 hover:text-pink-200 px-3 py-1.5 rounded-lg text-xs transition text-left"
@@ -5470,8 +5543,11 @@
                                                 </div>
                                                 <textarea
                                                     rows={3}
-                                                    value={keyframeImagePrompt || concept}
-                                                    onChange={(e) => setKeyframeImagePrompt(e.target.value)}
+                                                    value={keyframeImagePrompt !== "" ? keyframeImagePrompt : concept}
+                                                    onChange={(e) => {
+                                                        setKeyframeImagePrompt(e.target.value);
+                                                        setConcept(e.target.value);
+                                                    }}
                                                     placeholder="Specify the exact keyframe frame visual setup, environment lighting, aspect ratio, and initial character layout before motion begins..."
                                                     className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-amber-500 font-mono"
                                                 />
@@ -5712,13 +5788,13 @@
                                             <div className="pt-3 flex flex-wrap justify-end gap-3">
                                                 <button
                                                     type="button"
-                                                    disabled={loading || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
+                                                    disabled={loading || !!shotGeneratingMap[1] || isBatchGeneratingVideos || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
                                                     onClick={handleExpressRenderSingleVideo}
                                                     className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg flex items-center gap-2 transition disabled:opacity-50"
                                                     title="Render single 10s video clip immediately and open Step 3 Screening Room"
                                                 >
                                                     <span>🎬</span>
-                                                    <span>{loading ? "Rendering 10s Video..." : "🎬 Express Render 10s Video Now →"}</span>
+                                                    <span>{(loading || shotGeneratingMap[1]) ? "Rendering 10s Video..." : "🎬 Express Render 10s Video Now →"}</span>
                                                 </button>
                                                 <button
                                                     type="button"
@@ -6694,11 +6770,11 @@
                                                 <div className="pt-2">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setActiveStage(4)}
+                                                        onClick={() => setActiveStage(3)}
                                                         className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-teal-600 hover:from-pink-500 hover:to-teal-500 text-white font-extrabold text-xs py-3 px-5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition"
                                                     >
                                                         <span>🍿</span>
-                                                        <span>Proceed to Stage 4 Final Master Stitch ➔</span>
+                                                        <span>Proceed to Step 3: Render &amp; Stitch Master Video ➔</span>
                                                     </button>
                                                 </div>
                                             </div>
