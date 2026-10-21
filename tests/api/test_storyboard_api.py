@@ -82,3 +82,34 @@ def test_stitch_master_cleans_up_tmp_file_even_on_upload_exception():
     assert not os.path.exists(tmp_video), (
         "Temporary /tmp/ stitched file leaked after upload failure"
     )
+
+
+def test_storyboard_expand_forwards_all_taxonomy_fields_and_preserves_temporal_beats():
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    res = client.post(
+        "/api/storyboard/expand",
+        json={
+            "concept": "Noir detective interrogating a cybernetic suspect",
+            "style_tone": "1940s Classic Film Noir",
+            "target_duration": 30.0,
+            "camera_lighting": "Dutch-angle chiaroscuro tracking shot with venetian blind shadows",
+            "aesthetic_tags": ["Trench Coat", "Cigarette Smoke", "Neon Rain"],
+            "audio_beat": "75 BPM Smoky Jazz Saxophone",
+            "vocal_delivery": "Weary hard-boiled baritone monologue",
+            "environment": "Dimly lit precinct interrogation room at midnight",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    shots = data["shots"]
+    assert len(shots) == 3
+    for s in shots:
+        assert "Dimly lit precinct interrogation room at midnight" in s["location"]
+        assert "Dutch-angle chiaroscuro tracking shot" in s["framing_motion"]
+        assert "Trench Coat" in s["style_lighting"]
+        assert "75 BPM Smoky Jazz Saxophone" in s["audio"]
+        assert "Weary hard-boiled baritone monologue" in s["audio"]
+        assert "[0-3s]" in s["action"]
+        assert "[3-6s]" in s["action"]
+        assert "[6-10s]" in s["action"]

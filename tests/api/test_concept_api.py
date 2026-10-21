@@ -23,6 +23,16 @@ def test_deconstruct_concept_endpoint():
     for char in data["characters"]:
         assert "voice_style" in char
     assert any(c["voice_style"] != "" for c in data["characters"])
+    assert data.get("keyframe_image_prompt", "") != ""
+    assert "[0-3s]" in data.get("screenplay_script", "")
+    assert "[3-6s]" in data.get("screenplay_script", "")
+    assert "[6-10s]" in data.get("screenplay_script", "")
+    assert len(data.get("scenes", [])) >= 1
+    first_scene = data["scenes"][0]
+    assert "[0-3s]" in first_scene["action"]
+    assert "[3-6s]" in first_scene["action"]
+    assert "[6-10s]" in first_scene["action"]
+    assert first_scene["dialogue"] != ""
 
 
 def test_generate_endpoint_accepts_vocal_delivery_and_character_voice_style():

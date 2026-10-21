@@ -167,6 +167,9 @@ class MetaPromptTags:
     camera_lighting_tag: str = ""
     audio_beat: str = ""
     vocal_delivery: str = ""
+    keyframe_image_prompt: str = ""
+    screenplay_script: str = ""
+    scenes: list[SceneDirective] = field(default_factory=list)
 
 
 # Pydantic v2 schemas for google-genai Structured Outputs (response_schema)
@@ -186,6 +189,27 @@ class DeconstructedCharacterSchema(BaseModel):
     voice_style: str = Field(default="", description="Character voice style and delivery")
 
 
+class DeconstructedSceneSchema(BaseModel):
+    scene_number: int = Field(default=1, description="1-based scene number")
+    active_roles: list[str] = Field(
+        default_factory=lambda: ["Role A"],
+        description="Active character role IDs in this scene (e.g. ['Role A', 'Role B'])",
+    )
+    action: str = Field(
+        default="",
+        description=(
+            "Single continuous shot action choreographed into [0-3s], [3-6s], and [6-10s] micro-action beats"
+        ),
+    )
+    dialogue: str = Field(
+        default="",
+        description='Theatrical character dialogue formatted as Speaker: "Line"',
+    )
+    audio_cues: str = Field(default="", description="Scene-specific audio or soundscape cues")
+    timecode: str = Field(default="0-10s", description="Scene timecode e.g. 0-10s")
+    duration_seconds: float = Field(default=10.0, description="Scene duration in seconds (<= 10.0)")
+
+
 class DeconstructedConceptSchema(BaseModel):
     characters: list[DeconstructedCharacterSchema] = Field(default_factory=list)
     aesthetic_tags: list[str] = Field(default_factory=list)
@@ -193,6 +217,18 @@ class DeconstructedConceptSchema(BaseModel):
     camera_lighting_tag: str = Field(default="")
     audio_beat: str = Field(default="")
     vocal_delivery: str = Field(default="")
+    keyframe_image_prompt: str = Field(
+        default="",
+        description="Vivid starting keyframe image generation prompt anchoring subjects, wardrobe, lighting, and setting",
+    )
+    screenplay_script: str = Field(
+        default="",
+        description="Time-coded [0-3s] / [3-6s] / [6-10s] screenplay script with action, audio cues, and dialogue",
+    )
+    scenes: list[DeconstructedSceneSchema] = Field(
+        default_factory=list,
+        description="Synthesized 10s scene directives with [0-3s] / [3-6s] / [6-10s] micro-action beats and dialogue",
+    )
 
 
 __all__ = [
@@ -200,6 +236,7 @@ __all__ = [
     "CompiledPromptParts",
     "DeconstructedCharacterSchema",
     "DeconstructedConceptSchema",
+    "DeconstructedSceneSchema",
     "MetaPromptTags",
     "SceneDirective",
 ]

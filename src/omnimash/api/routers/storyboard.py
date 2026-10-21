@@ -52,6 +52,11 @@ def expand_storyboard(req: StoryboardExpandRequest, agent: AgentDep) -> Storyboa
         characters=char_objs if char_objs else None,
         screenplay_script=req.screenplay_script,
         mock_mode=agent.mock_mode,
+        camera_lighting=req.camera_lighting,
+        aesthetic_tags=req.aesthetic_tags,
+        audio_beat=req.audio_beat,
+        vocal_delivery=req.vocal_delivery,
+        environment=req.environment,
     )
     return StoryboardExpandResponse(
         shots=[

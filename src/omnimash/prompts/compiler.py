@@ -20,6 +20,7 @@ from omnimash.prompts.models import (
     CompiledPromptParts,
     DeconstructedCharacterSchema,
     DeconstructedConceptSchema,
+    DeconstructedSceneSchema,
     MetaPromptTags,
     SceneDirective,
 )
@@ -94,6 +95,7 @@ __all__ = [
     "CumulativeShotState",
     "DeconstructedCharacterSchema",
     "DeconstructedConceptSchema",
+    "DeconstructedSceneSchema",
     "GEMINI_OMNI_FLASH_INSTR",
     "MAX_CONCEPT_CHARS",
     "MAX_SCREENPLAY_CHARS",
@@ -186,6 +188,25 @@ class PromptCompiler:
             location=getattr(settings, "gemini_location", "global")
         )
 
+    @staticmethod
+    def _ensure_temporal_micro_beats(
+        action_text: str,
+        char_label: str = "Role A",
+        env_tag: str = "",
+        cam_tag: str = "",
+    ) -> str:
+        clean = (action_text or "").strip()
+        if "[0-3s]" in clean and "[3-6s]" in clean and "[6-10s]" in clean:
+            return clean
+        env_phrase = f" in {env_tag}" if env_tag else ""
+        cam_phrase = f" under {cam_tag}" if cam_tag else ""
+        base_action = clean.rstrip(".") if clean else f"{char_label} enters the frame{env_phrase}"
+        return (
+            f"[0-3s] {base_action}. "
+            f"[3-6s] {char_label} escalates the performance with dynamic kinetic motion{cam_phrase}. "
+            f"[6-10s] {char_label} locks into a high-impact climactic pose as lighting peaks."
+        )
+
     def _try_gemini_deconstruction(
         self, client: Any, model_name: str, concept: str, tier_name: str
     ) -> MetaPromptTags | None:
@@ -193,14 +214,17 @@ class PromptCompiler:
             return None
 
         system_instruction = (
-            "You are a cinematic video concept deconstructor for Gemini Omni Flash. "
-            "Provide intuitive vision defaults for wardrobe, voice style, environment lighting, "
-            "camera motion, aspect ratio, audio beat, and vocal delivery."
+            "You are an AI Director and cinematic video concept deconstructor for Gemini Omni Flash 1.1. "
+            "Transform any minimal 1-sentence concept into a complete production specification: "
+            "1. Characters (Role A, Role B, etc.) with detailed visual descriptions, wardrobe aesthetic_tags, and voice_style. "
+            "2. Global aesthetic_tags, environment_tag, camera_lighting_tag (single continuous shot, no scene cuts), audio_beat (with BPM), and vocal_delivery. "
+            "3. keyframe_image_prompt: A vivid starting keyframe image generation prompt anchoring subjects, wardrobe, lighting, and setting. "
+            '4. screenplay_script and scenes: Choreograph a 10-second continuous shot explicitly structured into [0-3s], [3-6s], and [6-10s] micro-action beats with theatrical spoken dialogue (Speaker: "Line").'
         )
         prompt_text = (
-            f"Deconstruct the following video parody concept into structured prompt tags:\n"
+            f"Deconstruct and expand the following minimal video concept into optimal structured prompt tags, keyframe image prompt, screenplay script, and [0-3s] / [3-6s] / [6-10s] scene directives:\n"
             f'Concept: "{concept}"\n\n'
-            f"Provide intuitive vision defaults for wardrobe, voice style, environment lighting, camera motion, aspect ratio, audio beat, and vocal delivery."
+            f"Provide intuitive vision defaults for wardrobe, voice style, environment lighting, camera motion, aspect ratio, audio beat, vocal delivery, keyframe_image_prompt, screenplay_script, and scenes with [0-3s], [3-6s], and [6-10s] micro-action beats and theatrical dialogue."
         )
 
         for attempt in range(1, 4):
@@ -287,6 +311,46 @@ class PromptCompiler:
                 cam_tag = data.get("camera_lighting_tag") or fallback_tags.camera_lighting_tag
                 audio_beat = data.get("audio_beat") or fallback_tags.audio_beat
                 vocal_delivery = data.get("vocal_delivery") or fallback_tags.vocal_delivery
+                keyframe_image_prompt = (
+                    data.get("keyframe_image_prompt") or fallback_tags.keyframe_image_prompt
+                )
+                screenplay_script = data.get("screenplay_script") or fallback_tags.screenplay_script
+
+                active_role_ids = [c.role_id for c in chars] or ["Role A"]
+                char_label = (
+                    f"{chars[0].role_id} ({chars[0].name})" if chars else "Role A (Lead Subject)"
+                )
+                fb_dialogue = (
+                    fallback_tags.scenes[0].dialogue
+                    if fallback_tags.scenes
+                    else f'{chars[0].name if chars else "Lead Subject"}: "Watch this unfold!"'
+                )
+
+                scenes: list[SceneDirective] = []
+                raw_scenes = data.get("scenes", [])
+                if raw_scenes:
+                    for s_idx, s_data in enumerate(raw_scenes):
+                        s_action = self._ensure_temporal_micro_beats(
+                            str(s_data.get("action") or ""),
+                            char_label=char_label,
+                            env_tag=env_tag,
+                            cam_tag=cam_tag,
+                        )
+                        s_dialogue = str(s_data.get("dialogue") or "").strip() or fb_dialogue
+                        s_roles = s_data.get("active_roles") or active_role_ids
+                        scenes.append(
+                            SceneDirective(
+                                scene_number=int(s_data.get("scene_number") or (s_idx + 1)),
+                                active_roles=list(s_roles),
+                                action=s_action,
+                                dialogue=s_dialogue,
+                                audio_cues=str(s_data.get("audio_cues") or audio_beat),
+                                timecode=str(s_data.get("timecode") or "0-10s"),
+                                duration_seconds=float(s_data.get("duration_seconds") or 10.0),
+                            )
+                        )
+                else:
+                    scenes = fallback_tags.scenes
 
                 return MetaPromptTags(
                     characters=chars,
@@ -295,6 +359,9 @@ class PromptCompiler:
                     camera_lighting_tag=cam_tag,
                     audio_beat=audio_beat,
                     vocal_delivery=vocal_delivery,
+                    keyframe_image_prompt=keyframe_image_prompt,
+                    screenplay_script=screenplay_script,
+                    scenes=scenes,
                 )
             except Exception as exc:
                 logger.warning(
@@ -1534,6 +1601,67 @@ class PromptCompiler:
             env_tag = "Atmospheric stage set with dramatic directional lighting and smoke effects"
             cam_tag = "Cinematic 16:9 tracking shot with balanced ambient lighting and crisp depth of field"
 
+        clean_concept = concept.strip() or "Cinematic parody scene"
+        active_roles = [c.role_id for c in chars] or ["Role A"]
+        if len(chars) >= 2:
+            char_a = f"{chars[0].role_id} ({chars[0].name})"
+            char_b = f"{chars[1].role_id} ({chars[1].name})"
+            beat_1 = (
+                f"[0-3s] Establishing tracking shot in {env_tag}: {char_a} steps forward into the spotlight "
+                f"while {char_b} locks eyes from across the set ({clean_concept})."
+            )
+            beat_2 = (
+                f"[3-6s] {char_a} gestures emphatically toward the lens as {char_b} counters "
+                f"with kinetic energy under {cam_tag}."
+            )
+            beat_3 = (
+                f"[6-10s] Both {char_a} and {char_b} hit a synchronized high-impact climactic pose "
+                f"as atmospheric rim lighting peaks."
+            )
+            dialogue_line = (
+                f'{chars[0].name}: "Watch the masterclass unfold right now!" / '
+                f'{chars[1].name}: "Turn the energy up, this stage is mine!"'
+            )
+        else:
+            lead = (
+                chars[0]
+                if chars
+                else CharacterRole(
+                    role_id="Role A",
+                    name="Lead Subject",
+                    description="A distinct cinematic character",
+                )
+            )
+            char_a = f"{lead.role_id} ({lead.name})"
+            beat_1 = (
+                f"[0-3s] Establishing tracking shot in {env_tag}: {char_a} enters frame and commands "
+                f"the spotlight ({clean_concept})."
+            )
+            beat_2 = f"[3-6s] {char_a} performs expressive dynamic motion toward the camera under {cam_tag}."
+            beat_3 = f"[6-10s] {char_a} locks into a bold hero resolution pose as volumetric rim lights peak."
+            dialogue_line = f'{lead.name}: "Every beat hits different when you own the frame!"'
+
+        action_beats = f"{beat_1} {beat_2} {beat_3}"
+        screenplay_script = (
+            f"{beat_1}\n{beat_2}\n{beat_3}\nAUDIO: {audio_beat}\nDIALOGUE: {dialogue_line}"
+        )
+        char_summary = ", ".join(f"{c.name} ({c.description})" for c in chars)
+        keyframe_image_prompt = (
+            f"Cinematic 16:9 keyframe anchor for '{clean_concept}': {char_summary} in {env_tag}. "
+            f"Style: {', '.join(aesthetic_tags)}. Camera & Lighting: {cam_tag}."
+        )
+        scenes = [
+            SceneDirective(
+                scene_number=1,
+                active_roles=active_roles,
+                action=action_beats,
+                dialogue=dialogue_line,
+                audio_cues=audio_beat,
+                timecode="0-10s",
+                duration_seconds=10.0,
+            )
+        ]
+
         return MetaPromptTags(
             characters=chars,
             aesthetic_tags=aesthetic_tags,
@@ -1541,4 +1669,7 @@ class PromptCompiler:
             camera_lighting_tag=cam_tag,
             audio_beat=audio_beat,
             vocal_delivery=vocal_delivery,
+            keyframe_image_prompt=keyframe_image_prompt,
+            screenplay_script=screenplay_script,
+            scenes=scenes,
         )

@@ -547,3 +547,71 @@ def test_expand_vision_live_uses_response_schema_and_system_instruction():
     assert second_config is not None
     assert second_config.system_instruction is not None
     assert "Hollywood cinematographer" in second_config.system_instruction
+    assert "[0-3s]" in shots[0].action
+    assert "[3-6s]" in shots[0].action
+    assert "[6-10s]" in shots[0].action
+
+
+def test_storyboard_agent_preserves_temporal_beats_and_forwards_compiler_mock_mode():
+    from unittest.mock import MagicMock, patch
+
+    from omnimash.prompts.compiler import PromptCompiler
+
+    agent = StoryboardAgent(mock_mode=True)
+    shots = agent.expand_vision("Cyberpunk ramen duel", style_tone="Neon Synthwave")
+    for s in shots:
+        assert "[0-3s]" in s.action
+        assert "[3-6s]" in s.action
+        assert "[6-10s]" in s.action
+
+    # Verify live optimize_shot_prompt preserves [0-3s]/[3-6s]/[6-10s] even if LLM omits timecodes
+    live_agent = StoryboardAgent(mock_mode=True)
+    live_agent.mock_mode = False
+    mock_client = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.text = "Wide anamorphic shot with dramatic volumetric lighting and lens flares."
+    mock_client.models.generate_content.return_value = mock_resp
+    live_agent._genai_client = mock_client
+
+    raw_timed = "[0-3s] Chef enters. [3-6s] Chef flips wok. [6-10s] Chef plates neon ramen."
+    optimized = live_agent.optimize_shot_prompt(raw_timed, style_tone="Cyberpunk")
+    assert "[0-3s]" in optimized
+    assert "[3-6s]" in optimized
+    assert "[6-10s]" in optimized
+    assert "Wide anamorphic shot" in optimized
+
+    # Verify expand_vision with screenplay_script passes self.mock_mode to PromptCompiler
+    captured_mock_modes: list[bool | None] = []
+    orig_init = PromptCompiler.__init__
+
+    def _spy_init(self, mock_mode: bool | None = None) -> None:
+        captured_mock_modes.append(mock_mode)
+        orig_init(self, mock_mode=True)
+
+    with patch.object(PromptCompiler, "__init__", _spy_init):
+        live_agent.expand_vision(
+            concept="Wizard duel",
+            screenplay_script="[0-5s] Action: Wizard raises staff.",
+        )
+    assert False in captured_mock_modes
+
+
+def test_expand_vision_applies_forwarded_camera_aesthetic_audio_vocal_and_environment():
+    agent = StoryboardAgent(mock_mode=True)
+    shots = agent.expand_vision(
+        concept="Samurai showdown",
+        style_tone="Cyberpunk Drift",
+        target_duration=30.0,
+        camera_lighting="Low-angle anamorphic crane tracking shot",
+        aesthetic_tags=["Chrome Armor", "Laser Fog"],
+        audio_beat="135 BPM Industrial Techno",
+        vocal_delivery="Resonant stoic baritone",
+        environment="Floating neon pagoda in digital rain",
+    )
+    assert len(shots) == 3
+    for s in shots:
+        assert "Floating neon pagoda in digital rain" in s.location
+        assert "Low-angle anamorphic crane tracking shot" in s.framing_motion
+        assert "Chrome Armor" in s.style_lighting
+        assert "135 BPM Industrial Techno" in s.audio
+        assert "Resonant stoic baritone" in s.audio

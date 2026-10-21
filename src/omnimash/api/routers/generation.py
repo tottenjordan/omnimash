@@ -16,6 +16,7 @@ from omnimash.api.models import (
     CharacterRoleModel,
     CommitRequest,
     ConceptDeconstructRequest,
+    DeconstructedSceneModel,
     DeconstructResponse,
     ExtendSceneRequest,
     GenerateRequest,
@@ -64,6 +65,20 @@ def deconstruct_concept(req: ConceptDeconstructRequest, agent: AgentDep) -> Deco
         camera_lighting_tag=tags.camera_lighting_tag,
         audio_beat=tags.audio_beat,
         vocal_delivery=tags.vocal_delivery,
+        keyframe_image_prompt=getattr(tags, "keyframe_image_prompt", ""),
+        screenplay_script=getattr(tags, "screenplay_script", ""),
+        scenes=[
+            DeconstructedSceneModel(
+                scene_number=s.scene_number,
+                active_roles=list(s.active_roles),
+                action=s.action,
+                dialogue=s.dialogue,
+                audio_cues=getattr(s, "audio_cues", ""),
+                timecode=getattr(s, "timecode", "0-10s") or "0-10s",
+                duration_seconds=getattr(s, "duration_seconds", 10.0),
+            )
+            for s in getattr(tags, "scenes", [])
+        ],
     )
 
 

@@ -154,6 +154,11 @@ def deconstruct_screenplay_with_adk(
     characters: list[CharacterRole] | list[dict] | None = None,
     screenplay_script: str = "",
     mock_mode: bool | None = None,
+    camera_lighting: str | None = None,
+    aesthetic_tags: list[str] | None = None,
+    audio_beat: str | None = None,
+    vocal_delivery: str | None = None,
+    environment: str | None = None,
 ) -> list[StoryboardShot]:
     """Deconstructs screenplay scripts and concepts into storyboard shots using Google ADK ScriptDeconstructorAgent and StoryboardCompilerAgent."""
     from omnimash.prompts.character_roles import normalize_character_role
@@ -173,6 +178,11 @@ def deconstruct_screenplay_with_adk(
         target_duration=target_duration,
         characters=char_objs,
         screenplay_script=screenplay_script,
+        camera_lighting=camera_lighting,
+        aesthetic_tags=aesthetic_tags,
+        audio_beat=audio_beat,
+        vocal_delivery=vocal_delivery,
+        environment=environment,
     )
     return shots
 

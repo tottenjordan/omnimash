@@ -609,3 +609,49 @@ def test_root_agent_lazy_loading():
     assert adk_agent.name == "omnimash_orchestrator"
     # Verify root_agent proxy forwards attribute access
     assert root_agent.name == "omnimash_orchestrator"
+
+
+def test_bare_prompt_fallback_auto_deconstructs_into_canonical_4_block_prompt():
+    agent = OmniMashAgent(mock_mode=True)
+    res = agent.process_user_turn(
+        user_id="u_minimal",
+        project_id="p_minimal",
+        prompt="A cyberpunk samurai vs a cyborg ninja in a neon rain alley",
+        clip_index=0,
+    )
+    assert res.success is True
+    assert res.raw_compiled_prompt is not None
+    compiled = res.raw_compiled_prompt
+    assert "### INPUT ROLES" in compiled
+    assert "### CHARACTER PROFILES" in compiled
+    assert "### SCENE INSTRUCTIONS" in compiled
+    assert "### TIMELINE" in compiled
+    assert "[0-3s]" in compiled
+    assert "[3-6s]" in compiled
+    assert "[6-10s]" in compiled
+    assert "parody skit" not in compiled
+    assert "[SUBJECT ANCHOR]" not in compiled
+
+
+def test_bare_prompt_fallback_with_voiceover_on_screen_text_and_silent_mode():
+    agent = OmniMashAgent(mock_mode=True)
+    res = agent.process_user_turn(
+        user_id="u_edge",
+        project_id="p_edge",
+        prompt="Detective in a rainy alley",
+        voiceover='Detective: "The case is never closed."',
+        on_screen_text="CASE FILE #404",
+        is_silent=True,
+        optimize_prompt=True,
+        clip_index=0,
+    )
+    assert res.success is True
+    assert res.raw_compiled_prompt is not None
+    compiled = res.raw_compiled_prompt
+    assert "### INPUT ROLES" in compiled
+    assert "### CHARACTER PROFILES" in compiled
+    assert "### SCENE INSTRUCTIONS" in compiled
+    assert "### TIMELINE" in compiled
+    assert "The case is never closed." in compiled
+    assert "CASE FILE #404" in compiled
+    assert "Silent video" in compiled
