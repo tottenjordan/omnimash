@@ -454,7 +454,9 @@ def test_concatenate_clips_subprocess_timeout_handled(tmp_path):
     clip1 = tmp_path / "clip1.mp4"
     clip1.write_bytes(b"dummy")
 
-    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=120.0)):
+    with patch(
+        "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=120.0)
+    ):
         with pytest.raises(RuntimeError, match="timed out"):
             stitcher.concatenate_clips([str(clip1)], output_dir=str(tmp_path))
 
@@ -527,8 +529,3 @@ def test_concatenate_clips_preserves_clip_order_with_parallel_resolution(tmp_pat
 
     expected_lines = [f"file '{os.path.abspath(cp)}'" for cp in clip_paths]
     assert captured_concat_lines == expected_lines
-
-
-
-
-

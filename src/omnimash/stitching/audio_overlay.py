@@ -58,14 +58,22 @@ def apply_dialogue_audio_ducking(
         resolved_music = resolve_media_source_to_local_path(
             music_path, temp_dir=output_dir, storage=storage, mock_mode=mock_mode
         )
-        if resolved_music and resolved_music != music_path and os.path.dirname(resolved_music) == os.path.abspath(output_dir):
+        if (
+            resolved_music
+            and resolved_music != music_path
+            and os.path.dirname(resolved_music) == os.path.abspath(output_dir)
+        ):
             temp_files.append(resolved_music)
         music_path = resolved_music or ""
 
         resolved_dialogue = resolve_media_source_to_local_path(
             dialogue_path, temp_dir=output_dir, storage=storage, mock_mode=mock_mode
         )
-        if resolved_dialogue and resolved_dialogue != dialogue_path and os.path.dirname(resolved_dialogue) == os.path.abspath(output_dir):
+        if (
+            resolved_dialogue
+            and resolved_dialogue != dialogue_path
+            and os.path.dirname(resolved_dialogue) == os.path.abspath(output_dir)
+        ):
             temp_files.append(resolved_dialogue)
         dialogue_path = resolved_dialogue or ""
 

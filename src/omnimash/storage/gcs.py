@@ -84,6 +84,9 @@ class GcsStorageManager:
         self._mock_project_products: dict[str, list[dict[str, Any]]] = {}
         self._mock_project_reference_sheets: dict[str, list[dict[str, Any]]] = {}
         self._mock_shares: dict[str, dict[str, Any]] = {}
+        self._mock_feedbacks: dict[str, dict[str, Any]] = {}
+        self._mock_scorecards: dict[str, dict[str, Any]] = {}
+        self._mock_strategy_banks: dict[str, dict[str, Any]] = {}
 
     @property
     def timeout(self) -> float:
@@ -1721,6 +1724,172 @@ class GcsStorageManager:
                     break
 
         return deleted or deleted_from_mock
+
+    def save_feedback(
+        self,
+        session_id: str,
+        turn_id: str,
+        feedback: dict[str, Any] | Any,
+        project_id: str | None = None,
+    ) -> str:
+        """Persists user feedback record to sessions/{session_id}/turns/{turn_id}/feedback.json."""
+        if hasattr(feedback, "model_dump"):
+            payload = getattr(feedback, "model_dump")()
+        elif isinstance(feedback, dict):
+            payload = dict(feedback)
+        else:
+            payload = {}
+        key = f"{project_id}/{session_id}/{turn_id}" if project_id else f"{session_id}/{turn_id}"
+        if project_id:
+            blob_path = f"projects/{project_id}/sessions/{session_id}/turns/{turn_id}/feedback.json"
+        else:
+            blob_path = f"sessions/{session_id}/turns/{turn_id}/feedback.json"
+        pub_url, _ = self._upload_json_payload(
+            blob_path,
+            payload,
+            mock_cache_dict=self._mock_feedbacks,
+            mock_cache_key=key,
+        )
+        if not project_id:
+            self._mock_feedbacks[f"{session_id}/{turn_id}"] = payload
+        return pub_url
+
+    def get_feedback(
+        self,
+        session_id: str,
+        turn_id: str,
+        project_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Retrieves user feedback record for a given session and turn."""
+        key = f"{project_id}/{session_id}/{turn_id}" if project_id else f"{session_id}/{turn_id}"
+        if key in self._mock_feedbacks:
+            return self._mock_feedbacks[key]
+        if not project_id and f"{session_id}/{turn_id}" in self._mock_feedbacks:
+            return self._mock_feedbacks[f"{session_id}/{turn_id}"]
+
+        candidate_paths: list[str] = []
+        if project_id:
+            candidate_paths.append(
+                f"projects/{project_id}/sessions/{session_id}/turns/{turn_id}/feedback.json"
+            )
+        else:
+            candidate_paths.append(f"sessions/{session_id}/turns/{turn_id}/feedback.json")
+
+        for blob_path in candidate_paths:
+            res = self._download_json_payload(
+                blob_path,
+                mock_cache_dict=self._mock_feedbacks,
+                mock_cache_key=key,
+            )
+            if res is not None:
+                self._mock_feedbacks[key] = res
+                return res
+        return None
+
+    def save_scorecard(
+        self,
+        session_id: str,
+        turn_id: str,
+        scorecard: dict[str, Any] | Any,
+        project_id: str | None = None,
+    ) -> str:
+        """Persists evaluation scorecard to sessions/{session_id}/turns/{turn_id}/evaluation_scorecard.json."""
+        if hasattr(scorecard, "model_dump"):
+            payload = getattr(scorecard, "model_dump")()
+        elif isinstance(scorecard, dict):
+            payload = dict(scorecard)
+        else:
+            payload = {}
+        key = f"{project_id}/{session_id}/{turn_id}" if project_id else f"{session_id}/{turn_id}"
+        if project_id:
+            blob_path = f"projects/{project_id}/sessions/{session_id}/turns/{turn_id}/evaluation_scorecard.json"
+        else:
+            blob_path = f"sessions/{session_id}/turns/{turn_id}/evaluation_scorecard.json"
+        pub_url, _ = self._upload_json_payload(
+            blob_path,
+            payload,
+            mock_cache_dict=self._mock_scorecards,
+            mock_cache_key=key,
+        )
+        if not project_id:
+            self._mock_scorecards[f"{session_id}/{turn_id}"] = payload
+        return pub_url
+
+    def get_scorecard(
+        self,
+        session_id: str,
+        turn_id: str,
+        project_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Retrieves evaluation scorecard for a given session and turn."""
+        key = f"{project_id}/{session_id}/{turn_id}" if project_id else f"{session_id}/{turn_id}"
+        if key in self._mock_scorecards:
+            return self._mock_scorecards[key]
+        if not project_id and f"{session_id}/{turn_id}" in self._mock_scorecards:
+            return self._mock_scorecards[f"{session_id}/{turn_id}"]
+
+        candidate_paths: list[str] = []
+        if project_id:
+            candidate_paths.append(
+                f"projects/{project_id}/sessions/{session_id}/turns/{turn_id}/evaluation_scorecard.json"
+            )
+        else:
+            candidate_paths.append(
+                f"sessions/{session_id}/turns/{turn_id}/evaluation_scorecard.json"
+            )
+
+        for blob_path in candidate_paths:
+            res = self._download_json_payload(
+                blob_path,
+                mock_cache_dict=self._mock_scorecards,
+                mock_cache_key=key,
+            )
+            if res is not None:
+                self._mock_scorecards[key] = res
+                return res
+        return None
+
+    def save_strategy_bank(
+        self,
+        bank_data: dict[str, Any] | Any,
+        project_id: str | None = None,
+    ) -> str:
+        """Persists Strategy Bank to meta/strategy_bank.json (global) or projects/{project_id}/strategy_bank.json."""
+        if hasattr(bank_data, "model_dump"):
+            payload = getattr(bank_data, "model_dump")()
+        elif isinstance(bank_data, dict):
+            payload = dict(bank_data)
+        else:
+            payload = {}
+        key = f"project:{project_id}" if project_id else "global"
+        blob_path = (
+            f"projects/{project_id}/strategy_bank.json" if project_id else "meta/strategy_bank.json"
+        )
+        pub_url, _ = self._upload_json_payload(
+            blob_path,
+            payload,
+            mock_cache_dict=self._mock_strategy_banks,
+            mock_cache_key=key,
+        )
+        return pub_url
+
+    def get_strategy_bank(
+        self,
+        project_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Retrieves Strategy Bank from GCS or in-memory mock cache."""
+        key = f"project:{project_id}" if project_id else "global"
+        if key in self._mock_strategy_banks:
+            return self._mock_strategy_banks[key]
+
+        blob_path = (
+            f"projects/{project_id}/strategy_bank.json" if project_id else "meta/strategy_bank.json"
+        )
+        return self._download_json_payload(
+            blob_path,
+            mock_cache_dict=self._mock_strategy_banks,
+            mock_cache_key=key,
+        )
 
 
 # Backward compatibility alias for GcsStorageManager

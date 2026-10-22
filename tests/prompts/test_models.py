@@ -97,4 +97,3 @@ def test_compiled_prompt_parts_acoustic_progression():
     assert "Audio: Seamless acoustic progression from prior ambient audio." in full
     assert "instrumental" not in full
     assert "Sound design:" not in full
-

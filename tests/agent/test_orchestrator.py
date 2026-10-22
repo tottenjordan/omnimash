@@ -823,4 +823,3 @@ def test_multi_chunk_continuation_propagates_extend_task() -> None:
     assert len(captured_tasks) == 2
     assert captured_tasks[0] == "text_to_video"
     assert captured_tasks[1] == "extend"
-
