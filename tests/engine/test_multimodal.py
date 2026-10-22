@@ -73,6 +73,46 @@ def test_build_multimodal_contents_preserves_input_roles_header():
     assert "### CHARACTER PROFILES" in res
 
 
+def test_build_multimodal_contents_preserves_character_role_binding_lines():
+    """Verify build_multimodal_contents preserves - Role X (Character Reference) lines under ### INPUT ROLES & REFERENCES."""
+    prompt = (
+        "### INPUT ROLES & REFERENCES\n"
+        "[# References <IMAGE_REF_0>@Image1, <IMAGE_REF_1>@Image2]\n"
+        "- Role A (Character Reference): Bee Allison (@Image1) [Wardrobe: Gucci bucket hat, black tracksuit]\n"
+        "- Role B (Character Reference): YoTotti (@Image2) [Wardrobe: Tailored black tracksuit]\n\n"
+        "### CHARACTER PROFILES\n"
+        "- Role A (Bee Allison) (Reference Image: @Image1): High-energy trap wizard\n"
+        "- Role B (YoTotti) (Reference Image: @Image2): Confident young wizard\n\n"
+        "### SCENE INSTRUCTIONS\n"
+        "- Shot Number: 1\n\n"
+        "### TIMELINE\n"
+        "[0-5s] Action: Both wizards converse."
+    )
+    chars = [
+        CharacterRole(
+            name="Bee Allison",
+            role_id="Role A",
+            description="Trap wizard",
+            reference_url="http://example.com/bee.png",
+            wardrobe="Gucci bucket hat, black tracksuit",
+        ),
+        CharacterRole(
+            name="YoTotti",
+            role_id="Role B",
+            description="Young wizard",
+            reference_url="http://example.com/yo.png",
+            wardrobe="Tailored black tracksuit",
+        ),
+    ]
+    res = build_multimodal_contents(
+        prompt=prompt,
+        characters=chars,
+    )
+    assert isinstance(res, str)
+    assert "- Role A (Character Reference): Bee Allison (@Image1)" in res
+    assert "- Role B (Character Reference): YoTotti (@Image2)" in res
+
+
 def test_build_multimodal_contents_starting_frame_guiding_instruction():
     """Verify starting frame only appends official Gemini Omni instruction."""
     res = build_multimodal_contents(
@@ -226,4 +266,3 @@ def test_build_multimodal_contents_character_matching_first_and_last_frame_tags(
         "Use the first image as the starting frame and the second image as the ending frame."
         not in res
     )
-

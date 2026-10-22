@@ -34,6 +34,8 @@ KNOWN_VAULT_PROFILES: dict[str, dict[str, Any]] = {
         "wardrobe": "Floor-length custom silk monogram wizard robe, diamond half-moon spectacles, DD diamond chain",
         "voice_style": "Sharp, vigorous Oxford English cadence",
         "aesthetic_tags": [
+            "long silver beard",
+            "floor-length silk monogram robe",
             "black-diamond pinky ring",
             "diamond half-moon spectacles",
             "championship-style rings",
@@ -42,15 +44,31 @@ KNOWN_VAULT_PROFILES: dict[str, dict[str, Any]] = {
     },
     "yototti": {
         "name": "YoTotti",
-        "description": "Confident young wizard radiating unfazed zen energy, wearing blue-shaded oversized aviator sunglasses, tailored black designer tracksuit, heavy diamond chains, and massive diamond rings",
+        "description": "Confident young wizard with styled blonde hair, open black tracksuit, 'Panic' chest tattoo, radiating unfazed zen energy, wearing blue-shaded oversized aviator sunglasses, heavy diamond chains, and massive diamond rings",
         "reference_url": "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/yototti_office_sheet_v13.png",
-        "wardrobe": "Tailored black designer tracksuit, blue-shaded oversized aviator sunglasses, heavy diamond chains",
+        "wardrobe": "Tailored open black designer tracksuit, blue-shaded oversized aviator sunglasses, heavy diamond chains, chest tattoo",
         "voice_style": "Calm, unfazed East London cadence",
         "aesthetic_tags": [
+            "styled blonde hair",
             "diamond chains",
             "big diamond rings",
             "blue shaded large aviator sunglasses",
-            "black Designer track suit",
+            "black designer track suit",
+            "chest tattoo",
+        ],
+    },
+    "bee allison": {
+        "name": "Bee Allison",
+        "description": "Gritty, thin-faced, fit, high-energy trap wizard with short buzzcut dark hair, wearing a designer monogram bucket hat, black tracksuit with white side stripes, gold 1017 pendant chain, and holding a double foam cup. He directs his swarm of magical bees with small, sharp flicks of his wand",
+        "reference_url": "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/nola_drop_v2/character_sheets/bee_allison_nola_sheet_v2.png",
+        "wardrobe": "Designer monogram bucket hat, black tracksuit with white side stripes, gold 1017 pendant chain",
+        "voice_style": "Fast-paced confident Atlanta rap cadence with crisp enunciated swagger",
+        "aesthetic_tags": [
+            "designer monogram bucket hat",
+            "black tracksuit with white side stripes",
+            "gold 1017 pendant",
+            "double foam cup",
+            "swarm of magical bees",
         ],
     },
     "accountant elves": {
@@ -720,9 +738,9 @@ class IntentAutoFiller:
                 if enable_safety_sanitization:
                     if not vault_fallback and not prof.reference_url:
                         raw_name = sanitize_real_names(raw_name)
-                    desc = sanitize_real_names(desc)
-                    wardrobe = sanitize_real_names(wardrobe)
-                    voice_style = sanitize_real_names(voice_style)
+                        desc = sanitize_real_names(desc)
+                        wardrobe = sanitize_real_names(wardrobe)
+                        voice_style = sanitize_real_names(voice_style)
 
                 characters.append(
                     CharacterRoleModel(
@@ -799,11 +817,16 @@ class IntentAutoFiller:
                 vault_match.get("aesthetic_tags", ["Cinematic", "High Definition", "Omni Flash"])
             )
 
-            clean_name = sanitize_real_names(name) if enable_safety_sanitization else name
+            clean_name = (
+                vault_match.get("name", name)
+                if (vault_match or ref_url)
+                else (sanitize_real_names(name) if enable_safety_sanitization else name)
+            )
             if enable_safety_sanitization:
-                desc = sanitize_real_names(desc)
-                wardrobe = sanitize_real_names(wardrobe)
-                voice_style = sanitize_real_names(voice_style)
+                if not vault_match and not ref_url:
+                    desc = sanitize_real_names(desc)
+                    wardrobe = sanitize_real_names(wardrobe)
+                    voice_style = sanitize_real_names(voice_style)
 
             characters.append(
                 CharacterRoleModel(
@@ -911,17 +934,20 @@ class IntentAutoFiller:
         else:
             vocal_delivery = "Rhythmic, confident, clear front-and-center vocal projection."
 
-        char_a = characters[0]
-        char_b = characters[1]
-
+        diag_map: dict[str, str] = {}
         if dialogue_custom:
-            diag_a = dialogue_custom
-            diag_b = "Standing ground with unwavering conviction!"
+            diag_map[characters[0].name] = dialogue_custom
+            fallback_resps = [
+                "Standing ground with unwavering conviction!",
+                "Everything proceeding exactly as ordained.",
+                "The line holds, no exceptions.",
+            ]
+            for idx, c in enumerate(characters[1:], 0):
+                diag_map[c.name] = fallback_resps[min(idx, len(fallback_resps) - 1)]
         elif dialogue_direction:
-            diag_a, diag_b = self._synthesize_guided_dialogue(
+            diag_map = self._synthesize_multicharacter_dialogue(
+                characters=characters,
                 raw_intent=raw_intent,
-                char_a=char_a,
-                char_b=char_b,
                 environment=environment,
                 dialogue_direction=dialogue_direction,
                 is_wizard=is_wizard,
@@ -930,24 +956,62 @@ class IntentAutoFiller:
                 is_samurai=is_samurai,
             )
         elif is_wizard:
-            diag_a = "I've been brewing formulas while you were still studying scrolls!"
-            diag_b = "Your spells are ancient history—this is a new era, Bruv!"
+            wizard_lines = [
+                "I've been brewing formulas while you were still studying scrolls!",
+                "Your spells are ancient history—this is a new era, Bruv!",
+                "Quiet, both of you—true mastery speaks without shouting.",
+                "The wards are active, let's keep it steady.",
+            ]
+            for idx, c in enumerate(characters):
+                diag_map[c.name] = wizard_lines[min(idx, len(wizard_lines) - 1)]
         elif is_cyberpunk:
-            diag_a = "System anomaly detected in Sector 4. Keep your eyes sharp."
-            diag_b = "Already patched into the feed. Let's move before they purge the logs."
+            cyber_lines = [
+                "System anomaly detected in Sector 4. Keep your eyes sharp.",
+                "Already patched into the feed. Let's move before they purge the logs.",
+                "Signal secured. Trace protocol bypassed.",
+                "Sub-net offline. We're clear.",
+            ]
+            for idx, c in enumerate(characters):
+                diag_map[c.name] = cyber_lines[min(idx, len(cyber_lines) - 1)]
         elif is_cooking:
-            diag_a = "The seasoning is raw! You need discipline on this line!"
-            diag_b = "Taste the glaze—that is pure technique and precision."
+            cook_lines = [
+                "The seasoning is raw! You need discipline on this line!",
+                "Taste the glaze—that is pure technique and precision.",
+                "Plates leaving the window—hands on deck now!",
+                "Check the oven temp, timers running!",
+            ]
+            for idx, c in enumerate(characters):
+                diag_map[c.name] = cook_lines[min(idx, len(cook_lines) - 1)]
         elif is_samurai:
-            diag_a = "Our paths meet at dusk. Draw your steel."
-            diag_b = "The wind favors neither blade today."
+            samurai_lines = [
+                "Our paths meet at dusk. Draw your steel.",
+                "The wind favors neither blade today.",
+                "Honor guides the edge of truth.",
+                "Stand ready.",
+            ]
+            for idx, c in enumerate(characters):
+                diag_map[c.name] = samurai_lines[min(idx, len(samurai_lines) - 1)]
         else:
-            diag_a = "We came here to make history, not excuses."
-            diag_b = "Then let's show them what real mastery looks like!"
+            default_lines = [
+                "We came here to make history, not excuses.",
+                "Then let's show them what real mastery looks like!",
+                "Nothing stands in our way today.",
+                "All in, no looking back.",
+            ]
+            for idx, c in enumerate(characters):
+                diag_map[c.name] = default_lines[min(idx, len(default_lines) - 1)]
 
         if enable_safety_sanitization:
-            diag_a = sanitize_real_names(diag_a)
-            diag_b = sanitize_real_names(diag_b)
+            for k in diag_map:
+                line = diag_map[k]
+                for idx, c in enumerate(characters):
+                    if (c.reference_url or c.name.lower() in KNOWN_VAULT_PROFILES) and c.name:
+                        line = line.replace(c.name, f"__VCHAR_{idx}__")
+                line = sanitize_real_names(line)
+                for idx, c in enumerate(characters):
+                    if (c.reference_url or c.name.lower() in KNOWN_VAULT_PROFILES) and c.name:
+                        line = line.replace(f"__VCHAR_{idx}__", c.name)
+                diag_map[k] = line
             if dialogue_direction:
                 dialogue_direction = sanitize_real_names(dialogue_direction)
 
@@ -956,25 +1020,82 @@ class IntentAutoFiller:
         )
 
         # 7. Choreograph 10-second continuous shot screenplay script
-        screenplay_script = (
-            f"[0-3s] Action: {char_a.name} ({char_a.role_id}) steps into frame in {environment}, "
-            f"initiating action with focused intensity.{direction_acting_note} Audio: {audio_beat} build-up {sound_effects}. "
-            f'Dialogue: {char_a.name}: "{diag_a}"\n'
-            f"[3-6s] Action: Camera glides smoothly in a continuous tracking shot toward {char_b.name} ({char_b.role_id}), "
-            f"who confronts {char_a.name} with commanding presence.{direction_acting_note} Audio: {audio_beat} beat drop. "
-            f'Dialogue: {char_b.name}: "{diag_b}"\n'
-            f"[6-10s] Action: Both performers lock into a high-energy dynamic tableau as lighting pulses, "
-            f"holding continuous dramatic tension as the shot concludes. Audio: {audio_beat} crescendo. "
-            f'Dialogue: Both: "We run this domain!"'
-        )
+        num_chars = len(characters)
+        if num_chars == 1:
+            c0 = characters[0]
+            d0 = diag_map[c0.name]
+            screenplay_script = (
+                f"[0-4s] Action: {c0.name} ({c0.role_id}) commands the frame in {environment}, "
+                f"moving with purposeful intensity.{direction_acting_note} Audio: {audio_beat} build-up {sound_effects}. "
+                f'Dialogue: {c0.name}: "{d0}"\n'
+                f"[4-7s] Action: Camera glides smoothly in a continuous tracking shot around {c0.name} ({c0.role_id}), "
+                f"highlighting commanding presence and environment details. Audio: {audio_beat} beat drop.\n"
+                f"[7-10s] Action: {c0.name} ({c0.role_id}) holds a decisive dynamic pose as lighting pulses, "
+                f"holding continuous dramatic tension as the shot concludes. Audio: {audio_beat} crescendo."
+            )
+        elif num_chars == 2:
+            c0, c1 = characters[0], characters[1]
+            d0, d1 = diag_map[c0.name], diag_map[c1.name]
+            screenplay_script = (
+                f"[0-3s] Action: {c0.name} ({c0.role_id}) steps into frame in {environment}, "
+                f"initiating action with focused intensity.{direction_acting_note} Audio: {audio_beat} build-up {sound_effects}. "
+                f'Dialogue: {c0.name}: "{d0}"\n'
+                f"[3-6s] Action: Camera glides smoothly in a continuous tracking shot toward {c1.name} ({c1.role_id}), "
+                f"who confronts {c0.name} with commanding presence.{direction_acting_note} Audio: {audio_beat} beat drop. "
+                f'Dialogue: {c1.name}: "{d1}"\n'
+                f"[6-10s] Action: Both performers lock into a high-energy dynamic tableau as lighting pulses, "
+                f"holding continuous dramatic tension as the shot concludes. Audio: {audio_beat} crescendo. "
+                f'Dialogue: Both: "We run this domain!"'
+            )
+        elif num_chars == 3:
+            c0, c1, c2 = characters[0], characters[1], characters[2]
+            d0, d1, d2 = diag_map[c0.name], diag_map[c1.name], diag_map[c2.name]
+            screenplay_script = (
+                f"[0-3s] Action: {c0.name} ({c0.role_id}) takes center focus in {environment}, "
+                f"gesturing with energy alongside {c1.name} ({c1.role_id}) and {c2.name} ({c2.role_id}).{direction_acting_note} "
+                f"Audio: {audio_beat} build-up {sound_effects}. "
+                f'Dialogue: {c0.name}: "{d0}"\n'
+                f"[3-6s] Action: Camera pans smoothly across to {c1.name} ({c1.role_id}), "
+                f"who reacts with calm confidence while {c2.name} ({c2.role_id}) observes with commanding authority.{direction_acting_note} "
+                f"Audio: {audio_beat} beat drop. "
+                f'Dialogue: {c1.name}: "{d1}"\n'
+                f"[6-10s] Action: Camera pulls back to reveal all three performers ({c0.name}, {c1.name}, and {c2.name}) "
+                f"framed together in a powerful unified composition, exuding collective mastery as the shot concludes. "
+                f"Audio: {audio_beat} crescendo. "
+                f'Dialogue: {c2.name}: "{d2}"'
+            )
+        else:
+            c0, c1, c2, c3 = characters[0], characters[1], characters[2], characters[3]
+            d0, d1, d2, d3 = (
+                diag_map[c0.name],
+                diag_map[c1.name],
+                diag_map[c2.name],
+                diag_map[c3.name],
+            )
+            screenplay_script = (
+                f"[0-3s] Action: {c0.name} ({c0.role_id}) and {c1.name} ({c1.role_id}) initiate the scene in {environment}, "
+                f"flanked by {c2.name} ({c2.role_id}) and {c3.name} ({c3.role_id}).{direction_acting_note} "
+                f"Audio: {audio_beat} build-up {sound_effects}. "
+                f'Dialogue: {c0.name}: "{d0}"\n'
+                f"[3-6s] Action: Camera tracks dynamically to {c1.name} ({c1.role_id}) and {c2.name} ({c2.role_id}), "
+                f"capturing their sharp interplay while {c3.name} coordinates in the background.{direction_acting_note} "
+                f"Audio: {audio_beat} beat drop. "
+                f'Dialogue: {c1.name}: "{d1}"\n'
+                f"[6-10s] Action: All four performers ({c0.name}, {c1.name}, {c2.name}, and {c3.name}) "
+                f"lock into an imposing ensemble tableau under dramatic pulsing lighting as the shot concludes. "
+                f"Audio: {audio_beat} crescendo. "
+                f'Dialogue: {c2.name}: "{d2}" / {c3.name}: "{d3}"'
+            )
 
         # 8. Deconstructed Scene Model
+        all_char_names = ", ".join(c.name for c in characters)
+        dialogue_summary = " / ".join(f'{c.name}: "{diag_map[c.name]}"' for c in characters)
         scenes = [
             DeconstructedSceneModel(
                 scene_number=1,
-                active_roles=[c.role_id for c in characters[:3]],
-                action=f"{char_a.name} and {char_b.name} engage in a continuous dramatic encounter in {environment}.{direction_acting_note}",
-                dialogue=f'{char_a.name}: "{diag_a}" / {char_b.name}: "{diag_b}"',
+                active_roles=[c.role_id for c in characters[:4]],
+                action=f"{all_char_names} engage in a continuous dramatic encounter in {environment}.{direction_acting_note}",
+                dialogue=dialogue_summary,
                 audio_cues=audio_beat,
                 timecode="0-10s",
                 duration_seconds=10.0,
@@ -982,12 +1103,28 @@ class IntentAutoFiller:
         ]
 
         # 9. Keyframe Image Prompt
+        if len(characters) == 1:
+            chars_str = characters[0].name
+        elif len(characters) == 2:
+            chars_str = f"{characters[0].name} and {characters[1].name}"
+        else:
+            chars_str = f"{', '.join(c.name for c in characters[:-1])}, and {characters[-1].name}"
         keyframe_image_prompt = (
-            f"Cinematic keyframe shot of {char_a.name} and {char_b.name} in {environment}. "
+            f"Cinematic keyframe shot of {chars_str} in {environment}. "
             f"{style_tone}, 8k resolution, highly detailed, dramatic rim lighting, award-winning cinematography."
         )
         if enable_safety_sanitization:
+            for idx, c in enumerate(characters):
+                if (c.reference_url or c.name.lower() in KNOWN_VAULT_PROFILES) and c.name:
+                    keyframe_image_prompt = keyframe_image_prompt.replace(
+                        c.name, f"__VCHAR_{idx}__"
+                    )
             keyframe_image_prompt = sanitize_real_names(keyframe_image_prompt)
+            for idx, c in enumerate(characters):
+                if (c.reference_url or c.name.lower() in KNOWN_VAULT_PROFILES) and c.name:
+                    keyframe_image_prompt = keyframe_image_prompt.replace(
+                        f"__VCHAR_{idx}__", c.name
+                    )
 
         # 10. Canonical 4-Block Gemini Omni Flash Prompt
         raw_compiled_prompt = self._compile_canonical_four_block_prompt(
@@ -1132,6 +1269,125 @@ class IntentAutoFiller:
             else f"{name}, a formidable counterpart with sharp instincts and dynamic presence."
         )
 
+    def _synthesize_multicharacter_dialogue(
+        self,
+        characters: list[CharacterRoleModel],
+        raw_intent: str,
+        environment: str,
+        dialogue_direction: str,
+        is_wizard: bool,
+        is_cyberpunk: bool,
+        is_cooking: bool,
+        is_samurai: bool,
+    ) -> dict[str, str]:
+        """Synthesizes in-character spoken lines for all characters guided by dialogue_direction."""
+        if not self.mock_mode and self._genai_client is not None:
+            try:
+                char_desc_lines = "\n".join(
+                    f"Character {idx + 1} ({c.name}, {c.voice_style}): {c.description}"
+                    for idx, c in enumerate(characters)
+                )
+                format_lines = "\n".join(
+                    f"LINE_{idx + 1}: <line for {c.name}>" for idx, c in enumerate(characters)
+                )
+                prompt = (
+                    f"You are a film dialogue writer for a 10-second continuous shot.\n"
+                    f"Premise: {raw_intent}\n"
+                    f"Environment: {environment}\n"
+                    f"{char_desc_lines}\n"
+                    f"Dialogue Direction / Guidance: {dialogue_direction}\n\n"
+                    f"Write exactly {len(characters)} short, punchy spoken dialogue lines (max 15 words each) "
+                    f"following the Dialogue Direction above.\n"
+                    f"Format strictly as:\n"
+                    f"{format_lines}"
+                )
+                resp = self._genai_client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                )
+                text = getattr(resp, "text", "") or ""
+                parsed: dict[str, str] = {}
+                for idx, c in enumerate(characters):
+                    m = re.search(rf"LINE_{idx + 1}:\s*(.+)", text)
+                    if m:
+                        val = m.group(1).strip().strip('"').strip("'")
+                        if val:
+                            parsed[c.name] = val
+                if len(parsed) == len(characters):
+                    return parsed
+            except Exception as exc:
+                logger.warning("Multicharacter guided dialogue LLM synthesis fallback: %s", exc)
+
+        dir_lower = dialogue_direction.lower()
+        intent_lower = raw_intent.lower()
+
+        if any(
+            w in dir_lower or w in intent_lower
+            for w in ("audit", "ledger", "galleon", "vault", "corporate")
+        ):
+            cues = [
+                "The quarterly vault ledger is immaculate, fam—every stack is accounted for.",
+                "Light work, Headmaster. Tell the elves to double the count before closing.",
+                "Double-checked and verified—all gold sealed in the deep vault!",
+                "The registers balance to the single galleon, sir!",
+            ]
+        elif any(w in dir_lower for w in ("rhyme", "rhyming", "rap", "diss", "couplet", "bars")):
+            cues = [
+                "My bars hit harder than arcane thunder, watch your whole strategy fall asunder!",
+                "Talk is cheap when the crown is mine, I've been running this stage since the start of time!",
+                "Stacking verses like enchanted stone, neither of you takes this throne!",
+                "Beat drops heavy, rhythm stays true, nobody matches what we do!",
+            ]
+        elif any(w in dir_lower for w in ("sarcastic", "deadpan", "dry", "unfazed", "banter")):
+            cues = [
+                "Oh brilliant, another catastrophic emergency right before our lunch break.",
+                "Relax, I've seen worse on a Tuesday—just press the override and look confident.",
+                "I'd look confident if either of you had any idea what you're doing.",
+                "Fabulous teamwork as always, gentlemen.",
+            ]
+        elif is_wizard:
+            cues = [
+                "Every spell in the grimoire bows to precision—watch how a master works the room.",
+                "Calm energy, bruv. The magic speaks for itself without raising a voice.",
+                "Gentlemen, the ancient standards of this house remain supreme.",
+                "Enchantments holding steady across the perimeter.",
+            ]
+        elif is_cyberpunk:
+            cues = [
+                "Firewall's breached on Sector 9—keep your optics locked on the main terminal.",
+                "Already inside the sub-grid. Grab the drive and let's ghost.",
+                "Telemetry stream confirmed clean—grab the drive before the trace locks.",
+                "Perimeter drone dispatched, extraction window clear.",
+            ]
+        elif is_cooking:
+            cues = [
+                "That reduction needs thirty more seconds of heat—perfection is in the timing!",
+                "Plate's already resting, Chef. One taste and the judges are ours.",
+                "Garnish positioned, pass is moving now—table four ready!",
+                "Flawless execution on the line tonight!",
+            ]
+        elif is_samurai:
+            cues = [
+                "Steel remembers every promise spoken under these bamboo shadows.",
+                "Then let one strike settle the debt between us.",
+                "The wind carries our ancestors' judgment.",
+                "Blades drawn, fate decided.",
+            ]
+        else:
+            c0_name = characters[0].name if characters else "Leader"
+            c1_name = characters[1].name if len(characters) > 1 else "Partner"
+            cues = [
+                f"Focus up, {c1_name}—everything we planned comes down to this next move.",
+                f"Say less, {c0_name}. I was born ready for this moment.",
+                "Then let's take control and finish what we started.",
+                "All positions locked, execute on my signal!",
+            ]
+
+        res_dict: dict[str, str] = {}
+        for idx, c in enumerate(characters):
+            res_dict[c.name] = cues[min(idx, len(cues) - 1)]
+        return res_dict
+
     def _synthesize_guided_dialogue(
         self,
         raw_intent: str,
@@ -1145,81 +1401,17 @@ class IntentAutoFiller:
         is_samurai: bool,
     ) -> tuple[str, str]:
         """Synthesizes two in-character spoken lines guided by the user's dialogue_direction."""
-        if not self.mock_mode and self._genai_client is not None:
-            try:
-                prompt = (
-                    "You are a film dialogue writer for a 10-second continuous shot.\n"
-                    f"Premise: {raw_intent}\n"
-                    f"Environment: {environment}\n"
-                    f"Character 1 ({char_a.name}, {char_a.voice_style}): {char_a.description}\n"
-                    f"Character 2 ({char_b.name}, {char_b.voice_style}): {char_b.description}\n"
-                    f"Dialogue Direction / Guidance: {dialogue_direction}\n\n"
-                    "Write exactly two short, punchy spoken dialogue lines (max 15 words each) "
-                    "following the Dialogue Direction above.\n"
-                    "Format strictly as:\n"
-                    "LINE_A: <line for Character 1>\n"
-                    "LINE_B: <line for Character 2>"
-                )
-                resp = self._genai_client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt,
-                )
-                text = getattr(resp, "text", "") or ""
-                line_a_match = re.search(r"LINE_A:\s*(.+)", text)
-                line_b_match = re.search(r"LINE_B:\s*(.+)", text)
-                if line_a_match and line_b_match:
-                    la = line_a_match.group(1).strip().strip('"').strip("'")
-                    lb = line_b_match.group(1).strip().strip('"').strip("'")
-                    if la and lb:
-                        return la, lb
-            except Exception as exc:
-                logger.warning("Guided dialogue LLM synthesis fallback: %s", exc)
-
-        dir_lower = dialogue_direction.lower()
-        intent_lower = raw_intent.lower()
-
-        if any(
-            w in dir_lower or w in intent_lower
-            for w in ("audit", "ledger", "galleon", "vault", "corporate")
-        ):
-            return (
-                "The quarterly vault ledger is immaculate, fam—every stack is accounted for.",
-                "Light work, Headmaster. Tell the elves to double the count before closing.",
-            )
-        if any(w in dir_lower for w in ("rhyme", "rhyming", "rap", "diss", "couplet", "bars")):
-            return (
-                "My bars hit harder than arcane thunder, watch your whole strategy fall asunder!",
-                "Talk is cheap when the crown is mine, I've been running this stage since the start of time!",
-            )
-        if any(w in dir_lower for w in ("sarcastic", "deadpan", "dry", "unfazed", "banter")):
-            return (
-                "Oh brilliant, another catastrophic emergency right before our lunch break.",
-                "Relax, I've seen worse on a Tuesday—just press the override and look confident.",
-            )
-        if is_wizard:
-            return (
-                "Every spell in the grimoire bows to precision—watch how a master works the room.",
-                "Calm energy, bruv. The magic speaks for itself without raising a voice.",
-            )
-        if is_cyberpunk:
-            return (
-                "Firewall's breached on Sector 9—keep your optics locked on the main terminal.",
-                "Already inside the sub-grid. Grab the drive and let's ghost.",
-            )
-        if is_cooking:
-            return (
-                "That reduction needs thirty more seconds of heat—perfection is in the timing!",
-                "Plate's already resting, Chef. One taste and the judges are ours.",
-            )
-        if is_samurai:
-            return (
-                "Steel remembers every promise spoken under these bamboo shadows.",
-                "Then let one strike settle the debt between us.",
-            )
-        return (
-            f"Focus up, {char_b.name}—everything we planned comes down to this next move.",
-            f"Say less, {char_a.name}. I was born ready for this moment.",
+        res_map = self._synthesize_multicharacter_dialogue(
+            characters=[char_a, char_b],
+            raw_intent=raw_intent,
+            environment=environment,
+            dialogue_direction=dialogue_direction,
+            is_wizard=is_wizard,
+            is_cyberpunk=is_cyberpunk,
+            is_cooking=is_cooking,
+            is_samurai=is_samurai,
         )
+        return res_map.get(char_a.name, ""), res_map.get(char_b.name, "")
 
     def _compile_canonical_four_block_prompt(
         self,
@@ -1288,7 +1480,7 @@ class IntentAutoFiller:
             # Preserve explicit Vault character names with placeholders during sanitization
             vault_placeholders: list[tuple[str, str]] = []
             for idx, char in enumerate(characters):
-                if char.reference_url and char.name:
+                if (char.reference_url or char.name.lower() in KNOWN_VAULT_PROFILES) and char.name:
                     token = f"__VAULT_CHAR_{idx}__"
                     vault_placeholders.append((token, char.name))
                     full_prompt = full_prompt.replace(char.name, token)
