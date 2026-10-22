@@ -2854,3 +2854,50 @@ def test_ui_html_contains_shareable_video_link_controls() -> None:
     assert "Copy Embed Code" in UI_HTML
     assert "Get Shareable Link (7 Days)" in UI_HTML
 
+
+def test_ui_html_contains_mode4_directors_copilot_workspace() -> None:
+    """Verify UI_HTML contains Mode 4 Director's Co-Pilot studio, intent inputs, auto-filler, and ubiquitous contextual assist."""
+    from omnimash.api.app import UI_HTML
+
+    # 1. Mode Switcher & Header
+    assert "Mode 4: Director's Co-Pilot" in UI_HTML
+    assert "Zero-Friction Intent Target" in UI_HTML
+
+    # 2. Intent Intake Card & Actions
+    assert "intent-input" in UI_HTML
+    assert "Ask Me Questions (Clarify Gaps)" in UI_HTML
+    assert "Surprise Me (Auto-Fill Gaps Cohesively)" in UI_HTML
+
+    # 3. API Endpoints
+    assert "/api/intent/analyze-gaps" in UI_HTML
+    assert "/api/intent/auto-fill" in UI_HTML
+    assert "/api/intent/render-direct" in UI_HTML
+
+    # 4. Clarification Flow & Promotion
+    assert "Directorial Clarification" in UI_HTML
+    assert "Direct & Render 10s Video Now" in UI_HTML
+    assert "Open in Mode 1 (Guided Fine-Tune)" in UI_HTML
+    assert "Open in Mode 2 (Screenplay Storyboard)" in UI_HTML
+    assert "Open in Mode 3 (Continuity Studio)" in UI_HTML
+
+    # 5. Screening Room & Share
+    assert "Mode 4 Screening Room (Direct Render)" in UI_HTML
+    assert 'handleOpenShareModal(mode4VideoUrl, "mode4_intent_cut")' in UI_HTML
+
+    # 6. Ubiquitous Contextual Assist Modal & Buttons
+    assert "modal-title-intent-assist" in UI_HTML
+    assert "handleOpenIntentAssist" in UI_HTML
+    assert "handleApplyIntentAssistToTarget" in UI_HTML
+    assert "Co-Pilot Gap Filler" in UI_HTML
+    assert "Co-Pilot Script & Shot Generator" in UI_HTML
+    assert "Co-Pilot Master Setup" in UI_HTML
+
+    # 7. AST Layout Position verification: Mode 4 is placed strictly after Mode 1
+    mode1_start = UI_HTML.find(
+        '{studioMode === "stages" && activeTab !== "journey3" && (', UI_HTML.find("<main")
+    )
+    mode4_start = UI_HTML.find(
+        '{studioMode === "intent" && activeTab !== "journey3" && (', UI_HTML.find("<main")
+    )
+    assert mode1_start != -1 and mode4_start != -1
+    assert mode1_start < mode4_start
