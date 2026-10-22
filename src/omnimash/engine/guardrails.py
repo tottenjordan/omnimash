@@ -451,9 +451,5 @@ def _get_relaxed_interaction_safety_settings() -> list[dict[str, str]]:
         {"type": "sexually_explicit", "threshold": "block_none"},
         {"type": "dangerous_content", "threshold": "block_none"},
         {"type": "civic_integrity", "threshold": "block_none"},
-        {"type": "image_harassment", "threshold": "block_none"},
-        {"type": "image_hate", "threshold": "block_none"},
-        {"type": "image_sexually_explicit", "threshold": "block_none"},
-        {"type": "image_dangerous_content", "threshold": "block_none"},
         {"type": "jailbreak", "threshold": "off"},
     ]

@@ -566,6 +566,16 @@ class OmniFlashClient:
                     self.switch_to_developer_api()
                     if kwargs.get("model") == "gemini-omni-1.1-flash-preview":
                         kwargs["model"] = "gemini-omni-1.1-flash"
+                elif (
+                    "safety_settings" in exc_str
+                    or "unmarshaller" in exc_str.lower()
+                    or "validationerror" in exc_str.lower()
+                ):
+                    logger.warning(
+                        "Interactions API parameter error (%s). Removing unsupported safety_settings kwarg and retrying.",
+                        exc_str,
+                    )
+                    kwargs.pop("safety_settings", None)
                 elif any(
                     k in exc_str.lower()
                     for k in (
@@ -619,16 +629,6 @@ class OmniFlashClient:
                         ]
                     else:
                         kwargs["input"] = fallback_prompt
-                elif (
-                    "safety_settings" in exc_str
-                    or "Unmarshaller" in exc_str
-                    or "ValidationError" in exc_str
-                ):
-                    logger.warning(
-                        "Interactions API parameter error (%s). Removing unsupported safety_settings kwarg and retrying.",
-                        exc_str,
-                    )
-                    kwargs.pop("safety_settings", None)
                 elif "429" in exc_str or "ResourceExhausted" in exc_str:
                     logger.warning(
                         "Retry attempt %d/%d after rate limit error (%s). Backoff delay: %.2fs",

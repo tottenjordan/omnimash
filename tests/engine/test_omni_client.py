@@ -501,10 +501,20 @@ def test_get_relaxed_safety_settings_fallback(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_get_relaxed_interaction_safety_settings() -> None:
-    """Verify _get_relaxed_interaction_safety_settings returns 10 settings formatted for interactions.create."""
+    """Verify _get_relaxed_interaction_safety_settings returns 6 platform-compatible settings formatted for interactions.create."""
     settings = _get_relaxed_interaction_safety_settings()
     assert settings is not None
-    assert len(settings) == 10
+    assert len(settings) == 6
+    expected_types = {
+        "harassment",
+        "hate_speech",
+        "sexually_explicit",
+        "dangerous_content",
+        "civic_integrity",
+        "jailbreak",
+    }
+    found_types = {s["type"] for s in settings}
+    assert found_types == expected_types
     for s in settings:
         assert "type" in s
         assert "threshold" in s
@@ -540,7 +550,7 @@ def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
     call_kwargs = mock_interactions.create.call_args.kwargs
     assert call_kwargs["model"] == "gemini-omni-1.1-flash"
     assert "safety_settings" in call_kwargs
-    assert len(call_kwargs["safety_settings"]) == 10
+    assert len(call_kwargs["safety_settings"]) == 6
 
 
 def test_load_reference_images_as_input_returns_base64_objects() -> None:
@@ -1097,7 +1107,44 @@ def test_generate_live_omni_flash_video_includes_safety_settings(tmp_path: Any) 
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
     assert "safety_settings" in call_kwargs
-    assert len(call_kwargs["safety_settings"]) == 10
+    assert len(call_kwargs["safety_settings"]) == 6
+
+
+def test_generate_with_retry_removes_safety_settings_on_parameter_error(tmp_path: Any) -> None:
+    """Verify that _generate_with_retry strips safety_settings and succeeds if interactions.create rejects safety_settings with a 400 error."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_video_data").decode("utf-8")
+    mock_output_video = MagicMock(data=fake_video_bytes)
+
+    # First call fails with a 400 invalid parameter error referencing safety_settings
+    # Second call succeeds
+    error_400 = Exception(
+        "Error code: 400 - {'error': {'message': \"The value 'image_dangerous_content' is not supported for 'safety_settings[8].type'.\", 'code': 'invalid_request'}}"
+    )
+    mock_interactions.create.side_effect = [
+        error_400,
+        MagicMock(id="inter_recovered_123", output_video=mock_output_video),
+    ]
+
+    mock_genai_client = MagicMock()
+    mock_genai_client.interactions = mock_interactions
+    client._genai_client = mock_genai_client
+
+    target_file = str(tmp_path / "test_recovered.mp4")
+    success, inter_id, error = client._generate_live_omni_flash_video(
+        prompt="A magical wizard rap duel", target_rel_path=target_file
+    )
+
+    assert success is True
+    assert inter_id == "inter_recovered_123"
+    assert error is None
+    assert mock_interactions.create.call_count == 2
+    # Verify second call had safety_settings stripped
+    second_call_kwargs = mock_interactions.create.call_args_list[1].kwargs
+    assert "safety_settings" not in second_call_kwargs
 
 
 def test_abstract_prompt_handles_parody_names() -> None:
