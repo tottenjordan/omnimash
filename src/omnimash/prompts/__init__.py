@@ -17,8 +17,12 @@ from omnimash.prompts.models import (
     DeconstructedCharacterSchema,
     DeconstructedConceptSchema,
     MetaPromptTags,
+    PreFlightLintResult,
+    PreFlightViolation,
 )
 from omnimash.prompts.parody import sanitize_real_names
+from omnimash.prompts.preflight_linter import PreFlightGatekeeper
+
 from omnimash.prompts.screenplay import (
     parse_directors_notes,
     parse_screenplay_script,
@@ -41,6 +45,9 @@ __all__ = [
     "DeconstructedCharacterSchema",
     "DeconstructedConceptSchema",
     "MetaPromptTags",
+    "PreFlightGatekeeper",
+    "PreFlightLintResult",
+    "PreFlightViolation",
     "PromptCompiler",
     "PromptOptimizer",
     "PromptTaxonomyEngine",

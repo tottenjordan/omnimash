@@ -238,6 +238,22 @@ class DeconstructedConceptSchema(BaseModel):
     )
 
 
+class PreFlightViolation(BaseModel):
+    rule_id: str
+    category: str
+    description: str
+    repaired: bool = True
+    original_snippet: str = ""
+    repaired_snippet: str = ""
+
+
+class PreFlightLintResult(BaseModel):
+    is_valid: bool
+    repaired_prompt: str
+    violations: list[PreFlightViolation] = Field(default_factory=list)
+    invariants_applied: list[str] = Field(default_factory=list)
+
+
 __all__ = [
     "CompiledDeltaPrompt",
     "CompiledPromptParts",
@@ -245,5 +261,7 @@ __all__ = [
     "DeconstructedConceptSchema",
     "DeconstructedSceneSchema",
     "MetaPromptTags",
+    "PreFlightLintResult",
+    "PreFlightViolation",
     "SceneDirective",
 ]
