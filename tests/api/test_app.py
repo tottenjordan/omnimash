@@ -596,7 +596,7 @@ def test_generate_shot_keyframe_seed_offsets_prompt_indexes():
     assert data["success"] is True
     compiled = data.get("raw_compiled_prompt", "")
     assert "<FIRST_FRAME>@KeyframeSeed" in compiled
-    assert "<IMAGE_REF_0>@Image1" in compiled
+    assert "<IMAGE_REF_0>@Image2" in compiled
 
 
 def test_ui_html_contains_storyboard_library_controls():
@@ -1186,8 +1186,8 @@ def test_journey3_clean_names_and_in_text_image_tag_replacement():
     data = res.json()
     assert data["success"] is True
     compiled = data.get("raw_compiled_prompt", "")
-    assert "- Role A: (Reference Image: @Image1" in compiled
-    assert "Swagrid Tha Plug (@Image1) glides out of the forest" in compiled
+    assert "- Role A: (Reference Image: @Image2" in compiled
+    assert "Swagrid Tha Plug (@Image2) glides out of the forest" in compiled
 
 
 def test_journey3_keyframe_excluded_character_reference_url_filtering(monkeypatch):
@@ -2157,14 +2157,14 @@ def test_journey3_compiler_4block_alignment_and_stateful_4k_upscale_endpoint() -
 
     assert "### INPUT ROLES & REFERENCES" in block1_part
     assert "[# Sources <FIRST_FRAME>@KeyframeSeed]" in block1_part
-    assert "[# References <IMAGE_REF_0>@Image1]" in block1_part
+    assert "[# References <IMAGE_REF_0>@Image2]" in block1_part
     assert "[Wardrobe: Emerald Velvet Cloak]" in block1_part
     assert "[# Sources" not in block2_part
     assert "[# References" not in block2_part
     assert "Young wizard with glasses and cloak" not in block2_part
     assert "Emerald Velvet Cloak" not in block2_part
     assert "Cyberpunk Neon" not in block2_part
-    assert "(Reference Image: @Image1" in block2_part
+    assert "(Reference Image: @Image2" in block2_part
     assert "instrumental 808 synth trap beat" in block3_part
     assert (
         "Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible."
@@ -2943,3 +2943,37 @@ def test_ui_html_ai_critic_diagnosis_card_and_patch_controls() -> None:
     assert "Audio-Visual Harmony" in UI_HTML
     assert "Tag & Index Integrity" in UI_HTML or "Tag &amp; Index Integrity" in UI_HTML
     assert "Approve &amp; Re-Render Clip" in UI_HTML or "Approve & Re-Render Clip" in UI_HTML
+
+
+def test_ui_html_preflight_invariant_badges() -> None:
+    """Verify UI_HTML contains the Pre-Flight Passed badges on compiled prompt previews."""
+    from omnimash.api.app import UI_HTML
+
+    assert "Pre-Flight Passed" in UI_HTML
+    assert "✅" in UI_HTML
+
+
+def test_ui_html_save_5star_exemplar_control() -> None:
+    """Verify Act 3 Screening Room renders the 1-click Save as 5-Star Exemplar button when rated 5 stars."""
+    from omnimash.api.app import UI_HTML
+
+    assert "btn-save-exemplar" in UI_HTML
+    assert "Save as 5-Star Exemplar" in UI_HTML
+    assert "handleSave5StarExemplar" in UI_HTML
+    assert "/api/eval/exemplars" in UI_HTML
+
+
+def test_ui_html_directorial_memory_modal_and_controls() -> None:
+    """Verify UI_HTML contains Directorial Memory button, modal dialog, and rule induction & pruning triggers."""
+    from omnimash.api.app import UI_HTML
+
+    assert "btn-open-directorial-memory" in UI_HTML
+    assert "Directorial Memory" in UI_HTML
+    assert "modal-title-directorial-memory" in UI_HTML
+    assert "btn-modal-induce-rules" in UI_HTML
+    assert "btn-modal-prune-rules" in UI_HTML
+    assert "/api/eval/induce-rules" in UI_HTML
+    assert "/api/eval/rules/prune" in UI_HTML
+    assert "/api/eval/rules" in UI_HTML
+    assert "5-Star Exemplar Memory Bank" in UI_HTML
+    assert "Active Strategy Bank Invariants" in UI_HTML

@@ -11,6 +11,7 @@ from omnimash.prompts.image_tags import (
     replace_character_in_text_image_tags,
 )
 from omnimash.prompts.parody import sanitize_real_names
+from omnimash.prompts.preflight_linter import PreFlightGatekeeper
 from omnimash.prompts.voice import (
     apply_conversational_voice_edits,
     ensure_character_voice_style,
@@ -84,6 +85,7 @@ def compile_journey3_shot_prompt(
     last_frame_image_url: str | None = None,
     keyframe_image_url: str | None = None,
     is_seamless_loop: bool = False,
+    enable_preflight: bool = True,
 ) -> str:
     """Compiles 4-block prompt for Journey 3 shot generation adhering to GEMINI_OMNI_FLASH_INSTR.
 
@@ -96,8 +98,8 @@ def compile_journey3_shot_prompt(
     if is_seamless_loop and keyframe_image_url and keyframe_image_url.strip():
         last_frame_image_url = keyframe_image_url.strip()
 
+    char_list: list[Any] = list(characters) if characters is not None else []
     if last_frame_image_url and last_frame_image_url.strip():
-        char_list: list[Any] = list(characters) if characters is not None else []
         has_last = any(
             (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", ""))
             in ("Ending Frame", "Keyframe Last Anchor")
@@ -545,6 +547,18 @@ def compile_journey3_shot_prompt(
     block4 = f"### TIMELINE\n{timeline_content}"
 
     res = f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
+    if enable_preflight:
+        lint_res = PreFlightGatekeeper.lint_and_repair(
+            res,
+            characters=char_list,
+            keyframe_image_url=keyframe_image_url,
+            last_frame_image_url=last_frame_image_url,
+            is_seamless_loop=is_seamless_loop,
+            has_dialogue=bool(timeline_dialogue and timeline_dialogue.strip()),
+        )
+        validate_compiled_prompt(lint_res.repaired_prompt)
+        return lint_res.repaired_prompt
+
     validate_compiled_prompt(res)
     return res
 

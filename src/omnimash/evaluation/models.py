@@ -90,4 +90,10 @@ class ExemplarPromptRecord(BaseModel):
     compiled_4block_prompt: str
     scorecard: VideoEvaluationScorecard | None = None
     user_rating: int = Field(default=5, ge=1, le=5)
+    project_id: str | None = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    @property
+    def prompt(self) -> str:
+        """Alias property returning the compiled 4-block prompt."""
+        return self.compiled_4block_prompt

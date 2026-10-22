@@ -1060,6 +1060,15 @@
             const [isSubmittingReview, setIsSubmittingReview] = useState(false);
             const [showPromptDiff, setShowPromptDiff] = useState(false);
 
+            // DOMA Phase 3 & 4 Directorial Memory & Exemplar State
+            const [showDirectorialMemoryModal, setShowDirectorialMemoryModal] = useState(false);
+            const [strategyRules, setStrategyRules] = useState([]);
+            const [exemplarsList, setExemplarsList] = useState([]);
+            const [isInducingRules, setIsInducingRules] = useState(false);
+            const [isPruningRules, setIsPruningRules] = useState(false);
+            const [isSavingExemplar, setIsSavingExemplar] = useState(false);
+            const [isLoadingMemory, setIsLoadingMemory] = useState(false);
+
             const REAL_NAME_MAP = [
                 [/\bGordon Ramsay\b/gi, "Fiery Chef Blood"],
                 [/\bJulia Child\b/gi, "Classic Chef Fam"],
@@ -3586,6 +3595,119 @@
                 );
             };
 
+            // DOMA Phase 3 & 4 Directorial Memory Handlers
+            const fetchStrategyRules = async () => {
+                setIsLoadingMemory(true);
+                try {
+                    const pid = activeProject ? `?project_id=${encodeURIComponent(activeProject)}` : "";
+                    const res = await fetch(`/api/eval/rules${pid}`);
+                    const data = await res.json();
+                    if (res.ok && data.rules) {
+                        setStrategyRules(data.rules);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch strategy rules:", err);
+                } finally {
+                    setIsLoadingMemory(false);
+                }
+            };
+
+            const fetchExemplars = async () => {
+                try {
+                    const pid = activeProject ? `?project_id=${encodeURIComponent(activeProject)}` : "";
+                    const res = await fetch(`/api/eval/exemplars${pid}`);
+                    const data = await res.json();
+                    if (res.ok && Array.isArray(data)) {
+                        setExemplarsList(data);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch exemplars:", err);
+                }
+            };
+
+            const handleInduceRules = async () => {
+                setIsInducingRules(true);
+                try {
+                    const payload = {
+                        project_id: activeProject || null,
+                        min_defect_count: 2
+                    };
+                    const res = await fetch("/api/eval/induce-rules", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.status === "success") {
+                        addToast(`⚡ Induced ${data.count} new directorial invariants from feedback history!`, "success");
+                        fetchStrategyRules();
+                    } else {
+                        addToast("Failed to induce rules: " + (data.detail || "Error"), "error");
+                    }
+                } catch (err) {
+                    addToast("Rule induction error: " + err.message, "error");
+                } finally {
+                    setIsInducingRules(false);
+                }
+            };
+
+            const handlePruneRules = async () => {
+                setIsPruningRules(true);
+                try {
+                    const payload = {
+                        project_id: activeProject || null,
+                        max_rules: 20
+                    };
+                    const res = await fetch("/api/eval/rules/prune", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.status === "success") {
+                        addToast("✂️ Pareto optimal pruning applied! Redundant rules removed.", "success");
+                        fetchStrategyRules();
+                    } else {
+                        addToast("Failed to prune rules: " + (data.detail || "Error"), "error");
+                    }
+                } catch (err) {
+                    addToast("Rule pruning error: " + err.message, "error");
+                } finally {
+                    setIsPruningRules(false);
+                }
+            };
+
+            const handleSave5StarExemplar = async () => {
+                setIsSavingExemplar(true);
+                try {
+                    const activePrompt = rawCompiledPrompt || (j3ShotCards && j3ShotCards[0] ? compileJourney3ShotPromptPreview(j3ShotCards[0]) : "Directorial Master Scene");
+                    const payload = {
+                        session_id: sessionName || "default_session",
+                        concept: concept || "Directorial Master Scene",
+                        compiled_prompt: activePrompt,
+                        user_rating: 5,
+                        style_preset: "cinematic",
+                        project_id: activeProject || null
+                    };
+                    const res = await fetch("/api/eval/exemplars", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.exemplar_id) {
+                        addToast("🌟 Shot saved to 5-Star Exemplar Memory Bank for few-shot prompt injection!", "success");
+                        fetchExemplars();
+                    } else {
+                        addToast("Failed to save exemplar: " + (data.detail || "Error"), "error");
+                    }
+                } catch (err) {
+                    addToast("Exemplar save error: " + err.message, "error");
+                } finally {
+                    setIsSavingExemplar(false);
+                }
+            };
+
             const handleStage1GenerateKeyframeAnchor = async () => {
                 if (keyframeLoadingMap[1]) return null;
                 const shot0 = (stageShots && stageShots[0]) ? stageShots[0] : { shot_index: 1, duration_seconds: 10.0 };
@@ -5109,6 +5231,187 @@
                         </div>
                     )}
 
+                    {/* Directorial Memory & Strategy Invariants Modal */}
+                    {showDirectorialMemoryModal && (
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="modal-title-directorial-memory"
+                            className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4"
+                        >
+                            <div className="bg-gray-900 border-2 border-indigo-500/80 rounded-2xl max-w-4xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+                                <div className="flex items-center justify-between pb-4 border-b border-gray-800">
+                                    <div className="flex items-center space-x-3">
+                                        <span className="text-2xl">🧠</span>
+                                        <div>
+                                            <h2 id="modal-title-directorial-memory" className="text-base font-bold text-indigo-300">
+                                                Directorial Memory &amp; Strategy Invariants
+                                            </h2>
+                                            <p className="text-xs text-gray-400">
+                                                DOMA Phase 3 &amp; 4 Closed-Loop Meta-Optimizer • Project: {activeProject || "default_project"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDirectorialMemoryModal(false)}
+                                        className="text-gray-400 hover:text-white text-sm px-2.5 py-1 rounded bg-gray-800"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                <div className="overflow-y-auto custom-scrollbar flex-1 py-4 space-y-6">
+                                    {/* Section 1: Active Invariant Rules */}
+                                    <div className="space-y-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <span>🛡️</span>
+                                                    <span>Active Strategy Bank Invariants ({strategyRules.length})</span>
+                                                </h3>
+                                                <p className="text-[11px] text-gray-400">
+                                                    Rules automatically injected into Turn-0 compilation and verified by Pre-Flight Gatekeeper.
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    id="btn-modal-induce-rules"
+                                                    disabled={isInducingRules}
+                                                    onClick={handleInduceRules}
+                                                    className="bg-purple-900/80 hover:bg-purple-800 border border-purple-600 text-purple-200 text-xs font-bold py-1.5 px-3 rounded-lg shadow transition disabled:opacity-50 flex items-center gap-1"
+                                                >
+                                                    <span>⚡</span>
+                                                    <span>{isInducingRules ? "Inducing..." : "Induce Rules"}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    id="btn-modal-prune-rules"
+                                                    disabled={isPruningRules}
+                                                    onClick={handlePruneRules}
+                                                    className="bg-amber-950/80 hover:bg-amber-900 border border-amber-600 text-amber-200 text-xs font-bold py-1.5 px-3 rounded-lg shadow transition disabled:opacity-50 flex items-center gap-1"
+                                                >
+                                                    <span>✂️</span>
+                                                    <span>{isPruningRules ? "Pruning..." : "Pareto Prune"}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={fetchStrategyRules}
+                                                    className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold py-1.5 px-2.5 rounded-lg transition"
+                                                >
+                                                    🔄 Refresh
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {isLoadingMemory ? (
+                                            <div className="text-center py-6 text-xs text-gray-400">
+                                                ⏳ Loading Strategy Bank invariants...
+                                            </div>
+                                        ) : strategyRules.length === 0 ? (
+                                            <div className="bg-gray-950 border border-gray-800 rounded-xl p-4 text-center text-xs text-gray-400">
+                                                No custom rules induced yet. Record director critiques or click &quot;Induce Rules&quot; to synthesize invariants.
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                                                {strategyRules.map((rule) => (
+                                                    <div
+                                                        key={rule.rule_id}
+                                                        className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1.5 text-xs"
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="bg-amber-950 text-amber-300 border border-amber-800 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold">
+                                                                    {rule.rule_id}
+                                                                </span>
+                                                                <span className="text-[11px] font-bold text-purple-300">
+                                                                    [{rule.category}]
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[11px] font-mono text-gray-400">
+                                                                Confidence: {Math.round((rule.confidence_score || 0) * 100)}%
+                                                            </span>
+                                                        </div>
+                                                        <div className="font-mono text-gray-200 text-[11px]">
+                                                            {rule.invariant_directive}
+                                                        </div>
+                                                        <div className="text-[11px] text-gray-400">
+                                                            Trigger: <span className="text-gray-300">{rule.trigger_pattern}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Section 2: 5-Star Exemplar Memory Bank */}
+                                    <div className="space-y-3 pt-4 border-t border-gray-800">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <h3 className="text-xs font-bold text-yellow-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <span>🌟</span>
+                                                    <span>5-Star Exemplar Memory Bank ({exemplarsList.length})</span>
+                                                </h3>
+                                                <p className="text-[11px] text-gray-400">
+                                                    Verified directorial master prompts used for few-shot prompt injection.
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={fetchExemplars}
+                                                className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold py-1.5 px-2.5 rounded-lg transition"
+                                            >
+                                                🔄 Refresh Exemplars
+                                            </button>
+                                        </div>
+
+                                        {exemplarsList.length === 0 ? (
+                                            <div className="bg-gray-950 border border-gray-800 rounded-xl p-4 text-center text-xs text-gray-400">
+                                                No exemplars saved yet. Rate any successful shot 5 stars in Act 3 and click &quot;Save as 5-Star Exemplar&quot;.
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                                                {exemplarsList.map((ex) => (
+                                                    <div
+                                                        key={ex.exemplar_id}
+                                                        className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-1.5 text-xs"
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-yellow-400 font-bold">★★★★★</span>
+                                                                <span className="font-bold text-white text-xs">{ex.concept || "Master Scene"}</span>
+                                                                <span className="bg-indigo-950 text-indigo-300 border border-indigo-800 px-1.5 py-0.5 rounded text-[11px] font-mono">
+                                                                    {ex.style_preset || "cinematic"}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[11px] font-mono text-gray-400">
+                                                                {ex.exemplar_id}
+                                                            </span>
+                                                        </div>
+                                                        <div className="bg-black/60 p-2 rounded border border-gray-900 font-mono text-[11px] text-gray-300 max-h-20 overflow-y-auto whitespace-pre-wrap">
+                                                            {ex.compiled_4block_prompt || ex.prompt || ""}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-gray-800 flex items-center justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDirectorialMemoryModal(false)}
+                                        className="px-4 py-2 text-xs font-medium text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition"
+                                    >
+                                        ✕ Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Top Application Header & Toolbar */}
                     <header className="border-b border-gray-800 bg-gray-900/95 backdrop-blur sticky top-0 z-40 px-6 py-3 flex flex-wrap items-center justify-between gap-4">
                         <div className="flex items-center space-x-4">
@@ -5289,6 +5592,24 @@
                                         + New Session
                                     </button>
                                 </div>
+
+                                <div className="h-4 w-px bg-gray-800" />
+
+                                {/* Tier 3: Directorial Memory Modal Trigger */}
+                                <button
+                                    type="button"
+                                    id="btn-open-directorial-memory"
+                                    onClick={() => {
+                                        setShowDirectorialMemoryModal(true);
+                                        fetchStrategyRules();
+                                        fetchExemplars();
+                                    }}
+                                    className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700 text-indigo-200 text-xs font-semibold px-2.5 py-1 rounded transition flex items-center gap-1.5 shadow-sm"
+                                    title="Open Directorial Memory Bank (Strategy Invariants & 5-Star Exemplars)"
+                                >
+                                    <span>🧠</span>
+                                    <span>Directorial Memory</span>
+                                </button>
                             </div>
 
                         </div>
@@ -6082,18 +6403,24 @@
                                                         <span>📋</span>
                                                         <span>Anchor &amp; Inject Storyboard Prompt Preview</span>
                                                     </h3>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const preview = compileStoryboardPreview();
-                                                            if (navigator.clipboard) navigator.clipboard.writeText(preview);
-                                                            setCopied(true);
-                                                            setTimeout(() => setCopied(false), 2000);
-                                                        }}
-                                                        className="text-xs bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded hover:bg-purple-900"
-                                                    >
-                                                        {copied ? "✓ Copied!" : "📋 Copy Prompt"}
-                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[11px] bg-green-950 text-green-300 px-2 py-0.5 rounded border border-green-800 font-mono flex items-center gap-1 shadow-sm">
+                                                            <span>✅</span>
+                                                            <span>Pre-Flight Passed</span>
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const preview = compileStoryboardPreview();
+                                                                if (navigator.clipboard) navigator.clipboard.writeText(preview);
+                                                                setCopied(true);
+                                                                setTimeout(() => setCopied(false), 2000);
+                                                            }}
+                                                            className="text-xs bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded hover:bg-purple-900"
+                                                        >
+                                                            {copied ? "✓ Copied!" : "📋 Copy Prompt"}
+                                                        </button>
+                                                    </div>
                                                 </div>
 
                                                 <pre className="bg-gray-950 border border-gray-800 rounded-xl p-3 text-[11px] text-gray-300 font-mono whitespace-pre-wrap max-h-[420px] overflow-y-auto custom-scrollbar leading-relaxed">
@@ -6403,6 +6730,19 @@
                                                     <span>⭐</span>
                                                     <span>{isSubmittingReview ? "Submitting..." : "Submit Review"}</span>
                                                 </button>
+                                                {directorRating === 5 && (
+                                                    <button
+                                                        type="button"
+                                                        id="btn-save-exemplar"
+                                                        disabled={isSavingExemplar}
+                                                        onClick={handleSave5StarExemplar}
+                                                        className="bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-gray-950 font-bold text-xs py-3 px-4 rounded-xl shadow flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                                                        title="Save this 5-star shot into Exemplar Memory Bank for few-shot prompt injection"
+                                                    >
+                                                        <span>🌟</span>
+                                                        <span>{isSavingExemplar ? "Saving..." : "Save as 5-Star Exemplar"}</span>
+                                                    </button>
+                                                )}
                                                 <button
                                                     type="button"
                                                     id="btn-diagnose-shot"
@@ -10902,9 +11242,15 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                             <span>📝</span>
                                                             <span>Final Video Generation Prompt (Live 4-Block Compiler)</span>
                                                         </label>
-                                                        <span className="text-xs bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800 font-mono">
-                                                            Live Payload Output
-                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[11px] bg-green-950 text-green-300 px-2 py-0.5 rounded border border-green-800 font-mono flex items-center gap-1 shadow-sm">
+                                                                <span>✅</span>
+                                                                <span>Pre-Flight Passed</span>
+                                                            </span>
+                                                            <span className="text-xs bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800 font-mono">
+                                                                Live Payload Output
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                     <textarea
                                                         rows={7}

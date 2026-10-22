@@ -55,6 +55,8 @@ class TurnNode(BaseModel):
     edit_depth_in_thread: int = 0
     is_committed: bool = False
     base_video_anchor_url: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    preflight_violations: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ClipSegment(BaseModel):
@@ -214,6 +216,8 @@ class SessionManager:
         is_checkpoint: bool = False,
         base_video_anchor_url: str | None = None,
         turn_index: int | None = None,
+        metadata: dict[str, Any] | None = None,
+        preflight_violations: list[Any] | None = None,
     ) -> TurnNode:
         session: ProjectSession | None = None
         turn: TurnNode | None = None
@@ -259,6 +263,23 @@ class SessionManager:
                 session._last_allocated_turn_index, effective_turn_idx
             )
 
+            clean_violations: list[dict[str, Any]] = []
+            for v in preflight_violations or []:
+                if hasattr(v, "model_dump"):
+                    clean_violations.append(v.model_dump())
+                elif isinstance(v, dict):
+                    clean_violations.append(v)
+                elif hasattr(v, "__dataclass_fields__"):
+                    from dataclasses import asdict
+
+                    clean_violations.append(asdict(v))
+                else:
+                    clean_violations.append({"violation": str(v)})
+
+            turn_metadata = dict(metadata or {})
+            if clean_violations and "preflight_violations" not in turn_metadata:
+                turn_metadata["preflight_violations"] = clean_violations
+
             turn = TurnNode(
                 parent_turn_id=valid_parent,
                 turn_index=effective_turn_idx,
@@ -269,6 +290,8 @@ class SessionManager:
                 edit_depth_in_thread=depth,
                 is_committed=is_checkpoint,
                 base_video_anchor_url=base_video_anchor_url,
+                metadata=turn_metadata,
+                preflight_violations=clean_violations,
             )
             session.turns[turn.turn_id] = turn
 

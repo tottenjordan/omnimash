@@ -9,7 +9,9 @@ from omnimash.evaluation.models import (
     UserFeedbackRecord,
     VideoEvaluationScorecard,
 )
+from omnimash.evaluation.exemplar_bank import ExemplarBankManager
 from omnimash.evaluation.prompt_refiner import PromptRefiner, PromptRefinementResult
+from omnimash.evaluation.rule_inducer import DirectorialRuleInducer
 from omnimash.evaluation.strategy_bank import StrategyBankManager
 from omnimash.evaluation.video_critic import VideoCriticAgent
 
@@ -17,6 +19,8 @@ __all__ = [
     "DefectCategory",
     "DimensionScore",
     "DirectorialInvariantRule",
+    "DirectorialRuleInducer",
+    "ExemplarBankManager",
     "ExemplarPromptRecord",
     "PromptRefiner",
     "PromptRefinementResult",

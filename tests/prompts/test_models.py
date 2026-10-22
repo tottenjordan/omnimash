@@ -97,3 +97,29 @@ def test_compiled_prompt_parts_acoustic_progression():
     assert "Audio: Seamless acoustic progression from prior ambient audio." in full
     assert "instrumental" not in full
     assert "Sound design:" not in full
+
+
+def test_preflight_models():
+    """Verify PreFlightViolation and PreFlightLintResult model instantiation and validation."""
+    from omnimash.prompts.models import PreFlightLintResult, PreFlightViolation
+
+    violation = PreFlightViolation(
+        rule_id="TAG_COLLISION",
+        category="tagging",
+        description="Collision found",
+        repaired=True,
+        original_snippet="<IMAGE_REF_0> <IMAGE_REF_1>",
+        repaired_snippet="<IMAGE_REF_0>",
+    )
+    assert violation.rule_id == "TAG_COLLISION"
+    assert violation.repaired is True
+
+    result = PreFlightLintResult(
+        is_valid=False,
+        repaired_prompt="Clean prompt",
+        violations=[violation],
+        invariants_applied=["TAG_COLLISION"],
+    )
+    assert result.is_valid is False
+    assert len(result.violations) == 1
+    assert result.invariants_applied == ["TAG_COLLISION"]

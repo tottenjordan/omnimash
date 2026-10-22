@@ -45,6 +45,7 @@ def _guess_content_type(path_or_filename: str, default: str = "application/octet
 
 if TYPE_CHECKING:
     from google.cloud import storage
+    from omnimash.evaluation.models import ExemplarPromptRecord
     from omnimash.ingestion.media_extractor import ReferenceAnalysisReport
 
 try:
@@ -85,8 +86,10 @@ class GcsStorageManager:
         self._mock_project_reference_sheets: dict[str, list[dict[str, Any]]] = {}
         self._mock_shares: dict[str, dict[str, Any]] = {}
         self._mock_feedbacks: dict[str, dict[str, Any]] = {}
+        self._mock_feedback = self._mock_feedbacks
         self._mock_scorecards: dict[str, dict[str, Any]] = {}
         self._mock_strategy_banks: dict[str, dict[str, Any]] = {}
+        self._mock_exemplars: dict[str, dict[str, Any]] = {}
 
     @property
     def timeout(self) -> float:
@@ -1890,6 +1893,229 @@ class GcsStorageManager:
             mock_cache_dict=self._mock_strategy_banks,
             mock_cache_key=key,
         )
+
+    def save_exemplar(
+        self,
+        exemplar: ExemplarPromptRecord | dict[str, Any] | Any,
+        project_id: str | None = None,
+    ) -> str:
+        """Saves ExemplarPromptRecord to GCS or in-memory mock cache.
+
+        Path: projects/{project_id}/exemplars/{exemplar.exemplar_id}.json if project_id else
+        meta/exemplars/{exemplar.exemplar_id}.json.
+        Returns the GCS URI (gs://bucket/path).
+        """
+        if hasattr(exemplar, "model_dump"):
+            payload = getattr(exemplar, "model_dump")(mode="json")
+        elif isinstance(exemplar, dict):
+            payload = dict(exemplar)
+        else:
+            payload = {}
+
+        exemplar_id = payload.get("exemplar_id") or getattr(exemplar, "exemplar_id", None)
+        if not exemplar_id:
+            exemplar_id = f"ex_{uuid.uuid4().hex[:12]}"
+            payload["exemplar_id"] = exemplar_id
+            if isinstance(exemplar, dict):
+                exemplar["exemplar_id"] = exemplar_id
+            elif hasattr(exemplar, "exemplar_id"):
+                try:
+                    setattr(exemplar, "exemplar_id", exemplar_id)
+                except Exception:
+                    pass
+
+        effective_project = (
+            project_id
+            if project_id is not None
+            else (payload.get("project_id") or getattr(exemplar, "project_id", None))
+        )
+        if effective_project:
+            payload["project_id"] = effective_project
+            blob_path = f"projects/{effective_project}/exemplars/{exemplar_id}.json"
+            composite_key = f"{effective_project}/{exemplar_id}"
+        else:
+            payload["project_id"] = None
+            blob_path = f"meta/exemplars/{exemplar_id}.json"
+            composite_key = exemplar_id
+
+        _, gcs_uri = self._upload_json_payload(
+            blob_path,
+            payload,
+            mock_cache_dict=self._mock_exemplars,
+            mock_cache_key=composite_key,
+        )
+        return gcs_uri
+
+    def get_exemplar(
+        self,
+        exemplar_id: str,
+        project_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Retrieves ExemplarPromptRecord dict by ID and optional project scope."""
+        composite_key = f"{project_id}/{exemplar_id}" if project_id else exemplar_id
+        if composite_key in self._mock_exemplars:
+            return dict(self._mock_exemplars[composite_key])
+
+        if not self.mock_mode and self._bucket:
+            blob_path = (
+                f"projects/{project_id}/exemplars/{exemplar_id}.json"
+                if project_id
+                else f"meta/exemplars/{exemplar_id}.json"
+            )
+            return self._download_json_payload(
+                blob_path,
+                mock_cache_dict=self._mock_exemplars,
+                mock_cache_key=composite_key,
+            )
+
+        return None
+
+    def list_exemplars(
+        self,
+        project_id: str | None = None,
+        style_preset: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Lists exemplars for a project or global scope, optionally filtered by style_preset."""
+        results: list[dict[str, Any]] = []
+        gcs_succeeded = False
+
+        if not self.mock_mode and self._bucket:
+            try:
+                prefix = f"projects/{project_id}/exemplars/" if project_id else "meta/exemplars/"
+                blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
+                json_blobs = [b for b in blobs if getattr(b, "name", "").endswith(".json")]
+                downloaded = self._download_blobs_concurrently(json_blobs)
+                for data in downloaded:
+                    eid = data.get("exemplar_id")
+                    if eid:
+                        k = f"{project_id}/{eid}" if project_id else eid
+                        self._mock_exemplars[k] = data
+                        results.append(data)
+                gcs_succeeded = True
+            except Exception as exc:
+                logger.warning("list_exemplars failed against GCS: %s", exc)
+
+        if not gcs_succeeded:
+            for key, data in self._mock_exemplars.items():
+                if project_id:
+                    if key.startswith(f"{project_id}/") or data.get("project_id") == project_id:
+                        results.append(dict(data))
+                else:
+                    if "/" not in key and data.get("project_id") is None:
+                        results.append(dict(data))
+
+        seen_ids: set[str] = set()
+        deduped: list[dict[str, Any]] = []
+        for r in results:
+            eid = r.get("exemplar_id")
+            if eid and eid not in seen_ids:
+                seen_ids.add(eid)
+                deduped.append(r)
+            elif not eid:
+                deduped.append(r)
+
+        if style_preset and style_preset.strip():
+            target = style_preset.strip().lower()
+            return [r for r in deduped if str(r.get("style_preset", "")).strip().lower() == target]
+
+        return deduped
+
+    def list_feedback_records(
+        self,
+        project_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Lists historical UserFeedbackRecord dictionaries for rule induction."""
+        results: list[dict[str, Any]] = []
+        gcs_succeeded = False
+
+        if not self.mock_mode and self._bucket:
+            try:
+                prefixes = (
+                    [f"projects/{project_id}/sessions/"]
+                    if project_id
+                    else ["sessions/", "projects/"]
+                )
+                json_blobs = []
+                for pfx in prefixes:
+                    blobs = self._bucket.list_blobs(prefix=pfx, timeout=self.timeout)
+                    json_blobs.extend(
+                        b for b in blobs if getattr(b, "name", "").endswith("/feedback.json")
+                    )
+                downloaded = self._download_blobs_concurrently(json_blobs)
+                for data in downloaded:
+                    results.append(data)
+                gcs_succeeded = True
+            except Exception as exc:
+                logger.warning("list_feedback_records failed against GCS: %s", exc)
+
+        if not gcs_succeeded:
+            source = getattr(self, "_mock_feedback", None) or self._mock_feedbacks
+            for key, data in source.items():
+                if project_id:
+                    if key.startswith(f"{project_id}/") or data.get("project_id") == project_id:
+                        results.append(dict(data))
+                else:
+                    results.append(dict(data))
+
+        seen_ids: set[str] = set()
+        deduped: list[dict[str, Any]] = []
+        for r in results:
+            fid = r.get("feedback_id") or f"{r.get('session_id')}_{r.get('turn_id')}"
+            if fid not in seen_ids:
+                seen_ids.add(fid)
+                deduped.append(r)
+
+        return deduped[: max(0, limit)]
+
+    def list_scorecards(
+        self,
+        project_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Lists historical VideoEvaluationScorecard dictionaries."""
+        results: list[dict[str, Any]] = []
+        gcs_succeeded = False
+
+        if not self.mock_mode and self._bucket:
+            try:
+                prefixes = (
+                    [f"projects/{project_id}/sessions/"]
+                    if project_id
+                    else ["sessions/", "projects/"]
+                )
+                json_blobs = []
+                for pfx in prefixes:
+                    blobs = self._bucket.list_blobs(prefix=pfx, timeout=self.timeout)
+                    json_blobs.extend(
+                        b
+                        for b in blobs
+                        if getattr(b, "name", "").endswith("/evaluation_scorecard.json")
+                    )
+                downloaded = self._download_blobs_concurrently(json_blobs)
+                for data in downloaded:
+                    results.append(data)
+                gcs_succeeded = True
+            except Exception as exc:
+                logger.warning("list_scorecards failed against GCS: %s", exc)
+
+        if not gcs_succeeded:
+            for key, data in self._mock_scorecards.items():
+                if project_id:
+                    if key.startswith(f"{project_id}/") or data.get("project_id") == project_id:
+                        results.append(dict(data))
+                else:
+                    results.append(dict(data))
+
+        seen_ids: set[str] = set()
+        deduped: list[dict[str, Any]] = []
+        for r in results:
+            eid = r.get("evaluation_id") or f"{r.get('session_id')}_{r.get('turn_id')}"
+            if eid not in seen_ids:
+                seen_ids.add(eid)
+                deduped.append(r)
+
+        return deduped[: max(0, limit)]
 
 
 # Backward compatibility alias for GcsStorageManager
