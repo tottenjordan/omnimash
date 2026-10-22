@@ -26,6 +26,19 @@ except ImportError:
     genai: Any = None
 
 
+def _is_placeholder_image_url(url: str | None) -> bool:
+    """Returns True if the URL is empty or a dummy placeholder token rather than a real image resource."""
+    if not url or not isinstance(url, str):
+        return True
+    u = url.strip().lower()
+    if u in ("keyframeseed", "fresh_seed", "none", "null", "undefined", ""):
+        return True
+    return not (
+        u.startswith(("http://", "https://", "gs://", "data:image/", "data:video/", "/"))
+        or os.path.exists(url)
+    )
+
+
 def load_reference_images_as_input(
     session_id: str | None,
     characters: list[CharacterRole] | None = None,
@@ -183,14 +196,20 @@ def build_multimodal_contents(
                 )
             )
         characters = char_list
+    valid_keyframe_url = (
+        keyframe_image_url.strip()
+        if (keyframe_image_url and not _is_placeholder_image_url(keyframe_image_url))
+        else None
+    )
+
     keyframe_image_parts: list[dict[str, Any]] = []
-    if keyframe_image_url and fetch_image_fn:
-        img_bytes, mime_type = fetch_image_fn(keyframe_image_url)
+    if valid_keyframe_url and fetch_image_fn:
+        img_bytes, mime_type = fetch_image_fn(valid_keyframe_url)
         if img_bytes:
             b64_str = base64.b64encode(img_bytes).decode("utf-8")
             type_key = (
                 "video"
-                if (mime_type.startswith("video/") or keyframe_image_url.lower().endswith(".mp4"))
+                if (mime_type.startswith("video/") or valid_keyframe_url.lower().endswith(".mp4"))
                 else "image"
             )
             keyframe_image_parts.append(
@@ -219,11 +238,15 @@ def build_multimodal_contents(
     is_video_kf = any(
         (getattr(p, "get", lambda k: None)("type") == "video") for p in (keyframe_image_parts or [])
     ) or bool(
-        keyframe_image_url
-        and keyframe_image_url.lower().endswith((".mp4", ".mov", ".webm", ".avi", ".mkv"))
+        valid_keyframe_url
+        and valid_keyframe_url.lower().endswith((".mp4", ".mov", ".webm", ".avi", ".mkv"))
     )
 
-    has_kf_seed = (not is_video_kf) and (bool(keyframe_image_parts) or bool(keyframe_image_url))
+    if fetch_image_fn is not None:
+        has_kf_seed = (not is_video_kf) and bool(keyframe_image_parts)
+    else:
+        has_kf_seed = (not is_video_kf) and bool(valid_keyframe_url)
+
     start_ref_idx = 1
     ref_image_parts, _ = load_reference_images_as_input(
         session_id,
@@ -362,8 +385,13 @@ def build_multimodal_contents(
     ):
         character_roster_header = ""
 
+    if not has_kf_seed:
+        clean_prompt = re.sub(r"<FIRST_FRAME>@KeyframeSeed\b\s*", "", clean_prompt)
+        clean_prompt = re.sub(r"<LAST_FRAME>@KeyframeSeed\b\s*", "", clean_prompt)
+        clean_prompt = re.sub(r"\[#\s*Sources\s*\]\s*\n?", "", clean_prompt)
+
     has_first_frame = (
-        ((bool(keyframe_image_parts) or bool(keyframe_image_url)) and not is_video_kf)
+        has_kf_seed
         or any("<FIRST_FRAME>" in s for s in sources_items)
         or ("<FIRST_FRAME>" in clean_prompt)
         or any(
@@ -373,8 +401,12 @@ def build_multimodal_contents(
         )
     )
 
+    if not has_first_frame:
+        if "Use this image as the starting frame." in clean_prompt:
+            clean_prompt = clean_prompt.replace("Use this image as the starting frame.", "").strip()
+
     has_last_frame = (
-        bool(last_frame_image_url)
+        bool(last_frame_image_url and not _is_placeholder_image_url(last_frame_image_url))
         or any("<LAST_FRAME>" in s for s in sources_items)
         or ("<LAST_FRAME>" in clean_prompt)
         or any(

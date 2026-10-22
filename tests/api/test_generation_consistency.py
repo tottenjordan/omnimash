@@ -298,3 +298,47 @@ def test_generate_shot_endpoint_forces_fresh_turn0_even_with_parent_turn_id():
         assert res2.status_code == 200
         assert spy_turn.call_count == 1
         assert spy_turn.call_args.kwargs.get("parent_turn_id") is None
+
+
+def test_generate_endpoint_with_placeholder_keyframe_seed_strips_first_frame_anchor():
+    """Verify POST /api/generate with keyframe_seed='KeyframeSeed' filters out dummy token,
+    preventing phantom FIRST_FRAME tag and off-by-one character image reference shifts."""
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/generate",
+        json={
+            "session_name": "seed_placeholder_filter_test",
+            "clip_index": 0,
+            "parent_turn_id": None,
+            "concept": "Scene 1 with placeholder keyframe seed string",
+            "keyframe_seed": "KeyframeSeed",
+            "characters": [
+                {
+                    "role_id": "Role A",
+                    "name": "Bee Allison",
+                    "description": "Trap wizard",
+                    "reference_url": "gs://bucket/bee.png",
+                },
+                {
+                    "role_id": "Role B",
+                    "name": "YoTotti",
+                    "description": "Young wizard",
+                    "reference_url": "gs://bucket/yototti.png",
+                },
+            ],
+            "scenes": [
+                {
+                    "scene_number": 1,
+                    "active_roles": ["Role A", "Role B"],
+                    "action": "[0-5s] Role A speaks. [5-10s] Role B responds.",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    # <FIRST_FRAME>@KeyframeSeed must NOT be present when only a dummy placeholder token was provided
+    assert "<FIRST_FRAME>" not in data["raw_compiled_prompt"]

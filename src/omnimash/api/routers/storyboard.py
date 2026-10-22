@@ -35,6 +35,7 @@ from omnimash.api.models import (
     StoryboardMetadataModel,
     StoryboardShotModel,
 )
+from omnimash.engine.multimodal import _is_placeholder_image_url
 from omnimash.prompts.compiler import CharacterRole, SceneDirective, sanitize_real_names
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,8 @@ def generate_shot(req: GenerateShotRequest, agent: AgentDep) -> GenerateShotResp
         else (req.shot_directive or "")
     )
     keyframe_url = req.keyframe_image_url
+    if _is_placeholder_image_url(keyframe_url):
+        keyframe_url = None
 
     (
         action_val,

@@ -28,6 +28,7 @@ from omnimash.api.models import (
     SaveFinalRequest,
     SaveFinalResponse,
 )
+from omnimash.engine.multimodal import _is_placeholder_image_url
 from omnimash.engine.omni_client import parse_guardrail_error_guidance
 from omnimash.prompts.compiler import (
     CharacterRole,
@@ -122,6 +123,8 @@ def generate_video(req: GenerateRequest, request: Request, agent: AgentDep) -> G
     )
     effective_parent_turn_id = req.parent_turn_id if is_edit else None
     effective_keyframe_url = (req.keyframe_image_url or req.keyframe_seed or "").strip() or None
+    if _is_placeholder_image_url(effective_keyframe_url):
+        effective_keyframe_url = None
     compiled_override_val = req.compiled_override
 
     if req.shot_directive or req.scenes:
