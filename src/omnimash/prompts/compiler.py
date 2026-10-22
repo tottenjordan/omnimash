@@ -46,6 +46,7 @@ from omnimash.prompts.screenplay import (
     parse_timecoded_script,
     validate_prompt_input_lengths,
 )
+from omnimash.prompts.preflight_linter import PreFlightGatekeeper
 from omnimash.prompts.voice import (
     apply_conversational_voice_edits,
     enrich_timeline_dialogue_speakers,
@@ -53,6 +54,8 @@ from omnimash.prompts.voice import (
 )
 
 if TYPE_CHECKING:
+    from omnimash.evaluation.exemplar_bank import ExemplarBankManager
+    from omnimash.evaluation.strategy_bank import StrategyBankManager
     from omnimash.prompts.taxonomy import StylePreset
 
 GEMINI_OMNI_FLASH_INSTR: str = """\
@@ -289,12 +292,19 @@ def validate_and_repair_role_bindings(
 
 
 class PromptCompiler:
-    def __init__(self, mock_mode: bool | None = None) -> None:
+    def __init__(
+        self,
+        mock_mode: bool | None = None,
+        strategy_bank: StrategyBankManager | None = None,
+        exemplar_bank: ExemplarBankManager | None = None,
+    ) -> None:
         from omnimash.config import settings
 
         self.mock_mode = (
             mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
+        self.strategy_bank = strategy_bank
+        self.exemplar_bank = exemplar_bank
         self._pro_global_client: Any = None
         self._flash_regional_client: Any = None
         if not self.mock_mode:
@@ -963,6 +973,7 @@ class PromptCompiler:
         aspect_ratio: str = "16:9",
         style_preset: str | None = None,
         is_seamless_loop: bool = False,
+        directorial_invariants: list[str] | None = None,
     ) -> str:
         validate_prompt_input_lengths(concept=concept)
         apply_conversational_voice_edits(concept, characters)
@@ -1154,6 +1165,10 @@ class PromptCompiler:
         scene_inst_parts.append(
             "- Audio Accent & Voice Lock: Maintain strict vocal accent separation between characters. Each character must keep their distinct regional vocal timbre and pronunciation without bleeding into other characters' accents."
         )
+        if directorial_invariants:
+            inv_lines = [f"- {inv.strip()}" for inv in directorial_invariants if inv.strip()]
+            if inv_lines:
+                scene_inst_parts.append("[Directorial Invariants]:\n" + "\n".join(inv_lines))
 
         scene_instructions_str = (
             "\n".join(scene_inst_parts) if scene_inst_parts else "Default Scene Instructions."
@@ -1373,6 +1388,10 @@ class PromptCompiler:
         concept: str,
         characters: list[CharacterRole],
         scenes: list[SceneDirective],
+        strategy_bank: StrategyBankManager | None = None,
+        exemplar_bank: ExemplarBankManager | None = None,
+        project_id: str | None = None,
+        enable_preflight: bool = True,
         **kwargs: Any,
     ) -> str:
         """Compiles a clean Turn-0 storyboard prompt with validated role bindings."""
@@ -1380,6 +1399,10 @@ class PromptCompiler:
             concept=concept,
             characters=characters,
             scenes=scenes,
+            strategy_bank=strategy_bank,
+            exemplar_bank=exemplar_bank,
+            project_id=project_id,
+            enable_preflight=enable_preflight,
             **kwargs,
         )
         return validate_and_repair_role_bindings(compiled, characters)
@@ -1401,6 +1424,11 @@ class PromptCompiler:
         aspect_ratio: str = "16:9",
         style_preset: str | None = None,
         is_seamless_loop: bool = False,
+        strategy_bank: StrategyBankManager | None = None,
+        exemplar_bank: ExemplarBankManager | None = None,
+        project_id: str | None = None,
+        enable_preflight: bool = False,
+        directorial_invariants: list[str] | None = None,
     ) -> str:
         if (
             is_seamless_loop
@@ -1435,6 +1463,32 @@ class PromptCompiler:
                     )
                 )
 
+        active_strategy_bank = (
+            strategy_bank if strategy_bank is not None else getattr(self, "strategy_bank", None)
+        )
+        matched_invariants: list[str] = list(directorial_invariants or [])
+        effective_has_keyframe = has_keyframe_seed or bool(keyframe_image_url)
+
+        if active_strategy_bank is not None:
+            char_names: list[str] = []
+            for c in characters or []:
+                if isinstance(c, dict):
+                    name = c.get("name") or c.get("role_id")
+                else:
+                    name = getattr(c, "name", None) or getattr(c, "role_id", None)
+                if name:
+                    char_names.append(str(name))
+            rules = active_strategy_bank.query_applicable_rules(
+                concept=concept or "",
+                characters=char_names,
+                has_keyframe=effective_has_keyframe,
+                project_id=project_id,
+            )
+            for r in rules:
+                directive = getattr(r, "invariant_directive", str(r))
+                if directive and directive not in matched_invariants:
+                    matched_invariants.append(directive)
+
         base_prompt = self.compile_multi_role_prompt(
             concept=concept,
             characters=characters,
@@ -1449,8 +1503,11 @@ class PromptCompiler:
             aspect_ratio=aspect_ratio,
             style_preset=style_preset,
             is_seamless_loop=is_seamless_loop,
+            directorial_invariants=matched_invariants,
         )
         base_prompt = validate_and_repair_role_bindings(base_prompt, characters)
+
+        full_prompt = base_prompt
         if edit_instruction and edit_instruction.strip():
             clean_instruction = edit_instruction.strip()
             directive_block = (
@@ -1458,8 +1515,59 @@ class PromptCompiler:
                 "- Original Scene Baseline: You must retain 95% of the visual character likeness, setting, camera angle, lighting, dialogue, and soundscape from <FIRST_FRAME>@KeyframeSeed.\n"
                 f'- Required Change: Modify only the following aspect: "{clean_instruction}". Keep all other elements identical.'
             )
-            return f"{base_prompt}\n\n{directive_block}"
-        return base_prompt
+            full_prompt = f"{base_prompt}\n\n{directive_block}"
+
+        if enable_preflight:
+            has_dialogue = False
+            for scene in scenes or []:
+                diag = (
+                    scene.get("dialogue")
+                    if isinstance(scene, dict)
+                    else getattr(scene, "dialogue", None)
+                )
+                sp_text = (
+                    (scene.get("screenplay_text") or scene.get("screenplay_script"))
+                    if isinstance(scene, dict)
+                    else (
+                        getattr(scene, "screenplay_text", None)
+                        or getattr(scene, "screenplay_script", None)
+                    )
+                )
+                narrator = (
+                    scene.get("narrator_text")
+                    if isinstance(scene, dict)
+                    else getattr(scene, "narrator_text", None)
+                )
+                if (
+                    (diag and str(diag).strip())
+                    or (sp_text and str(sp_text).strip())
+                    or (narrator and str(narrator).strip())
+                ):
+                    has_dialogue = True
+                    break
+            if not has_dialogue and characters:
+                if any(getattr(c, "voice_style", None) for c in characters) or (
+                    vocal_delivery and vocal_delivery.strip()
+                ):
+                    has_dialogue = True
+
+            lint_res = PreFlightGatekeeper.lint_and_repair(
+                full_prompt,
+                characters=characters,
+                keyframe_image_url=keyframe_image_url,
+                last_frame_image_url=last_frame_image_url,
+                is_seamless_loop=is_seamless_loop,
+                has_dialogue=has_dialogue,
+            )
+            if lint_res.violations:
+                logger.warning(
+                    "Pre-flight gatekeeper auto-repaired %d violations in compile_storyboard: %s",
+                    len(lint_res.violations),
+                    [v.rule_id for v in lint_res.violations],
+                )
+            full_prompt = lint_res.repaired_prompt
+
+        return full_prompt
 
     def deconstruct_concept(self, concept: str) -> MetaPromptTags:
         """Parses concept using 3-tier deconstructor engine."""

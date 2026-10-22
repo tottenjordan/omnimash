@@ -8,6 +8,7 @@ from google.adk.workflow import START, JoinNode, Workflow
 
 from omnimash.config import settings
 from omnimash.prompts.compiler import CharacterRole, GEMINI_OMNI_FLASH_INSTR
+from omnimash.prompts.preflight_linter import PreFlightGatekeeper
 from omnimash.prompts.storyboard_agent import StoryboardShot
 
 DECONSTRUCTOR_DEFAULT_INSTRUCTION = (
@@ -23,8 +24,41 @@ STORYBOARD_COMPILER_DEFAULT_INSTRUCTION = (
     "and style presets to compile precise 4-Block Meta-Prompt video generation prompts "
     "(`### INPUT ROLES & REFERENCES`, `### CHARACTER PROFILES`, `### SCENE INSTRUCTIONS`, `### TIMELINE`) "
     f"optimized for Gemini Omni Flash 1.1 ({settings.omni_model_id}).\n\n"
+    "Enforce DOMA Phase 3 directorial invariants and pre-flight validation via PreFlightGatekeeper: "
+    "1. Tag collision repair: clean stacked <IMAGE_REF_N> tags, eliminate duplicate @Image tokens, and strip unattached phantom tokens.\n"
+    "2. Keyframe offset repair: auto-shift character reference tags from @Image1 to @Image2 (or @Image3 for dual-keyframe / seamless loop) when keyframe seed is provided.\n"
+    "3. Zero Wardrobe Redundancy: scrub conflicting prose wardrobe descriptions for characters with reference sheets to lock visual appearance.\n"
+    "4. Dual-layer audio ducking: enforce instrumental prefix on background score and inject canonical audio ducking clause under spoken dialogue.\n"
+    "5. Spatial staging: enforce screen-left / screen-right staging for multi-character interaction scenes.\n\n"
     f"{GEMINI_OMNI_FLASH_INSTR}"
 )
+
+
+def preflight_lint_and_repair(
+    prompt: str,
+    keyframe_image_url: str | None = None,
+    last_frame_image_url: str | None = None,
+    is_seamless_loop: bool = False,
+    has_dialogue: bool = False,
+) -> dict[str, Any]:
+    """Validates and auto-repairs prompt against DOMA Phase 3 directorial invariants using PreFlightGatekeeper.
+
+    Enforces tag collision repair, keyframe offset adjustments, zero wardrobe redundancy,
+    dual-layer audio ducking, and spatial staging.
+    """
+    res = PreFlightGatekeeper.lint_and_repair(
+        prompt_text=prompt,
+        keyframe_image_url=keyframe_image_url,
+        last_frame_image_url=last_frame_image_url,
+        is_seamless_loop=is_seamless_loop,
+        has_dialogue=has_dialogue,
+    )
+    return {
+        "is_valid": res.is_valid,
+        "repaired_prompt": res.repaired_prompt,
+        "violations": [v.model_dump() for v in res.violations],
+        "invariants_applied": res.invariants_applied,
+    }
 
 
 SHOT_EXECUTION_WORKER_DEFAULT_INSTRUCTION = (
@@ -86,13 +120,14 @@ def create_storyboard_compiler_agent(
     instruction: str | None = None,
     tools: list | None = None,
 ) -> Agent:
-    """Creates a Google ADK Agent for storyboard prompt compilation."""
+    """Creates a Google ADK Agent for storyboard prompt compilation and PreFlightGatekeeper invariant enforcement."""
     effective_instruction = instruction or STORYBOARD_COMPILER_DEFAULT_INSTRUCTION
+    effective_tools = tools if tools is not None else [preflight_lint_and_repair]
     return Agent(
         name=name,
         model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
         instruction=effective_instruction,
-        tools=tools or [],
+        tools=effective_tools,
     )
 
 
@@ -213,12 +248,14 @@ def deconstruct_screenplay_with_adk(
 
 __all__ = [
     "INTENT_CLARIFIER_DEFAULT_INSTRUCTION",
-    "create_script_deconstructor_agent",
-    "create_storyboard_compiler_agent",
-    "create_shot_execution_worker",
-    "create_final_cut_stitcher_agent",
-    "create_intent_clarifier_agent",
+    "STORYBOARD_COMPILER_DEFAULT_INSTRUCTION",
     "build_production_orchestrator",
     "create_adk_agent_tool_pipeline",
+    "create_final_cut_stitcher_agent",
+    "create_intent_clarifier_agent",
+    "create_script_deconstructor_agent",
+    "create_shot_execution_worker",
+    "create_storyboard_compiler_agent",
     "deconstruct_screenplay_with_adk",
+    "preflight_lint_and_repair",
 ]

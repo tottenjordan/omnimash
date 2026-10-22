@@ -3,13 +3,14 @@ import math
 import os
 import re
 import urllib.parse
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from omnimash.config import settings
 from google.adk.agents import Agent
 
 from omnimash.engine.omni_client import OmniFlashClient
+from omnimash.evaluation.strategy_bank import StrategyBankManager
 from omnimash.ingestion.media_extractor import MediaExtractor
 from omnimash.prompts.character_roles import normalize_character_role
 from omnimash.prompts.compiler import (
@@ -18,6 +19,8 @@ from omnimash.prompts.compiler import (
     SceneDirective,
     sanitize_real_names,
 )
+from omnimash.prompts.models import PreFlightViolation
+from omnimash.prompts.preflight_linter import PreFlightGatekeeper
 from omnimash.prompts.storyboard_agent import StoryboardAgent, StoryboardShot
 from omnimash.prompts.taxonomy import PromptTaxonomyEngine
 from omnimash.security.guardrail import ModelArmorGuardrail
@@ -33,6 +36,7 @@ __all__ = [
     "CumulativeStateTracker",
     "Journey3StateTracker",
     "OmniMashAgent",
+    "OmniMashOrchestrator",
     "build_adk_agent",
     "get_root_agent",
     "root_agent",
@@ -51,6 +55,8 @@ class AgentTurnResponse:
     depth: int = 0
     raw_compiled_prompt: str | None = None
     reference_analysis: dict | None = None
+    preflight_violations: list[Any] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _reset_extension_timecode_to_zero(text: str) -> str:
@@ -89,7 +95,11 @@ def _reset_extension_timecode_to_zero(text: str) -> str:
 
 
 class OmniMashAgent:
-    def __init__(self, mock_mode: bool | None = None):
+    def __init__(
+        self,
+        mock_mode: bool | None = None,
+        strategy_bank: StrategyBankManager | None = None,
+    ):
         self.mock_mode = (
             mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
@@ -97,8 +107,12 @@ class OmniMashAgent:
         self.storage = GcsStorageManager(mock_mode=mock_mode)
         self.session_manager = SessionManager(storage=self.storage)
         self.omni_client = OmniFlashClient(mock_mode=mock_mode, storage=self.storage)
+        self.strategy_bank = strategy_bank or StrategyBankManager(
+            storage=self.storage, mock_mode=self.mock_mode
+        )
         self.taxonomy = PromptTaxonomyEngine(mock_mode=mock_mode)
         self.compiler = self.taxonomy.compiler
+        self.compiler.strategy_bank = self.strategy_bank
         self.media_extractor = MediaExtractor(mock_mode=mock_mode, storage=self.storage)
         self.stitcher = VideoStitcher(mock_mode=mock_mode, storage=self.storage)
         self.storyboard_agent = StoryboardAgent(mock_mode=mock_mode)
@@ -304,6 +318,37 @@ class OmniMashAgent:
             user_id, project_id, session_name=session_name
         )
 
+        preflight_violations: list[PreFlightViolation] = []
+
+        if compiled_override and compiled_override.strip():
+            lint_override = PreFlightGatekeeper.lint_and_repair(
+                compiled_override,
+                characters=characters,
+                keyframe_image_url=keyframe_image_url,
+            )
+            if lint_override.violations:
+                preflight_violations.extend(lint_override.violations)
+                logger.warning(
+                    "Pre-flight gatekeeper detected %d violations in compiled_override: %s",
+                    len(lint_override.violations),
+                    [v.rule_id for v in lint_override.violations],
+                )
+
+        if prompt and prompt.strip():
+            lint_prompt = PreFlightGatekeeper.lint_and_repair(
+                prompt,
+                characters=characters,
+                keyframe_image_url=keyframe_image_url,
+            )
+            prompt = lint_prompt.repaired_prompt
+            if lint_prompt.violations:
+                preflight_violations.extend(lint_prompt.violations)
+                logger.warning(
+                    "Pre-flight gatekeeper auto-repaired %d violations in prompt: %s",
+                    len(lint_prompt.violations),
+                    [v.rule_id for v in lint_prompt.violations],
+                )
+
         def _clean(val: str | None) -> str:
             if not val:
                 return ""
@@ -391,6 +436,19 @@ class OmniMashAgent:
                         video_url=proxy_url,
                         gcs_uri=gcs_uri,
                     )
+                violations_dump = [
+                    v.model_dump()
+                    if hasattr(v, "model_dump")
+                    else asdict(v)
+                    if hasattr(v, "__dataclass_fields__")
+                    else v
+                    for v in (
+                        last_resp.preflight_violations
+                        if last_resp and last_resp.preflight_violations
+                        else preflight_violations
+                    )
+                ]
+                turn_meta = {"preflight_violations": violations_dump} if violations_dump else {}
                 return AgentTurnResponse(
                     success=True,
                     status_event="COMPLETED",
@@ -398,6 +456,12 @@ class OmniMashAgent:
                     gcs_uri=gcs_uri,
                     turn_id=last_resp.turn_id if last_resp else None,
                     generation_mode=last_resp.generation_mode if last_resp else "LIVE_OMNI_FLASH",
+                    preflight_violations=(
+                        last_resp.preflight_violations
+                        if last_resp and last_resp.preflight_violations
+                        else preflight_violations
+                    ),
+                    metadata=turn_meta,
                 )
 
         # Step 0: Process reference URL if provided
@@ -415,10 +479,20 @@ class OmniMashAgent:
         input_prompt = prompt or concept or ""
         guard_res = self.guardrail.validate_prompt(input_prompt)
         if not guard_res.is_approved:
+            violations_dump = [
+                v.model_dump()
+                if hasattr(v, "model_dump")
+                else asdict(v)
+                if hasattr(v, "__dataclass_fields__")
+                else v
+                for v in preflight_violations
+            ]
             return AgentTurnResponse(
                 success=False,
                 status_event="GUARDRAIL_BLOCKED",
                 error_message=guard_res.rejection_reason,
+                preflight_violations=preflight_violations,
+                metadata={"preflight_violations": violations_dump} if violations_dump else {},
             )
 
         if guard_res.deidentified and guard_res.sanitized_prompt:
@@ -441,10 +515,20 @@ class OmniMashAgent:
         if is_conversational_edit and (parent_turn or parent_thread_id):
             is_valid, edit_err = self.validate_conversational_edit(guard_res.sanitized_prompt)
             if not is_valid:
+                violations_dump = [
+                    v.model_dump()
+                    if hasattr(v, "model_dump")
+                    else asdict(v)
+                    if hasattr(v, "__dataclass_fields__")
+                    else v
+                    for v in preflight_violations
+                ]
                 return AgentTurnResponse(
                     success=False,
                     status_event="MULTI_CHANGE_REJECTED",
                     error_message=edit_err,
+                    preflight_violations=preflight_violations,
+                    metadata={"preflight_violations": violations_dump} if violations_dump else {},
                 )
             delta_prompt = self.taxonomy.build_delta_prompt(
                 parent_turn.prompt if parent_turn else "",
@@ -692,6 +776,16 @@ class OmniMashAgent:
                 task=effective_task,
             )
 
+        violations_dump = [
+            v.model_dump()
+            if hasattr(v, "model_dump")
+            else asdict(v)
+            if hasattr(v, "__dataclass_fields__")
+            else v
+            for v in preflight_violations
+        ]
+        turn_metadata = {"preflight_violations": violations_dump} if violations_dump else {}
+
         if gen_res.error_message and not gen_res.video_url:
             return AgentTurnResponse(
                 success=False,
@@ -700,6 +794,8 @@ class OmniMashAgent:
                 generation_mode=gen_res.generation_mode,
                 raw_compiled_prompt=raw_compiled_prompt,
                 reference_analysis=reference_analysis,
+                preflight_violations=preflight_violations,
+                metadata=turn_metadata,
             )
         gcs_uri_val = getattr(gen_res, "gcs_uri", None)
         proxy_video_url = self._get_media_proxy_video_url(gcs_uri_val, gen_res.video_url)
@@ -710,6 +806,8 @@ class OmniMashAgent:
             interaction_thread_id=gen_res.interaction_thread_id,
             video_url=proxy_video_url,
             parent_turn_id=parent_turn_id,
+            metadata=turn_metadata,
+            preflight_violations=preflight_violations,
         )
 
         status_event = "COMMIT_RECOMMENDED" if turn_node.edit_depth_in_thread >= 3 else "COMPLETED"
@@ -725,6 +823,8 @@ class OmniMashAgent:
             depth=turn_node.edit_depth_in_thread,
             raw_compiled_prompt=raw_compiled_prompt,
             reference_analysis=reference_analysis,
+            preflight_violations=preflight_violations,
+            metadata=turn_metadata,
         )
 
     def commit_and_branch(
@@ -995,6 +1095,9 @@ class OmniMashAgent:
             aspect_ratio="16:9",
             resolution=resolution,
         )
+
+
+OmniMashOrchestrator = OmniMashAgent
 
 
 def build_adk_agent(

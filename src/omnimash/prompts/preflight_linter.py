@@ -57,6 +57,36 @@ class PreFlightGatekeeper:
 
         def _replace_stacked_tags(match: re.Match[str]) -> str:
             full = match.group(0)
+
+            # Check if match is inside [# References ...] or [# Sources ...]
+            preceding = prompt_text[: match.start()]
+            following = prompt_text[match.end() :]
+            last_open = preceding.rfind("[")
+            last_close = preceding.rfind("]")
+            if last_open > last_close:
+                next_close = following.find("]")
+                if next_close != -1:
+                    bracket_content = prompt_text[last_open : match.end() + next_close + 1]
+                    if re.match(
+                        r"^\[#\s*(?:References|Sources)\b",
+                        bracket_content,
+                        flags=re.IGNORECASE,
+                    ):
+                        parsed_tags = re.findall(
+                            r"<IMAGE_REF_(\d+)>(?:@Image(\d+))?",
+                            full,
+                            flags=re.IGNORECASE,
+                        )
+                        ref_ids = [t[0] for t in parsed_tags]
+                        img_ids = [t[1] for t in parsed_tags if t[1]]
+                        if (
+                            len(parsed_tags) > 1
+                            and len(ref_ids) == len(set(ref_ids))
+                            and len(img_ids) == len(parsed_tags)
+                            and len(img_ids) == len(set(img_ids))
+                        ):
+                            return full
+
             canonical = match.group(1)
             # If canonical lacked @Image but a colliding tag had it, preserve the @Image attachment
             if "@Image" not in canonical:
@@ -606,10 +636,16 @@ class PreFlightGatekeeper:
                 prefix = m.group(1)
                 rest = m.group(2).strip()
 
-                # Check if audio is explicitly silent/muted
+                # Check if audio is explicitly silent/muted or seamless acoustic progression
                 if any(
                     k in rest.lower()
-                    for k in ("silent video", "no background music", "mute", "silent.")
+                    for k in (
+                        "silent video",
+                        "no background music",
+                        "mute",
+                        "silent.",
+                        "seamless acoustic progression",
+                    )
                 ):
                     repaired_lines.append(line)
                     continue
