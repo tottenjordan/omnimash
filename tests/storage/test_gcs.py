@@ -758,3 +758,35 @@ def test_gcs_save_and_get_strategy_bank():
     res_proj = gcs.get_strategy_bank(project_id="proj_alpha")
     assert res_proj is not None
     assert res_proj["rules"][0]["rule_id"] == "RULE-PROJ-01"
+
+
+def test_gcs_feedback_and_scorecard_project_scoping_isolation():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+
+    # 1. Save feedback for project_a
+    fb_a = {"rating": 5, "critique_text": "Project A Feedback"}
+    url_a = gcs.save_feedback("sess_shared", "turn_0", fb_a, project_id="proj_a")
+    assert "projects/proj_a/sessions/sess_shared/turns/turn_0/feedback.json" in url_a
+
+    # Verify project_a gets its feedback
+    ret_a = gcs.get_feedback("sess_shared", "turn_0", project_id="proj_a")
+    assert ret_a is not None
+    assert ret_a["critique_text"] == "Project A Feedback"
+
+    # Verify project_b does NOT leak project_a's feedback
+    ret_b = gcs.get_feedback("sess_shared", "turn_0", project_id="proj_b")
+    assert ret_b is None
+
+    # 2. Save scorecard for project_a
+    sc_a = {"overall_rating": 90.0, "pass_verdict": True}
+    sc_url_a = gcs.save_scorecard("sess_shared", "turn_0", sc_a, project_id="proj_a")
+    assert "projects/proj_a/sessions/sess_shared/turns/turn_0/evaluation_scorecard.json" in sc_url_a
+
+    # Verify project_a gets its scorecard
+    ret_sc_a = gcs.get_scorecard("sess_shared", "turn_0", project_id="proj_a")
+    assert ret_sc_a is not None
+    assert ret_sc_a["overall_rating"] == 90.0
+
+    # Verify project_b does NOT leak project_a's scorecard
+    ret_sc_b = gcs.get_scorecard("sess_shared", "turn_0", project_id="proj_b")
+    assert ret_sc_b is None

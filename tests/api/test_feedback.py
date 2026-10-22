@@ -105,3 +105,75 @@ Blaring techno beat at 140bpm with heavy sub-bass.
     stored_scorecard = client.app.state.agent.storage.get_scorecard("test_session_diag", "turn_0")
     assert stored_scorecard is not None
     assert stored_scorecard["overall_rating"] == data["overall_rating"]
+
+
+def test_feedback_and_diagnose_path_traversal_protection(client: TestClient):
+    traversal_ids = [
+        "../../etc/passwd",
+        "session/../../root",
+        "valid_id\x00extra",
+        "invalid..name",
+        "dir\\traversal",
+    ]
+
+    for bad_id in traversal_ids:
+        # POST /api/feedback with bad session_id
+        res = client.post(
+            "/api/feedback",
+            json={"session_id": bad_id, "turn_id": "turn_0", "rating": 5},
+        )
+        assert res.status_code == 400
+
+        # POST /api/feedback with bad project_id
+        res_proj = client.post(
+            "/api/feedback",
+            json={"session_id": "sess_ok", "turn_id": "turn_0", "project_id": bad_id, "rating": 5},
+        )
+        assert res_proj.status_code == 400
+
+        # GET /api/eval/scorecard with bad project_id
+        res_sc = client.get("/api/eval/scorecard/sess_ok/turn_0", params={"project_id": bad_id})
+        assert res_sc.status_code == 400
+
+        # GET /api/feedback with bad project_id
+        res_fb_proj = client.get("/api/feedback/sess_ok/turn_0", params={"project_id": bad_id})
+        assert res_fb_proj.status_code == 400
+
+        # POST /api/eval/diagnose with bad project_id
+        res_diag = client.post(
+            "/api/eval/diagnose",
+            json={"session_id": "sess_ok", "turn_id": "turn_0", "project_id": bad_id},
+        )
+        assert res_diag.status_code == 400
+
+    # Path parameter invalid ID checks
+    assert client.get("/api/feedback/invalid..name/turn_0").status_code == 400
+    assert client.get("/api/feedback/dir\\traversal/turn_0").status_code == 400
+    assert client.get("/api/eval/scorecard/invalid..name/turn_0").status_code == 400
+
+
+def test_project_scoped_feedback_and_scorecard_api(client: TestClient):
+    # Submit project-scoped feedback
+    res = client.post(
+        "/api/feedback",
+        json={
+            "session_id": "scoped_sess",
+            "turn_id": "turn_0",
+            "project_id": "project_cyber",
+            "rating": 5,
+            "critique_text": "Cyber project looks great!",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["success"] is True
+
+    # Retrieve with matching project_id
+    get_res = client.get("/api/feedback/scoped_sess/turn_0", params={"project_id": "project_cyber"})
+    assert get_res.status_code == 200
+    assert get_res.json()["critique_text"] == "Cyber project looks great!"
+
+    # Retrieve with different project_id should be 404
+    mismatch_res = client.get(
+        "/api/feedback/scoped_sess/turn_0", params={"project_id": "project_other"}
+    )
+    assert mismatch_res.status_code == 404

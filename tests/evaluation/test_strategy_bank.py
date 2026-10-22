@@ -58,3 +58,30 @@ def test_strategy_bank_project_scoping():
     project_bank = manager.get_strategy_bank(project_id="proj_neon")
     assert any(r.rule_id == "RULE-PROJ-CYBER-001" for r in project_bank.rules)
     assert any(r.rule_id == "RULE-AUDIO-001" for r in project_bank.rules)
+
+    # Verify that raw project storage only contains the project-specific rule (no duplicate foundational copies)
+    raw_proj = storage.get_strategy_bank(project_id="proj_neon")
+    assert raw_proj is not None
+    assert len(raw_proj["rules"]) == 1
+    assert raw_proj["rules"][0]["rule_id"] == "RULE-PROJ-CYBER-001"
+
+
+def test_strategy_bank_preload_memory_tool_and_memory_bank_methods():
+    storage = GcsStorageManager(mock_mode=True)
+    manager = StrategyBankManager(
+        storage=storage,
+        agent_engine_id="test_engine_123",
+        mock_mode=True,
+    )
+
+    # PreloadMemoryTool getter
+    tool = manager.get_preload_memory_tool()
+    assert tool is not None
+
+    # Search & generate memories in mock mode
+    results = manager.search_memories(query="directorial pacing")
+    assert isinstance(results, list)
+    assert len(results) == 0  # In mock mode returns empty list safely
+
+    gen_res = manager.generate_memories(session_name="test_sess")
+    assert gen_res is None

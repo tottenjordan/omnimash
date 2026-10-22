@@ -1750,7 +1750,8 @@ class GcsStorageManager:
             mock_cache_dict=self._mock_feedbacks,
             mock_cache_key=key,
         )
-        self._mock_feedbacks[f"{session_id}/{turn_id}"] = payload
+        if not project_id:
+            self._mock_feedbacks[f"{session_id}/{turn_id}"] = payload
         return pub_url
 
     def get_feedback(
@@ -1763,7 +1764,7 @@ class GcsStorageManager:
         key = f"{project_id}/{session_id}/{turn_id}" if project_id else f"{session_id}/{turn_id}"
         if key in self._mock_feedbacks:
             return self._mock_feedbacks[key]
-        if f"{session_id}/{turn_id}" in self._mock_feedbacks:
+        if not project_id and f"{session_id}/{turn_id}" in self._mock_feedbacks:
             return self._mock_feedbacks[f"{session_id}/{turn_id}"]
 
         candidate_paths: list[str] = []
@@ -1771,7 +1772,8 @@ class GcsStorageManager:
             candidate_paths.append(
                 f"projects/{project_id}/sessions/{session_id}/turns/{turn_id}/feedback.json"
             )
-        candidate_paths.append(f"sessions/{session_id}/turns/{turn_id}/feedback.json")
+        else:
+            candidate_paths.append(f"sessions/{session_id}/turns/{turn_id}/feedback.json")
 
         for blob_path in candidate_paths:
             res = self._download_json_payload(
@@ -1780,7 +1782,7 @@ class GcsStorageManager:
                 mock_cache_key=key,
             )
             if res is not None:
-                self._mock_feedbacks[f"{session_id}/{turn_id}"] = res
+                self._mock_feedbacks[key] = res
                 return res
         return None
 
@@ -1809,7 +1811,8 @@ class GcsStorageManager:
             mock_cache_dict=self._mock_scorecards,
             mock_cache_key=key,
         )
-        self._mock_scorecards[f"{session_id}/{turn_id}"] = payload
+        if not project_id:
+            self._mock_scorecards[f"{session_id}/{turn_id}"] = payload
         return pub_url
 
     def get_scorecard(
@@ -1822,7 +1825,7 @@ class GcsStorageManager:
         key = f"{project_id}/{session_id}/{turn_id}" if project_id else f"{session_id}/{turn_id}"
         if key in self._mock_scorecards:
             return self._mock_scorecards[key]
-        if f"{session_id}/{turn_id}" in self._mock_scorecards:
+        if not project_id and f"{session_id}/{turn_id}" in self._mock_scorecards:
             return self._mock_scorecards[f"{session_id}/{turn_id}"]
 
         candidate_paths: list[str] = []
@@ -1830,7 +1833,10 @@ class GcsStorageManager:
             candidate_paths.append(
                 f"projects/{project_id}/sessions/{session_id}/turns/{turn_id}/evaluation_scorecard.json"
             )
-        candidate_paths.append(f"sessions/{session_id}/turns/{turn_id}/evaluation_scorecard.json")
+        else:
+            candidate_paths.append(
+                f"sessions/{session_id}/turns/{turn_id}/evaluation_scorecard.json"
+            )
 
         for blob_path in candidate_paths:
             res = self._download_json_payload(
@@ -1839,7 +1845,7 @@ class GcsStorageManager:
                 mock_cache_key=key,
             )
             if res is not None:
-                self._mock_scorecards[f"{session_id}/{turn_id}"] = res
+                self._mock_scorecards[key] = res
                 return res
         return None
 

@@ -100,4 +100,3 @@ def test_cumulative_state_tracker_delegates_to_session_manager():
     assert len(manifest["turns"]) == 1
     assert "cumulative_state" in manifest
     assert "Chef" in manifest["cumulative_state"]["character_states"]
-

@@ -29,7 +29,9 @@ def test_resolve_static_path_confined(tmp_path):
     static_file = tmp_path / "test.mp4"
     static_file.write_bytes(b"static clip")
 
-    with patch("omnimash.stitching.resolver.validate_local_media_path", return_value=str(static_file)):
+    with patch(
+        "omnimash.stitching.resolver.validate_local_media_path", return_value=str(static_file)
+    ):
         resolved = resolve_media_source_to_local_path(
             "/static/test.mp4",
             temp_dir=str(tmp_path),

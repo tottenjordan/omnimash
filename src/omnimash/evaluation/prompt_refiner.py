@@ -120,24 +120,40 @@ class PromptRefiner:
                         f"### SCREENPLAY\n{ducking_directive}",
                         1,
                     )
+                elif "### TIMELINE" in repaired:
+                    repaired = repaired.replace(
+                        "### TIMELINE",
+                        f"### TIMELINE\n{ducking_directive}",
+                        1,
+                    )
+                elif "### SCENE INSTRUCTIONS" in repaired:
+                    repaired = repaired.replace(
+                        "### SCENE INSTRUCTIONS",
+                        f"### SCENE INSTRUCTIONS\n{ducking_directive}",
+                        1,
+                    )
+                elif "### AUDIO & ATMOSPHERE" in repaired:
+                    repaired = repaired.replace(
+                        "### AUDIO & ATMOSPHERE",
+                        f"### AUDIO & ATMOSPHERE\n{ducking_directive}",
+                        1,
+                    )
                 else:
                     repaired = f"{ducking_directive}\n{repaired}"
-                changes_applied.append(
-                    "Injected -18dB audio ducking directive into screenplay block."
-                )
+                changes_applied.append("Injected -18dB audio ducking directive into prompt.")
 
         # 2. WARDROBE_CONTRADICTION / LIKENESS_DRIFT Repair: Zero Wardrobe Redundancy
         if (
             DefectCategory.WARDROBE_CONTRADICTION in all_defects
             or DefectCategory.LIKENESS_DRIFT in all_defects
         ):
-            # Strip verbose garment clauses like "wearing oversized pink puffer jacket, neon lime swim trunks, and cowboy boots."
+
             def _strip_wardrobe(match: re.Match[str]) -> str:
-                return "wearing signature attire per turnaround sheet."
+                return "wearing signature attire per turnaround sheet"
 
             old_repaired = repaired
             repaired = re.sub(
-                r"wearing\s+[^.\n]+",
+                r"(?:wearing|dressed in|in|attired in)\s+[^.\n,]+",
                 _strip_wardrobe,
                 repaired,
                 flags=re.IGNORECASE,
@@ -146,26 +162,35 @@ class PromptRefiner:
                 changes_applied.append(
                     "Applied Zero Wardrobe Redundancy: stripped contradictory wardrobe descriptions and anchored to reference sheet."
                 )
-            elif "turnaround sheet" not in repaired.lower():
-                # Append lock instruction if not matched
-                if "### CHARACTER PROFILES" in repaired:
-                    repaired = repaired.replace(
-                        "### CHARACTER PROFILES",
-                        "### CHARACTER PROFILES\n[Wardrobe Invariant: Signature attire locked to reference turnaround sheet]",
-                        1,
-                    )
-                    changes_applied.append(
-                        "Added reference turnaround sheet wardrobe lock to character profiles."
-                    )
+            else:
+                # If regex didn't change anything, ensure explicit lock invariant is injected
+                invariant_tag = (
+                    "[Wardrobe Invariant: Signature attire locked to reference turnaround sheet]"
+                )
+                if invariant_tag not in repaired:
+                    if "### CHARACTER PROFILES" in repaired:
+                        repaired = repaired.replace(
+                            "### CHARACTER PROFILES",
+                            f"### CHARACTER PROFILES\n{invariant_tag}",
+                            1,
+                        )
+                        changes_applied.append(
+                            "Added reference turnaround sheet wardrobe lock to character profiles."
+                        )
+                    else:
+                        repaired = f"{invariant_tag}\n{repaired}"
+                        changes_applied.append(
+                            "Injected reference turnaround sheet wardrobe lock invariant."
+                        )
 
-        # 3. TAG_COLLISION Repair: normalize tag collision
+        # 3. TAG_COLLISION Repair: normalize tag collision and inject spatial staging
         if DefectCategory.TAG_COLLISION in all_defects:
+            spatial_directive = "[Spatial Staging: [Role A] frame-left, [Role B] frame-right]"
             if (
                 "[Role A]" in repaired
                 and "[Role B]" not in repaired
                 and ("second character" in repaired or "two characters" in repaired)
             ):
-                # Replace second Role A with Role B
                 parts = repaired.split("[Role A]")
                 if len(parts) > 2:
                     repaired = (
@@ -174,18 +199,63 @@ class PromptRefiner:
                     changes_applied.append(
                         "Resolved tag collision by assigning distinct [Role B] tag."
                     )
+            if spatial_directive not in repaired:
+                if "[0-3s]" in repaired:
+                    repaired = repaired.replace("[0-3s]", f"[0-3s] {spatial_directive}", 1)
+                    changes_applied.append(
+                        "Injected Left/Right spatial screen-staging directive into [0-3s] beat."
+                    )
+                elif "### SCENE INSTRUCTIONS" in repaired:
+                    repaired = repaired.replace(
+                        "### SCENE INSTRUCTIONS",
+                        f"### SCENE INSTRUCTIONS\n{spatial_directive}",
+                        1,
+                    )
+                    changes_applied.append(
+                        "Injected spatial screen-staging directive into scene instructions."
+                    )
 
         # 4. TEMPORAL_BEAT_MISSED Repair: Ensure interval headers exist
         if DefectCategory.TEMPORAL_BEAT_MISSED in all_defects:
-            if "[0-3s]" not in repaired and "### SCREENPLAY" in repaired:
-                repaired = repaired.replace(
-                    "### SCREENPLAY",
-                    "### SCREENPLAY\n[0-3s] Opening action.\n[3-6s] Midpoint progression.\n[6-10s] Climax action.",
-                    1,
-                )
-                changes_applied.append(
-                    "Added strict 3-interval time markers [0-3s], [3-6s], [6-10s] to screenplay."
-                )
+            if "[0-3s]" not in repaired:
+                if "### SCREENPLAY" in repaired:
+                    repaired = repaired.replace(
+                        "### SCREENPLAY",
+                        "### SCREENPLAY\n[0-3s] Opening action.\n[3-6s] Midpoint progression.\n[6-10s] Climax action.",
+                        1,
+                    )
+                    changes_applied.append(
+                        "Added strict 3-interval time markers [0-3s], [3-6s], [6-10s] to screenplay."
+                    )
+                elif "### TIMELINE" in repaired:
+                    repaired = repaired.replace(
+                        "### TIMELINE",
+                        "### TIMELINE\n[0-3s] Opening action.\n[3-6s] Midpoint progression.\n[6-10s] Climax action.",
+                        1,
+                    )
+                    changes_applied.append(
+                        "Added strict 3-interval time markers [0-3s], [3-6s], [6-10s] to timeline."
+                    )
+                else:
+                    repaired = f"{repaired}\n\n### TIMELINE\n[0-3s] Opening action.\n[3-6s] Midpoint progression.\n[6-10s] Climax action."
+                    changes_applied.append(
+                        "Added strict 3-interval time markers [0-3s], [3-6s], [6-10s]."
+                    )
+
+        # 5. OFFSCREEN_LIPSYNC_ERROR Repair: Explicitly annotate offscreen narrators
+        if DefectCategory.OFFSCREEN_LIPSYNC_ERROR in all_defects:
+            if "[Voiceover/Offscreen]" not in repaired:
+                if "narrator" in repaired.lower() or "voiceover" in repaired.lower():
+                    repaired = re.sub(
+                        r"(narrator|voiceover)",
+                        r"[Voiceover/Offscreen] \1",
+                        repaired,
+                        count=1,
+                        flags=re.IGNORECASE,
+                    )
+                    changes_applied.append(
+                        "Annotated narrator lines with [Voiceover/Offscreen] directive."
+                    )
 
         if not changes_applied:
             diff_summary = (

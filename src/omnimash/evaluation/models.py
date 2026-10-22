@@ -24,6 +24,7 @@ class UserFeedbackRecord(BaseModel):
     feedback_id: str = Field(default_factory=lambda: f"fb_{uuid.uuid4().hex[:12]}")
     session_id: str
     turn_id: str
+    project_id: str | None = None
     rating: int = Field(ge=1, le=5, description="Director star rating between 1 and 5")
     defects: list[DefectCategory] = Field(default_factory=list)
     critique_text: str = ""
@@ -45,6 +46,7 @@ class VideoEvaluationScorecard(BaseModel):
     evaluation_id: str = Field(default_factory=lambda: f"eval_{uuid.uuid4().hex[:12]}")
     session_id: str
     turn_id: str
+    project_id: str | None = None
     overall_rating: float = Field(ge=0.0, le=100.0, description="Overall quality score 0 to 100")
     video_text_adherence: DimensionScore
     character_likeness: DimensionScore

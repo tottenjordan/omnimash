@@ -60,8 +60,9 @@ def submit_feedback(record: UserFeedbackRecord, agent: AgentDep) -> FeedbackSubm
     """Submits directorial feedback for a rendered turn and persists it to GCS."""
     session_id = _validate_safe_id(record.session_id, "session_id")
     turn_id = _validate_safe_id(record.turn_id, "turn_id")
+    project_id = _validate_safe_id(record.project_id, "project_id") if record.project_id else None
     try:
-        url = agent.storage.save_feedback(session_id, turn_id, record)
+        url = agent.storage.save_feedback(session_id, turn_id, record, project_id=project_id)
         return FeedbackSubmitResponse(
             success=True,
             feedback_id=record.feedback_id,
@@ -74,11 +75,17 @@ def submit_feedback(record: UserFeedbackRecord, agent: AgentDep) -> FeedbackSubm
 
 
 @router.get("/api/feedback/{session_id}/{turn_id}")
-def get_feedback(session_id: str, turn_id: str, agent: AgentDep) -> dict[str, Any]:
+def get_feedback(
+    session_id: str,
+    turn_id: str,
+    agent: AgentDep,
+    project_id: str | None = None,
+) -> dict[str, Any]:
     """Retrieves directorial feedback for a session and turn."""
     sid = _validate_safe_id(session_id, "session_id")
     tid = _validate_safe_id(turn_id, "turn_id")
-    data = agent.storage.get_feedback(sid, tid)
+    pid = _validate_safe_id(project_id, "project_id") if project_id else None
+    data = agent.storage.get_feedback(sid, tid, project_id=pid)
     if not data:
         raise HTTPException(
             status_code=404,
@@ -88,11 +95,17 @@ def get_feedback(session_id: str, turn_id: str, agent: AgentDep) -> dict[str, An
 
 
 @router.get("/api/eval/scorecard/{session_id}/{turn_id}")
-def get_scorecard(session_id: str, turn_id: str, agent: AgentDep) -> dict[str, Any]:
+def get_scorecard(
+    session_id: str,
+    turn_id: str,
+    agent: AgentDep,
+    project_id: str | None = None,
+) -> dict[str, Any]:
     """Retrieves the latest evaluation scorecard for a session and turn."""
     sid = _validate_safe_id(session_id, "session_id")
     tid = _validate_safe_id(turn_id, "turn_id")
-    data = agent.storage.get_scorecard(sid, tid)
+    pid = _validate_safe_id(project_id, "project_id") if project_id else None
+    data = agent.storage.get_scorecard(sid, tid, project_id=pid)
     if not data:
         raise HTTPException(
             status_code=404,
@@ -106,10 +119,11 @@ def diagnose_shot(req: DiagnoseRequest, agent: AgentDep) -> VideoEvaluationScore
     """Performs multimodal directorial diagnosis and generates a repaired prompt patch."""
     session_id = _validate_safe_id(req.session_id, "session_id")
     turn_id = _validate_safe_id(req.turn_id, "turn_id")
+    project_id = _validate_safe_id(req.project_id, "project_id") if req.project_id else None
 
     prompt = req.prompt or ""
     if not prompt:
-        manifest = agent.storage.get_session_manifest(session_id, project_id=req.project_id)
+        manifest = agent.storage.get_session_manifest(session_id, project_id=project_id)
         if manifest and "compiled_prompt" in manifest:
             prompt = str(manifest["compiled_prompt"])
 
@@ -125,6 +139,7 @@ def diagnose_shot(req: DiagnoseRequest, agent: AgentDep) -> VideoEvaluationScore
         user_critique=req.critique,
         reported_defects=req.defects,
     )
+    scorecard.project_id = project_id
 
     refiner = PromptRefiner(mock_mode=agent.storage.mock_mode)
     refinement = refiner.refine_prompt(
@@ -136,6 +151,6 @@ def diagnose_shot(req: DiagnoseRequest, agent: AgentDep) -> VideoEvaluationScore
         scorecard.suggested_prompt_patch = refinement.repaired_prompt
 
     # Automatically save scorecard to GCS storage
-    agent.storage.save_scorecard(session_id, turn_id, scorecard, project_id=req.project_id)
+    agent.storage.save_scorecard(session_id, turn_id, scorecard, project_id=project_id)
 
     return scorecard

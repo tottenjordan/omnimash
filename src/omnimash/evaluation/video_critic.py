@@ -25,6 +25,26 @@ except ImportError:
     types: Any = None
 
 
+def _clean_json_markdown(raw_text: str | None) -> str:
+    """Strips markdown code blocks, backticks, and extraneous text wrapping a JSON payload."""
+    cleaned = (raw_text or "").strip()
+    if not cleaned:
+        return "{}"
+    if cleaned.startswith("```"):
+        match = re.search(r"^```(?:json)?\s*\n?(.*?)\n?```$", cleaned, re.DOTALL | re.IGNORECASE)
+        if match:
+            cleaned = match.group(1).strip()
+        else:
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    if not (cleaned.startswith("{") and cleaned.endswith("}")):
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            cleaned = cleaned[start : end + 1].strip()
+    return cleaned
+
+
 class VideoCriticAgent:
     """Multimodal Video Critic Agent powered by gemini-3.8-flash for closed-loop evaluation."""
 
@@ -43,8 +63,15 @@ class VideoCriticAgent:
             "GOOGLE_CLOUD_PROJECT",
             getattr(settings, "google_cloud_project", "hybrid-vertex"),
         )
-        self.location = os.environ.get(
-            "GEMINI_LOCATION", getattr(settings, "gemini_location", "global")
+        # Gemini 3.8 Flash requires "global" location
+        self.location = (
+            "global"
+            if (
+                self.model.startswith("gemini-3")
+                or self.model.startswith("gemini-4")
+                or "omni" in self.model
+            )
+            else os.environ.get("GEMINI_LOCATION", getattr(settings, "gemini_location", "global"))
         )
         self.api_key = (
             api_key
@@ -120,7 +147,7 @@ Provide your evaluation as a valid JSON object matching the following structure:
         turn_id: str,
         prompt: str,
         video_uri: str | None = None,
-        reference_images: list[str] | None = None,
+        reference_images: list[str | bytes] | None = None,
         user_critique: str | None = None,
         reported_defects: list[DefectCategory] | None = None,
     ) -> VideoEvaluationScorecard:
@@ -148,11 +175,25 @@ Provide your evaluation as a valid JSON object matching the following structure:
 
         if reference_images and types:
             for ref_img in reference_images:
-                clean_ref = self.storage._normalize_media_source_path(ref_img)
-                if clean_ref.startswith("https://storage.googleapis.com/"):
-                    clean_ref = "gs://" + clean_ref.replace("https://storage.googleapis.com/", "")
-                if clean_ref.startswith("gs://"):
-                    contents.append(types.Part.from_uri(file_uri=clean_ref, mime_type="image/jpeg"))
+                if isinstance(ref_img, bytes):
+                    contents.append(types.Part.from_bytes(data=ref_img, mime_type="image/jpeg"))
+                elif isinstance(ref_img, str):
+                    clean_ref = self.storage._normalize_media_source_path(ref_img)
+                    if clean_ref.startswith("https://storage.googleapis.com/"):
+                        clean_ref = "gs://" + clean_ref.replace(
+                            "https://storage.googleapis.com/", ""
+                        )
+                    if clean_ref.startswith("gs://"):
+                        mime = (
+                            "image/png"
+                            if clean_ref.lower().endswith(".png")
+                            else (
+                                "image/webp"
+                                if clean_ref.lower().endswith(".webp")
+                                else "image/jpeg"
+                            )
+                        )
+                        contents.append(types.Part.from_uri(file_uri=clean_ref, mime_type=mime))
 
         if user_critique:
             contents.append(f"User Director Critique: {user_critique}")
@@ -171,7 +212,8 @@ Provide your evaluation as a valid JSON object matching the following structure:
                 config=config,
             )
             raw_text = response.text or "{}"
-            parsed = json.loads(raw_text)
+            cleaned_json = _clean_json_markdown(raw_text)
+            parsed = json.loads(cleaned_json)
 
             defects = [
                 DefectCategory(d)
@@ -330,17 +372,49 @@ Provide your evaluation as a valid JSON object matching the following structure:
                 DefectCategory.AUDIO_DROWNED in detected_defects
                 and "[Instrumental: ducking -18dB under speech]" not in suggested_patch
             ):
-                suggested_patch = suggested_patch.replace(
-                    "### SCREENPLAY",
-                    "### SCREENPLAY\n[Instrumental: ducking -18dB under speech]",
-                )
-            if DefectCategory.WARDROBE_CONTRADICTION in detected_defects:
+                if "### SCREENPLAY" in suggested_patch:
+                    suggested_patch = suggested_patch.replace(
+                        "### SCREENPLAY",
+                        "### SCREENPLAY\n[Instrumental: ducking -18dB under speech]",
+                        1,
+                    )
+                elif "### TIMELINE" in suggested_patch:
+                    suggested_patch = suggested_patch.replace(
+                        "### TIMELINE",
+                        "### TIMELINE\n[Instrumental: ducking -18dB under speech]",
+                        1,
+                    )
+                elif "### SCENE INSTRUCTIONS" in suggested_patch:
+                    suggested_patch = suggested_patch.replace(
+                        "### SCENE INSTRUCTIONS",
+                        "### SCENE INSTRUCTIONS\n[Instrumental: ducking -18dB under speech]",
+                        1,
+                    )
+                else:
+                    suggested_patch = (
+                        f"[Instrumental: ducking -18dB under speech]\n{suggested_patch}"
+                    )
+
+            if (
+                DefectCategory.WARDROBE_CONTRADICTION in detected_defects
+                or DefectCategory.LIKENESS_DRIFT in detected_defects
+            ):
+                old_patch = suggested_patch
                 suggested_patch = re.sub(
-                    r"wearing [^.\n]+",
+                    r"(?:wearing|dressed in|in|attired in)\s+[^.\n,]+",
                     "wearing signature attire per turnaround sheet",
                     suggested_patch,
                     flags=re.IGNORECASE,
                 )
+                if old_patch == suggested_patch:
+                    if "### CHARACTER PROFILES" in suggested_patch:
+                        suggested_patch = suggested_patch.replace(
+                            "### CHARACTER PROFILES",
+                            "### CHARACTER PROFILES\n[Wardrobe Invariant: Signature attire locked to reference turnaround sheet]",
+                            1,
+                        )
+                    else:
+                        suggested_patch = f"[Wardrobe Invariant: Signature attire locked to reference turnaround sheet]\n{suggested_patch}"
 
         return VideoEvaluationScorecard(
             evaluation_id=f"eval_{uuid.uuid4().hex[:12]}",

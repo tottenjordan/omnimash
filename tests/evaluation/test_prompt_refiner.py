@@ -98,3 +98,60 @@ def test_prompt_refiner_verbal_reflection():
     reflection = refiner.generate_reflection("Original prompt text", scorecard, user_feedback)
     assert "audio" in reflection.lower()
     assert "ducking" in reflection.lower() or "score" in reflection.lower()
+
+
+def test_prompt_refiner_canonical_timeline_and_temporal_beat_patch():
+    refiner = PromptRefiner()
+    original_prompt = """### INPUT ROLES & REFERENCES
+<IMAGE_REF_0>@Image1
+### CHARACTER PROFILES
+[Role A] Neon Warrior.
+### SCENE INSTRUCTIONS
+Continuous cinematic shot.
+### TIMELINE
+Screenplay without interval markers. Action occurs.
+"""
+    scorecard = _make_scorecard([DefectCategory.TEMPORAL_BEAT_MISSED, DefectCategory.AUDIO_DROWNED])
+    result = refiner.refine_prompt(original_prompt, scorecard)
+    assert "[0-3s]" in result.repaired_prompt
+    assert "[3-6s]" in result.repaired_prompt
+    assert "[6-10s]" in result.repaired_prompt
+    assert "[Instrumental: ducking -18dB under speech]" in result.repaired_prompt
+
+
+def test_prompt_refiner_tag_collision_and_spatial_staging_patch():
+    refiner = PromptRefiner()
+    original_prompt = """### CHARACTER PROFILES
+[Role A] Detective.
+### TIMELINE
+[0-3s] [Role A] speaks to the suspect. Two characters face each other.
+"""
+    scorecard = _make_scorecard([DefectCategory.TAG_COLLISION])
+    result = refiner.refine_prompt(original_prompt, scorecard)
+    assert "Spatial Staging" in result.repaired_prompt
+    assert "frame-left" in result.repaired_prompt or "frame-right" in result.repaired_prompt
+
+
+def test_prompt_refiner_dressed_in_wardrobe_patch():
+    refiner = PromptRefiner()
+    original_prompt = """### CHARACTER PROFILES
+[Role A] Hero dressed in neon green swim trunks and oversized parka. Reference sheet attached.
+### TIMELINE
+[0-3s] Action.
+"""
+    scorecard = _make_scorecard([DefectCategory.WARDROBE_CONTRADICTION])
+    result = refiner.refine_prompt(original_prompt, scorecard)
+    assert "oversized parka" not in result.repaired_prompt
+    assert "signature attire per turnaround sheet" in result.repaired_prompt
+
+
+def test_prompt_refiner_lipsync_error_patch():
+    refiner = PromptRefiner()
+    original_prompt = """### CHARACTER PROFILES
+[Role A] Detective.
+### TIMELINE
+[0-3s] Narrator explains the clues while [Role A] examines the desk.
+"""
+    scorecard = _make_scorecard([DefectCategory.OFFSCREEN_LIPSYNC_ERROR])
+    result = refiner.refine_prompt(original_prompt, scorecard)
+    assert "[Voiceover/Offscreen]" in result.repaired_prompt

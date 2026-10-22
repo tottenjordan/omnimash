@@ -16,6 +16,16 @@ from omnimash.storage.gcs import GcsStorageManager
 
 logger = logging.getLogger(__name__)
 
+try:
+    from google.adk.tools.preload_memory_tool import PreloadMemoryTool
+except ImportError:
+    PreloadMemoryTool: Any = None
+
+try:
+    import vertexai
+except ImportError:
+    vertexai: Any = None
+
 FOUNDATIONAL_INVARIANTS: list[DirectorialInvariantRule] = [
     DirectorialInvariantRule(
         rule_id="RULE-AUDIO-001",
@@ -137,7 +147,62 @@ class StrategyBankManager:
             or getattr(settings, "agent_engine_id", None)
         )
         self._memory_client: Any = None
+        if not self.mock_mode and self.agent_engine_id and vertexai is not None:
+            self._init_memory_client()
         self._seed_foundational_invariants()
+
+    def _init_memory_client(self) -> None:
+        """Initializes Vertex AI Client for Agent Platform Memory Bank operations."""
+        if vertexai is None:
+            return
+        try:
+            project = self.storage.project_id or getattr(
+                settings, "google_cloud_project", "hybrid-vertex"
+            )
+            location = getattr(settings, "gcp_region", "us-central1")
+            self._memory_client = vertexai.Client(project=project, location=location)
+        except Exception as exc:
+            logger.warning("Failed to initialize Vertex AI memory client: %s", exc)
+            self._memory_client = None
+
+    def get_preload_memory_tool(self) -> Any:
+        """Returns ADK PreloadMemoryTool for integration with ADK agents on Agent Engine."""
+        if PreloadMemoryTool is not None:
+            return PreloadMemoryTool()
+        return None
+
+    def search_memories(
+        self,
+        query: str,
+        user_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> list[Any]:
+        """Searches long-term directorial memories from Vertex AI Agent Platform Memory Bank."""
+        target_agent_id = agent_id or self.agent_engine_id
+        if self.mock_mode or not self._memory_client or not target_agent_id:
+            return []
+        try:
+            if hasattr(self._memory_client, "search_memories"):
+                res = self._memory_client.search_memories(
+                    agent_id=target_agent_id,
+                    user_id=user_id or "usr_studio",
+                    query=query,
+                )
+                return list(res) if res else []
+        except Exception as exc:
+            logger.warning("search_memories failed: %s", exc)
+        return []
+
+    def generate_memories(self, session_name: str) -> Any:
+        """Generates long-term directorial memories from session history in Vertex AI Memory Bank."""
+        if self.mock_mode or not self._memory_client:
+            return None
+        try:
+            if hasattr(self._memory_client, "generate_memories"):
+                return self._memory_client.generate_memories(session=session_name)
+        except Exception as exc:
+            logger.warning("generate_memories failed: %s", exc)
+        return None
 
     def _seed_foundational_invariants(self) -> None:
         """Seeds the 12 foundational rules into global GCS mirror if not already initialized."""
@@ -180,15 +245,30 @@ class StrategyBankManager:
 
     def add_rule(self, rule: DirectorialInvariantRule, project_id: str | None = None) -> None:
         """Adds or updates a rule in the strategy bank."""
-        current_bank = self.get_strategy_bank(project_id=project_id)
-        existing_rules = {r.rule_id: r for r in current_bank.rules}
-        existing_rules[rule.rule_id] = rule
-        new_bank = StrategyBank(
-            version=current_bank.version,
-            updated_at=datetime.now(timezone.utc).isoformat(),
-            rules=list(existing_rules.values()),
-        )
-        self.save_strategy_bank(new_bank, project_id=project_id)
+        if project_id:
+            raw_proj = self.storage.get_strategy_bank(project_id=project_id)
+            existing_rules: dict[str, DirectorialInvariantRule] = {}
+            if raw_proj and "rules" in raw_proj:
+                for r in raw_proj["rules"]:
+                    r_obj = DirectorialInvariantRule.model_validate(r)
+                    existing_rules[r_obj.rule_id] = r_obj
+            existing_rules[rule.rule_id] = rule
+            new_bank = StrategyBank(
+                version="1.0.0",
+                updated_at=datetime.now(timezone.utc).isoformat(),
+                rules=list(existing_rules.values()),
+            )
+            self.save_strategy_bank(new_bank, project_id=project_id)
+        else:
+            current_bank = self.get_strategy_bank()
+            existing_rules = {r.rule_id: r for r in current_bank.rules}
+            existing_rules[rule.rule_id] = rule
+            new_bank = StrategyBank(
+                version=current_bank.version,
+                updated_at=datetime.now(timezone.utc).isoformat(),
+                rules=list(existing_rules.values()),
+            )
+            self.save_strategy_bank(new_bank, project_id=None)
 
     def query_applicable_rules(
         self,

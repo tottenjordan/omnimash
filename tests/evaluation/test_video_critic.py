@@ -92,3 +92,41 @@ Duel.
     assert scorecard.character_likeness.score < 75.0
     assert DefectCategory.WARDROBE_CONTRADICTION in scorecard.detected_defects
     assert scorecard.pass_verdict is False
+
+
+def test_video_critic_clean_json_markdown_variations():
+    from omnimash.evaluation.video_critic import _clean_json_markdown
+
+    # 1. Plain clean JSON
+    plain = '{"overall_rating": 90.0, "pass_verdict": true}'
+    assert _clean_json_markdown(plain) == plain
+
+    # 2. Wrapped in ```json ... ```
+    fenced_json = '```json\n{"overall_rating": 85.5}\n```'
+    assert _clean_json_markdown(fenced_json) == '{"overall_rating": 85.5}'
+
+    # 3. Wrapped in generic ``` ... ```
+    generic_fence = '```\n{"overall_rating": 78.0}\n```'
+    assert _clean_json_markdown(generic_fence) == '{"overall_rating": 78.0}'
+
+    # 4. Text surrounding json block
+    conversational = (
+        'Here is the directorial evaluation:\n{"overall_rating": 82.0}\nHope this helps!'
+    )
+    assert _clean_json_markdown(conversational) == '{"overall_rating": 82.0}'
+
+    # 5. Empty or whitespace
+    assert _clean_json_markdown("") == "{}"
+    assert _clean_json_markdown(None) == "{}"
+
+
+def test_video_critic_reference_images_with_bytes_and_mock_client():
+    critic = VideoCriticAgent(mock_mode=True)
+    scorecard = critic.evaluate_video(
+        session_id="test_sess_bytes",
+        turn_id="turn_0",
+        prompt="### DIRECTORIAL INTENT\nClean render.\n### SCREENPLAY\n[0-3s] Action.",
+        reference_images=[b"fake_jpeg_bytes", "gs://bucket/sheet.png"],
+    )
+    assert scorecard.overall_rating >= 75.0
+    assert scorecard.pass_verdict is True
