@@ -204,6 +204,8 @@ class GenerateRequest(BaseModel):
     enable_safety_sanitization: bool = True
     aspect_ratio: str = "16:9"
     resolution: str = "720p"
+    keyframe_image_url: str | None = None
+    keyframe_seed: str | None = None
     last_frame_image_url: str | None = None
 
 
@@ -494,18 +496,28 @@ class SaveFinalResponse(BaseModel):
 
 
 class CreateShareLinkRequest(BaseModel):
-    session_name: str = Field(..., description="Session identifier or name")
+    session_name: str = Field(default="default_session", description="Session identifier or name")
     video_url: str = Field(
-        ..., description="GCS URI (gs://...), media-proxy URL, or master filename"
+        default="", description="GCS URI (gs://...), media-proxy URL, or master filename"
     )
     master_title: str | None = Field(
         default=None, description="Optional title for the master video"
     )
+    title: str | None = Field(default=None, description="Optional display title for public share")
+    scope: str = Field(default="video", description="Share scope ('video' or 'slate')")
+    aspect_ratio: str = Field(default="16:9", description="Video aspect ratio")
+    duration_seconds: float = Field(default=10.0, description="Duration in seconds")
+    clips: list[dict[str, Any]] | None = Field(default=None, description="Optional slate clips")
     expiration_days: int = Field(default=7, ge=1, le=7, description="Lifespan in days (1 to 7)")
 
 
 class CreateShareLinkResponse(BaseModel):
-    success: bool
+    success: bool = True
+    token: str = ""
+    url: str = ""
+    created_at: str = ""
+    scope: str = "video"
+    title: str = "Shared OmniMash Video"
     share_url: str
     download_url: str
     embed_snippet: str

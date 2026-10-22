@@ -119,6 +119,7 @@ __all__ = [
     "replace_character_in_text_image_tags",
     "sanitize_real_names",
     "sort_characters_by_role_id",
+    "validate_and_repair_role_bindings",
     "validate_compiled_prompt",
     "validate_prompt_input_lengths",
 ]
@@ -163,6 +164,128 @@ AESTHETIC_SIGNIFIERS: dict[str, dict[str, str]] = {
         "audio": "Deep cinematic trailer braam horn, rising orchestral risers, thunderous sub-bass drop, and epic theatrical soundscape",
     },
 }
+
+
+def validate_and_repair_role_bindings(
+    compiled_prompt: str,
+    characters: list[CharacterRole] | None = None,
+) -> str:
+    """Validates and repairs role bindings in a compiled 4-block Omni Flash prompt.
+
+    1. Extracts declared `Role X` identifiers and their `<IMAGE_REF_N>` tags from
+       `characters` and `### CHARACTER PROFILES`.
+    2. Replaces any empty `- Scene N []:` or `- [0-10s] Scene N []:` headers in
+       `### TIMELINE` with the declared active roles and their `<IMAGE_REF_N>` tags.
+    3. Remaps any unbound `Role <Y>` references (e.g., `Role B` when only `Role C`
+       and `Role A` are declared) to a declared role and attaches its `<IMAGE_REF_N>`
+       tag where appropriate.
+    """
+    if not compiled_prompt or not compiled_prompt.strip():
+        return compiled_prompt
+
+    declared_roles: list[str] = []
+    role_to_tag: dict[str, str] = {}
+
+    if characters:
+        _, _, char_tag_map = build_character_image_ref_tags(
+            characters=characters,
+            starting_index=1,
+            has_keyframe_seed=("<FIRST_FRAME>" in compiled_prompt),
+            enable_sanitization=False,
+        )
+        for char in characters:
+            if getattr(char, "is_offscreen_narrator", False):
+                continue
+            img_role = (
+                getattr(char, "image_role", "Character Reference")
+                if not isinstance(char, dict)
+                else char.get("image_role", "Character Reference")
+            )
+            if img_role in (
+                "Starting Frame",
+                "Keyframe Seed Anchor",
+                "Ending Frame",
+                "Keyframe Last Anchor",
+            ):
+                continue
+            c_id = get_character_identifier(char, enable_sanitization=False, use_role_id=True)
+            if c_id and c_id not in declared_roles:
+                declared_roles.append(c_id)
+            tag = char_tag_map.get(c_id)
+            if tag:
+                role_to_tag[c_id] = tag
+
+    # Also parse ### CHARACTER PROFILES for explicit `- Role X <IMAGE_REF_N>:` lines
+    profile_matches = re.findall(
+        r"^-\s*(Role\s+[A-Za-z0-9_]+)(?:\s+(<IMAGE_REF_\d+>))?\s*:",
+        compiled_prompt,
+        flags=re.MULTILINE,
+    )
+    for r_id, r_tag in profile_matches:
+        r_clean = re.sub(r"\s+", " ", r_id.strip())
+        if r_clean not in declared_roles:
+            declared_roles.append(r_clean)
+        if r_tag:
+            role_to_tag[r_clean] = r_tag.strip()
+
+    if not declared_roles:
+        return compiled_prompt
+
+    # Build active roles header string (e.g. "Role C <IMAGE_REF_1>, Role A <IMAGE_REF_0>")
+    active_header_items: list[str] = []
+    for r_id in declared_roles:
+        tag = role_to_tag.get(r_id, "")
+        active_header_items.append(f"{r_id} {tag}".strip())
+    active_header_str = ", ".join(active_header_items)
+
+    repaired = compiled_prompt
+
+    # 1. Repair empty `- Scene N []:` or `- [0-10s] Scene N []:` headers
+    if active_header_str:
+        repaired = re.sub(
+            r"(-\s*(?:\[[^\]]+\]\s*)?Scene\s+\d+\s*)\[\s*\]",
+            rf"\1[{active_header_str}]",
+            repaired,
+        )
+
+    # 2. Identify unbound `Role X` mentions outside CHARACTER PROFILES
+    all_role_mentions = re.findall(r"\bRole\s+[A-Z0-9]\b", repaired)
+    declared_set = {r.lower(): r for r in declared_roles}
+    unbound_roles: list[str] = []
+    for mention in all_role_mentions:
+        norm = re.sub(r"\s+", " ", mention.strip())
+        if norm.lower() not in declared_set and norm not in unbound_roles:
+            unbound_roles.append(norm)
+
+    if unbound_roles:
+        # Prefer mapping unbound roles to declared roles that are least mentioned in TIMELINE/SCENE INSTRUCTIONS,
+        # or fallback to declared roles in order.
+        timeline_split = repaired.split("### SCENE INSTRUCTIONS", 1)
+        body_text = timeline_split[1] if len(timeline_split) > 1 else repaired
+
+        candidate_roles = sorted(
+            declared_roles,
+            key=lambda r: len(re.findall(rf"\b{re.escape(r)}\b", body_text)),
+        )
+        for idx, unbound in enumerate(unbound_roles):
+            target_role = candidate_roles[idx % len(candidate_roles)]
+            target_tag = role_to_tag.get(target_role, "")
+            target_with_tag = f"{target_role} {target_tag}".strip()
+
+            # Replace `Role B:` in dialogue speaker positions with `Role C <IMAGE_REF_1>:`
+            repaired = re.sub(
+                rf"\b{re.escape(unbound)}\b(?=\s*:)",
+                target_with_tag,
+                repaired,
+            )
+            # Replace remaining `Role B` mentions with `Role C <IMAGE_REF_1>` if not already followed by <IMAGE_REF_
+            repaired = re.sub(
+                rf"\b{re.escape(unbound)}\b(?!\s*<IMAGE_REF_)",
+                target_with_tag,
+                repaired,
+            )
+
+    return repaired
 
 
 class PromptCompiler:
@@ -1048,20 +1171,45 @@ class PromptCompiler:
                 if isinstance(scene, dict)
                 else getattr(scene, "active_roles", [])
             )
+            if not raw_roles and characters:
+                raw_roles = [
+                    get_character_identifier(
+                        c, enable_sanitization=enable_sanitization, use_role_id=True
+                    )
+                    for c in characters
+                    if not getattr(c, "is_offscreen_narrator", False)
+                    and (
+                        getattr(c, "image_role", "Character Reference")
+                        if not isinstance(c, dict)
+                        else c.get("image_role", "Character Reference")
+                    )
+                    not in (
+                        "Starting Frame",
+                        "Keyframe Seed Anchor",
+                        "Ending Frame",
+                        "Keyframe Last Anchor",
+                    )
+                ]
             roles_list: list[str] = []
             for r in raw_roles if isinstance(raw_roles, (list, tuple)) else []:
                 r_str = str(r)
                 matched_c = None
                 if characters:
                     for c in characters:
-                        c_role = getattr(c, "role_id", "")
-                        c_name = getattr(c, "name", "")
+                        c_role = (
+                            getattr(c, "role_id", "")
+                            if not isinstance(c, dict)
+                            else c.get("role_id", "")
+                        )
+                        c_name = (
+                            getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
+                        )
                         c_id = get_character_identifier(
                             c, enable_sanitization=enable_sanitization, use_role_id=True
                         )
                         if r_str.lower() in (
-                            c_role.lower(),
-                            c_name.lower(),
+                            str(c_role).lower(),
+                            str(c_name).lower(),
                             c_id.lower(),
                         ):
                             matched_c = c
@@ -1215,9 +1363,26 @@ class PromptCompiler:
             f"### SCENE INSTRUCTIONS\n{scene_instructions_str}\n\n"
             f"### TIMELINE\n{timeline_str}"
         )
+        compiled_result = validate_and_repair_role_bindings(compiled_result, characters)
         if enable_sanitization:
             return sanitize_real_names(compiled_result)
         return compiled_result
+
+    def compile_turn0_prompt(
+        self,
+        concept: str,
+        characters: list[CharacterRole],
+        scenes: list[SceneDirective],
+        **kwargs: Any,
+    ) -> str:
+        """Compiles a clean Turn-0 storyboard prompt with validated role bindings."""
+        compiled = self.compile_storyboard(
+            concept=concept,
+            characters=characters,
+            scenes=scenes,
+            **kwargs,
+        )
+        return validate_and_repair_role_bindings(compiled, characters)
 
     def compile_storyboard(
         self,
@@ -1285,6 +1450,7 @@ class PromptCompiler:
             style_preset=style_preset,
             is_seamless_loop=is_seamless_loop,
         )
+        base_prompt = validate_and_repair_role_bindings(base_prompt, characters)
         if edit_instruction and edit_instruction.strip():
             clean_instruction = edit_instruction.strip()
             directive_block = (

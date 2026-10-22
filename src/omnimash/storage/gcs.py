@@ -83,6 +83,7 @@ class GcsStorageManager:
         self._mock_project_characters: dict[str, list[dict[str, Any]]] = {}
         self._mock_project_products: dict[str, list[dict[str, Any]]] = {}
         self._mock_project_reference_sheets: dict[str, list[dict[str, Any]]] = {}
+        self._mock_shares: dict[str, dict[str, Any]] = {}
 
     @property
     def timeout(self) -> float:
@@ -758,7 +759,7 @@ class GcsStorageManager:
         project_id = self.project_id or "hybrid-vertex"
         mock_sa = f"omnimash-sa@{project_id}.iam.gserviceaccount.com"
 
-        if self.mock_mode or not self.bucket:
+        if self.mock_mode:
             date_stamp = now_dt.strftime("%Y%m%d")
             time_stamp = now_dt.strftime("%Y%m%dT%H%M%SZ")
             cred_scope = f"{quote_plus(mock_sa)}%2F{date_stamp}%2Fauto%2Fstorage%2Fgoog4_request"
@@ -780,6 +781,7 @@ class GcsStorageManager:
             )
             return {
                 "success": True,
+                "signed_v4": False,
                 "blob_name": blob_name,
                 "gcs_uri": f"gs://{self.bucket_name}/{blob_name}",
                 "share_url": share_url,
@@ -790,48 +792,75 @@ class GcsStorageManager:
                 "message": f"Shareable link generated. Valid for {expiration_days} days until {expires_at_iso}.",
             }
 
-        blob = self.bucket.blob(blob_name)
-        try:
-            share_url = blob.generate_signed_url(
-                version="v4",
-                expiration=expires_delta,
-                method="GET",
-                response_type=content_type,
-                response_disposition="inline",
-            )
-            download_url = blob.generate_signed_url(
-                version="v4",
-                expiration=expires_delta,
-                method="GET",
-                response_disposition=f'attachment; filename="{filename}"',
-            )
-        except Exception as exc:
-            logger.warning(
-                "Cryptographic V4 signing via credentials failed (%s); falling back to simulated signed URL.",
-                exc,
-            )
-            date_stamp = now_dt.strftime("%Y%m%d")
-            time_stamp = now_dt.strftime("%Y%m%dT%H%M%SZ")
-            cred_scope = f"{quote_plus(mock_sa)}%2F{date_stamp}%2Fauto%2Fstorage%2Fgoog4_request"
-            query_base = (
-                f"X-Goog-Algorithm=GOOG4-RSA-SHA256"
-                f"&X-Goog-Credential={cred_scope}"
-                f"&X-Goog-Date={time_stamp}"
-                f"&X-Goog-Expires={expiration_seconds}"
-                f"&X-Goog-SignedHeaders=host"
-                f"&X-Goog-Signature=mockv4signature{uuid.uuid4().hex}"
-            )
-            share_url = (
-                f"https://storage.googleapis.com/{self.bucket_name}/{blob_name}?"
-                f"{query_base}&response-content-disposition=inline&response-content-type={quote_plus(content_type)}"
-            )
-            download_url = (
-                f"https://storage.googleapis.com/{self.bucket_name}/{blob_name}?"
-                f"{query_base}&response-content-disposition={quote_plus(f'attachment; filename="{filename}"')}"
-            )
+        signed_v4 = False
+        share_url = f"https://storage.googleapis.com/{self.bucket_name}/{blob_name}"
+        download_url = f"https://storage.googleapis.com/{self.bucket_name}/{blob_name}"
+
+        if self.bucket:
+            blob = self.bucket.blob(blob_name)
+            try:
+                share_url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=expires_delta,
+                    method="GET",
+                    response_type=content_type,
+                    response_disposition="inline",
+                )
+                download_url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=expires_delta,
+                    method="GET",
+                    response_disposition=f'attachment; filename="{filename}"',
+                )
+                signed_v4 = True
+            except Exception as primary_exc:
+                try:
+                    import google.auth
+                    from google.auth.transport import requests as google_auth_requests
+
+                    creds = getattr(self._client_instance, "_credentials", None)
+                    if creds is None:
+                        creds, _ = google.auth.default()
+                    if creds is not None:
+                        if not getattr(creds, "token", None):
+                            creds.refresh(google_auth_requests.Request())
+                        sa_email = (
+                            getattr(creds, "service_account_email", None)
+                            or getattr(creds, "signer_email", None)
+                            or mock_sa
+                        )
+                        if sa_email == "default":
+                            sa_email = mock_sa
+                        access_token = getattr(creds, "token", None)
+                        if sa_email and access_token:
+                            share_url = blob.generate_signed_url(
+                                version="v4",
+                                expiration=expires_delta,
+                                method="GET",
+                                response_type=content_type,
+                                response_disposition="inline",
+                                service_account_email=sa_email,
+                                access_token=access_token,
+                            )
+                            download_url = blob.generate_signed_url(
+                                version="v4",
+                                expiration=expires_delta,
+                                method="GET",
+                                response_disposition=f'attachment; filename="{filename}"',
+                                service_account_email=sa_email,
+                                access_token=access_token,
+                            )
+                            signed_v4 = True
+                except Exception as iam_exc:
+                    logger.warning(
+                        "Cryptographic V4 signing via credentials/IAM failed (%s / %s); omitting fake V4 signature in live mode.",
+                        primary_exc,
+                        iam_exc,
+                    )
 
         return {
             "success": True,
+            "signed_v4": signed_v4,
             "blob_name": blob_name,
             "gcs_uri": f"gs://{self.bucket_name}/{blob_name}",
             "share_url": share_url,
@@ -841,6 +870,114 @@ class GcsStorageManager:
             "filename": filename,
             "message": f"Shareable link generated. Valid for {expiration_days} days until {expires_at_iso}.",
         }
+
+    def freeze_share_bundle(
+        self,
+        token: str,
+        source_blob_or_uri: str,
+        snapshot: dict[str, Any],
+        local_fallback_bytes: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Copies or uploads video bytes to shares/{token}/video.mp4 and writes shares/{token}/snapshot.json."""
+        share_prefix = f"shares/{token}"
+        video_blob_path = f"{share_prefix}/video.mp4"
+        snapshot_blob_path = f"{share_prefix}/snapshot.json"
+
+        video_bytes = local_fallback_bytes or b""
+        if not video_bytes and source_blob_or_uri:
+            try:
+                loaded_bytes, _ = self.load_bytes(source_blob_or_uri)
+                if loaded_bytes:
+                    video_bytes = loaded_bytes
+            except Exception as exc:
+                logger.debug("freeze_share_bundle load_bytes fallback: %s", exc)
+
+        if not video_bytes:
+            video_bytes = (
+                b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+                b"mock_shared_video_stream_bytes_payload"
+            )
+
+        self._mock_shares[token] = {
+            "snapshot": dict(snapshot),
+            "video_bytes": video_bytes,
+            "gcs_prefix": f"gs://{self.bucket_name}/{share_prefix}/",
+        }
+
+        if not self.mock_mode and self.bucket:
+            try:
+                norm_src = self._normalize_media_source_path(source_blob_or_uri).strip()
+                src_blob_name = norm_src.replace(f"gs://{self.bucket_name}/", "").lstrip("/")
+                if "?" in src_blob_name:
+                    src_blob_name = src_blob_name.split("?", 1)[0]
+                src_blob = self.bucket.blob(src_blob_name) if src_blob_name else None
+                if src_blob is not None and src_blob.exists(timeout=self.timeout):
+                    self.bucket.copy_blob(
+                        src_blob, self.bucket, video_blob_path, timeout=self.timeout
+                    )
+                else:
+                    self.upload_bytes(video_bytes, video_blob_path, content_type="video/mp4")
+
+                snap_json = json.dumps(snapshot, indent=2).encode("utf-8")
+                self.upload_bytes(snap_json, snapshot_blob_path, content_type="application/json")
+            except Exception as exc:
+                logger.warning("freeze_share_bundle GCS upload fallback for %s: %s", token, exc)
+
+        return {
+            "token": token,
+            "gcs_prefix": f"gs://{self.bucket_name}/{share_prefix}/",
+            "video_blob": video_blob_path,
+            "snapshot_blob": snapshot_blob_path,
+        }
+
+    def read_share_snapshot(self, token: str) -> dict[str, Any] | None:
+        """Reads shares/{token}/snapshot.json from cache or GCS."""
+        if token in self._mock_shares and "snapshot" in self._mock_shares[token]:
+            return self._mock_shares[token]["snapshot"]
+
+        if not self.mock_mode and self.bucket:
+            try:
+                blob = self.bucket.blob(f"shares/{token}/snapshot.json")
+                if blob.exists(timeout=self.timeout):
+                    raw = blob.download_as_text(timeout=self.timeout)
+                    data = json.loads(raw)
+                    if isinstance(data, dict):
+                        return data
+            except Exception as exc:
+                logger.warning("read_share_snapshot failed for %s: %s", token, exc)
+        return None
+
+    def stream_share_video(self, token: str) -> bytes | None:
+        """Reads shares/{token}/video.mp4 bytes from cache or GCS."""
+        if token in self._mock_shares and "video_bytes" in self._mock_shares[token]:
+            return self._mock_shares[token]["video_bytes"]
+
+        if not self.mock_mode and self.bucket:
+            try:
+                blob = self.bucket.blob(f"shares/{token}/video.mp4")
+                if blob.exists(timeout=self.timeout):
+                    return blob.download_as_bytes(timeout=self.timeout)
+            except Exception as exc:
+                logger.warning("stream_share_video failed for %s: %s", token, exc)
+        return None
+
+    def delete_share_prefix(self, token: str) -> int:
+        """Deletes all blobs under shares/{token}/ in GCS and removes from mock cache."""
+        deleted_count = 0
+        if token in self._mock_shares:
+            del self._mock_shares[token]
+            deleted_count += 2
+
+        if not self.mock_mode and self.bucket:
+            try:
+                prefix = f"shares/{token}/"
+                blobs = list(self.bucket.list_blobs(prefix=prefix, timeout=self.timeout))
+                for b in blobs:
+                    b.delete(timeout=self.timeout)
+                    deleted_count += 1
+            except Exception as exc:
+                logger.warning("delete_share_prefix failed for %s: %s", token, exc)
+        return deleted_count
 
     @staticmethod
     def _slugify(name: str) -> str:
