@@ -188,20 +188,6 @@ _RAW_RAI_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (r"\bface\s*tattoos?\b", "artistic facial ink"),
     (r"\bface\s*tatted\b", "artistic facial ink"),
     (r"\b1017\b", "gold"),
-    # Slang & Colloquial Vulgarity Smoothing for Spoken Audio Policies
-    (r"\btype\s*shit\b", "type motion"),
-    (r"\bshit\b", "stuff"),
-    (r"\bfuck(?:ing)?\b", "freaking"),
-    (r"\bbitch(?:es)?\b", "rivals"),
-    (r"\bdamn\b", "dang"),
-    (r"\bass\b", "energy"),
-    (r"\bcigars?\b", "gold wands"),
-    (r"\bsmoking\s+fat\s+cigars?\b", "clinking golden goblets"),
-    (r"\bsmoking\b", "relaxing"),
-    (r"\bcigar\s+smoke\b", "magical incense"),
-    (r"\bcigar\s+haze\b", "mystic haze"),
-    (r"\bcigar\s+ash\b", "magical sparkles"),
-    (r"\bdior\b", "haute couture"),
 )
 
 _RAI_REPLACEMENT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
@@ -231,7 +217,6 @@ _TRADEMARKS = (
     "burberry",
     "jordans",
     "cartier",
-    "dior",
 )
 
 _KNOWN_CELEBRITIES = (
