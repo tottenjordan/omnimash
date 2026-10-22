@@ -164,7 +164,6 @@ def test_compile_journey3_shot_prompt_auto_preflight_repair():
         timeline_dialogue='Vance: "I was looking for the boss."',
         audio_track="90s boom-bap beat",
         keyframe_image_url="https://storage.googleapis.com/bucket/start.png",
-        enable_preflight=True,
     )
 
     assert "### SCENE INSTRUCTIONS" in compiled
@@ -247,7 +246,6 @@ def test_compile_journey3_shot_prompt_stacked_tags_and_offsets():
         characters=chars,
         keyframe_image_url="https://storage.googleapis.com/b/seed.png",
         timeline_dialogue='Vance: "The case is solved."',
-        enable_preflight=True,
     )
     assert "<IMAGE_REF_0> <IMAGE_REF_1>" not in compiled
     assert "<FIRST_FRAME>@KeyframeSeed" in compiled

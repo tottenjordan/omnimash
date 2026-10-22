@@ -326,6 +326,7 @@ class OmniMashAgent:
                 characters=characters,
                 keyframe_image_url=keyframe_image_url,
             )
+            compiled_override = lint_override.repaired_prompt
             if lint_override.violations:
                 preflight_violations.extend(lint_override.violations)
                 logger.warning(

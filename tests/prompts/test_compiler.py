@@ -1032,7 +1032,7 @@ def test_compile_storyboard_with_keyframe_seed_offsets_image_indexes():
         has_keyframe_seed=True,
     )
     assert "[# Sources <FIRST_FRAME>@KeyframeSeed]" in compiled
-    assert "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2]" in compiled
+    assert "[# References <IMAGE_REF_0>@Image2 <IMAGE_REF_1>@Image3]" in compiled
     assert "- Role A <IMAGE_REF_0>:" in compiled
     assert "- Role B <IMAGE_REF_1>:" in compiled
 

@@ -85,7 +85,7 @@ def compile_journey3_shot_prompt(
     last_frame_image_url: str | None = None,
     keyframe_image_url: str | None = None,
     is_seamless_loop: bool = False,
-    enable_preflight: bool = False,
+    enable_preflight: bool = True,
 ) -> str:
     """Compiles 4-block prompt for Journey 3 shot generation adhering to GEMINI_OMNI_FLASH_INSTR.
 

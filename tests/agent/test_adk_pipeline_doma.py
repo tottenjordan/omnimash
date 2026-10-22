@@ -105,6 +105,7 @@ def test_orchestrator_process_user_turn_records_preflight_violations_on_compiled
 
     assert res.success is True
     assert res.raw_compiled_prompt is not None
+    assert "<IMAGE_REF_0> <IMAGE_REF_1>" not in res.raw_compiled_prompt
     # Pre-flight violations are detected and recorded in metadata and telemetry
     assert len(res.preflight_violations) > 0 or (
         res.metadata

@@ -1427,7 +1427,7 @@ class PromptCompiler:
         strategy_bank: StrategyBankManager | None = None,
         exemplar_bank: ExemplarBankManager | None = None,
         project_id: str | None = None,
-        enable_preflight: bool = False,
+        enable_preflight: bool = True,
         directorial_invariants: list[str] | None = None,
     ) -> str:
         if (
@@ -1478,8 +1478,15 @@ class PromptCompiler:
                     name = getattr(c, "name", None) or getattr(c, "role_id", None)
                 if name:
                     char_names.append(str(name))
+            scene_texts = [
+                f"{getattr(s, 'action', '')} {getattr(s, 'dialogue', '')}"
+                if not isinstance(s, dict)
+                else f"{s.get('action', '')} {s.get('dialogue', '')}"
+                for s in (scenes or [])
+            ]
+            search_concept = f"{concept or ''} {' '.join(scene_texts)}".strip()
             rules = active_strategy_bank.query_applicable_rules(
-                concept=concept or "",
+                concept=search_concept,
                 characters=char_names,
                 has_keyframe=effective_has_keyframe,
                 project_id=project_id,

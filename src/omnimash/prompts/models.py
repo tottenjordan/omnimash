@@ -253,6 +253,11 @@ class PreFlightLintResult(BaseModel):
     violations: list[PreFlightViolation] = Field(default_factory=list)
     invariants_applied: list[str] = Field(default_factory=list)
 
+    @property
+    def passed(self) -> bool:
+        """Alias property indicating whether lint passed without remaining violations."""
+        return self.is_valid and len(self.violations) == 0
+
 
 __all__ = [
     "CompiledDeltaPrompt",
