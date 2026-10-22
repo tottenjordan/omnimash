@@ -1051,6 +1051,15 @@
             const [showCommitModal, setShowCommitModal] = useState(false);
             const [commitPrompt, setCommitPrompt] = useState("");
 
+            // DOMA Act 3 Directorial Review & Multimodal Critic State
+            const [directorRating, setDirectorRating] = useState(5);
+            const [selectedDefects, setSelectedDefects] = useState([]);
+            const [critiqueText, setCritiqueText] = useState("");
+            const [evaluationScorecard, setEvaluationScorecard] = useState(null);
+            const [isDiagnosing, setIsDiagnosing] = useState(false);
+            const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+            const [showPromptDiff, setShowPromptDiff] = useState(false);
+
             const REAL_NAME_MAP = [
                 [/\bGordon Ramsay\b/gi, "Fiery Chef Blood"],
                 [/\bJulia Child\b/gi, "Classic Chef Fam"],
@@ -3464,6 +3473,117 @@
                 } finally {
                     setLoading(false);
                 }
+            };
+
+            // Act 3 DOMA Directorial Review & AI Critic Handlers
+            const handleSubmitDirectorialReview = async () => {
+                setIsSubmittingReview(true);
+                try {
+                    const payload = {
+                        session_id: sessionName || "default_session",
+                        turn_id: parentTurnId || "turn_0",
+                        rating: directorRating,
+                        defects: selectedDefects,
+                        critique_text: critiqueText
+                    };
+                    const res = await fetch("/api/feedback", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        addToast("⭐ Directorial review recorded and persisted to GCS!", "success");
+                    } else {
+                        addToast("Failed to submit review: " + (data.detail || "Unknown error"), "error");
+                    }
+                } catch (err) {
+                    addToast("Review submission error: " + err.message, "error");
+                } finally {
+                    setIsSubmittingReview(false);
+                }
+            };
+
+            const handleDiagnoseShotWithCritic = async () => {
+                setIsDiagnosing(true);
+                try {
+                    const payload = {
+                        session_id: sessionName || "default_session",
+                        turn_id: parentTurnId || "turn_0",
+                        prompt: rawCompiledPrompt || "",
+                        video_uri: currentVideo || "",
+                        critique: critiqueText || "",
+                        defects: selectedDefects,
+                        project_id: activeProject || null
+                    };
+                    const res = await fetch("/api/eval/diagnose", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (res.ok && data) {
+                        setEvaluationScorecard(data);
+                        addToast(`🎯 AI Critic diagnosis complete! Overall Score: ${data.overall_rating}/100`, "success");
+                    } else {
+                        addToast("Diagnosis failed: " + (data.detail || "Critic service unavailable"), "error");
+                    }
+                } catch (err) {
+                    addToast("Diagnosis error: " + err.message, "error");
+                } finally {
+                    setIsDiagnosing(false);
+                }
+            };
+
+            const handleApprovePromptPatchAndReRender = async () => {
+                if (!evaluationScorecard || !evaluationScorecard.suggested_prompt_patch) return;
+                const patched = evaluationScorecard.suggested_prompt_patch;
+                setRawCompiledPrompt(patched);
+                setDeltaPrompt(patched);
+                setLoading(true);
+                try {
+                    const payload = {
+                        user_id: "usr_studio",
+                        project_id: activeProject || "default_project",
+                        prompt: patched,
+                        session_name: sessionName || "default_session",
+                        concept: concept,
+                        characters: characters,
+                        scenes: scenes,
+                        aesthetic_tags: aestheticTags,
+                        environment_tag: environmentTag,
+                        audio_stem: audioBeat,
+                        vocal_delivery: vocalDelivery,
+                        aspect_ratio: aspectRatio,
+                        keyframe_seed: isVisualContinuityLocked ? keyframeSeedAnchor : null
+                    };
+                    const res = await fetch("/api/generate", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setCurrentVideo(data.video_url);
+                        setParentTurnId(data.turn_id);
+                        setEvaluationScorecard(null);
+                        addToast("⚡ Repaired prompt approved & clip re-rendered successfully!", "success");
+                    } else {
+                        addToast("Failed to re-render clip: " + (data.error || "Unknown error"), "error");
+                    }
+                } catch (err) {
+                    addToast("Re-render error: " + err.message, "error");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const toggleDefectSelection = (defectKey) => {
+                setSelectedDefects(prev =>
+                    prev.includes(defectKey)
+                        ? prev.filter(d => d !== defectKey)
+                        : [...prev, defectKey]
+                );
             };
 
             const handleStage1GenerateKeyframeAnchor = async () => {
@@ -6184,6 +6304,230 @@
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* ⭐ DIRECTORIAL REVIEW BAR */}
+                                        <div className="bg-gray-900 border border-amber-800/60 rounded-2xl p-5 shadow-xl space-y-4">
+                                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-3">
+                                                <div>
+                                                    <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                                                        <span>⭐</span>
+                                                        <span>Directorial Review Bar</span>
+                                                    </h3>
+                                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                                        Grade generated shot quality, tag multimodal defects, and trigger closed-loop AI diagnosis.
+                                                    </p>
+                                                </div>
+                                                {/* 1-5 Star Interactive Rating */}
+                                                <div className="flex items-center gap-1.5 bg-black/50 p-1.5 rounded-xl border border-gray-800">
+                                                    {[1, 2, 3, 4, 5].map((star) => (
+                                                        <button
+                                                            key={star}
+                                                            type="button"
+                                                            data-star={String(star)}
+                                                            onClick={() => setDirectorRating(star)}
+                                                            className={`star-rating-btn px-2 py-1 text-sm font-bold rounded-lg transition ${
+                                                                directorRating >= star
+                                                                    ? "text-amber-400 bg-amber-950/80 shadow-sm"
+                                                                    : "text-gray-400 hover:text-gray-200"
+                                                            }`}
+                                                            title={`${star} Star Rating`}
+                                                        >
+                                                            ★
+                                                        </button>
+                                                    ))}
+                                                    <span className="sr-only">
+                                                        <span data-star="1">1</span>
+                                                        <span data-star="2">2</span>
+                                                        <span data-star="3">3</span>
+                                                        <span data-star="4">4</span>
+                                                        <span data-star="5">5</span>
+                                                    </span>
+                                                    <span className="text-xs font-mono font-bold text-amber-300 ml-1.5 mr-1">
+                                                        {directorRating}/5
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Defect Category Chips */}
+                                            <div>
+                                                <label className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider block mb-2">
+                                                    Flag Defect Categories:
+                                                </label>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {[
+                                                        { id: "LIKENESS_DRIFT", label: "Likeness Drift" },
+                                                        { id: "WARDROBE_CONTRADICTION", label: "Wardrobe Contradiction" },
+                                                        { id: "AUDIO_DROWNED", label: "Audio Drowned" },
+                                                        { id: "TAG_COLLISION", label: "Tag Collision" },
+                                                        { id: "PHANTOM_KEYFRAME", label: "Phantom Seed" },
+                                                        { id: "TEMPORAL_BEAT_MISSED", label: "Beat Missed" },
+                                                        { id: "AUDIO_VOCAL_HALLUCINATION", label: "Vocal Hallucination" },
+                                                        { id: "OFFSCREEN_LIPSYNC_ERROR", label: "Offscreen Lip Error" },
+                                                    ].map((defect) => {
+                                                        const isSelected = selectedDefects.includes(defect.id);
+                                                        return (
+                                                            <button
+                                                                key={defect.id}
+                                                                type="button"
+                                                                onClick={() => toggleDefectSelection(defect.id)}
+                                                                className={`px-3 py-1 rounded-lg text-xs font-medium transition border ${
+                                                                    isSelected
+                                                                        ? "bg-red-950/80 text-red-200 border-red-600 shadow"
+                                                                        : "bg-gray-950 text-gray-400 border-gray-800 hover:border-gray-700"
+                                                                }`}
+                                                            >
+                                                                <span>{isSelected ? "🔴 " : "⚪ "}</span>
+                                                                <span>[{defect.label}]</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* Directorial Critique Text Input & Action Buttons */}
+                                            <div className="flex flex-col sm:flex-row gap-3 items-stretch">
+                                                <input
+                                                    type="text"
+                                                    value={critiqueText}
+                                                    onChange={(e) => setCritiqueText(e.target.value)}
+                                                    placeholder="Describe what needs tuning (e.g. face drifted at second 5, bass drowned dialogue)..."
+                                                    className="flex-1 bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-amber-500 font-mono"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    id="btn-submit-review"
+                                                    disabled={isSubmittingReview}
+                                                    onClick={handleSubmitDirectorialReview}
+                                                    className="bg-amber-950/90 hover:bg-amber-900 text-amber-300 border border-amber-700 text-xs font-bold py-3 px-4 rounded-xl shadow flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                                                >
+                                                    <span>⭐</span>
+                                                    <span>{isSubmittingReview ? "Submitting..." : "Submit Review"}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    id="btn-diagnose-shot"
+                                                    disabled={isDiagnosing}
+                                                    onClick={handleDiagnoseShotWithCritic}
+                                                    className="bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white text-xs font-bold py-3 px-4 rounded-xl shadow flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                                                >
+                                                    <span>🎯</span>
+                                                    <span>{isDiagnosing ? "Diagnosing with Critic..." : "Diagnose Shot with AI Critic"}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* 🎯 AI DIAGNOSIS & PROMPT PATCH CARD */}
+                                        {evaluationScorecard && (
+                                            <div className="bg-gray-900 border-2 border-purple-600/80 rounded-2xl p-5 shadow-2xl space-y-4">
+                                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xl">🎯</span>
+                                                        <div>
+                                                            <h3 className="text-xs font-bold text-purple-300 uppercase tracking-wider">
+                                                                AI Directorial Diagnosis
+                                                            </h3>
+                                                            <p className="text-[11px] text-gray-400">
+                                                                Multimodal critique by gemini-3.8-flash with Reflexion prompt repair.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                                                            evaluationScorecard.overall_rating >= 75
+                                                                ? "bg-green-950 text-green-300 border-green-700"
+                                                                : "bg-red-950 text-red-300 border-red-700"
+                                                        }`}>
+                                                            Overall: {evaluationScorecard.overall_rating}/100
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEvaluationScorecard(null)}
+                                                            className="text-gray-400 hover:text-white text-xs px-2 py-1 rounded bg-gray-800"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* 4 Dimension Score Breakdown Pills */}
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                    <div className="bg-black/40 border border-gray-800 rounded-xl p-2.5 text-center">
+                                                        <span className="text-[11px] text-gray-400 uppercase font-semibold block">Video-Text Adherence</span>
+                                                        <span className={`text-sm font-bold font-mono ${
+                                                            evaluationScorecard.video_text_adherence && evaluationScorecard.video_text_adherence.score >= 75 ? "text-green-400" : "text-amber-400"
+                                                        }`}>
+                                                            {evaluationScorecard.video_text_adherence ? evaluationScorecard.video_text_adherence.score : 0}%
+                                                        </span>
+                                                    </div>
+                                                    <div className="bg-black/40 border border-gray-800 rounded-xl p-2.5 text-center">
+                                                        <span className="text-[11px] text-gray-400 uppercase font-semibold block">Character Likeness</span>
+                                                        <span className={`text-sm font-bold font-mono ${
+                                                            evaluationScorecard.character_likeness && evaluationScorecard.character_likeness.score >= 75 ? "text-green-400" : "text-amber-400"
+                                                        }`}>
+                                                            {evaluationScorecard.character_likeness ? evaluationScorecard.character_likeness.score : 0}%
+                                                        </span>
+                                                    </div>
+                                                    <div className="bg-black/40 border border-gray-800 rounded-xl p-2.5 text-center">
+                                                        <span className="text-[11px] text-gray-400 uppercase font-semibold block">Audio-Visual Harmony</span>
+                                                        <span className={`text-sm font-bold font-mono ${
+                                                            evaluationScorecard.audio_visual_harmony && evaluationScorecard.audio_visual_harmony.score >= 75 ? "text-green-400" : "text-amber-400"
+                                                        }`}>
+                                                            {evaluationScorecard.audio_visual_harmony ? evaluationScorecard.audio_visual_harmony.score : 0}%
+                                                        </span>
+                                                    </div>
+                                                    <div className="bg-black/40 border border-gray-800 rounded-xl p-2.5 text-center">
+                                                        <span className="text-[11px] text-gray-400 uppercase font-semibold block">Tag &amp; Index Integrity</span>
+                                                        <span className={`text-sm font-bold font-mono ${
+                                                            evaluationScorecard.tag_and_index_integrity && evaluationScorecard.tag_and_index_integrity.score >= 75 ? "text-green-400" : "text-amber-400"
+                                                        }`}>
+                                                            {evaluationScorecard.tag_and_index_integrity ? evaluationScorecard.tag_and_index_integrity.score : 0}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Verbal Critique */}
+                                                <div className="bg-black/60 border border-purple-900/60 rounded-xl p-3 text-xs text-purple-200">
+                                                    <span className="font-bold block text-purple-400 text-[11px] mb-1">Critic Verbal Reflection:</span>
+                                                    {evaluationScorecard.verbal_critique || "No defects detected."}
+                                                </div>
+
+                                                {/* Suggested Prompt Patch & Re-Render Button */}
+                                                {evaluationScorecard.suggested_prompt_patch && (
+                                                    <div className="bg-black/70 border border-amber-900/70 rounded-xl p-4 space-y-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <h4 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                                                                <span>⚡</span>
+                                                                <span>Refined Prompt Patch Ready</span>
+                                                            </h4>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowPromptDiff(!showPromptDiff)}
+                                                                className="text-[11px] text-amber-400 hover:text-amber-300 font-medium underline"
+                                                            >
+                                                                {showPromptDiff ? "Hide Prompt Diff" : "Inspect Repaired Prompt Diff"}
+                                                            </button>
+                                                        </div>
+
+                                                        {showPromptDiff && (
+                                                            <pre className="bg-gray-950 border border-gray-800 rounded-lg p-3 text-[11px] font-mono text-gray-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar">
+                                                                {evaluationScorecard.suggested_prompt_patch}
+                                                            </pre>
+                                                        )}
+
+                                                        <button
+                                                            type="button"
+                                                            id="btn-approve-rerender"
+                                                            disabled={loading}
+                                                            onClick={handleApprovePromptPatchAndReRender}
+                                                            className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-extrabold text-xs py-3 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition"
+                                                        >
+                                                            <span>⚡</span>
+                                                            <span>{loading ? "Re-Rendering Clip with AI Patch..." : "Approve & Re-Render Clip"}</span>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {/* 🧠 Final Generation Prompt (Active Version) */}
                                         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl space-y-3">

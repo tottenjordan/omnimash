@@ -2907,3 +2907,39 @@ def test_ui_html_contains_mode4_directors_copilot_workspace() -> None:
     )
     assert mode1_start != -1 and mode4_start != -1
     assert mode1_start < mode4_start
+
+
+def test_ui_html_screening_room_directorial_review_bar() -> None:
+    """Verify Act 3 Screening Room contains the Directorial Review Bar with star ratings, defect chips, and diagnose trigger."""
+    from omnimash.api.app import UI_HTML
+
+    # Directorial review bar heading / container
+    assert "Directorial Review Bar" in UI_HTML
+    assert "star-rating-btn" in UI_HTML
+    assert 'data-star="1"' in UI_HTML
+    assert 'data-star="5"' in UI_HTML
+
+    # Defect category chips
+    assert "Likeness Drift" in UI_HTML
+    assert "Tag Collision" in UI_HTML
+    assert "Audio Drowned" in UI_HTML
+    assert "Wardrobe Contradiction" in UI_HTML
+
+    # Critique input and buttons
+    assert "Describe what needs tuning" in UI_HTML
+    assert "Submit Review" in UI_HTML
+    assert "Diagnose Shot with AI Critic" in UI_HTML
+    assert "/api/feedback" in UI_HTML
+    assert "/api/eval/diagnose" in UI_HTML
+
+
+def test_ui_html_ai_critic_diagnosis_card_and_patch_controls() -> None:
+    """Verify Act 3 Screening Room renders the AI Diagnosis & Prompt Patch Card with rubric dimension pills and Approve & Re-Render button."""
+    from omnimash.api.app import UI_HTML
+
+    assert "AI Directorial Diagnosis" in UI_HTML
+    assert "Video-Text Adherence" in UI_HTML
+    assert "Character Likeness" in UI_HTML
+    assert "Audio-Visual Harmony" in UI_HTML
+    assert "Tag & Index Integrity" in UI_HTML or "Tag &amp; Index Integrity" in UI_HTML
+    assert "Approve &amp; Re-Render Clip" in UI_HTML or "Approve & Re-Render Clip" in UI_HTML

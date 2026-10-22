@@ -674,3 +674,87 @@ def test_concurrent_json_blob_download():
     names = {r["name"] for r in results}
     assert "Harry Potter" in names
     assert "Ron Weasley" in names
+
+
+def test_gcs_save_and_get_feedback():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    feedback_data = {
+        "feedback_id": "fb_123",
+        "session_id": "sess_1",
+        "turn_id": "turn_0",
+        "rating": 4,
+        "defects": ["LIKENESS_DRIFT"],
+        "critique_text": "Minor likeness issue at 4s",
+    }
+    url = gcs.save_feedback("sess_1", "turn_0", feedback_data)
+    assert "sessions/sess_1/turns/turn_0/feedback.json" in url
+
+    retrieved = gcs.get_feedback("sess_1", "turn_0")
+    assert retrieved is not None
+    assert retrieved["rating"] == 4
+    assert retrieved["defects"] == ["LIKENESS_DRIFT"]
+    assert gcs.get_feedback("sess_1", "non_existent") is None
+
+
+def test_gcs_save_and_get_scorecard():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    scorecard_data = {
+        "evaluation_id": "eval_456",
+        "session_id": "sess_1",
+        "turn_id": "turn_0",
+        "overall_rating": 85.0,
+        "video_text_adherence": {"score": 90.0, "passed": True},
+        "character_likeness": {"score": 80.0, "passed": True},
+        "audio_visual_harmony": {"score": 85.0, "passed": True},
+        "tag_and_index_integrity": {"score": 95.0, "passed": True},
+        "pass_verdict": True,
+    }
+    url = gcs.save_scorecard("sess_1", "turn_0", scorecard_data)
+    assert "sessions/sess_1/turns/turn_0/evaluation_scorecard.json" in url
+
+    retrieved = gcs.get_scorecard("sess_1", "turn_0")
+    assert retrieved is not None
+    assert retrieved["overall_rating"] == 85.0
+    assert retrieved["pass_verdict"] is True
+    assert gcs.get_scorecard("sess_1", "turn_999") is None
+
+
+def test_gcs_save_and_get_strategy_bank():
+    gcs = GcsStorageManager(bucket_name="test-omnimash-bucket", mock_mode=True)
+    bank_data = {
+        "version": "1.0.0",
+        "rules": [
+            {
+                "rule_id": "RULE-01",
+                "category": "AUDIO_DROWNED",
+                "trigger_pattern": "dialogue with bgm",
+                "invariant_directive": "duck bgm",
+                "rationale": "clarity",
+            }
+        ],
+    }
+    # Global bank
+    url_global = gcs.save_strategy_bank(bank_data)
+    assert "meta/strategy_bank.json" in url_global
+    res_global = gcs.get_strategy_bank()
+    assert res_global is not None
+    assert len(res_global["rules"]) == 1
+
+    # Project-scoped bank
+    proj_bank = {
+        "version": "1.0.0",
+        "rules": [
+            {
+                "rule_id": "RULE-PROJ-01",
+                "category": "LIKENESS_DRIFT",
+                "trigger_pattern": "cyberpunk style",
+                "invariant_directive": "keep neon specs",
+                "rationale": "consistency",
+            }
+        ],
+    }
+    url_proj = gcs.save_strategy_bank(proj_bank, project_id="proj_alpha")
+    assert "projects/proj_alpha/strategy_bank.json" in url_proj
+    res_proj = gcs.get_strategy_bank(project_id="proj_alpha")
+    assert res_proj is not None
+    assert res_proj["rules"][0]["rule_id"] == "RULE-PROJ-01"
