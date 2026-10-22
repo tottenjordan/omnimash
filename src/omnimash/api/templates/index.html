@@ -1453,7 +1453,7 @@
                 const activeChars = validIncludedChars.length > 0 ? validIncludedChars : charPool;
 
                 const sourceTags = [];
-                if (card && card.keyframe_image_url) {
+                if (card && card.keyframe_image_url && card.keyframe_image_url !== "KeyframeSeed") {
                     sourceTags.push("<FIRST_FRAME>@KeyframeSeed");
                     if (card.is_seamless_loop) {
                         sourceTags.push("<LAST_FRAME>@KeyframeSeed");
@@ -1621,13 +1621,13 @@
             const [batchShotProgress, setBatchShotProgress] = useState({ current: 0, total: 0 });
             const [j3MasterVideoUrl, setJ3MasterVideoUrl] = useState("");
             const [j3TurnHistory, setJ3TurnHistory] = useState([
-                { turnId: "turn_00", turnNumber: 0, prompt: "Turn 0 Baseline Shot", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: "KeyframeSeed" },
-                { turnId: "turn_01", turnNumber: 1, prompt: "Turn 1 Lighting Shift", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: "KeyframeSeed" },
-                { turnId: "turn_02", turnNumber: 2, prompt: "Turn 2 Action Progression", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: "KeyframeSeed" }
+                { turnId: "turn_00", turnNumber: 0, prompt: "Turn 0 Baseline Shot", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: null },
+                { turnId: "turn_01", turnNumber: 1, prompt: "Turn 1 Lighting Shift", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: null },
+                { turnId: "turn_02", turnNumber: 2, prompt: "Turn 2 Action Progression", videoUrl: "/static/rendered/mock.mp4", keyframeSeed: null }
             ]);
             const [activeBranchTurnId, setActiveBranchTurnId] = useState("turn_00");
             const [isVisualContinuityLocked, setIsVisualContinuityLocked] = useState(true);
-            const [keyframeSeedAnchor, setKeyframeSeedAnchor] = useState("KeyframeSeed");
+            const [keyframeSeedAnchor, setKeyframeSeedAnchor] = useState(null);
             const [j3DiffPrompt, setJ3DiffPrompt] = useState("Make background darker with glowing blue neon"); // Alternative preset: Add heavy 808 bass drop audio cue
             const [j3DiffLoading, setJ3DiffLoading] = useState(false);
 
@@ -2187,7 +2187,7 @@
                                     turnNumber: prev.length,
                                     prompt: card.action_directive || `Shot #${shotIdx}`,
                                     videoUrl: data.video_url,
-                                    keyframeSeed: "KeyframeSeed"
+                                    keyframeSeed: (card.keyframe_image_url && card.keyframe_image_url !== "KeyframeSeed") ? card.keyframe_image_url : (data.keyframe_image_url && data.keyframe_image_url !== "KeyframeSeed" ? data.keyframe_image_url : null)
                                 }
                             ]);
                         }
@@ -2248,7 +2248,7 @@
                             turnNumber: newTurnNum,
                             prompt: j3DiffPrompt.trim(),
                             videoUrl: data.video_url,
-                            keyframeSeed: isVisualContinuityLocked ? keyframeSeedAnchor : "fresh_seed"
+                            keyframeSeed: isVisualContinuityLocked ? (keyframeSeedAnchor || null) : null
                         };
                         setJ3TurnHistory((prev) => [...prev, newTurn]);
                         setActiveBranchTurnId(newTurnId);
@@ -10664,7 +10664,14 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                     </div>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setActiveBranchTurnId(turn.turnId)}
+                                                        onClick={() => {
+                                                            setActiveBranchTurnId(turn.turnId);
+                                                            if (turn.keyframeSeed && turn.keyframeSeed !== "KeyframeSeed") {
+                                                                setKeyframeSeedAnchor(turn.keyframeSeed);
+                                                            } else if (!turn.keyframeSeed) {
+                                                                setKeyframeSeedAnchor(null);
+                                                            }
+                                                        }}
                                                         className={`w-full text-xs font-bold py-1.5 px-2 rounded-lg border transition flex items-center justify-center gap-1 ${
                                                             activeBranchTurnId === turn.turnId
                                                                 ? "bg-amber-600 text-white border-amber-500 shadow"
@@ -10689,7 +10696,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                 <span className="text-xs font-bold px-2.5 py-1 rounded-lg border bg-purple-950/80 text-purple-200 border-purple-800 font-mono flex items-center gap-1.5">
                                                     <span>🔒</span>
                                                     <span>🔒 Anchored to Keyframe Seed:</span>
-                                                    <span className="text-amber-300 font-extrabold">{"<FIRST_FRAME>@" + keyframeSeedAnchor}</span>
+                                                    <span className="text-amber-300 font-extrabold">{keyframeSeedAnchor ? ("<FIRST_FRAME>@" + keyframeSeedAnchor) : "None (Fresh Scene)"}</span>
                                                 </span>
                                                 <button
                                                     type="button"
@@ -10754,7 +10761,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                 ))}
                                             </div>
                                             <p className="text-xs text-gray-400">
-                                                Active Branch Parent Turn: <span className="font-mono text-amber-300">{activeBranchTurnId || "turn_00"}</span> | Active Keyframe Seed Anchor: <span className="font-mono text-purple-300">{"<FIRST_FRAME>@" + keyframeSeedAnchor}</span>
+                                                Active Branch Parent Turn: <span className="font-mono text-amber-300">{activeBranchTurnId || "turn_00"}</span> | Active Keyframe Seed Anchor: <span className="font-mono text-purple-300">{keyframeSeedAnchor ? ("<FIRST_FRAME>@" + keyframeSeedAnchor) : "None (Fresh Scene)"}</span>
                                             </p>
                                         </div>
                                     </div>

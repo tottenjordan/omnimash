@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from omnimash.engine.multimodal import build_multimodal_contents, load_reference_images_as_input
+from omnimash.engine.multimodal import (
+    _is_placeholder_image_url,
+    build_multimodal_contents,
+    load_reference_images_as_input,
+)
 from omnimash.prompts.compiler import CharacterRole
 
 
@@ -266,3 +270,123 @@ def test_build_multimodal_contents_character_matching_first_and_last_frame_tags(
         "Use the first image as the starting frame and the second image as the ending frame."
         not in res
     )
+
+
+def test_is_placeholder_image_url():
+    """Verify _is_placeholder_image_url identifies dummy tokens while accepting real URLs and paths."""
+    assert _is_placeholder_image_url(None) is True
+    assert _is_placeholder_image_url("") is True
+    assert _is_placeholder_image_url("   ") is True
+    assert _is_placeholder_image_url("KeyframeSeed") is True
+    assert _is_placeholder_image_url("keyframeseed") is True
+    assert _is_placeholder_image_url("fresh_seed") is True
+    assert _is_placeholder_image_url("none") is True
+    assert _is_placeholder_image_url("null") is True
+    assert _is_placeholder_image_url("undefined") is True
+    assert _is_placeholder_image_url("random_string_not_a_path") is True
+
+    assert _is_placeholder_image_url("http://example.com/kf.png") is False
+    assert _is_placeholder_image_url("https://example.com/kf.png") is False
+    assert _is_placeholder_image_url("gs://bucket/kf.png") is False
+    assert _is_placeholder_image_url("data:image/png;base64,iVBORw0KGgo=") is False
+
+
+def test_build_multimodal_contents_placeholder_keyframe_seed_omits_first_frame_and_preserves_character_indices():
+    """Verify passing placeholder keyframe seed 'KeyframeSeed' does not inject phantom FIRST_FRAME
+    and preserves 1:1 ordinal alignment for character reference images (@Image1 -> Role A, @Image2 -> Role B)."""
+    chars = [
+        CharacterRole(
+            name="Bee Allison",
+            role_id="Role A",
+            description="Trap wizard",
+            reference_url="http://example.com/bee.png",
+        ),
+        CharacterRole(
+            name="YoTotti",
+            role_id="Role B",
+            description="Young wizard",
+            reference_url="http://example.com/yototti.png",
+        ),
+        CharacterRole(
+            name="Dumble Dior",
+            role_id="Role C",
+            description="Elder wizard",
+            reference_url="http://example.com/dumble.png",
+        ),
+    ]
+
+    def mock_fetch(url: str):
+        # Only return bytes for real URLs, None for placeholder
+        if "bee" in url:
+            return b"bee-bytes", "image/png"
+        if "yototti" in url:
+            return b"yototti-bytes", "image/png"
+        if "dumble" in url:
+            return b"dumble-bytes", "image/png"
+        return None, ""
+
+    prompt = (
+        "### INPUT ROLES & REFERENCES\n"
+        "[# Sources <FIRST_FRAME>@KeyframeSeed]\n"
+        "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image3]\n"
+        "- Role A (Character Reference): Bee Allison (@Image1)\n"
+        "- Role B (Character Reference): YoTotti (@Image2)\n"
+        "- Role C (Character Reference): Dumble Dior (@Image3)\n\n"
+        "### SCENE INSTRUCTIONS\n"
+        "All three wizards discuss spells.\n\n"
+        "Use this image as the starting frame."
+    )
+
+    res = build_multimodal_contents(
+        prompt=prompt,
+        keyframe_image_url="KeyframeSeed",
+        characters=chars,
+        fetch_image_fn=mock_fetch,
+    )
+
+    assert isinstance(res, list)
+    assert len(res) == 1
+    content = res[0]["content"]
+
+    image_parts = [p for p in content if p.get("type") == "image"]
+    text_parts = [p for p in content if p.get("type") == "text"]
+
+    # Exactly 3 character images, NO phantom 4th image or misplaced keyframe image
+    assert len(image_parts) == 3
+
+    assert len(text_parts) == 1
+    final_text = text_parts[0]["text"]
+
+    # <FIRST_FRAME> and "starting frame" directive must be stripped
+    assert "<FIRST_FRAME>" not in final_text
+    assert "Use this image as the starting frame." not in final_text
+
+    # References must be aligned starting at @Image1
+    assert (
+        "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image3]"
+        in final_text
+    )
+    assert "@Image1" in final_text
+    assert "@Image2" in final_text
+    assert "@Image3" in final_text
+
+
+def test_build_multimodal_contents_empty_fetch_bytes_omits_first_frame():
+    """Verify that when fetch_image_fn returns empty/None bytes for a keyframe_image_url,
+    it is not treated as a valid keyframe seed anchor, preventing off-by-one image shift."""
+
+    def mock_fetch_empty(url: str):
+        return None, ""
+
+    prompt = "A shot in the courtyard.\n\nUse this image as the starting frame."
+
+    res = build_multimodal_contents(
+        prompt=prompt,
+        keyframe_image_url="https://example.com/unreachable_kf.png",
+        fetch_image_fn=mock_fetch_empty,
+    )
+
+    # When no bytes fetched and no characters, returns plain text string
+    assert isinstance(res, str)
+    assert "<FIRST_FRAME>" not in res
+    assert "Use this image as the starting frame." not in res
