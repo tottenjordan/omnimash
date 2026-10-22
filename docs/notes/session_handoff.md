@@ -8,9 +8,9 @@ This document captures the current production operational state, recent mileston
 
 | Component | Target / Region | Active Revision / Identifier | Status |
 | :--- | :--- | :--- | :--- |
-| **Cloud Run Web App** | `us-central1` | `omnimash-api-00161-w5m` | Serving 100% traffic, HTTP 200 |
-| **Live Studio URL** | Public HTTPS | [https://omnimash-api-934903580331.us-central1.run.app](https://omnimash-api-934903580331.us-central1.run.app) | Verified live with PR #208 |
-| **Vertex AI Agent Engine** | `us-central1` | `projects/934903580331/locations/us-central1/reasoningEngines/3189371245753794560` | 1 active instance, 0 orphans |
+| **Cloud Run Web App** | `us-central1` | `omnimash-api-00162-klq` | Serving 100% traffic, HTTP 200 |
+| **Live Studio URL** | Public HTTPS | [https://omnimash-api-934903580331.us-central1.run.app](https://omnimash-api-934903580331.us-central1.run.app) | Verified live with PR #211 |
+| **Vertex AI Agent Engine** | `us-central1` | `projects/934903580331/locations/us-central1/reasoningEngines/1344918499926999040` | 1 active instance, 0 orphans |
 | **Media Bucket** | GCS (`hybrid-vertex`) | `gs://omnimash-media-hybrid-vertex` | Staging, assets, storyboards |
 
 ---
@@ -23,6 +23,8 @@ This document captures the current production operational state, recent mileston
 - **[PR #206](https://github.com/tottenjordan/omnimash/commit/28d25fc)** (`feat(ui)`): Added 1-click **🏰 Load Trapwarts Vault Default** preset preloading saved characters and GCS reference sheets.
 - **[PR #207](https://github.com/tottenjordan/omnimash/commit/119dd88)** (`feat(prompts,engine)`): Aligned multimodal prompt compiler and pipeline with official Gemini Omni documentation (guiding instructions, task injection, continuation timecodes reset).
 - **[PR #208](https://github.com/tottenjordan/omnimash/commit/be3628b)** (`feat(agent)`): Cleaned up 4 orphan Reasoning Engine instances and established automated lifecycle pruning in `scripts/deploy_agent_engine.py`.
+- **[PR #210](https://github.com/tottenjordan/omnimash/commit/44f91d2)** (`feat(share)`): 7-day shareable video links via GCS V4 signed URLs with zero main app exposure.
+- **[PR #211](https://github.com/tottenjordan/omnimash/commit/7f843fc)** (`feat(ui,prompts)`): Mode 4 Director's Co-Pilot and ubiquitous cross-mode gap filler.
 
 ---
 
