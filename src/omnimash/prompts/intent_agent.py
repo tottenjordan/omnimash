@@ -26,6 +26,48 @@ from omnimash.prompts.parody import REAL_NAME_PARODY_MAP, sanitize_real_names
 
 logger = logging.getLogger(__name__)
 
+KNOWN_VAULT_PROFILES: dict[str, dict[str, Any]] = {
+    "dumble dior": {
+        "name": "Dumble Dior",
+        "description": "Elderly high-fashion wizard headmaster with a long silver beard, diamond half-moon spectacles, black-diamond pinky ring, heavy DD diamond chain, and a floor-length custom silk monogram wizard robe",
+        "reference_url": "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/dumble_dior_office_sheet_v13.png",
+        "wardrobe": "Floor-length custom silk monogram wizard robe, diamond half-moon spectacles, DD diamond chain",
+        "voice_style": "Sharp, vigorous Oxford English cadence",
+        "aesthetic_tags": [
+            "black-diamond pinky ring",
+            "diamond half-moon spectacles",
+            "championship-style rings",
+            "DD diamond chain",
+        ],
+    },
+    "yototti": {
+        "name": "YoTotti",
+        "description": "Confident young wizard radiating unfazed zen energy, wearing blue-shaded oversized aviator sunglasses, tailored black designer tracksuit, heavy diamond chains, and massive diamond rings",
+        "reference_url": "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/yototti_office_sheet_v13.png",
+        "wardrobe": "Tailored black designer tracksuit, blue-shaded oversized aviator sunglasses, heavy diamond chains",
+        "voice_style": "Calm, unfazed East London cadence",
+        "aesthetic_tags": [
+            "diamond chains",
+            "big diamond rings",
+            "blue shaded large aviator sunglasses",
+            "black Designer track suit",
+        ],
+    },
+    "accountant elves": {
+        "name": "Accountant Elves",
+        "description": "Small busy fantasy house elves dressed in tiny tailored business suits and green accountant visors, operating high-speed mechanical coin-counting machines and sorting piles of jewels",
+        "reference_url": "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/accountant_elves_office_sheet_v13.png",
+        "wardrobe": "Tiny tailored business suits, green accountant visors, spectacles",
+        "voice_style": "Fast-paced, high-pitched muttering and frantic whispering",
+        "aesthetic_tags": [
+            "tiny tailored suits",
+            "green visors",
+            "spectacles",
+            "fantasy accountant",
+        ],
+    },
+}
+
 
 class IntentGapAnalyzer:
     """Analyzes user premise/intent across 7 production slots and generates targeted clarification questions."""
@@ -67,7 +109,10 @@ class IntentGapAnalyzer:
             missing_slots.append("intent")
 
         # 2. Characters slot
-        if inputs.characters:
+        if inputs.character_profiles:
+            filled_slots["characters"] = [c.name or c.role_id for c in inputs.character_profiles]
+            filled_slots["character_profiles"] = [c.model_dump() for c in inputs.character_profiles]
+        elif inputs.characters:
             filled_slots["characters"] = list(inputs.characters)
         else:
             # Check if intent mentions identifiable celebrity/character entities
@@ -104,10 +149,15 @@ class IntentGapAnalyzer:
         else:
             missing_slots.append("sound_effects")
 
-        # 7. Dialogue slot
+        # 7. Dialogue & Dialogue Direction slot
+        has_dialogue_input = False
         if inputs.dialogue and inputs.dialogue.strip():
             filled_slots["dialogue"] = inputs.dialogue.strip()
-        else:
+            has_dialogue_input = True
+        if inputs.dialogue_direction and inputs.dialogue_direction.strip():
+            filled_slots["dialogue_direction"] = inputs.dialogue_direction.strip()
+            has_dialogue_input = True
+        if not has_dialogue_input:
             missing_slots.append("dialogue")
 
         # Generate 2 to 3 clarification questions prioritizing high-impact missing slots
@@ -627,11 +677,75 @@ class IntentAutoFiller:
 
         camera_lighting = f"In a single continuous shot. No scene cuts. {style_tone}."
 
-        # 4. Resolve Characters
+        # 4. Resolve Characters (prioritizing saved Vault character_profiles)
         characters: list[CharacterRoleModel] = []
-        char_names = list(inputs.characters) if inputs.characters else []
+        role_letters = ["Role A", "Role B", "Role C", "Role D"]
 
-        if not char_names:
+        if inputs.character_profiles:
+            for idx, prof in enumerate(inputs.character_profiles[:4]):
+                r_id = role_letters[idx] if idx < len(role_letters) else f"Role {idx + 1}"
+                raw_name = (prof.name or prof.role_id or f"Character {idx + 1}").strip()
+                vault_fallback = KNOWN_VAULT_PROFILES.get(raw_name.lower(), {})
+
+                ref_url = prof.reference_url or vault_fallback.get("reference_url")
+                wardrobe = (
+                    prof.wardrobe
+                    or vault_fallback.get("wardrobe")
+                    or self._generate_wardrobe(raw_name, idx, is_cyberpunk, is_wizard, is_cooking)
+                )
+                voice_style = (
+                    prof.voice_style
+                    or vault_fallback.get("voice_style")
+                    or self._generate_voice_style(
+                        raw_name, idx, is_cyberpunk, is_wizard, is_cooking
+                    )
+                )
+                desc = (
+                    prof.description
+                    or vault_fallback.get("description")
+                    or self._generate_char_description(
+                        raw_name, idx, is_cyberpunk, is_wizard, is_cooking
+                    )
+                )
+                tags = (
+                    list(prof.aesthetic_tags)
+                    if prof.aesthetic_tags
+                    else list(
+                        vault_fallback.get(
+                            "aesthetic_tags", ["Cinematic", "High Definition", "Omni Flash"]
+                        )
+                    )
+                )
+
+                if enable_safety_sanitization:
+                    if not vault_fallback and not prof.reference_url:
+                        raw_name = sanitize_real_names(raw_name)
+                    desc = sanitize_real_names(desc)
+                    wardrobe = sanitize_real_names(wardrobe)
+                    voice_style = sanitize_real_names(voice_style)
+
+                characters.append(
+                    CharacterRoleModel(
+                        role_id=r_id,
+                        name=raw_name,
+                        description=desc,
+                        reference_url=ref_url,
+                        wardrobe=wardrobe,
+                        voice_style=voice_style,
+                        aesthetic_tags=tags,
+                        image_role=prof.image_role or "Character Reference",
+                        is_offscreen_narrator=prof.is_offscreen_narrator,
+                    )
+                )
+
+        existing_names_lower = {c.name.lower() for c in characters}
+        char_names = [
+            n.strip()
+            for n in (inputs.characters or [])
+            if n and n.strip() and n.strip().lower() not in existing_names_lower
+        ]
+
+        if not characters and not char_names:
             # Check answers for characters
             char_ans = self._resolve_answer(
                 slot_name="characters",
@@ -642,14 +756,14 @@ class IntentAutoFiller:
             if char_ans:
                 char_names = [c.strip() for c in char_ans.split(",") if c.strip()]
 
-        if not char_names:
+        if not characters and not char_names:
             # Check intent for parody / real names
             for pattern, parody_name in REAL_NAME_PARODY_MAP.items():
                 if re.search(pattern, raw_intent, flags=re.IGNORECASE):
                     if parody_name not in char_names:
                         char_names.append(parody_name)
 
-        if not char_names:
+        if not characters and not char_names:
             # Archetype defaults based on genre
             if is_cyberpunk:
                 char_names = ["Detective K", "Officer Vex"]
@@ -664,20 +778,29 @@ class IntentAutoFiller:
             else:
                 char_names = ["Lead Protagonist", "Rival Counterpart"]
 
-        # Ensure at least 2 characters
-        if len(char_names) == 1:
-            char_names.append("Allied Partner")
-
-        # Build CharacterRoleModel items
-        role_letters = ["Role A", "Role B", "Role C", "Role D"]
-        for idx, name in enumerate(char_names[:4]):
+        # Append any string-named characters
+        for name in char_names:
+            if len(characters) >= 4:
+                break
+            idx = len(characters)
             r_id = role_letters[idx] if idx < len(role_letters) else f"Role {idx + 1}"
-            wardrobe = self._generate_wardrobe(name, idx, is_cyberpunk, is_wizard, is_cooking)
-            voice_style = self._generate_voice_style(name, idx, is_cyberpunk, is_wizard, is_cooking)
-            desc = self._generate_char_description(name, idx, is_cyberpunk, is_wizard, is_cooking)
+            vault_match = KNOWN_VAULT_PROFILES.get(name.strip().lower(), {})
+            ref_url = vault_match.get("reference_url")
+            wardrobe = vault_match.get("wardrobe") or self._generate_wardrobe(
+                name, idx, is_cyberpunk, is_wizard, is_cooking
+            )
+            voice_style = vault_match.get("voice_style") or self._generate_voice_style(
+                name, idx, is_cyberpunk, is_wizard, is_cooking
+            )
+            desc = vault_match.get("description") or self._generate_char_description(
+                name, idx, is_cyberpunk, is_wizard, is_cooking
+            )
+            tags = list(
+                vault_match.get("aesthetic_tags", ["Cinematic", "High Definition", "Omni Flash"])
+            )
 
+            clean_name = sanitize_real_names(name) if enable_safety_sanitization else name
             if enable_safety_sanitization:
-                name = sanitize_real_names(name)
                 desc = sanitize_real_names(desc)
                 wardrobe = sanitize_real_names(wardrobe)
                 voice_style = sanitize_real_names(voice_style)
@@ -685,11 +808,44 @@ class IntentAutoFiller:
             characters.append(
                 CharacterRoleModel(
                     role_id=r_id,
-                    name=name,
+                    name=clean_name,
                     description=desc,
+                    reference_url=ref_url,
                     wardrobe=wardrobe,
                     voice_style=voice_style,
-                    aesthetic_tags=["Cinematic", "High Definition", "Omni Flash"],
+                    aesthetic_tags=tags,
+                    image_role="Character Reference",
+                    is_offscreen_narrator=False,
+                )
+            )
+
+        # Ensure at least 2 characters for two-hander scene choreography
+        if len(characters) == 1:
+            first_lower = characters[0].name.lower()
+            partner_name = "YoTotti" if first_lower == "dumble dior" else "Allied Partner"
+            partner_vault = KNOWN_VAULT_PROFILES.get(partner_name.lower(), {})
+            characters.append(
+                CharacterRoleModel(
+                    role_id="Role B",
+                    name=partner_vault.get("name", partner_name),
+                    description=partner_vault.get("description")
+                    or self._generate_char_description(
+                        partner_name, 1, is_cyberpunk, is_wizard, is_cooking
+                    ),
+                    reference_url=partner_vault.get("reference_url"),
+                    wardrobe=partner_vault.get("wardrobe")
+                    or self._generate_wardrobe(
+                        partner_name, 1, is_cyberpunk, is_wizard, is_cooking
+                    ),
+                    voice_style=partner_vault.get("voice_style")
+                    or self._generate_voice_style(
+                        partner_name, 1, is_cyberpunk, is_wizard, is_cooking
+                    ),
+                    aesthetic_tags=list(
+                        partner_vault.get(
+                            "aesthetic_tags", ["Cinematic", "High Definition", "Omni Flash"]
+                        )
+                    ),
                     image_role="Character Reference",
                     is_offscreen_narrator=False,
                 )
@@ -720,14 +876,40 @@ class IntentAutoFiller:
             else:
                 sound_effects = "(ambient room reverberation, subtle foot movement)"
 
-        # 6. Resolve Vocal Delivery & Dialogue
-        vocal_delivery = "Rhythmic, confident, clear front-and-center vocal projection."
-        dialogue_custom = self._resolve_answer(
-            slot_name="dialogue",
-            explicit_val=inputs.dialogue,
-            answers=answers,
-            question_keys=("q_dialogue", "dialogue", "lines", "script"),
+        # 6. Resolve Dialogue Direction, Vocal Delivery & Spoken Lines
+        dialogue_direction = (
+            self._resolve_answer(
+                slot_name="dialogue_direction",
+                explicit_val=inputs.dialogue_direction,
+                answers=answers,
+                question_keys=("q_dialogue_direction", "dialogue_direction", "direction"),
+            )
+            or ""
         )
+        dialogue_custom = (
+            inputs.dialogue.strip() if (inputs.dialogue and inputs.dialogue.strip()) else None
+        )
+        if not dialogue_custom and not dialogue_direction:
+            ans_diag = self._resolve_answer(
+                slot_name="dialogue",
+                explicit_val=None,
+                answers=answers,
+                question_keys=("q_dialogue", "dialogue", "lines", "script"),
+            )
+            if ans_diag:
+                # If the answer is a direction preset or has no quotation marks, treat it as dialogue_direction
+                if '"' not in ans_diag and ":" not in ans_diag:
+                    dialogue_direction = ans_diag
+                else:
+                    dialogue_custom = ans_diag
+
+        if dialogue_direction:
+            vocal_delivery = (
+                f"Dialogue Direction: {dialogue_direction}. "
+                "Rhythmic, confident, clear front-and-center vocal projection."
+            )
+        else:
+            vocal_delivery = "Rhythmic, confident, clear front-and-center vocal projection."
 
         char_a = characters[0]
         char_b = characters[1]
@@ -735,6 +917,18 @@ class IntentAutoFiller:
         if dialogue_custom:
             diag_a = dialogue_custom
             diag_b = "Standing ground with unwavering conviction!"
+        elif dialogue_direction:
+            diag_a, diag_b = self._synthesize_guided_dialogue(
+                raw_intent=raw_intent,
+                char_a=char_a,
+                char_b=char_b,
+                environment=environment,
+                dialogue_direction=dialogue_direction,
+                is_wizard=is_wizard,
+                is_cyberpunk=is_cyberpunk,
+                is_cooking=is_cooking,
+                is_samurai=is_samurai,
+            )
         elif is_wizard:
             diag_a = "I've been brewing formulas while you were still studying scrolls!"
             diag_b = "Your spells are ancient history—this is a new era, Bruv!"
@@ -754,14 +948,20 @@ class IntentAutoFiller:
         if enable_safety_sanitization:
             diag_a = sanitize_real_names(diag_a)
             diag_b = sanitize_real_names(diag_b)
+            if dialogue_direction:
+                dialogue_direction = sanitize_real_names(dialogue_direction)
+
+        direction_acting_note = (
+            f" [Dialogue Direction: {dialogue_direction}]" if dialogue_direction else ""
+        )
 
         # 7. Choreograph 10-second continuous shot screenplay script
         screenplay_script = (
             f"[0-3s] Action: {char_a.name} ({char_a.role_id}) steps into frame in {environment}, "
-            f"initiating action with focused intensity. Audio: {audio_beat} build-up {sound_effects}. "
+            f"initiating action with focused intensity.{direction_acting_note} Audio: {audio_beat} build-up {sound_effects}. "
             f'Dialogue: {char_a.name}: "{diag_a}"\n'
             f"[3-6s] Action: Camera glides smoothly in a continuous tracking shot toward {char_b.name} ({char_b.role_id}), "
-            f"who confronts {char_a.name} with commanding presence. Audio: {audio_beat} beat drop. "
+            f"who confronts {char_a.name} with commanding presence.{direction_acting_note} Audio: {audio_beat} beat drop. "
             f'Dialogue: {char_b.name}: "{diag_b}"\n'
             f"[6-10s] Action: Both performers lock into a high-energy dynamic tableau as lighting pulses, "
             f"holding continuous dramatic tension as the shot concludes. Audio: {audio_beat} crescendo. "
@@ -772,8 +972,8 @@ class IntentAutoFiller:
         scenes = [
             DeconstructedSceneModel(
                 scene_number=1,
-                active_roles=[char_a.role_id, char_b.role_id],
-                action=f"{char_a.name} and {char_b.name} engage in a continuous dramatic encounter in {environment}.",
+                active_roles=[c.role_id for c in characters[:3]],
+                action=f"{char_a.name} and {char_b.name} engage in a continuous dramatic encounter in {environment}.{direction_acting_note}",
                 dialogue=f'{char_a.name}: "{diag_a}" / {char_b.name}: "{diag_b}"',
                 audio_cues=audio_beat,
                 timecode="0-10s",
@@ -799,6 +999,8 @@ class IntentAutoFiller:
             screenplay_script=screenplay_script,
             aspect_ratio=aspect_ratio,
             enable_safety_sanitization=enable_safety_sanitization,
+            dialogue_direction=dialogue_direction,
+            vocal_delivery=vocal_delivery,
         )
 
         plan = CohesiveProductionPlan(
@@ -810,6 +1012,7 @@ class IntentAutoFiller:
             audio_beat=audio_beat,
             sound_effects=sound_effects,
             vocal_delivery=vocal_delivery,
+            dialogue_direction=dialogue_direction,
             screenplay_script=screenplay_script,
             scenes=scenes,
             keyframe_image_prompt=keyframe_image_prompt,
@@ -929,6 +1132,95 @@ class IntentAutoFiller:
             else f"{name}, a formidable counterpart with sharp instincts and dynamic presence."
         )
 
+    def _synthesize_guided_dialogue(
+        self,
+        raw_intent: str,
+        char_a: CharacterRoleModel,
+        char_b: CharacterRoleModel,
+        environment: str,
+        dialogue_direction: str,
+        is_wizard: bool,
+        is_cyberpunk: bool,
+        is_cooking: bool,
+        is_samurai: bool,
+    ) -> tuple[str, str]:
+        """Synthesizes two in-character spoken lines guided by the user's dialogue_direction."""
+        if not self.mock_mode and self._genai_client is not None:
+            try:
+                prompt = (
+                    "You are a film dialogue writer for a 10-second continuous shot.\n"
+                    f"Premise: {raw_intent}\n"
+                    f"Environment: {environment}\n"
+                    f"Character 1 ({char_a.name}, {char_a.voice_style}): {char_a.description}\n"
+                    f"Character 2 ({char_b.name}, {char_b.voice_style}): {char_b.description}\n"
+                    f"Dialogue Direction / Guidance: {dialogue_direction}\n\n"
+                    "Write exactly two short, punchy spoken dialogue lines (max 15 words each) "
+                    "following the Dialogue Direction above.\n"
+                    "Format strictly as:\n"
+                    "LINE_A: <line for Character 1>\n"
+                    "LINE_B: <line for Character 2>"
+                )
+                resp = self._genai_client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                )
+                text = getattr(resp, "text", "") or ""
+                line_a_match = re.search(r"LINE_A:\s*(.+)", text)
+                line_b_match = re.search(r"LINE_B:\s*(.+)", text)
+                if line_a_match and line_b_match:
+                    la = line_a_match.group(1).strip().strip('"').strip("'")
+                    lb = line_b_match.group(1).strip().strip('"').strip("'")
+                    if la and lb:
+                        return la, lb
+            except Exception as exc:
+                logger.warning("Guided dialogue LLM synthesis fallback: %s", exc)
+
+        dir_lower = dialogue_direction.lower()
+        intent_lower = raw_intent.lower()
+
+        if any(
+            w in dir_lower or w in intent_lower
+            for w in ("audit", "ledger", "galleon", "vault", "corporate")
+        ):
+            return (
+                "The quarterly vault ledger is immaculate, fam—every stack is accounted for.",
+                "Light work, Headmaster. Tell the elves to double the count before closing.",
+            )
+        if any(w in dir_lower for w in ("rhyme", "rhyming", "rap", "diss", "couplet", "bars")):
+            return (
+                "My bars hit harder than arcane thunder, watch your whole strategy fall asunder!",
+                "Talk is cheap when the crown is mine, I've been running this stage since the start of time!",
+            )
+        if any(w in dir_lower for w in ("sarcastic", "deadpan", "dry", "unfazed", "banter")):
+            return (
+                "Oh brilliant, another catastrophic emergency right before our lunch break.",
+                "Relax, I've seen worse on a Tuesday—just press the override and look confident.",
+            )
+        if is_wizard:
+            return (
+                "Every spell in the grimoire bows to precision—watch how a master works the room.",
+                "Calm energy, bruv. The magic speaks for itself without raising a voice.",
+            )
+        if is_cyberpunk:
+            return (
+                "Firewall's breached on Sector 9—keep your optics locked on the main terminal.",
+                "Already inside the sub-grid. Grab the drive and let's ghost.",
+            )
+        if is_cooking:
+            return (
+                "That reduction needs thirty more seconds of heat—perfection is in the timing!",
+                "Plate's already resting, Chef. One taste and the judges are ours.",
+            )
+        if is_samurai:
+            return (
+                "Steel remembers every promise spoken under these bamboo shadows.",
+                "Then let one strike settle the debt between us.",
+            )
+        return (
+            f"Focus up, {char_b.name}—everything we planned comes down to this next move.",
+            f"Say less, {char_a.name}. I was born ready for this moment.",
+        )
+
     def _compile_canonical_four_block_prompt(
         self,
         characters: list[CharacterRoleModel],
@@ -939,6 +1231,8 @@ class IntentAutoFiller:
         screenplay_script: str,
         aspect_ratio: str,
         enable_safety_sanitization: bool,
+        dialogue_direction: str = "",
+        vocal_delivery: str = "",
     ) -> str:
         """Assembles the canonical 4-block Gemini Omni Flash prompt string."""
         # Block 1: INPUT ROLES & REFERENCES
@@ -975,6 +1269,13 @@ class IntentAutoFiller:
             f"- Camera & Lighting: {camera_lighting}",
             f"- Audio Beat & Ducking: instrumental {audio_beat}. Ensure the background music ducks under the spoken dialogue so the voice is clear, front-and-center, and intelligible.",
         ]
+        if dialogue_direction:
+            scene_inst.append(
+                f"- Dialogue Direction & Vocal Guidance: {dialogue_direction} (Ensure spoken lines and vocal cadence follow this direction)."
+            )
+        elif vocal_delivery:
+            scene_inst.append(f"- Vocal Delivery: {vocal_delivery}")
+
         block3 = "### SCENE INSTRUCTIONS\n" + "\n".join(scene_inst)
 
         # Block 4: TIMELINE
@@ -984,7 +1285,16 @@ class IntentAutoFiller:
         full_prompt = f"{block1}\n\n{block2}\n\n{block3}\n\n{block4}"
 
         if enable_safety_sanitization:
+            # Preserve explicit Vault character names with placeholders during sanitization
+            vault_placeholders: list[tuple[str, str]] = []
+            for idx, char in enumerate(characters):
+                if char.reference_url and char.name:
+                    token = f"__VAULT_CHAR_{idx}__"
+                    vault_placeholders.append((token, char.name))
+                    full_prompt = full_prompt.replace(char.name, token)
             full_prompt = sanitize_real_names(full_prompt)
+            for token, orig_name in vault_placeholders:
+                full_prompt = full_prompt.replace(token, orig_name)
 
         return full_prompt
 

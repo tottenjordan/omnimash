@@ -546,6 +546,10 @@ class IntentSlotInputs(BaseModel):
     characters: list[str] = Field(
         default_factory=list, description="Explicit character names or roles"
     )
+    character_profiles: list[CharacterRoleModel] = Field(
+        default_factory=list,
+        description="Full saved character profiles (including reference_url, wardrobe, voice_style) selected from the Character Vault",
+    )
     setting: str | None = Field(default=None, description="Specific location or environment")
     style_tone: str | None = Field(default=None, description="Visual aesthetic and lighting tone")
     audio_beat: str | None = Field(default=None, description="Background music genre and tempo")
@@ -553,6 +557,10 @@ class IntentSlotInputs(BaseModel):
         default=None, description="Parenthetical diegetic sound effects"
     )
     dialogue: str | None = Field(default=None, description="Specific spoken dialogue or monologue")
+    dialogue_direction: str | None = Field(
+        default=None,
+        description="Directorial guidance for dialogue tone, cadence, and conversational dynamic when generating the final video prompt",
+    )
 
 
 class ClarificationQuestionOption(BaseModel):
@@ -609,6 +617,7 @@ class CohesiveProductionPlan(BaseModel):
     audio_beat: str
     sound_effects: str = ""
     vocal_delivery: str
+    dialogue_direction: str = ""
     screenplay_script: str
     scenes: list[DeconstructedSceneModel] = Field(default_factory=list)
     keyframe_image_prompt: str

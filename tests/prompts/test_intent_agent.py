@@ -87,3 +87,66 @@ def test_deterministic_mock_mode_resilience():
     )
     assert plan_res.success is True
     assert plan_res.plan.raw_compiled_prompt != ""
+
+
+def test_auto_fill_preserves_vault_character_profiles_and_reference_urls():
+    from omnimash.api.models import CharacterRoleModel
+
+    vault_char = CharacterRoleModel(
+        role_id="Role A",
+        name="Dumble Dior",
+        description="Elderly high-fashion wizard headmaster with diamond spectacles",
+        reference_url="gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/dumble_dior_office_sheet_v13.png",
+        wardrobe="Floor-length custom silk monogram wizard robe",
+        voice_style="Sharp, vigorous Oxford English cadence",
+    )
+    analyzer = IntentGapAnalyzer(mock_mode=True)
+    gap_res = analyzer.analyze(
+        intent="Inspecting glowing gold galleons in the vault",
+        inputs=IntentSlotInputs(character_profiles=[vault_char]),
+    )
+    assert "characters" not in gap_res.missing_slots
+
+    autofiller = IntentAutoFiller(mock_mode=True)
+    res = autofiller.generate_plan(
+        intent="Inspecting glowing gold galleons in the vault",
+        inputs=IntentSlotInputs(character_profiles=[vault_char]),
+        answers={},
+    )
+    assert res.success is True
+    plan = res.plan
+    assert len(plan.characters) >= 2
+    assert plan.characters[0].name == "Dumble Dior"
+    assert (
+        plan.characters[0].reference_url
+        == "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/dumble_dior_office_sheet_v13.png"
+    )
+    assert "silk monogram wizard robe" in plan.characters[0].wardrobe
+    assert "Dumble Dior" in plan.raw_compiled_prompt
+    assert "@Image1" in plan.raw_compiled_prompt
+
+
+def test_auto_fill_incorporates_dialogue_direction_guidance():
+    direction = "Trade sarcastic corporate audit jargon mixed with calm East London wizard slang"
+    analyzer = IntentGapAnalyzer(mock_mode=True)
+    gap_res = analyzer.analyze(
+        intent="Two wizards auditing a mountain of gold coins",
+        inputs=IntentSlotInputs(dialogue_direction=direction),
+    )
+    assert "dialogue" not in gap_res.missing_slots
+    assert gap_res.filled_slots.get("dialogue_direction") == direction
+
+    autofiller = IntentAutoFiller(mock_mode=True)
+    res = autofiller.generate_plan(
+        intent="Two wizards auditing a mountain of gold coins",
+        inputs=IntentSlotInputs(dialogue_direction=direction),
+        answers={},
+    )
+    assert res.success is True
+    plan = res.plan
+    assert plan.dialogue_direction == direction
+    assert direction in plan.vocal_delivery
+    assert "Dialogue Direction" in plan.raw_compiled_prompt
+    assert direction in plan.raw_compiled_prompt
+    # Ensure the direction itself was used as guidance rather than pasted verbatim as the literal spoken quote
+    assert f'"{direction}"' not in plan.screenplay_script

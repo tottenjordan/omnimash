@@ -2868,6 +2868,12 @@ def test_ui_html_contains_mode4_directors_copilot_workspace() -> None:
     assert "Ask Me Questions (Clarify Gaps)" in UI_HTML
     assert "Surprise Me (Auto-Fill Gaps Cohesively)" in UI_HTML
 
+    # 2b. Character Vault Dropdown with Reference Image Thumbnails & Dialogue Direction
+    assert "mode4-vault-dropdown-btn" in UI_HTML
+    assert "Select Saved Character(s) with Reference Image Thumbnail" in UI_HTML
+    assert "mode4-dialogue-direction-input" in UI_HTML
+    assert "Dialogue Direction (Guidance for Gemini)" in UI_HTML
+
     # 3. API Endpoints
     assert "/api/intent/analyze-gaps" in UI_HTML
     assert "/api/intent/auto-fill" in UI_HTML

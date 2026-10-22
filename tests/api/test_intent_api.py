@@ -173,3 +173,51 @@ def test_create_intent_clarifier_agent_custom_overrides():
     assert agent.model == "gemini-4-argon"
     assert agent.instruction == custom_instruction
     assert agent.tools == custom_tools
+
+
+def test_auto_fill_and_render_with_vault_characters_and_dialogue_direction(client):
+    payload = {
+        "intent": "Headmaster and young wizard auditing glowing gold galleons in a gothic vault",
+        "optional_inputs": {
+            "character_profiles": [
+                {
+                    "role_id": "Role A",
+                    "name": "Dumble Dior",
+                    "description": "Elderly high-fashion wizard headmaster with diamond spectacles",
+                    "reference_url": "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/dumble_dior_office_sheet_v13.png",
+                    "wardrobe": "Floor-length custom silk monogram wizard robe",
+                    "voice_style": "Sharp, vigorous Oxford English cadence",
+                },
+                {
+                    "role_id": "Role B",
+                    "name": "YoTotti",
+                    "description": "Confident young wizard in blue-shaded aviator sunglasses",
+                    "reference_url": "gs://omnimash-media-hybrid-vertex/projects/trapwarts/sessions/dd_office_v13/character_sheets/yototti_office_sheet_v13.png",
+                    "wardrobe": "Tailored black designer tracksuit and diamond chains",
+                    "voice_style": "Calm, unfazed East London cadence",
+                },
+            ],
+            "dialogue_direction": "Trade calm executive audit banter contrasting high-fashion luxury with overflowing magical wealth",
+        },
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "session_name": "vault_audit_copilot",
+    }
+    res = client.post("/api/intent/auto-fill", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    plan = data["plan"]
+    assert plan["dialogue_direction"] == payload["optional_inputs"]["dialogue_direction"]
+    assert len(plan["characters"]) >= 2
+    assert plan["characters"][0]["name"] == "Dumble Dior"
+    assert plan["characters"][0]["reference_url"].endswith("dumble_dior_office_sheet_v13.png")
+    assert plan["characters"][1]["name"] == "YoTotti"
+    assert plan["characters"][1]["reference_url"].endswith("yototti_office_sheet_v13.png")
+    assert "Dialogue Direction" in data["raw_compiled_prompt"]
+
+    render_res = client.post("/api/intent/render-direct", json=payload)
+    assert render_res.status_code == 200
+    render_data = render_res.json()
+    assert render_data["success"] is True
+    assert "Dialogue Direction" in render_data["raw_compiled_prompt"]
