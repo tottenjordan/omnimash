@@ -270,8 +270,8 @@ class OmniMashAgent:
 
     def process_user_turn(
         self,
-        user_id: str,
-        project_id: str,
+        user_id: str = "usr_default",
+        project_id: str = "prj_default",
         prompt: str = "",
         clip_index: int = 0,
         parent_turn_id: str | None = None,

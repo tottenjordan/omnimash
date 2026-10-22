@@ -501,9 +501,7 @@ class CreateShareLinkRequest(BaseModel):
     master_title: str | None = Field(
         default=None, description="Optional title for the master video"
     )
-    expiration_days: int = Field(
-        default=7, ge=1, le=7, description="Lifespan in days (1 to 7)"
-    )
+    expiration_days: int = Field(default=7, ge=1, le=7, description="Lifespan in days (1 to 7)")
 
 
 class CreateShareLinkResponse(BaseModel):
@@ -539,3 +537,86 @@ class GenerateResponse(BaseModel):
     generation_mode: str = "LIVE_OMNI_FLASH"
     raw_compiled_prompt: str | None = None
     reference_analysis: dict[str, Any] | None = None
+
+
+# --- Mode 4: Director's Co-Pilot Domain Models ---
+
+
+class IntentSlotInputs(BaseModel):
+    characters: list[str] = Field(
+        default_factory=list, description="Explicit character names or roles"
+    )
+    setting: str | None = Field(default=None, description="Specific location or environment")
+    style_tone: str | None = Field(default=None, description="Visual aesthetic and lighting tone")
+    audio_beat: str | None = Field(default=None, description="Background music genre and tempo")
+    sound_effects: str | None = Field(
+        default=None, description="Parenthetical diegetic sound effects"
+    )
+    dialogue: str | None = Field(default=None, description="Specific spoken dialogue or monologue")
+
+
+class ClarificationQuestionOption(BaseModel):
+    id: str
+    label: str
+    description: str = ""
+
+
+class ClarificationQuestion(BaseModel):
+    question_id: str
+    slot_target: (
+        str  # "characters" | "setting" | "style_tone" | "audio_beat" | "sound_effects" | "dialogue"
+    )
+    title: str
+    subtitle: str = ""
+    options: list[ClarificationQuestionOption] = Field(default_factory=list)
+    allow_custom: bool = True
+
+
+class AnalyzeIntentGapsRequest(BaseModel):
+    intent: str = Field(..., description="Raw user intent or premise")
+    optional_inputs: IntentSlotInputs = Field(default_factory=IntentSlotInputs)
+    session_name: str | None = None
+
+
+class AnalyzeIntentGapsResponse(BaseModel):
+    success: bool = True
+    intent: str
+    filled_slots: dict[str, Any] = Field(default_factory=dict)
+    missing_slots: list[str] = Field(default_factory=list)
+    questions: list[ClarificationQuestion] = Field(default_factory=list)
+    can_auto_fill_immediately: bool = True
+
+
+class AutoFillIntentPlanRequest(BaseModel):
+    intent: str
+    optional_inputs: IntentSlotInputs = Field(default_factory=IntentSlotInputs)
+    question_answers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of question_id to chosen option or write-in",
+    )
+    resolution: str = "720p"
+    aspect_ratio: str = "16:9"
+    enable_safety_sanitization: bool = True
+    session_name: str | None = None
+
+
+class CohesiveProductionPlan(BaseModel):
+    intent: str
+    style_tone: str
+    characters: list[CharacterRoleModel] = Field(default_factory=list)
+    environment: str
+    camera_lighting: str
+    audio_beat: str
+    sound_effects: str = ""
+    vocal_delivery: str
+    screenplay_script: str
+    scenes: list[DeconstructedSceneModel] = Field(default_factory=list)
+    keyframe_image_prompt: str
+    raw_compiled_prompt: str
+
+
+class AutoFillIntentPlanResponse(BaseModel):
+    success: bool = True
+    plan: CohesiveProductionPlan
+    raw_compiled_prompt: str
+    details: str = ""
