@@ -1211,13 +1211,24 @@
             const [stitchMasterLoading, setStitchMasterLoading] = useState(false);
             const [stitchMasterResult, setStitchMasterResult] = useState(null);
 
-            // 7-Day Shareable Video Link State
+            // 7-Day Shareable Video Link & Frozen Snapshot State
             const [showShareModal, setShowShareModal] = useState(false);
             const [shareLoading, setShareLoading] = useState(false);
             const [shareData, setShareData] = useState(null);
             const [shareCopied, setShareCopied] = useState(false);
             const [downloadCopied, setDownloadCopied] = useState(false);
             const [embedCopied, setEmbedCopied] = useState(false);
+            const [activeSharesList, setActiveSharesList] = useState([]);
+
+            // Saved Scenes Vault & Final-Stage 3-Scene Cohesive Stitcher State
+            const [savedScenesVault, setSavedScenesVault] = useState([]);
+            const [selectedVaultSceneIds, setSelectedVaultSceneIds] = useState([]);
+            const [bridgingDirection, setBridgingDirection] = useState("");
+            const [respectLockedVideos, setRespectLockedVideos] = useState(true);
+            const [harmonyPreviewPlan, setHarmonyPreviewPlan] = useState(null);
+            const [harmonyPreviewLoading, setHarmonyPreviewLoading] = useState(false);
+            const [harmonyStitchLoading, setHarmonyStitchLoading] = useState(false);
+            const [harmonizedMasterResult, setHarmonizedMasterResult] = useState(null);
 
             // Studio Mode Switcher State ("acts" | "stages" | "journey3" | "intent")
             const [studioMode, setStudioMode] = useState("stages");
@@ -2600,12 +2611,12 @@
                 );
             };
 
-            const handleGenerateShotVideo = async (idx, shot, parentIdOverride = null) => {
+            const handleGenerateShotVideo = async (idx, shot, _parentIdOverride = null) => {
                 const shotIdx = shot.shot_index || (idx + 1);
                 setShotGeneratingMap((prev) => ({ ...prev, [shotIdx]: true }));
                 setLastError(null);
                 try {
-                    const parentTurnId = parentIdOverride || (idx > 0 && stageShots[idx - 1] ? stageShots[idx - 1].turn_id : null);
+                    const parentTurnId = null;
                     const res = await fetch("/api/generate-shot", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -2621,7 +2632,7 @@
                             keyframe_image_url: shot.keyframe_image_url || shot.image_url || null,
                             characters: characters,
                             duration_seconds: parseFloat(shot.duration_seconds) || 10.0,
-                            parent_turn_id: parentTurnId,
+                            parent_turn_id: null,
                             audio_stem: shot.audio || null,
                             enable_safety_sanitization: enableSafetySanitization,
                             aspect_ratio: aspectRatio,
@@ -2726,16 +2737,12 @@
                 if (!stageShots || stageShots.length === 0) return;
                 setIsBatchGeneratingVideos(true);
                 setBatchVideoProgress({ current: 0, total: stageShots.length, activeShotIndex: 1 });
-                let lastTurnId = null;
                 try {
                     for (let i = 0; i < stageShots.length; i++) {
                         const shot = stageShots[i];
                         const shotIdx = shot.shot_index || (i + 1);
                         setBatchVideoProgress({ current: i + 1, total: stageShots.length, activeShotIndex: shotIdx });
-                        const createdTurnId = await handleGenerateShotVideo(i, shot, lastTurnId);
-                        if (createdTurnId) {
-                            lastTurnId = createdTurnId;
-                        }
+                        await handleGenerateShotVideo(i, shot, null);
                     }
                     if (autoNavigateToStage3) {
                         setActiveStage(3);
@@ -3378,12 +3385,14 @@
                 try {
                     const selectedShotObj = stageShots.find(s => (s.shot_index || (stageShots.indexOf(s) + 1)) === selectedShotIndex);
                     const shotTurnId = parentTurnId || selectedShotObj?.turn_id || null;
+                    const hasDeltaEdit = Boolean(deltaPrompt && deltaPrompt.trim());
+                    const effectiveTurnId = hasDeltaEdit ? shotTurnId : null;
                     const payload = {
                         user_id: "usr_studio",
                         project_id: "prj_director",
-                        prompt: deltaPrompt || concept,
+                        prompt: hasDeltaEdit ? deltaPrompt.trim() : "",
                         clip_index: (selectedShotIndex - 1) >= 0 ? (selectedShotIndex - 1) : 0,
-                        parent_turn_id: shotTurnId,
+                        parent_turn_id: effectiveTurnId,
                         session_name: sessionName,
                         concept: concept,
                         characters: characters,
@@ -3396,7 +3405,7 @@
                         aspect_ratio: aspectRatio,
                         keyframe_seed: isVisualContinuityLocked ? keyframeSeedAnchor : null
                     };
-                    const endpoint = shotTurnId ? "/api/diff" : "/api/generate";
+                    const endpoint = effectiveTurnId ? "/api/diff" : "/api/generate";
                     const res = await fetch(endpoint, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -3417,7 +3426,7 @@
                             prompt: deltaPrompt || concept,
                             status: data.status,
                             videoUrl: data.video_url,
-                            parent: parentTurnId || null,
+                            parent: effectiveTurnId || null,
                             lock: "Maintain character role likeness, aesthetic tags, and scene sequence.",
                             diff: deltaPrompt ? `Conversational diff: ${deltaPrompt}` : `Parody cut from storyboard`,
                             rawCompiledPrompt: compiled
@@ -3426,7 +3435,6 @@
                         setCurrentVideo(data.video_url);
                         setParentTurnId(data.turn_id);
                         setStatus(data.status);
-                        setDeltaPrompt("");
                         if (studioMode === "acts") {
                             setActiveAct(3);
                         }
@@ -3709,9 +3717,183 @@
                 }
             };
 
-            // 7-Day Shareable Link Handler (POST /api/share/create)
+            // Saved Scenes Vault & Final-Stage 3-Scene Cohesive Stitcher Handlers
+            const handleLoadSavedScenes = async () => {
+                try {
+                    const proj = "prj_director";
+                    const res = await fetch(`/api/scenes?project_id=${encodeURIComponent(proj)}`);
+                    const data = await res.json();
+                    if (data && data.scenes) {
+                        setSavedScenesVault(data.scenes);
+                    }
+                } catch (err) {
+                    console.error("Failed to load saved scenes vault:", err);
+                }
+            };
+
+            const handleSaveSceneToVault = async (scenePayload) => {
+                try {
+                    const res = await fetch("/api/scenes/save", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            project_id: "prj_director",
+                            session_id: sessionName || "default_session",
+                            title: scenePayload.title || `Scene #${scenePayload.shot_index || 1}`,
+                            prompt: scenePayload.prompt || concept || "",
+                            action: scenePayload.action || scenePayload.summary || "",
+                            dialogue: scenePayload.dialogue || "",
+                            dialogue_direction: scenePayload.dialogue_direction || vocalDelivery || "",
+                            screenplay_script: scenePayload.screenplay_script || screenplayScript || "",
+                            environment: scenePayload.location || environmentTag || "",
+                            style_tone: scenePayload.style_lighting || stageStyleTone || "90s_rap_video",
+                            audio_beat: scenePayload.audio || audioBeat || "140 BPM Heavy 808 Trap",
+                            vocal_delivery: vocalDelivery || "",
+                            characters: characters || [],
+                            keyframe_image_url: scenePayload.keyframe_image_url || keyframeSeedAnchor || null,
+                            video_url: scenePayload.video_url || currentVideo || null,
+                            aspect_ratio: aspectRatio || "16:9",
+                            is_locked_video: true
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.success && data.scene) {
+                        setSavedScenesVault((prev) => [...prev.filter(s => s.scene_id !== data.scene.scene_id), data.scene]);
+                        setSelectedVaultSceneIds((prev) => {
+                            if (prev.includes(data.scene.scene_id)) return prev;
+                            return [...prev, data.scene.scene_id].slice(-3);
+                        });
+                        addToast(`Saved "${data.scene.title}" to Saved Scenes Vault!`, "success");
+                    }
+                } catch (err) {
+                    console.error("Failed to save scene to vault:", err);
+                    setLastError(err.message || String(err));
+                }
+            };
+
+            const handleDeleteSavedScene = async (sceneId) => {
+                try {
+                    await fetch(`/api/scenes/${encodeURIComponent(sceneId)}?project_id=prj_director`, { method: "DELETE" });
+                    setSavedScenesVault((prev) => prev.filter((s) => s.scene_id !== sceneId));
+                    setSelectedVaultSceneIds((prev) => prev.filter((id) => id !== sceneId));
+                } catch (err) {
+                    console.error("Failed to delete saved scene:", err);
+                }
+            };
+
+            const toggleSelectVaultScene = (sceneId) => {
+                setSelectedVaultSceneIds((prev) => {
+                    if (prev.includes(sceneId)) {
+                        return prev.filter((id) => id !== sceneId);
+                    }
+                    if (prev.length >= 3) {
+                        return [...prev.slice(1), sceneId];
+                    }
+                    return [...prev, sceneId];
+                });
+            };
+
+            const handlePreviewHarmonizedScenes = async () => {
+                if (selectedVaultSceneIds.length === 0) return;
+                setHarmonyPreviewLoading(true);
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/scenes/harmonize-preview", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            project_id: "prj_director",
+                            scene_ids: selectedVaultSceneIds,
+                            bridging_direction: bridgingDirection
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        setHarmonyPreviewPlan(data);
+                        addToast("Scene Harmony Producer unified cast & continuity bridges!", "success");
+                    } else {
+                        setLastError(data.detail || data.error || "Harmonization preview failed");
+                    }
+                } catch (err) {
+                    console.error("Harmonize preview failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setHarmonyPreviewLoading(false);
+                }
+            };
+
+            const handleHarmonizeAndStitchThreeScenes = async (reRenderHarmonized = false) => {
+                if (selectedVaultSceneIds.length === 0) return;
+                setHarmonyStitchLoading(true);
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/scenes/harmonize-and-stitch", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            project_id: "prj_director",
+                            session_name: sessionName || "harmonized_master_session",
+                            scene_ids: selectedVaultSceneIds,
+                            bridging_direction: bridgingDirection,
+                            respect_locked_videos: !reRenderHarmonized && respectLockedVideos,
+                            re_render_harmonized: Boolean(reRenderHarmonized),
+                            aspect_ratio: aspectRatio || "16:9",
+                            resolution: omniResolution || "720p",
+                            master_title: masterTitle || "harmonized_3scene_master"
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        setHarmonizedMasterResult(data);
+                        setHarmonyPreviewPlan(data);
+                        if (data.master_video_url) {
+                            setCurrentVideo(data.master_video_url);
+                            setStitchMasterResult(data.master_video_url);
+                        }
+                        if (data.gcs_uri) {
+                            setSavedGcsUri(data.gcs_uri);
+                            setStageSaveGcs(data.gcs_uri);
+                        }
+                        addToast("Final 3-Scene Cohesive Master stitched & saved!", "success");
+                    } else {
+                        setLastError(data.detail || data.error || "Harmonize & Stitch failed");
+                    }
+                } catch (err) {
+                    console.error("Harmonize and stitch failed:", err);
+                    setLastError(err.message || String(err));
+                } finally {
+                    setHarmonyStitchLoading(false);
+                }
+            };
+
+            const fetchActiveSharesList = async () => {
+                try {
+                    const res = await fetch(`/api/shares?session_id=${encodeURIComponent(sessionName || "default_session")}`);
+                    const data = await res.json();
+                    if (data && data.shares) {
+                        setActiveSharesList(data.shares);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch active shares:", err);
+                }
+            };
+
+            const handleRevokeShareToken = async (token) => {
+                try {
+                    await fetch(`/api/shares/${encodeURIComponent(token)}`, { method: "DELETE" });
+                    setActiveSharesList((prev) => prev.filter((s) => s.token !== token));
+                    if (shareData && shareData.token === token) {
+                        setShareData(null);
+                    }
+                    addToast("Share link revoked and deleted from storage.", "info");
+                } catch (err) {
+                    console.error("Failed to revoke share link:", err);
+                }
+            };
+
+            // Frozen Snapshot Shareable Link Handler (POST /api/shares & /api/share/create)
             const handleOpenShareModal = async (videoUrlToShare, titleOverride) => {
-                const targetUrl = videoUrlToShare || savedGcsUri || currentVideo || j3MasterVideoUrl;
+                const targetUrl = videoUrlToShare || (harmonizedMasterResult && harmonizedMasterResult.master_video_url) || savedGcsUri || currentVideo || j3MasterVideoUrl;
                 if (!targetUrl) return;
                 setShareLoading(true);
                 setShareCopied(false);
@@ -3719,19 +3901,24 @@
                 setEmbedCopied(false);
                 setShowShareModal(true);
                 try {
-                    const res = await fetch("/api/share/create", {
+                    const res = await fetch("/api/shares", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            session_name: sessionName,
+                            session_id: sessionName || "default_session",
+                            session_name: sessionName || "default_session",
+                            project_id: "prj_director",
                             video_url: targetUrl,
+                            title: titleOverride || masterTitle || "final_master",
                             master_title: titleOverride || masterTitle || "final_master",
+                            aspect_ratio: aspectRatio || "16:9",
                             expiration_days: 7
                         })
                     });
                     const data = await res.json();
                     if (data.success) {
                         setShareData(data);
+                        fetchActiveSharesList();
                     } else {
                         setLastError(data.error || data.detail || "Failed to generate share link");
                     }
@@ -4706,45 +4893,84 @@
                                             </div>
                                         </div>
 
-                                        {/* Secondary Actions */}
-                                        <div className="pt-2 border-t border-gray-800 flex flex-wrap items-center gap-2">
-                                            <a
-                                                href={shareData.share_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs bg-gray-800 hover:bg-gray-700 text-indigo-300 border border-gray-700 font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition"
-                                            >
-                                                <span>↗️ Preview in New Tab</span>
-                                            </a>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const dlUrl = shareData.download_url || shareData.share_url;
-                                                    if (dlUrl) {
-                                                        navigator.clipboard.writeText(dlUrl);
-                                                        setDownloadCopied(true);
-                                                        setTimeout(() => setDownloadCopied(false), 3000);
-                                                    }
-                                                }}
-                                                className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition"
-                                            >
-                                                <span>{downloadCopied ? "✓ Download Link Copied" : "⬇️ Copy Download URL"}</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const snippet = shareData.embed_snippet || `<video controls src="${shareData.share_url}" width="100%"><source src="${shareData.share_url}" type="video/mp4"></video>`;
-                                                    navigator.clipboard.writeText(snippet);
-                                                    setEmbedCopied(true);
-                                                    setTimeout(() => setEmbedCopied(false), 3000);
-                                                }}
-                                                className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition"
-                                            >
-                                                <span>{embedCopied ? "✓ Embed Snippet Copied" : "📄 Copy Embed Code"}</span>
-                                            </button>
+                                            <div className="pt-2 border-t border-gray-800 flex flex-wrap items-center gap-2">
+                                                <a
+                                                    href={shareData.url || shareData.share_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs bg-indigo-900/80 hover:bg-indigo-800 text-indigo-200 border border-indigo-600 font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition"
+                                                >
+                                                    <span>↗️ Preview in New Tab (/s/{shareData.token ? shareData.token.slice(0, 8) : "view"})</span>
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const dlUrl = shareData.download_url || shareData.share_url;
+                                                        if (dlUrl) {
+                                                            navigator.clipboard.writeText(dlUrl);
+                                                            setDownloadCopied(true);
+                                                            setTimeout(() => setDownloadCopied(false), 3000);
+                                                        }
+                                                    }}
+                                                    className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition"
+                                                >
+                                                    <span>{downloadCopied ? "✓ Download Link Copied" : "⬇️ Copy Download URL"}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const snippet = shareData.embed_snippet || `<video controls src="${shareData.share_url}" width="100%"><source src="${shareData.share_url}" type="video/mp4"></video>`;
+                                                        navigator.clipboard.writeText(snippet);
+                                                        setEmbedCopied(true);
+                                                        setTimeout(() => setEmbedCopied(false), 3000);
+                                                    }}
+                                                    className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition"
+                                                >
+                                                    <span>{embedCopied ? "✓ Embed Snippet Copied" : "📄 Copy Embed Code"}</span>
+                                                </button>
+                                                {shareData.token && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRevokeShareToken(shareData.token)}
+                                                        className="text-xs bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-700/80 font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition"
+                                                    >
+                                                        <span>🗑️ Revoke Link</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {activeSharesList && activeSharesList.length > 0 && (
+                                                <div className="pt-3 border-t border-gray-800 space-y-2">
+                                                    <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
+                                                        Active Shared Snapshots ({activeSharesList.length})
+                                                    </span>
+                                                    <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                                                        {activeSharesList.map((item) => (
+                                                            <div
+                                                                key={item.token}
+                                                                className="bg-gray-950 border border-gray-800 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 text-xs"
+                                                            >
+                                                                <a
+                                                                    href={item.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-indigo-300 hover:underline font-mono truncate"
+                                                                >
+                                                                    {item.title || item.token} (/s/{item.token.slice(0, 8)}…)
+                                                                </a>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRevokeShareToken(item.token)}
+                                                                    className="text-[11px] text-red-400 hover:text-red-300 font-bold px-2 py-0.5 rounded bg-red-950/50 border border-red-800/60"
+                                                                >
+                                                                    Revoke
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
-                                ) : (
+                                    ) : (
                                     <div className="text-xs text-red-400 py-4 text-center">
                                         Unable to load shareable link. Please check your network connection and retry.
                                     </div>
@@ -7849,14 +8075,32 @@
                                             )}
 
                                             <div className="pt-2 flex flex-wrap justify-between items-center gap-3">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowCommitModal(true)}
-                                                    className="bg-amber-950/60 hover:bg-amber-900 border border-amber-700 text-amber-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2"
-                                                >
-                                                    <span>⚓</span>
-                                                    <span>Commit &amp; Re-Anchor Keyframe</span>
-                                                </button>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowCommitModal(true)}
+                                                        className="bg-amber-950/60 hover:bg-amber-900 border border-amber-700 text-amber-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2"
+                                                    >
+                                                        <span>⚓</span>
+                                                        <span>Commit &amp; Re-Anchor Keyframe</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const activeShotObj = stageShots.find(s => (s.shot_index || (stageShots.indexOf(s) + 1)) === selectedShotIndex) || stageShots[0] || {};
+                                                            handleSaveSceneToVault({
+                                                                ...activeShotObj,
+                                                                shot_index: selectedShotIndex,
+                                                                title: activeShotObj.summary || `Scene #${selectedShotIndex}`,
+                                                                video_url: activeShotObj.video_url || currentVideo
+                                                            });
+                                                        }}
+                                                        className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-600 text-indigo-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2"
+                                                    >
+                                                        <span>💾</span>
+                                                        <span>Save Scene #{selectedShotIndex} to Vault</span>
+                                                    </button>
+                                                </div>
                                                 <button
                                                     type="button"
                                                     disabled={stageSaveLoading}
@@ -7867,6 +8111,139 @@
                                                     <span>{stageSaveLoading ? "Exporting Master..." : "Stitch & Export Final 30–60s Master to GCS"}</span>
                                                 </button>
                                             </div>
+                                        </div>
+
+                                        {/* Final Stage: Saved Scenes Vault & Cohesive 3-Scene Harmony Stitcher */}
+                                        <div className="bg-gray-900 border border-indigo-800/70 rounded-2xl p-5 shadow-xl space-y-4">
+                                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-3">
+                                                <div>
+                                                    <h3 className="text-sm font-extrabold text-indigo-300 flex items-center gap-2">
+                                                        <span>🎞️</span>
+                                                        <span>Saved Scenes Vault &amp; Final Stage: 3-Scene Cohesive Stitcher</span>
+                                                    </h3>
+                                                    <p className="text-xs text-gray-400 mt-0.5">
+                                                        Select up to 3 saved scenes to unify character cast references, bridge narrative/visual gaps, and stitch a cohesive master while respecting finalized scene likeness.
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleLoadSavedScenes}
+                                                        className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 text-xs font-bold px-3 py-1.5 rounded-lg transition"
+                                                    >
+                                                        <span>🔄 Refresh Vault ({savedScenesVault.length})</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {savedScenesVault.length === 0 ? (
+                                                <div className="bg-gray-950/80 border border-gray-800 rounded-xl p-4 text-xs text-gray-400 text-center">
+                                                    No saved scenes in vault yet. Click <strong className="text-indigo-300">"💾 Save Scene to Vault"</strong> above after finalizing each scene, then select 3 scenes here to harmonize &amp; stitch.
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    {savedScenesVault.map((scn) => {
+                                                        const orderIdx = selectedVaultSceneIds.indexOf(scn.scene_id);
+                                                        const isPicked = orderIdx >= 0;
+                                                        return (
+                                                            <div
+                                                                key={scn.scene_id}
+                                                                className={`rounded-xl p-3 border transition space-y-2 ${
+                                                                    isPicked
+                                                                        ? "bg-indigo-950/40 border-indigo-500 shadow-lg"
+                                                                        : "bg-gray-950 border-gray-800"
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => toggleSelectVaultScene(scn.scene_id)}
+                                                                        className={`text-xs font-extrabold px-2.5 py-1 rounded-lg border transition ${
+                                                                            isPicked
+                                                                                ? "bg-indigo-600 text-white border-indigo-400"
+                                                                                : "bg-gray-900 text-gray-300 border-gray-700 hover:bg-gray-800"
+                                                                        }`}
+                                                                    >
+                                                                        {isPicked ? `✓ Act ${orderIdx + 1}` : "+ Select for 3-Scene Cut"}
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteSavedScene(scn.scene_id)}
+                                                                        className="text-xs text-red-400 hover:text-red-300 px-1.5 py-0.5"
+                                                                        title="Remove from vault"
+                                                                    >
+                                                                        ✕
+                                                                    </button>
+                                                                </div>
+                                                                <div className="text-xs font-bold text-indigo-200 truncate">{scn.title}</div>
+                                                                <p className="text-[11px] text-gray-400 line-clamp-2 font-mono">{scn.action || scn.prompt}</p>
+                                                                {scn.dialogue && (
+                                                                    <p className="text-[11px] text-amber-300/90 italic truncate">"{scn.dialogue}"</p>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                                                <div>
+                                                    <label className="text-xs font-bold text-indigo-300 block mb-1">
+                                                        Continuity &amp; Bridging Direction (Optional):
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={bridgingDirection}
+                                                        onChange={(e) => setBridgingDirection(e.target.value)}
+                                                        placeholder="e.g. Maintain candlelit gothic atmosphere and 140 BPM beat across all 3 acts..."
+                                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-xs text-white font-mono placeholder-gray-400 focus:outline-none focus:border-indigo-500"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-wrap items-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        disabled={harmonyPreviewLoading || selectedVaultSceneIds.length === 0}
+                                                        onClick={handlePreviewHarmonizedScenes}
+                                                        className="bg-indigo-900/80 hover:bg-indigo-800 border border-indigo-600 text-indigo-200 font-bold text-xs py-2.5 px-4 rounded-xl transition disabled:opacity-50"
+                                                    >
+                                                        <span>{harmonyPreviewLoading ? "Harmonizing..." : "🔍 Preview Unified Cast & Bridges"}</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={harmonyStitchLoading || selectedVaultSceneIds.length === 0}
+                                                        onClick={() => handleHarmonizeAndStitchThreeScenes(false)}
+                                                        className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl shadow-lg transition disabled:opacity-50"
+                                                    >
+                                                        <span>{harmonyStitchLoading ? "Stitching 3 Scenes..." : "🎬 Harmonize & Stitch 3-Scene Master"}</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {harmonyPreviewPlan && harmonyPreviewPlan.harmony_notes && (
+                                                <div className="bg-indigo-950/40 border border-indigo-800/70 rounded-xl p-3 space-y-1.5 text-xs text-indigo-200">
+                                                    <div className="font-bold text-indigo-300">✨ Scene Harmony Producer Report:</div>
+                                                    <ul className="list-disc list-inside space-y-1 text-[11px] font-mono">
+                                                        {harmonyPreviewPlan.harmony_notes.map((note, nIdx) => (
+                                                            <li key={nIdx}>{note}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+
+                                            {harmonizedMasterResult && harmonizedMasterResult.master_video_url && (
+                                                <div className="bg-emerald-950/50 border border-emerald-600/70 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+                                                    <div className="text-xs text-emerald-200 font-bold">
+                                                        ✓ 3-Scene Cohesive Master Ready ({harmonizedMasterResult.scene_video_urls ? harmonizedMasterResult.scene_video_urls.length : 3} scenes stitched)
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenShareModal(harmonizedMasterResult.master_video_url, masterTitle || "harmonized_3scene_master")}
+                                                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow transition"
+                                                    >
+                                                        <span>🔗 Share 3-Scene Master (/s/ link)</span>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -8678,7 +9055,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                             className="w-6 h-6 rounded-full object-cover border-2 border-cyan-400 bg-gray-950"
                                                                         />
                                                                     ) : (
-                                                                        <span key={sIdx} className="w-6 h-6 rounded-full bg-cyan-900 text-cyan-200 border border-cyan-400 flex items-center justify-center text-[10px] font-bold">
+                                                                        <span key={sIdx} className="w-6 h-6 rounded-full bg-cyan-900 text-cyan-200 border border-cyan-400 flex items-center justify-center text-xs font-bold">
                                                                             {(selChar.name || "C").charAt(0)}
                                                                         </span>
                                                                     )
@@ -8755,7 +9132,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                                             setLightboxImageUrl(getDisplayableRefUrl(vaultChar.reference_url));
                                                                                         }}
                                                                                         title="Zoom Reference Sheet"
-                                                                                        className="absolute -bottom-1 -right-1 bg-gray-950/90 border border-cyan-500 text-[10px] rounded px-1 text-cyan-300 hover:text-white"
+                                                                                        className="absolute -bottom-1 -right-1 bg-gray-950/90 border border-cyan-500 text-xs rounded px-1 text-cyan-300 hover:text-white"
                                                                                     >
                                                                                         🔍
                                                                                     </button>
@@ -8770,11 +9147,11 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                                     <span className="text-xs font-bold text-white truncate">
                                                                                         {vaultChar.name}
                                                                                     </span>
-                                                                                    <span className="text-[10px] font-mono bg-gray-800 text-cyan-300 px-1.5 py-0.5 rounded border border-gray-700">
+                                                                                    <span className="text-xs font-mono bg-gray-800 text-cyan-300 px-1.5 py-0.5 rounded border border-gray-700">
                                                                                         {vaultChar.role_id}
                                                                                     </span>
                                                                                     {vaultChar.reference_url && (
-                                                                                        <span className="text-[10px] font-mono bg-emerald-950/80 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-700/60">
+                                                                                        <span className="text-xs font-mono bg-emerald-950/80 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-700/60">
                                                                                             🖼️ Ref Sheet
                                                                                         </span>
                                                                                     )}
@@ -8783,7 +9160,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                                     {vaultChar.wardrobe || vaultChar.description || "Saved Character Profile"}
                                                                                 </p>
                                                                                 {vaultChar.voice_style && (
-                                                                                    <p className="text-[10px] text-cyan-400/80 font-mono truncate">
+                                                                                    <p className="text-xs text-cyan-400/80 font-mono truncate">
                                                                                         🗣️ {vaultChar.voice_style}
                                                                                     </p>
                                                                                 )}
@@ -8841,7 +9218,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                             {/* Selected Cast Preview Strip with Reference Thumbnails */}
                                             {intentInputs.character_profiles && intentInputs.character_profiles.length > 0 && (
                                                 <div className="pt-2 border-t border-gray-800/80 space-y-1.5">
-                                                    <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 block">
+                                                    <span className="text-xs font-mono uppercase tracking-wider text-cyan-400 block">
                                                         Active Co-Pilot Cast (@Image Reference Anchors Locked):
                                                     </span>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -8861,7 +9238,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                         <span className="text-xs font-bold text-white block truncate">
                                                                             {selChar.name}
                                                                         </span>
-                                                                        <span className="text-[10px] font-mono text-cyan-300 block truncate">
+                                                                        <span className="text-xs font-mono text-cyan-300 block truncate">
                                                                             @Image{sIdx + 1} • {selChar.voice_style || "Character Reference"}
                                                                         </span>
                                                                     </div>
@@ -8908,7 +9285,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
 
                                             {/* Quick Dialogue Direction Chips */}
                                             <div className="pt-1">
-                                                <span className="text-[10px] text-gray-400 font-mono uppercase tracking-wider block mb-1.5">
+                                                <span className="text-xs text-gray-400 font-mono uppercase tracking-wider block mb-1.5">
                                                     ⚡ Quick Dialogue Direction Presets:
                                                 </span>
                                                 <div className="flex flex-wrap gap-1.5">
@@ -9233,7 +9610,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                     )}
                                                                     <div>
                                                                         <span className="text-xs font-bold text-white block">{cName}</span>
-                                                                        <span className="text-[10px] font-mono text-cyan-400 block">{cRole} (@Image{cIdx + 1})</span>
+                                                                        <span className="text-xs font-mono text-cyan-400 block">{cRole} (@Image{cIdx + 1})</span>
                                                                     </div>
                                                                 </div>
                                                             );
@@ -10541,7 +10918,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                             className="w-5 h-5 rounded-full object-cover border border-amber-400 bg-gray-950"
                                                                         />
                                                                     ) : (
-                                                                        <span key={idx} className="w-5 h-5 rounded-full bg-amber-950 border border-amber-500 text-[9px] font-bold text-amber-300 flex items-center justify-center">
+                                                                        <span key={idx} className="w-5 h-5 rounded-full bg-amber-950 border border-amber-500 text-xs font-bold text-amber-300 flex items-center justify-center">
                                                                             {(prof.name || "C")[0]}
                                                                         </span>
                                                                     )
@@ -10556,7 +10933,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                 : "Select Saved Character(s)..."}
                                                         </span>
                                                     </div>
-                                                    <span className="text-[10px] text-amber-300 shrink-0">{showAssistVaultDropdown ? "▲" : "▼"}</span>
+                                                    <span className="text-xs text-amber-300 shrink-0">{showAssistVaultDropdown ? "▲" : "▼"}</span>
                                                 </button>
                                                 {showAssistVaultDropdown && (
                                                     <div className="mt-1 bg-gray-900 border border-amber-600/80 rounded-lg p-2 space-y-1.5 max-h-48 overflow-y-auto shadow-xl">
@@ -10592,7 +10969,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                                     )}
                                                                     <div className="min-w-0 flex-1">
                                                                         <div className="text-[11px] font-bold text-white truncate">{vaultChar.name}</div>
-                                                                        <div className="text-[9px] text-gray-400 truncate">{vaultChar.wardrobe || vaultChar.voice_style || "Character Vault Anchor"}</div>
+                                                                        <div className="text-xs text-gray-400 truncate">{vaultChar.wardrobe || vaultChar.voice_style || "Character Vault Anchor"}</div>
                                                                     </div>
                                                                 </div>
                                                             );

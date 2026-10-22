@@ -10,8 +10,9 @@ except ImportError:
 
 _PROTECTED_TOKEN_PATTERN = re.compile(
     r"\[#\s*(?:References|Sources)[^\]]*\]"
-    r"|\bRole\s+[A-Za-z0-9]+\s*-\s*[^\n:<#\(\)]+?(?=\s*(?:<(?:IMAGE_REF|FIRST_FRAME)|\bsays\b|:|\n|\(|$))"
-    r"|<(?:IMAGE_REF_\d+|FIRST_FRAME)>",
+    r"|-\s*(?:\[[^\]]+\]\s*)?Scene\s+\d+\s*\[[^\]]*\](?:\s*\(Screenplay Script\):)?"
+    r"|\bRole\s+[A-Za-z0-9]+\s*-\s*[^\n:<#\(\)]+?(?=\s*(?:<(?:IMAGE_REF|FIRST_FRAME|LAST_FRAME)|\bsays\b|:|\n|\(|$))"
+    r"|<(?:IMAGE_REF_\d+|FIRST_FRAME|LAST_FRAME)(?:>@\w+)?>",
     re.IGNORECASE,
 )
 

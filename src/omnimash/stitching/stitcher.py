@@ -57,6 +57,8 @@ class VideoStitcher:
         output_dir: str = "/tmp",
         session_id: str | None = None,
         master_audio_path: str | None = None,
+        aspect_ratio: AspectRatio | str | None = None,
+        force_normalize: bool = False,
     ) -> str:
         os.makedirs(output_dir, exist_ok=True)
         master_filename = f"master_{uuid.uuid4().hex[:8]}_stitched.mp4"
@@ -161,15 +163,33 @@ class VideoStitcher:
                             out_path,
                         ]
 
+                    vf_args: list[str] = []
+                    if aspect_ratio is not None:
+                        aspect_dims = {
+                            "16:9": (1280, 720),
+                            "9:16": (720, 1280),
+                            "1:1": (1080, 1080),
+                            "21:9": (1680, 720),
+                        }
+                        target_w, target_h = aspect_dims.get(str(aspect_ratio), (1280, 720))
+                        vf_norm = (
+                            f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
+                            f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p"
+                        )
+                        vf_args = ["-vf", vf_norm]
+
                     timeout_secs = float(getattr(settings, "ffmpeg_timeout_seconds", 120.0))
                     try:
-                        res = subprocess.run(
-                            cmd_copy,
-                            capture_output=True,
-                            text=True,
-                            timeout=timeout_secs,
-                        )
-                        if res.returncode != 0:
+                        copy_rc = 1 if force_normalize else 0
+                        if not force_normalize:
+                            res = subprocess.run(
+                                cmd_copy,
+                                capture_output=True,
+                                text=True,
+                                timeout=timeout_secs,
+                            )
+                            copy_rc = res.returncode
+                        if copy_rc != 0:
                             if resolved_audio and os.path.exists(resolved_audio):
                                 cmd_reencode = [
                                     "ffmpeg",
@@ -182,6 +202,7 @@ class VideoStitcher:
                                     concat_list_path,
                                     "-i",
                                     resolved_audio,
+                                    *vf_args,
                                     "-c:v",
                                     "libx264",
                                     "-c:a",
@@ -207,6 +228,7 @@ class VideoStitcher:
                                     "0",
                                     "-i",
                                     concat_list_path,
+                                    *vf_args,
                                     "-c:v",
                                     "libx264",
                                     "-c:a",
@@ -229,7 +251,9 @@ class VideoStitcher:
                                     res_reencode.returncode,
                                     res_reencode.stderr,
                                 )
-                                raise RuntimeError(f"FFmpeg re-encode failed: {res_reencode.stderr}")
+                                raise RuntimeError(
+                                    f"FFmpeg re-encode failed: {res_reencode.stderr}"
+                                )
                     except subprocess.TimeoutExpired as exc:
                         logger.error(
                             "FFmpeg concatenate execution timed out after %s seconds: %s",
@@ -424,6 +448,7 @@ class VideoStitcher:
         temp_storyboard_files: list[str] = []
 
         try:
+
             def _safe_insert_at(card: dict[str, Any]) -> int:
                 raw_idx = card.get("insert_at", 0)
                 try:

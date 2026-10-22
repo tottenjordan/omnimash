@@ -200,7 +200,7 @@ def generate_shot(req: GenerateShotRequest, agent: AgentDep) -> GenerateShotResp
         project_id="prj_default",
         prompt=action_val or sanitized_directive,
         compiled_override=compiled_prompt,
-        parent_turn_id=req.parent_turn_id,
+        parent_turn_id=None,
         clip_index=req.shot_index,
         duration_seconds=req.duration_seconds,
         is_conversational_edit=False,

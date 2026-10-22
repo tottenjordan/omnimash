@@ -106,17 +106,25 @@ def generate_video(req: GenerateRequest, request: Request, agent: AgentDep) -> G
             base_action = str(first_scene.get("action", "")).strip()
         elif hasattr(first_scene, "action"):
             base_action = str(first_scene.action or "").strip()
+    has_explicit_edit_prompt = bool(
+        req.prompt and req.prompt.strip() and req.prompt.strip() != base_action
+    )
     is_edit = bool(
         req.parent_turn_id
         and (
             is_diff_route
-            or not (req.scenes or req.concept or req.shot_directive)
-            or (req.prompt and req.prompt.strip() and req.prompt.strip() != base_action)
+            or (
+                not (req.scenes or req.concept or req.shot_directive)
+                and bool(req.prompt and req.prompt.strip())
+            )
+            or has_explicit_edit_prompt
         )
     )
+    effective_parent_turn_id = req.parent_turn_id if is_edit else None
+    effective_keyframe_url = (req.keyframe_image_url or req.keyframe_seed or "").strip() or None
     compiled_override_val = req.compiled_override
 
-    if req.parent_turn_id and (req.shot_directive or req.scenes):
+    if req.shot_directive or req.scenes:
         char_objs = normalize_character_roles(
             req.characters, sanitize=req.enable_safety_sanitization
         )
@@ -129,7 +137,7 @@ def generate_video(req: GenerateRequest, request: Request, agent: AgentDep) -> G
                     sp_script = s.get("screenplay_text") or s.get("screenplay_script")
                     scene_objs.append(
                         SceneDirective(
-                            scene_number=s.get("scene_number", 0),
+                            scene_number=s.get("scene_number", 1) or 1,
                             active_roles=s.get("active_roles", []),
                             action=s.get("action", ""),
                             dialogue=s.get("dialogue", ""),
@@ -161,6 +169,8 @@ def generate_video(req: GenerateRequest, request: Request, agent: AgentDep) -> G
                 environment_tag=req.environment_tag,
                 audio_beat=req.audio_stem,
                 vocal_delivery=req.vocal_delivery,
+                has_keyframe_seed=bool(effective_keyframe_url),
+                keyframe_image_url=effective_keyframe_url,
                 edit_instruction=req.prompt if is_edit else None,
                 enable_sanitization=req.enable_safety_sanitization,
                 aspect_ratio=req.aspect_ratio,
@@ -172,7 +182,7 @@ def generate_video(req: GenerateRequest, request: Request, agent: AgentDep) -> G
         project_id=req.project_id,
         prompt=sanitized_prompt,
         clip_index=req.clip_index,
-        parent_turn_id=req.parent_turn_id,
+        parent_turn_id=effective_parent_turn_id,
         is_conversational_edit=is_edit,
         reference_url=req.reference_url,
         audio_stem=req.audio_stem,
@@ -188,6 +198,7 @@ def generate_video(req: GenerateRequest, request: Request, agent: AgentDep) -> G
         environment_tag=req.environment_tag,
         vocal_delivery=req.vocal_delivery,
         optimize_prompt=req.optimize_prompt,
+        keyframe_image_url=effective_keyframe_url,
         enable_sanitization=req.enable_safety_sanitization,
         aspect_ratio=req.aspect_ratio,
         resolution=req.resolution,

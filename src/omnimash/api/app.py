@@ -18,6 +18,7 @@ from omnimash.api.routers import (
     intent as intent_router,
     media as media_router,
     projects as projects_router,
+    scenes_vault as scenes_vault_router,
     share as share_router,
     storyboard as storyboard_router,
 )
@@ -67,6 +68,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     agent = OmniMashAgent(mock_mode=is_mock)
     agent.session_manager.storage = agent.storage
     app.state.agent = agent
+    app.middleware("http")(share_router.share_mode_lockdown_middleware)
 
     static_dir = os.path.join(os.getcwd(), "static")
     if os.path.exists(static_dir):
@@ -85,6 +87,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     app.include_router(storyboard_router.router)
     app.include_router(projects_router.router)
     app.include_router(characters_router.router)
+    app.include_router(scenes_vault_router.router)
     app.include_router(generation_router.router)
     app.include_router(share_router.router)
     app.include_router(intent_router.router)

@@ -117,6 +117,48 @@ def test_create_shareable_link_real_gcs_signing_fallback_on_exception():
         expiration_days=7,
     )
     assert res["success"] is True
+    assert res["signed_v4"] is False
     assert "storage.googleapis.com/test-bucket/video.mp4" in res["share_url"]
-    assert "X-Goog-Algorithm=GOOG4-RSA-SHA256" in res["share_url"]
-    assert "X-Goog-Expires=604800" in res["share_url"]
+    assert "mockv4signature" not in res["share_url"]
+    assert "mockv4signature" not in res["download_url"]
+
+
+def test_create_shareable_link_iam_token_signing_fallback_success():
+    storage = GcsStorageManager(
+        bucket_name="test-bucket", project_id="test-project", mock_mode=False
+    )
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_blob.generate_signed_url.side_effect = [
+        AttributeError("you need a private key to sign credentials"),
+        "https://storage.googleapis.com/test-bucket/video.mp4?X-Goog-Signature=real_iam_sig_inline",
+        "https://storage.googleapis.com/test-bucket/video.mp4?X-Goog-Signature=real_iam_sig_dl",
+    ]
+    mock_bucket.blob.return_value = mock_blob
+    storage._bucket_instance = mock_bucket
+
+    mock_creds = MagicMock()
+    mock_creds.token = None
+    mock_creds.service_account_email = "cloud-run-sa@test-project.iam.gserviceaccount.com"
+
+    def _refresh(req):
+        mock_creds.token = "mock_refreshed_iam_token"
+
+    mock_creds.refresh.side_effect = _refresh
+    mock_client = MagicMock()
+    mock_client._credentials = mock_creds
+    storage._client_instance = mock_client
+
+    res = storage.create_shareable_link(
+        blob_path_or_uri="gs://test-bucket/video.mp4",
+        expiration_days=7,
+    )
+    assert res["success"] is True
+    assert res["signed_v4"] is True
+    assert "real_iam_sig_inline" in res["share_url"]
+    assert "real_iam_sig_dl" in res["download_url"]
+    assert "mockv4signature" not in res["share_url"]
+    assert mock_creds.refresh.call_count == 1
+    _, kwargs = mock_blob.generate_signed_url.call_args
+    assert kwargs["service_account_email"] == "cloud-run-sa@test-project.iam.gserviceaccount.com"
+    assert kwargs["access_token"] == "mock_refreshed_iam_token"
