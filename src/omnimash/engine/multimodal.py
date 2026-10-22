@@ -217,17 +217,13 @@ def build_multimodal_contents(
             has_motion_ref = True
 
     is_video_kf = any(
-        (getattr(p, "get", lambda k: None)("type") == "video")
-        for p in (keyframe_image_parts or [])
+        (getattr(p, "get", lambda k: None)("type") == "video") for p in (keyframe_image_parts or [])
     ) or bool(
         keyframe_image_url
         and keyframe_image_url.lower().endswith((".mp4", ".mov", ".webm", ".avi", ".mkv"))
     )
 
-    has_kf_seed = (not is_video_kf) and (
-        bool(keyframe_image_parts)
-        or bool(keyframe_image_url)
-    )
+    has_kf_seed = (not is_video_kf) and (bool(keyframe_image_parts) or bool(keyframe_image_url))
     start_ref_idx = 1
     ref_image_parts, _ = load_reference_images_as_input(
         session_id,
@@ -259,6 +255,37 @@ def build_multimodal_contents(
     if references_items:
         input_roles_lines.append(f"[# References {' '.join(references_items)}]")
 
+    if characters:
+        for c in sort_characters_by_role_id(characters):
+            img_role = (
+                getattr(c, "image_role", "Character Reference")
+                if not isinstance(c, dict)
+                else c.get("image_role", "Character Reference")
+            )
+            if img_role in (
+                "Starting Frame",
+                "Keyframe Seed Anchor",
+                "Ending Frame",
+                "Keyframe Last Anchor",
+            ):
+                continue
+            r_id = getattr(c, "role_id", "") if not isinstance(c, dict) else c.get("role_id", "")
+            c_name = getattr(c, "name", "") if not isinstance(c, dict) else c.get("name", "")
+            c_wardrobe = (
+                getattr(c, "wardrobe", "") if not isinstance(c, dict) else c.get("wardrobe", "")
+            )
+            tag = char_tag_map.get(c_name) or char_tag_map.get(r_id) or ""
+            img_tag = ""
+            for ref_item in references_items:
+                if tag and tag in ref_item:
+                    m_ref = re.search(r"@Image\d+", ref_item)
+                    if m_ref:
+                        img_tag = f" ({m_ref.group(0)})"
+                        break
+            w_str = f" [Wardrobe: {c_wardrobe}]" if c_wardrobe else ""
+            if r_id and c_name:
+                input_roles_lines.append(f"- {r_id} ({img_role}): {c_name}{img_tag}{w_str}")
+
     input_roles_header = (
         "### INPUT ROLES & REFERENCES\n" + "\n".join(input_roles_lines) + "\n\n"
         if input_roles_lines
@@ -266,7 +293,11 @@ def build_multimodal_contents(
     )
 
     tone_header = ""
-    if keyframe_image_parts and not is_video_kf and "# Visual Tone & Starting Frame Anchor" not in prompt:
+    if (
+        keyframe_image_parts
+        and not is_video_kf
+        and "# Visual Tone & Starting Frame Anchor" not in prompt
+    ):
         tone_header = (
             "# Visual Tone & Starting Frame Anchor:\n"
             "Attached Image #1 is the keyframe starting concept art frame for this shot. "
@@ -356,26 +387,34 @@ def build_multimodal_contents(
     prompt_first_tags = set(re.findall(r"<FIRST_FRAME>@([^\s\]]+)", clean_prompt))
     prompt_last_tags = set(re.findall(r"<LAST_FRAME>@([^\s\]]+)", clean_prompt))
     sources_first_tags = {
-        m.group(1)
-        for s in sources_items
-        for m in [re.search(r"<FIRST_FRAME>@([^\s\]]+)", s)]
-        if m
+        m.group(1) for s in sources_items for m in [re.search(r"<FIRST_FRAME>@([^\s\]]+)", s)] if m
     }
     sources_last_tags = {
-        m.group(1)
-        for s in sources_items
-        for m in [re.search(r"<LAST_FRAME>@([^\s\]]+)", s)]
-        if m
+        m.group(1) for s in sources_items for m in [re.search(r"<LAST_FRAME>@([^\s\]]+)", s)] if m
     }
 
     has_same_char_keyframe_urls = bool(characters) and any(
         (getattr(c1, "image_role", "") if not isinstance(c1, dict) else c1.get("image_role", ""))
         in ("Starting Frame", "Keyframe Seed Anchor")
-        and (getattr(c2, "image_role", "") if not isinstance(c2, dict) else c2.get("image_role", ""))
+        and (
+            getattr(c2, "image_role", "") if not isinstance(c2, dict) else c2.get("image_role", "")
+        )
         in ("Ending Frame", "Keyframe Last Anchor")
-        and bool(getattr(c1, "reference_url", "") if not isinstance(c1, dict) else c1.get("reference_url", ""))
-        and (getattr(c1, "reference_url", "") if not isinstance(c1, dict) else c1.get("reference_url", "")).strip()
-        == (getattr(c2, "reference_url", "") if not isinstance(c2, dict) else c2.get("reference_url", "")).strip()
+        and bool(
+            getattr(c1, "reference_url", "")
+            if not isinstance(c1, dict)
+            else c1.get("reference_url", "")
+        )
+        and (
+            getattr(c1, "reference_url", "")
+            if not isinstance(c1, dict)
+            else c1.get("reference_url", "")
+        ).strip()
+        == (
+            getattr(c2, "reference_url", "")
+            if not isinstance(c2, dict)
+            else c2.get("reference_url", "")
+        ).strip()
         for c1 in characters
         for c2 in characters
     )

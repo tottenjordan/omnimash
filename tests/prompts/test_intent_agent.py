@@ -150,3 +150,40 @@ def test_auto_fill_incorporates_dialogue_direction_guidance():
     assert direction in plan.raw_compiled_prompt
     # Ensure the direction itself was used as guidance rather than pasted verbatim as the literal spoken quote
     assert f'"{direction}"' not in plan.screenplay_script
+
+
+def test_auto_fill_three_characters_includes_all_three_in_timeline_and_dialogue():
+    """Verify that when 3 characters are present, all 3 are included in the timeline, dialogue, and vault references."""
+    autofiller = IntentAutoFiller(mock_mode=True)
+    res = autofiller.generate_plan(
+        intent="YoTotti, Bee Allison, and Dumble Dior are smoking fat cigars and laughing in a luxury office",
+        inputs=IntentSlotInputs(
+            characters=["Bee Allison", "YoTotti", "Dumble Dior"],
+        ),
+        answers={},
+    )
+    assert res.success is True
+    plan = res.plan
+    assert len(plan.characters) == 3
+    names = [c.name for c in plan.characters]
+    assert "Bee Allison" in names
+    assert "YoTotti" in names
+    assert "Dumble Dior" in names
+
+    # Verify Bee Allison wardrobe matches reference sheet (bucket hat, black tracksuit) and not generic crimson velvet
+    bee_char = next(c for c in plan.characters if c.name == "Bee Allison")
+    assert (
+        "bucket hat" in bee_char.wardrobe.lower() or "black tracksuit" in bee_char.wardrobe.lower()
+    )
+    assert "crimson velvet" not in bee_char.wardrobe.lower()
+
+    # Verify all 3 characters appear in TIMELINE action
+    timeline_text = plan.raw_compiled_prompt.split("### TIMELINE")[-1]
+    assert "Bee Allison" in timeline_text
+    assert "YoTotti" in timeline_text
+    assert "Dumble Dior" in timeline_text
+
+    # Verify all 3 characters have dialogue or action scripted
+    assert "Dumble Dior:" in plan.screenplay_script or "Dumble Dior (" in plan.screenplay_script
+    assert len(plan.scenes[0].active_roles) == 3
+    assert set(plan.scenes[0].active_roles) == {"Role A", "Role B", "Role C"}

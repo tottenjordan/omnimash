@@ -12,6 +12,7 @@ import uuid
 from omnimash.config import settings
 from omnimash.engine.guardrails import (
     _abstract_prompt_for_responsible_ai,
+    _get_relaxed_interaction_safety_settings as _guardrails_get_relaxed_interaction_safety_settings,
     _get_relaxed_safety_settings as _guardrails_get_relaxed_safety_settings,
     parse_guardrail_error_guidance,
 )
@@ -55,6 +56,14 @@ def _get_relaxed_safety_settings() -> list[Any] | None:
 
 
 get_relaxed_safety_settings = _get_relaxed_safety_settings
+
+
+def _get_relaxed_interaction_safety_settings() -> list[dict[str, str]]:
+    """Configures relaxed BLOCK_NONE safety thresholds formatted specifically for GAOS client.interactions.create."""
+    return _guardrails_get_relaxed_interaction_safety_settings()
+
+
+get_relaxed_interaction_safety_settings = _get_relaxed_interaction_safety_settings
 
 
 def _is_char_in_prompt(char: CharacterRole, raw_p: str, san_p: str) -> bool:
@@ -435,6 +444,7 @@ class OmniFlashClient:
         kwargs: dict[str, Any] = {
             "model": model_id,
             "input": input_payload,
+            "safety_settings": _get_relaxed_interaction_safety_settings(),
         }
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id
@@ -1061,10 +1071,12 @@ __all__ = [
     "OmniFlashClient",
     "_abstract_prompt_for_responsible_ai",
     "_generate_dynamic_audio_wav",
+    "_get_relaxed_interaction_safety_settings",
     "_get_relaxed_safety_settings",
     "build_multimodal_contents",
     "ensure_rendered_video",
     "extract_clean_dialogue_summary",
+    "get_relaxed_interaction_safety_settings",
     "get_relaxed_safety_settings",
     "load_reference_images_as_input",
     "parse_guardrail_error_guidance",
