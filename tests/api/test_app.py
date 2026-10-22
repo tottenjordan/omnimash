@@ -2836,3 +2836,21 @@ def test_ui_html_contains_trapwarts_vault_audit_default_preset() -> None:
     assert "dumble_dior_office_sheet_v13.png" in UI_HTML
     assert "yototti_office_sheet_v13.png" in UI_HTML
     assert "accountant_elves_office_sheet_v13.png" in UI_HTML
+
+
+def test_ui_html_contains_shareable_video_link_controls() -> None:
+    """Verify UI_HTML contains 7-day shareable video link controls, modal, and API wiring."""
+    from omnimash.api.app import UI_HTML
+
+    assert "Share Video (7 Days)" in UI_HTML
+    assert "handleOpenShareModal" in UI_HTML
+    assert "modal-title-share" in UI_HTML
+    assert "/api/share/create" in UI_HTML
+    assert "Privacy & Infrastructure Protected" in UI_HTML
+    assert "Direct Streaming Link" in UI_HTML
+    assert "Valid for 7 Days" in UI_HTML
+    assert "Preview in New Tab" in UI_HTML
+    assert "Copy Download URL" in UI_HTML
+    assert "Copy Embed Code" in UI_HTML
+    assert "Get Shareable Link (7 Days)" in UI_HTML
+
