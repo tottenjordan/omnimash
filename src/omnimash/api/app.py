@@ -15,6 +15,7 @@ from omnimash.api.models import (
 from omnimash.api.routers import (
     characters as characters_router,
     generation as generation_router,
+    intent as intent_router,
     media as media_router,
     projects as projects_router,
     share as share_router,
@@ -86,6 +87,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     app.include_router(characters_router.router)
     app.include_router(generation_router.router)
     app.include_router(share_router.router)
+    app.include_router(intent_router.router)
 
     return app
 

@@ -39,6 +39,30 @@ FINAL_CUT_STITCHER_DEFAULT_INSTRUCTION = (
     "and cross-fade audio tracks into final master video compositions."
 )
 
+INTENT_CLARIFIER_DEFAULT_INSTRUCTION = (
+    "You are the Director's Assistant & Intent Clarifier Agent for OmniMash. "
+    "Your responsibility is to take ambiguous, open-ended user intents and optional constraints, "
+    "identify missing directorial slots (characters, setting, soundscape, sound effects, dialogue), "
+    "generate clear 1-click multiple choice questions, and synthesize high-synergy 4-block "
+    "production plans optimized for Gemini Omni Flash 1.1."
+)
+
+
+def create_intent_clarifier_agent(
+    name: str = "intent_clarifier",
+    model: str | None = None,
+    instruction: str | None = None,
+    tools: list | None = None,
+) -> Agent:
+    """Creates a Google ADK Agent for intent clarification and plan synthesis."""
+    effective_instruction = instruction or INTENT_CLARIFIER_DEFAULT_INSTRUCTION
+    return Agent(
+        name=name,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
+        instruction=effective_instruction,
+        tools=tools or [],
+    )
+
 
 def create_script_deconstructor_agent(
     name: str = "script_deconstructor",
@@ -188,10 +212,12 @@ def deconstruct_screenplay_with_adk(
 
 
 __all__ = [
+    "INTENT_CLARIFIER_DEFAULT_INSTRUCTION",
     "create_script_deconstructor_agent",
     "create_storyboard_compiler_agent",
     "create_shot_execution_worker",
     "create_final_cut_stitcher_agent",
+    "create_intent_clarifier_agent",
     "build_production_orchestrator",
     "create_adk_agent_tool_pipeline",
     "deconstruct_screenplay_with_adk",
