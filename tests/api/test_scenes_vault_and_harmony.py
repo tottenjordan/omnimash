@@ -396,14 +396,21 @@ def test_saved_scenes_vault_gcs_hydration_and_deletion_across_instances():
     assert preview_res.status_code == 200
     assert len(preview_res.json()["compiled_prompts"]) == 1
 
-    # 3. DELETE /api/scenes/{scene_id} deletes blob from GCS as well as memory
-    del_res = client.delete(
-        "/api/scenes/scn_remote_hydrated_1",
-        params={"project_id": "prj_cloudrun_sync"},
-    )
+    # 3. DELETE /api/scenes/{scene_id} without project_id on an instance without memory still finds & deletes in GCS
+    _SAVED_SCENES_MEMORY.pop("scn_remote_hydrated_1", None)
+    del_res = client.delete("/api/scenes/scn_remote_hydrated_1")
     assert del_res.status_code == 200
     assert del_res.json()["deleted"] is True
-    mock_bucket.blob.assert_called_with(
-        "projects/prj_cloudrun_sync/saved_scenes/scn_remote_hydrated_1.json"
-    )
     assert mock_blob.delete.call_count == 1
+
+    # 4. Cross-instance deletion eviction: if Instance B still had scene in _SAVED_SCENES_MEMORY
+    # after Instance A deleted the blob in GCS, GET /api/scenes evicts the stale scene from memory
+    _SAVED_SCENES_MEMORY[remote_spec.scene_id] = remote_spec
+    mock_bucket.list_blobs.return_value = []
+    list_after_remote_del = client.get(
+        "/api/scenes", params={"project_id": "prj_cloudrun_sync"}
+    ).json()
+    assert not any(
+        s["scene_id"] == "scn_remote_hydrated_1" for s in list_after_remote_del["scenes"]
+    )
+    assert "scn_remote_hydrated_1" not in _SAVED_SCENES_MEMORY

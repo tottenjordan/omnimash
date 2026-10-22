@@ -178,6 +178,7 @@ def _hydrate_shares_from_gcs(agent: Any, request: Request | None = None) -> None
         store = get_shares_store()
         base_url = _resolve_share_base_url(request) if request else "http://localhost:8080"
         blobs = list(bucket.list_blobs(prefix="shares/"))
+        live_tokens: set[str] = set()
         for blob in blobs:
             name = getattr(blob, "name", "") or ""
             if not name.endswith("/snapshot.json"):
@@ -186,7 +187,10 @@ def _hydrate_shares_from_gcs(agent: Any, request: Request | None = None) -> None
             if len(parts) != 3 or parts[0] != "shares":
                 continue
             token = parts[1]
-            if not is_valid_share_token(token) or store.get(token) is not None:
+            if not is_valid_share_token(token):
+                continue
+            live_tokens.add(token)
+            if store.get(token) is not None:
                 continue
             raw = (
                 blob.download_as_text()
@@ -207,6 +211,9 @@ def _hydrate_shares_from_gcs(agent: Any, request: Request | None = None) -> None
                 created_at=str(snap.get("created_at") or datetime.now(UTC).isoformat()),
             )
             store.put(rec)
+        for tok, existing in list(store._records.items()):
+            if existing.revoked_at is None and tok not in live_tokens:
+                store._records.pop(tok, None)
     except Exception as exc:
         logger.debug("Hydrating shares from GCS skipped/failed: %s", exc)
 

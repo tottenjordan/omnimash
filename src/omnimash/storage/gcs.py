@@ -799,19 +799,21 @@ class GcsStorageManager:
         if self.bucket:
             blob = self.bucket.blob(blob_name)
             try:
-                share_url = blob.generate_signed_url(
+                cand_share_url = blob.generate_signed_url(
                     version="v4",
                     expiration=expires_delta,
                     method="GET",
                     response_type=content_type,
                     response_disposition="inline",
                 )
-                download_url = blob.generate_signed_url(
+                cand_download_url = blob.generate_signed_url(
                     version="v4",
                     expiration=expires_delta,
                     method="GET",
                     response_disposition=f'attachment; filename="{filename}"',
                 )
+                share_url = cand_share_url
+                download_url = cand_download_url
                 signed_v4 = True
             except Exception as primary_exc:
                 try:
@@ -822,7 +824,12 @@ class GcsStorageManager:
                     if creds is None:
                         creds, _ = google.auth.default()
                     if creds is not None:
-                        if not getattr(creds, "token", None):
+                        needs_refresh = (
+                            not getattr(creds, "token", None)
+                            or getattr(creds, "valid", True) is False
+                            or getattr(creds, "service_account_email", None) in (None, "default")
+                        )
+                        if needs_refresh:
                             creds.refresh(google_auth_requests.Request())
                         sa_email = (
                             getattr(creds, "service_account_email", None)
@@ -833,7 +840,7 @@ class GcsStorageManager:
                             sa_email = mock_sa
                         access_token = getattr(creds, "token", None)
                         if sa_email and access_token:
-                            share_url = blob.generate_signed_url(
+                            cand_share_url = blob.generate_signed_url(
                                 version="v4",
                                 expiration=expires_delta,
                                 method="GET",
@@ -842,7 +849,7 @@ class GcsStorageManager:
                                 service_account_email=sa_email,
                                 access_token=access_token,
                             )
-                            download_url = blob.generate_signed_url(
+                            cand_download_url = blob.generate_signed_url(
                                 version="v4",
                                 expiration=expires_delta,
                                 method="GET",
@@ -850,6 +857,8 @@ class GcsStorageManager:
                                 service_account_email=sa_email,
                                 access_token=access_token,
                             )
+                            share_url = cand_share_url
+                            download_url = cand_download_url
                             signed_v4 = True
                 except Exception as iam_exc:
                     logger.warning(
@@ -931,10 +940,7 @@ class GcsStorageManager:
         }
 
     def read_share_snapshot(self, token: str) -> dict[str, Any] | None:
-        """Reads shares/{token}/snapshot.json from cache or GCS."""
-        if token in self._mock_shares and "snapshot" in self._mock_shares[token]:
-            return self._mock_shares[token]["snapshot"]
-
+        """Reads shares/{token}/snapshot.json from GCS in live mode or cache in mock mode."""
         if not self.mock_mode and self.bucket:
             try:
                 blob = self.bucket.blob(f"shares/{token}/snapshot.json")
@@ -943,22 +949,31 @@ class GcsStorageManager:
                     data = json.loads(raw)
                     if isinstance(data, dict):
                         return data
+                else:
+                    self._mock_shares.pop(token, None)
+                    return None
             except Exception as exc:
                 logger.warning("read_share_snapshot failed for %s: %s", token, exc)
+
+        if token in self._mock_shares and "snapshot" in self._mock_shares[token]:
+            return self._mock_shares[token]["snapshot"]
         return None
 
     def stream_share_video(self, token: str) -> bytes | None:
-        """Reads shares/{token}/video.mp4 bytes from cache or GCS."""
-        if token in self._mock_shares and "video_bytes" in self._mock_shares[token]:
-            return self._mock_shares[token]["video_bytes"]
-
+        """Reads shares/{token}/video.mp4 bytes from GCS in live mode or cache in mock mode."""
         if not self.mock_mode and self.bucket:
             try:
                 blob = self.bucket.blob(f"shares/{token}/video.mp4")
                 if blob.exists(timeout=self.timeout):
                     return blob.download_as_bytes(timeout=self.timeout)
+                else:
+                    self._mock_shares.pop(token, None)
+                    return None
             except Exception as exc:
                 logger.warning("stream_share_video failed for %s: %s", token, exc)
+
+        if token in self._mock_shares and "video_bytes" in self._mock_shares[token]:
+            return self._mock_shares[token]["video_bytes"]
         return None
 
     def delete_share_prefix(self, token: str) -> int:

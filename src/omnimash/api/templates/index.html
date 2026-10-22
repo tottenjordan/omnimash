@@ -3773,7 +3773,7 @@
 
             const handleDeleteSavedScene = async (sceneId) => {
                 try {
-                    await fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, { method: "DELETE" });
+                    await fetch(`/api/scenes/${encodeURIComponent(sceneId)}?project_id=prj_director`, { method: "DELETE" });
                     setSavedScenesVault((prev) => prev.filter((s) => s.scene_id !== sceneId));
                     setSelectedVaultSceneIds((prev) => prev.filter((id) => id !== sceneId));
                 } catch (err) {

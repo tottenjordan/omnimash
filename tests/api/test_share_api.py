@@ -281,7 +281,7 @@ def test_create_share_link_live_mode_never_returns_mockv4signature_and_falls_bac
 
 
 def test_list_active_shares_hydrates_from_gcs_snapshots_across_instances():
-    """Verify GET /api/shares hydrates ShareRecords from shares/*/snapshot.json in GCS when running in live mode."""
+    """Verify GET /api/shares hydrates ShareRecords from shares/*/snapshot.json in GCS and evicts shares deleted on another instance."""
     import json
     from unittest.mock import MagicMock
     from omnimash.storage.share_snapshot import new_share_token
@@ -316,3 +316,21 @@ def test_list_active_shares_hydrates_from_gcs_snapshots_across_instances():
         assert matched[0]["title"] == "Hydrated Cloud Run Share"
         assert matched[0]["aspect_ratio"] == "9:16"
         assert matched[0]["url"].endswith(f"/s/{remote_token}")
+
+        # Simulate another Cloud Run instance revoking/deleting the share in GCS
+        mock_bucket.list_blobs.return_value = []
+        res_after = c.get("/api/shares", params={"session_id": "any_session"})
+        assert res_after.status_code == 200
+        assert not any(s["token"] == remote_token for s in res_after.json()["shares"])
+
+        # Simulate stale _mock_shares entry on Instance A when GCS blob was deleted on Instance B
+        storage._mock_shares[remote_token] = {
+            "snapshot": snap_payload,
+            "video_bytes": b"stale_video_bytes",
+        }
+        missing_blob = MagicMock()
+        missing_blob.exists.return_value = False
+        mock_bucket.blob.return_value = missing_blob
+        assert c.get(f"/s/{remote_token}").status_code == 404
+        assert c.get(f"/s/{remote_token}/video").status_code == 404
+        assert remote_token not in storage._mock_shares

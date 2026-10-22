@@ -71,7 +71,7 @@ def _hydrate_saved_scenes_from_gcs(
     agent: Any,
     project_id: str | None = None,
 ) -> None:
-    """Hydrates saved scene specs from projects/{project_id}/saved_scenes/*.json in GCS into _SAVED_SCENES_MEMORY."""
+    """Hydrates saved scene specs from projects/{project_id}/saved_scenes/*.json in GCS into _SAVED_SCENES_MEMORY and evicts deleted scenes."""
     if (
         agent is None
         or getattr(agent.storage, "mock_mode", True)
@@ -82,6 +82,7 @@ def _hydrate_saved_scenes_from_gcs(
         bucket = agent.storage.bucket
         prefix = f"projects/{project_id}/saved_scenes/" if project_id else "projects/"
         blobs = list(bucket.list_blobs(prefix=prefix))
+        live_scene_ids: set[str] = set()
         for blob in blobs:
             name = getattr(blob, "name", "") or ""
             if not name.endswith(".json") or "/saved_scenes/" not in name:
@@ -93,6 +94,12 @@ def _hydrate_saved_scenes_from_gcs(
             )
             spec = SavedSceneSpec.model_validate_json(raw)
             _SAVED_SCENES_MEMORY[spec.scene_id] = spec
+            live_scene_ids.add(spec.scene_id)
+        for sid, existing in list(_SAVED_SCENES_MEMORY.items()):
+            if (
+                project_id is None or existing.project_id == project_id
+            ) and sid not in live_scene_ids:
+                _SAVED_SCENES_MEMORY.pop(sid, None)
     except Exception as exc:
         logger.debug("Saved scene GCS hydration skipped/failed: %s", exc)
 
@@ -109,10 +116,9 @@ def _resolve_scenes_for_request(
             resolved.append(SavedSceneSpec.model_validate(item))
         return resolved
 
-    if any(sid not in _SAVED_SCENES_MEMORY for sid in scene_ids):
-        _hydrate_saved_scenes_from_gcs(agent=agent, project_id=project_id)
-        if project_id and any(sid not in _SAVED_SCENES_MEMORY for sid in scene_ids):
-            _hydrate_saved_scenes_from_gcs(agent=agent, project_id=None)
+    _hydrate_saved_scenes_from_gcs(agent=agent, project_id=project_id)
+    if project_id and any(sid not in _SAVED_SCENES_MEMORY for sid in scene_ids):
+        _hydrate_saved_scenes_from_gcs(agent=agent, project_id=None)
 
     for sid in scene_ids:
         spec = _SAVED_SCENES_MEMORY.get(sid)
@@ -195,17 +201,35 @@ def delete_saved_scene(
 ) -> dict[str, Any]:
     popped = _SAVED_SCENES_MEMORY.pop(scene_id, None)
     existed = popped is not None
-    eff_project_id = project_id or (popped.project_id if popped else "prj_default")
+    eff_project_id = project_id or (popped.project_id if popped else None)
 
     if not getattr(agent.storage, "mock_mode", True) and getattr(agent.storage, "bucket", None):
         try:
             bucket = agent.storage.bucket
             if bucket is not None:
-                blob_path = f"projects/{eff_project_id}/saved_scenes/{scene_id}.json"
-                blob = bucket.blob(blob_path)
-                if blob.exists():
-                    blob.delete()
-                    existed = True
+                deleted_in_gcs = False
+                if eff_project_id:
+                    blob_path = f"projects/{eff_project_id}/saved_scenes/{scene_id}.json"
+                    blob = bucket.blob(blob_path)
+                    if blob.exists():
+                        blob.delete()
+                        deleted_in_gcs = True
+                        existed = True
+                if not deleted_in_gcs:
+                    suffix = f"/saved_scenes/{scene_id}.json"
+                    for b in list(bucket.list_blobs(prefix="projects/")):
+                        b_name = getattr(b, "name", "") or ""
+                        if b_name.endswith(suffix):
+                            b.delete()
+                            deleted_in_gcs = True
+                            existed = True
+                if not deleted_in_gcs and not eff_project_id:
+                    for fallback_proj in ("prj_director", "prj_default"):
+                        blob = bucket.blob(f"projects/{fallback_proj}/saved_scenes/{scene_id}.json")
+                        if blob.exists():
+                            blob.delete()
+                            existed = True
+                            break
         except Exception as exc:
             logger.debug("Saved scene GCS delete skipped/failed for %s: %s", scene_id, exc)
 
