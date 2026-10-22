@@ -489,6 +489,33 @@ class SaveFinalResponse(BaseModel):
     gcs_uri: str
     message: str
     video_url: str | None = None
+    share_url: str | None = None
+    share_expires_at: str | None = None
+
+
+class CreateShareLinkRequest(BaseModel):
+    session_name: str = Field(..., description="Session identifier or name")
+    video_url: str = Field(
+        ..., description="GCS URI (gs://...), media-proxy URL, or master filename"
+    )
+    master_title: str | None = Field(
+        default=None, description="Optional title for the master video"
+    )
+    expiration_days: int = Field(
+        default=7, ge=1, le=7, description="Lifespan in days (1 to 7)"
+    )
+
+
+class CreateShareLinkResponse(BaseModel):
+    success: bool
+    share_url: str
+    download_url: str
+    embed_snippet: str
+    expires_at: str
+    lifespan_days: int = 7
+    gcs_uri: str
+    filename: str
+    message: str
 
 
 class ExtendSceneRequest(BaseModel):
