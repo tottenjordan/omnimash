@@ -188,6 +188,20 @@ _RAW_RAI_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (r"\bface\s*tattoos?\b", "artistic facial ink"),
     (r"\bface\s*tatted\b", "artistic facial ink"),
     (r"\b1017\b", "gold"),
+    # Slang & Colloquial Vulgarity Smoothing for Spoken Audio Policies
+    (r"\btype\s*shit\b", "type motion"),
+    (r"\bshit\b", "stuff"),
+    (r"\bfuck(?:ing)?\b", "freaking"),
+    (r"\bbitch(?:es)?\b", "rivals"),
+    (r"\bdamn\b", "dang"),
+    (r"\bass\b", "energy"),
+    (r"\bcigars?\b", "gold wands"),
+    (r"\bsmoking\s+fat\s+cigars?\b", "clinking golden goblets"),
+    (r"\bsmoking\b", "relaxing"),
+    (r"\bcigar\s+smoke\b", "magical incense"),
+    (r"\bcigar\s+haze\b", "mystic haze"),
+    (r"\bcigar\s+ash\b", "magical sparkles"),
+    (r"\bdior\b", "haute couture"),
 )
 
 _RAI_REPLACEMENT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
@@ -217,6 +231,7 @@ _TRADEMARKS = (
     "burberry",
     "jordans",
     "cartier",
+    "dior",
 )
 
 _KNOWN_CELEBRITIES = (
@@ -441,3 +456,19 @@ def _get_relaxed_safety_settings(genai_module: Any = _default_genai) -> list[Any
         ]
 
     return [{"category": cat, "threshold": "BLOCK_NONE"} for cat in _FALLBACK_SAFETY_CATEGORIES]
+
+
+def _get_relaxed_interaction_safety_settings() -> list[dict[str, str]]:
+    """Returns relaxed BLOCK_NONE safety thresholds formatted specifically for GAOS client.interactions.create."""
+    return [
+        {"type": "harassment", "threshold": "block_none"},
+        {"type": "hate_speech", "threshold": "block_none"},
+        {"type": "sexually_explicit", "threshold": "block_none"},
+        {"type": "dangerous_content", "threshold": "block_none"},
+        {"type": "civic_integrity", "threshold": "block_none"},
+        {"type": "image_harassment", "threshold": "block_none"},
+        {"type": "image_hate", "threshold": "block_none"},
+        {"type": "image_sexually_explicit", "threshold": "block_none"},
+        {"type": "image_dangerous_content", "threshold": "block_none"},
+        {"type": "jailbreak", "threshold": "off"},
+    ]

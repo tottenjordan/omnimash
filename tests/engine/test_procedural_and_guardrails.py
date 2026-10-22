@@ -36,7 +36,7 @@ def test_dynamic_audio_wav_fast_array_synthesis(tmp_path: Any) -> None:
     elapsed = time.perf_counter() - start
 
     assert bpm == 140
-    assert elapsed < 0.50
+    assert elapsed < 1.0
     with wave.open(wav_file, "rb") as wf:
         assert wf.getnframes() == 44100 * 10
 

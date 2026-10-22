@@ -31,6 +31,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --port 8080 \
   --memory 2Gi \
   --cpu 2 \
+  --timeout 900 \
   "${ENV_ARGS[@]}"
 
 echo ""

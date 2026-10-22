@@ -10,6 +10,7 @@ from omnimash.engine.omni_client import (
     OmniFlashClient,
     _abstract_prompt_for_responsible_ai,
     _generate_dynamic_audio_wav,
+    _get_relaxed_interaction_safety_settings,
     _get_relaxed_safety_settings,
     ensure_rendered_video,
     parse_guardrail_error_guidance,
@@ -499,6 +500,17 @@ def test_get_relaxed_safety_settings_fallback(monkeypatch: pytest.MonkeyPatch) -
     assert found_categories == expected_categories
 
 
+def test_get_relaxed_interaction_safety_settings() -> None:
+    """Verify _get_relaxed_interaction_safety_settings returns 10 settings formatted for interactions.create."""
+    settings = _get_relaxed_interaction_safety_settings()
+    assert settings is not None
+    assert len(settings) == 10
+    for s in settings:
+        assert "type" in s
+        assert "threshold" in s
+        assert s["threshold"] in ("block_none", "off")
+
+
 def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
     """Verify that _generate_live_omni_flash_video passes kwargs to interactions.create with safety_settings."""
     import base64
@@ -527,7 +539,8 @@ def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
     assert call_kwargs["model"] == "gemini-omni-1.1-flash"
-    assert "safety_settings" not in call_kwargs
+    assert "safety_settings" in call_kwargs
+    assert len(call_kwargs["safety_settings"]) == 10
 
 
 def test_load_reference_images_as_input_returns_base64_objects() -> None:
@@ -1083,7 +1096,8 @@ def test_generate_live_omni_flash_video_includes_safety_settings(tmp_path: Any) 
     assert success is True
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
-    assert "safety_settings" not in call_kwargs
+    assert "safety_settings" in call_kwargs
+    assert len(call_kwargs["safety_settings"]) == 10
 
 
 def test_abstract_prompt_handles_parody_names() -> None:
