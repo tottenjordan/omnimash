@@ -24,6 +24,7 @@ This directory documents non-obvious knowledge, session notes, and operational q
 
 | Topic | Note File | Description |
 | :--- | :--- | :--- |
+| Production Session Handoff & Status | [session_handoff.md](session_handoff.md) | Operational status, live deployments (Cloud Run & Agent Engine), PRs #203-#208 log, and verification commands |
 | Architecture Audit & Remediation Plan | [code_review.md](code_review.md) | Comprehensive architectural bottleneck, logical bug, and security audit across all 4 remediation phases |
 | PR #128 Architectural Benefits Analysis | [pr_128_architectural_benefits_analysis.md](pr_128_architectural_benefits_analysis.md) | Analysis of Gemini Enterprise OpenTelemetry GenAI semantic conventions and guardrail error guidance |
 | Digital Director's Studio (3-Act Flow) | [digital_directors_studio_3_act_workflow.md](digital_directors_studio_3_act_workflow.md) | 3-Act progressive linear studio (The Clash, The Fine-Tune, The Director's Chair) with Gemini Parody Research |
