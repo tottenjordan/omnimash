@@ -1226,12 +1226,16 @@
             const [intentText, setIntentText] = useState("");
             const [intentInputs, setIntentInputs] = useState({
                 characters: [],
+                character_profiles: [],
                 setting: "",
                 style_tone: "",
                 audio_beat: "",
                 sound_effects: "",
-                dialogue: ""
+                dialogue: "",
+                dialogue_direction: ""
             });
+            const [showMode4VaultDropdown, setShowMode4VaultDropdown] = useState(false);
+            const [showAssistVaultDropdown, setShowAssistVaultDropdown] = useState(false);
             const [intentQuestions, setIntentQuestions] = useState([]);
             const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
             const [questionAnswers, setQuestionAnswers] = useState({});
@@ -3875,7 +3879,77 @@
                 setJ3Characters(prev => (prev || []).map(c => ({ ...c, reference_url: "" })));
             };
 
-            // Mode 4: Director's Co-Pilot Handlers
+            // Mode 4: Director's Co-Pilot Handlers & Character Vault Library
+            const availableVaultLibraryCharacters = (() => {
+                const map = new Map();
+                const pushChar = (c, sourceTag) => {
+                    if (!c) return;
+                    const key = String(c.name || c.role_id || "").trim().toLowerCase();
+                    if (!key) return;
+                    const existing = map.get(key);
+                    if (!existing || (!existing.reference_url && c.reference_url)) {
+                        map.set(key, {
+                            role_id: c.role_id || `Role ${String.fromCharCode(65 + (map.size % 26))}`,
+                            name: c.name || c.role_id || "Saved Character",
+                            description: c.description || "",
+                            reference_url: c.reference_url || "",
+                            wardrobe: c.wardrobe || "",
+                            voice_style: c.voice_style || "",
+                            aesthetic_tags: Array.isArray(c.aesthetic_tags) ? c.aesthetic_tags : [],
+                            image_role: c.image_role || "Character Reference",
+                            is_offscreen_narrator: !!c.is_offscreen_narrator,
+                            source_tag: sourceTag
+                        });
+                    }
+                };
+                (savedVaultCharacters || []).forEach(c => pushChar(c, "Project Vault"));
+                (TRAPWARTS_VAULT_AUDIT_PRESET.characters || []).forEach(c => pushChar(c, "Saved Library"));
+                (characters || []).forEach(c => pushChar(c, "Active Roster"));
+                return Array.from(map.values());
+            })();
+
+            const handleToggleMode4VaultCharacter = (charObj) => {
+                if (!charObj) return;
+                const targetName = String(charObj.name || charObj.role_id || "").trim();
+                if (!targetName) return;
+                const currentProfiles = Array.isArray(intentInputs.character_profiles) ? intentInputs.character_profiles : [];
+                const exists = currentProfiles.some(p => String(p.name || p.role_id || "").trim().toLowerCase() === targetName.toLowerCase());
+                let nextProfiles;
+                if (exists) {
+                    nextProfiles = currentProfiles.filter(p => String(p.name || p.role_id || "").trim().toLowerCase() !== targetName.toLowerCase());
+                    addToast(`Removed ${targetName} from Co-Pilot cast.`, "info");
+                } else {
+                    nextProfiles = [...currentProfiles, charObj];
+                    addToast(`Added ${targetName} (with reference image) to Co-Pilot cast!`, "success");
+                }
+                const nextNames = nextProfiles.map(p => p.name || p.role_id).filter(Boolean);
+                setIntentInputs({
+                    ...intentInputs,
+                    characters: nextNames,
+                    character_profiles: nextProfiles
+                });
+            };
+
+            const handleSelectAllTrapwartsVaultCast = () => {
+                const presetChars = TRAPWARTS_VAULT_AUDIT_PRESET.characters || [];
+                setIntentInputs({
+                    ...intentInputs,
+                    characters: presetChars.map(c => c.name),
+                    character_profiles: presetChars
+                });
+                setShowMode4VaultDropdown(false);
+                addToast("Loaded Trapwarts Vault Cast (Dumble Dior, YoTotti, Accountant Elves) into Co-Pilot!", "success");
+            };
+
+            const handleClearMode4VaultCast = () => {
+                setIntentInputs({
+                    ...intentInputs,
+                    characters: [],
+                    character_profiles: []
+                });
+                addToast("Cleared selected Co-Pilot cast.", "info");
+            };
+
             const handleAnalyzeIntentGaps = async (overrideIntent, overrideInputs) => {
                 const targetIntent = (overrideIntent !== undefined ? overrideIntent : intentText).trim();
                 if (!targetIntent) {
@@ -3995,6 +4069,12 @@
                 if (!plan) return;
                 const newConcept = plan.intent || intentText;
                 setConcept(newConcept);
+                if (plan.characters && Array.isArray(plan.characters) && plan.characters.length > 0 && typeof plan.characters[0] === "object") {
+                    setCharacters(plan.characters);
+                }
+                if (plan.vocal_delivery) {
+                    setVocalDelivery(plan.vocal_delivery);
+                }
                 if (plan.style_tone) {
                     setStageStyleTone(plan.style_tone);
                 }
@@ -4032,6 +4112,12 @@
                 if (plan.intent || intentText) {
                     setConcept(plan.intent || intentText);
                 }
+                if (plan.characters && Array.isArray(plan.characters) && plan.characters.length > 0 && typeof plan.characters[0] === "object") {
+                    setCharacters(plan.characters);
+                }
+                if (plan.vocal_delivery) {
+                    setVocalDelivery(plan.vocal_delivery);
+                }
                 if (plan.screenplay_script) {
                     setScreenplayScript(plan.screenplay_script);
                 }
@@ -4039,7 +4125,9 @@
                     setStageStyleTone(plan.style_tone);
                 }
                 if (plan.scenes && Array.isArray(plan.scenes) && plan.scenes.length > 0) {
-                    const defaultRoles = (characters && characters.length > 0)
+                    const defaultRoles = (plan.characters && plan.characters.length > 0 && typeof plan.characters[0] === "object")
+                        ? plan.characters.map(c => c.role_id)
+                        : (characters && characters.length > 0)
                         ? characters.map(c => c.role_id)
                         : ["Role A", "Role B"];
                     setScenes(plan.scenes.map((s, idx) => ({
@@ -4064,6 +4152,10 @@
                 if (!plan) return;
                 const newDesc = plan.intent || intentText;
                 setJ3MasterDescription(newDesc);
+                if (plan.characters && Array.isArray(plan.characters) && plan.characters.length > 0 && typeof plan.characters[0] === "object") {
+                    setCharacters(plan.characters);
+                    setJ3Characters(plan.characters);
+                }
                 if (plan.style_tone) {
                     setJ3StylePreset(plan.style_tone);
                 }
@@ -8549,6 +8641,313 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                         </div>
                                     </div>
 
+                                    {/* 🏛️ Character Vault & Saved Library Dropdown + 🗣️ Dialogue Direction Guidance */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t border-gray-800/80">
+                                        {/* Left Column: Character Vault & Saved Library Dropdown with Reference Image Thumbnails */}
+                                        <div className="bg-gray-950/90 border border-cyan-900/60 rounded-xl p-3.5 space-y-2.5 relative">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <label className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>🏛️</span>
+                                                    <span>Character Vault &amp; Saved Library</span>
+                                                </label>
+                                                <span className="text-[11px] text-cyan-400/90 font-mono bg-cyan-950/70 px-2 py-0.5 rounded border border-cyan-800/60">
+                                                    {availableVaultLibraryCharacters.length} Preset(s) Available
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-gray-400">
+                                                Select saved characters with reference image sheets (@Image1, @Image2) from your Character Vault dropdown, or quick-pick below.
+                                            </p>
+
+                                            {/* Custom Dropdown Trigger with Reference Image Thumbnails */}
+                                            <div className="relative">
+                                                <button
+                                                    id="mode4-vault-dropdown-btn"
+                                                    type="button"
+                                                    onClick={() => setShowMode4VaultDropdown(!showMode4VaultDropdown)}
+                                                    className="w-full bg-gray-900 hover:bg-gray-800/90 border border-cyan-700/70 hover:border-cyan-400 rounded-xl p-2.5 text-xs text-left flex items-center justify-between gap-2 transition shadow-inner"
+                                                >
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        {intentInputs.character_profiles && intentInputs.character_profiles.length > 0 ? (
+                                                            <div className="flex items-center -space-x-2 shrink-0">
+                                                                {intentInputs.character_profiles.slice(0, 4).map((selChar, sIdx) => (
+                                                                    selChar.reference_url ? (
+                                                                        <img
+                                                                            key={sIdx}
+                                                                            src={getDisplayableRefUrl(selChar.reference_url)}
+                                                                            alt={selChar.name || "Character"}
+                                                                            className="w-6 h-6 rounded-full object-cover border-2 border-cyan-400 bg-gray-950"
+                                                                        />
+                                                                    ) : (
+                                                                        <span key={sIdx} className="w-6 h-6 rounded-full bg-cyan-900 text-cyan-200 border border-cyan-400 flex items-center justify-center text-[10px] font-bold">
+                                                                            {(selChar.name || "C").charAt(0)}
+                                                                        </span>
+                                                                    )
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-base shrink-0">👥</span>
+                                                        )}
+                                                        <span className="font-semibold text-gray-200 truncate">
+                                                            {intentInputs.character_profiles && intentInputs.character_profiles.length > 0
+                                                                ? `${intentInputs.character_profiles.length} Vault Character(s) Selected: ${intentInputs.character_profiles.map(c => c.name).join(", ")}`
+                                                                : "Select Saved Character(s) with Reference Image Thumbnail..."}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-cyan-400 font-mono text-xs shrink-0">
+                                                        {showMode4VaultDropdown ? "▲ Close" : "▼ Browse Vault"}
+                                                    </span>
+                                                </button>
+
+                                                {/* Dropdown Menu Panel */}
+                                                {showMode4VaultDropdown && (
+                                                    <div className="mt-2 bg-gray-900 border border-cyan-500/80 rounded-xl shadow-2xl p-3 space-y-2.5 max-h-80 overflow-y-auto custom-scrollbar z-30">
+                                                        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-800">
+                                                            <span className="text-[11px] font-mono text-cyan-300 font-bold">
+                                                                Click character to toggle in Co-Pilot Cast:
+                                                            </span>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleSelectAllTrapwartsVaultCast}
+                                                                    className="bg-amber-950/90 hover:bg-amber-900 border border-amber-500/70 text-amber-200 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+                                                                >
+                                                                    🏰 Load All Trapwarts Cast
+                                                                </button>
+                                                                {intentInputs.character_profiles && intentInputs.character_profiles.length > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleClearMode4VaultCast}
+                                                                        className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] px-2 py-1 rounded-lg transition"
+                                                                    >
+                                                                        ✕ Clear
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="space-y-2">
+                                                            {availableVaultLibraryCharacters.map((vaultChar, vIdx) => {
+                                                                const isSelected = (intentInputs.character_profiles || []).some(
+                                                                    p => String(p.name || p.role_id || "").trim().toLowerCase() === String(vaultChar.name || vaultChar.role_id || "").trim().toLowerCase()
+                                                                );
+                                                                return (
+                                                                    <div
+                                                                        key={vIdx}
+                                                                        onClick={() => handleToggleMode4VaultCharacter(vaultChar)}
+                                                                        className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition ${
+                                                                            isSelected
+                                                                                ? "bg-cyan-950/80 border-cyan-400 shadow-md"
+                                                                                : "bg-gray-950/90 border-gray-800 hover:border-cyan-700/70"
+                                                                        }`}
+                                                                    >
+                                                                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                                            {vaultChar.reference_url ? (
+                                                                                <div className="relative shrink-0 group">
+                                                                                    <img
+                                                                                        src={getDisplayableRefUrl(vaultChar.reference_url)}
+                                                                                        alt={vaultChar.name}
+                                                                                        className="w-12 h-12 rounded-lg object-cover border border-cyan-400/70 shadow"
+                                                                                    />
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            setLightboxImageUrl(getDisplayableRefUrl(vaultChar.reference_url));
+                                                                                        }}
+                                                                                        title="Zoom Reference Sheet"
+                                                                                        className="absolute -bottom-1 -right-1 bg-gray-950/90 border border-cyan-500 text-[10px] rounded px-1 text-cyan-300 hover:text-white"
+                                                                                    >
+                                                                                        🔍
+                                                                                    </button>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="w-12 h-12 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-sm font-bold text-cyan-300 shrink-0">
+                                                                                    {(vaultChar.name || "C").charAt(0)}
+                                                                                </div>
+                                                                            )}
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                                                    <span className="text-xs font-bold text-white truncate">
+                                                                                        {vaultChar.name}
+                                                                                    </span>
+                                                                                    <span className="text-[10px] font-mono bg-gray-800 text-cyan-300 px-1.5 py-0.5 rounded border border-gray-700">
+                                                                                        {vaultChar.role_id}
+                                                                                    </span>
+                                                                                    {vaultChar.reference_url && (
+                                                                                        <span className="text-[10px] font-mono bg-emerald-950/80 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-700/60">
+                                                                                            🖼️ Ref Sheet
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                                                                                    {vaultChar.wardrobe || vaultChar.description || "Saved Character Profile"}
+                                                                                </p>
+                                                                                {vaultChar.voice_style && (
+                                                                                    <p className="text-[10px] text-cyan-400/80 font-mono truncate">
+                                                                                        🗣️ {vaultChar.voice_style}
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="shrink-0">
+                                                                            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+                                                                                isSelected
+                                                                                    ? "bg-cyan-500 text-gray-950 border-cyan-300"
+                                                                                    : "bg-gray-900 text-cyan-300 border-cyan-800"
+                                                                            }`}>
+                                                                                {isSelected ? "✓ Selected" : "+ Select"}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Quick-Load Character Chips with Thumbnail Avatars (like Character Vault on other tabs) */}
+                                            <div className="flex flex-wrap gap-1.5 pt-1">
+                                                {availableVaultLibraryCharacters.map((c, vIdx) => {
+                                                    const isSelected = (intentInputs.character_profiles || []).some(
+                                                        p => String(p.name || p.role_id || "").trim().toLowerCase() === String(c.name || c.role_id || "").trim().toLowerCase()
+                                                    );
+                                                    return (
+                                                        <button
+                                                            key={vIdx}
+                                                            type="button"
+                                                            onClick={() => handleToggleMode4VaultCharacter(c)}
+                                                            className={`text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition border ${
+                                                                isSelected
+                                                                    ? "bg-cyan-900/90 text-white border-cyan-400 font-bold shadow"
+                                                                    : "bg-gray-900/90 hover:bg-gray-800 text-gray-300 border-gray-800 hover:border-cyan-600/60"
+                                                            }`}
+                                                            title={`Toggle ${c.name} (${c.wardrobe || c.description})`}
+                                                        >
+                                                            {c.reference_url && (
+                                                                <img
+                                                                    src={getDisplayableRefUrl(c.reference_url)}
+                                                                    alt={c.name}
+                                                                    className="w-4 h-4 rounded-full object-cover border border-cyan-400/60"
+                                                                />
+                                                            )}
+                                                            <span>{isSelected ? "✓" : "+"}</span>
+                                                            <span>{c.name}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Selected Cast Preview Strip with Reference Thumbnails */}
+                                            {intentInputs.character_profiles && intentInputs.character_profiles.length > 0 && (
+                                                <div className="pt-2 border-t border-gray-800/80 space-y-1.5">
+                                                    <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 block">
+                                                        Active Co-Pilot Cast (@Image Reference Anchors Locked):
+                                                    </span>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {intentInputs.character_profiles.map((selChar, sIdx) => (
+                                                            <div key={sIdx} className="bg-gray-900/90 border border-cyan-800/70 rounded-lg p-2 flex items-center justify-between gap-2">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    {selChar.reference_url && (
+                                                                        <img
+                                                                            src={getDisplayableRefUrl(selChar.reference_url)}
+                                                                            alt={selChar.name}
+                                                                            onClick={() => setLightboxImageUrl(getDisplayableRefUrl(selChar.reference_url))}
+                                                                            className="w-9 h-9 rounded-md object-cover border border-cyan-400/60 cursor-pointer shrink-0"
+                                                                            title="Click to zoom reference image"
+                                                                        />
+                                                                    )}
+                                                                    <div className="min-w-0">
+                                                                        <span className="text-xs font-bold text-white block truncate">
+                                                                            {selChar.name}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-mono text-cyan-300 block truncate">
+                                                                            @Image{sIdx + 1} • {selChar.voice_style || "Character Reference"}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleToggleMode4VaultCharacter(selChar)}
+                                                                    className="text-gray-400 hover:text-red-400 text-xs font-bold px-1.5 py-0.5"
+                                                                    title="Remove character"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Right Column: 🗣️ Dialogue Direction (Guidance for Gemini Prompt Generation) */}
+                                        <div className="bg-gray-950/90 border border-cyan-900/60 rounded-xl p-3.5 space-y-2.5 flex flex-col justify-between">
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <label htmlFor="mode4-dialogue-direction-input" className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                                                        <span>🗣️</span>
+                                                        <span>Dialogue Direction (Guidance for Gemini)</span>
+                                                    </label>
+                                                    <span className="text-[11px] bg-cyan-950/80 text-cyan-300 px-2 py-0.5 rounded border border-cyan-800/60 font-mono">
+                                                        Prompt Guidance • Not Exact Words
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-gray-400">
+                                                    Describe the vibe, conversational angle, delivery cadence, or comedic dynamic—Gemini will craft the spoken lines and direct vocal delivery in the final video generation prompt.
+                                                </p>
+                                                <textarea
+                                                    id="mode4-dialogue-direction-input"
+                                                    rows={2}
+                                                    value={intentInputs.dialogue_direction || ""}
+                                                    onChange={(e) => setIntentInputs({ ...intentInputs, dialogue_direction: e.target.value })}
+                                                    placeholder="e.g. Trade calm executive audit banter contrasting high-fashion luxury with overflowing magical wealth, or trash-talk in rhyming couplets..."
+                                                    className="w-full bg-gray-900 border border-gray-800 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 font-mono"
+                                                />
+                                            </div>
+
+                                            {/* Quick Dialogue Direction Chips */}
+                                            <div className="pt-1">
+                                                <span className="text-[10px] text-gray-400 font-mono uppercase tracking-wider block mb-1.5">
+                                                    ⚡ Quick Dialogue Direction Presets:
+                                                </span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {[
+                                                        {
+                                                            label: "🧐 Executive Audit Banter",
+                                                            direction: "Trade calm, unfazed executive audit commentary contrasting high-fashion luxury with overflowing magical wealth"
+                                                        },
+                                                        {
+                                                            label: "🎤 Rhyming Battle Disses",
+                                                            direction: "Deliver sharp, rhythmic rhyming battle couplets with confident swagger and theatrical punchlines"
+                                                        },
+                                                        {
+                                                            label: "⚡ Sarcastic Buddy Banter",
+                                                            direction: "Rapid-fire sarcastic banter where one character treats the crisis seriously and the other is completely unfazed"
+                                                        },
+                                                        {
+                                                            label: "🎭 High-Stakes Ultimatum",
+                                                            direction: "Slow, commanding cinematic declarations with gravelly intensity building to a dramatic showdown"
+                                                        }
+                                                    ].map((dPreset, dIdx) => (
+                                                        <button
+                                                            key={dIdx}
+                                                            type="button"
+                                                            onClick={() => setIntentInputs({ ...intentInputs, dialogue_direction: dPreset.direction })}
+                                                            className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                                                                intentInputs.dialogue_direction === dPreset.direction
+                                                                    ? "bg-cyan-900/90 border-cyan-400 text-white font-bold"
+                                                                    : "bg-gray-900 hover:bg-gray-800 border-gray-800 hover:border-cyan-700 text-gray-300"
+                                                            }`}
+                                                        >
+                                                            {dPreset.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {/* Collapsible Specifics Accordion */}
                                     <div className="pt-2 border-t border-gray-800/80">
                                         <button
@@ -8556,14 +8955,14 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                             onClick={() => setShowOptionalDetails(!showOptionalDetails)}
                                             className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1.5 transition select-none"
                                         >
-                                            <span>{showOptionalDetails ? "▼ Hide Specific Details" : "▶ + Add Specific Details: Characters, Setting, Audio, SFX, Dialogue"}</span>
+                                            <span>{showOptionalDetails ? "▼ Hide Additional Specific Details" : "▶ + Add Specific Details: Custom Character Names, Setting, Style, Audio Beat, SFX, Exact Quotes"}</span>
                                         </button>
 
                                         {showOptionalDetails && (
                                             <div className="mt-3 p-4 bg-gray-950/80 border border-gray-800 rounded-xl space-y-3">
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                                     <div>
-                                                        <label className="text-[11px] text-gray-400 block mb-1 font-mono">👥 Characters (comma-separated):</label>
+                                                        <label className="text-[11px] text-gray-400 block mb-1 font-mono">👥 Custom Character Names (comma-separated):</label>
                                                         <input
                                                             type="text"
                                                             value={intentInputs.characters ? intentInputs.characters.join(", ") : ""}
@@ -8616,12 +9015,12 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label className="text-[11px] text-gray-400 block mb-1 font-mono">💬 Dialogue Banter:</label>
+                                                        <label className="text-[11px] text-gray-400 block mb-1 font-mono">💬 Exact Spoken Lines (Optional Override):</label>
                                                         <input
                                                             type="text"
                                                             value={intentInputs.dialogue || ""}
                                                             onChange={(e) => setIntentInputs({ ...intentInputs, dialogue: e.target.value })}
-                                                            placeholder="e.g. Kai: 'Nowhere left to run.' Unit 7: 'I was never running.'"
+                                                            placeholder="Optional exact quote if you want word-for-word lines"
                                                             className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 font-mono"
                                                         />
                                                     </div>
@@ -8813,11 +9212,36 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
 
                                         {/* Directorial Breakdown Grid */}
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                                            <div className="bg-gray-950 p-3 rounded-xl border border-gray-800 space-y-1">
+                                            <div className="bg-gray-950 p-3 rounded-xl border border-gray-800 space-y-2">
                                                 <span className="text-[11px] font-mono font-bold text-cyan-300 block">👥 Cast &amp; Characters:</span>
-                                                <p className="text-gray-200">
-                                                    {Array.isArray(compiledIntentPlan.characters) ? compiledIntentPlan.characters.join(", ") : "Cast configured"}
-                                                </p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {Array.isArray(compiledIntentPlan.characters) && compiledIntentPlan.characters.length > 0 ? (
+                                                        compiledIntentPlan.characters.map((cObj, cIdx) => {
+                                                            const cName = typeof cObj === "string" ? cObj : (cObj.name || cObj.role_id || `Character ${cIdx + 1}`);
+                                                            const cRef = typeof cObj === "object" && cObj ? cObj.reference_url : "";
+                                                            const cRole = typeof cObj === "object" && cObj ? cObj.role_id : `Role ${cIdx + 1}`;
+                                                            return (
+                                                                <div key={cIdx} className="bg-gray-900 border border-cyan-900/70 rounded-lg px-2.5 py-1.5 flex items-center gap-2">
+                                                                    {cRef && (
+                                                                        <img
+                                                                            src={getDisplayableRefUrl(cRef)}
+                                                                            alt={cName}
+                                                                            onClick={() => setLightboxImageUrl(getDisplayableRefUrl(cRef))}
+                                                                            className="w-7 h-7 rounded-md object-cover border border-cyan-400/60 cursor-pointer shrink-0"
+                                                                            title="Click to zoom reference image"
+                                                                        />
+                                                                    )}
+                                                                    <div>
+                                                                        <span className="text-xs font-bold text-white block">{cName}</span>
+                                                                        <span className="text-[10px] font-mono text-cyan-400 block">{cRole} (@Image{cIdx + 1})</span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <span className="text-gray-200">Cast configured</span>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div className="bg-gray-950 p-3 rounded-xl border border-gray-800 space-y-1">
                                                 <span className="text-[11px] font-mono font-bold text-cyan-300 block">📍 Setting &amp; Environment:</span>
@@ -8836,6 +9260,12 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                 <p className="text-gray-200">
                                                     {compiledIntentPlan.audio_beat || "Synchronized audio beat"}
                                                     {compiledIntentPlan.sound_effects ? ` • SFX: ${compiledIntentPlan.sound_effects}` : ""}
+                                                </p>
+                                            </div>
+                                            <div className="bg-gray-950 p-3 rounded-xl border border-gray-800 space-y-1 md:col-span-2">
+                                                <span className="text-[11px] font-mono font-bold text-cyan-300 block">🗣️ Dialogue Direction &amp; Vocal Guidance:</span>
+                                                <p className="text-gray-200">
+                                                    {compiledIntentPlan.dialogue_direction || compiledIntentPlan.vocal_delivery || "Rhythmic, clear front-and-center vocal delivery"}
                                                 </p>
                                             </div>
                                         </div>
@@ -10088,6 +10518,103 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                             />
                                         </div>
 
+                                        {/* Compact Character Vault Dropdown + Dialogue Direction in Assist Modal */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-950/70 border border-gray-800/80 rounded-xl p-3">
+                                            <div className="space-y-1.5 relative">
+                                                <label className="text-[11px] font-bold text-amber-300 block">
+                                                    🏛️ Saved Character Vault (with Thumbnail):
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAssistVaultDropdown(prev => !prev)}
+                                                    className="w-full flex items-center justify-between gap-2 bg-gray-900 hover:bg-gray-800 border border-amber-700/60 rounded-lg px-2.5 py-2 text-left transition"
+                                                >
+                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                        {Array.isArray(intentInputs.character_profiles) && intentInputs.character_profiles.length > 0 ? (
+                                                            <div className="flex items-center -space-x-1.5 shrink-0">
+                                                                {intentInputs.character_profiles.slice(0, 3).map((prof, idx) => (
+                                                                    prof.reference_url ? (
+                                                                        <img
+                                                                            key={idx}
+                                                                            src={getDisplayableRefUrl(prof.reference_url)}
+                                                                            alt={prof.name}
+                                                                            className="w-5 h-5 rounded-full object-cover border border-amber-400 bg-gray-950"
+                                                                        />
+                                                                    ) : (
+                                                                        <span key={idx} className="w-5 h-5 rounded-full bg-amber-950 border border-amber-500 text-[9px] font-bold text-amber-300 flex items-center justify-center">
+                                                                            {(prof.name || "C")[0]}
+                                                                        </span>
+                                                                    )
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs">🎭</span>
+                                                        )}
+                                                        <span className="text-[11px] font-bold text-amber-100 truncate">
+                                                            {Array.isArray(intentInputs.character_profiles) && intentInputs.character_profiles.length > 0
+                                                                ? intentInputs.character_profiles.map(p => p.name).join(", ")
+                                                                : "Select Saved Character(s)..."}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-[10px] text-amber-300 shrink-0">{showAssistVaultDropdown ? "▲" : "▼"}</span>
+                                                </button>
+                                                {showAssistVaultDropdown && (
+                                                    <div className="mt-1 bg-gray-900 border border-amber-600/80 rounded-lg p-2 space-y-1.5 max-h-48 overflow-y-auto shadow-xl">
+                                                        {availableVaultLibraryCharacters.map((vaultChar, vIdx) => {
+                                                            const isSelected = (intentInputs.character_profiles || []).some(
+                                                                (p) => (p.name || "").toLowerCase() === (vaultChar.name || "").toLowerCase()
+                                                            );
+                                                            const thumbUrl = getDisplayableRefUrl(vaultChar.reference_url);
+                                                            return (
+                                                                <div
+                                                                    key={`${vaultChar.name}-${vIdx}`}
+                                                                    onClick={() => handleToggleMode4VaultCharacter(vaultChar)}
+                                                                    className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer transition ${
+                                                                        isSelected
+                                                                            ? "bg-amber-950/60 border-amber-400"
+                                                                            : "bg-gray-950/80 border-gray-800 hover:border-amber-700/60"
+                                                                    }`}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isSelected}
+                                                                        onChange={() => {}}
+                                                                        className="w-3.5 h-3.5 accent-amber-500 rounded pointer-events-none"
+                                                                    />
+                                                                    {thumbUrl ? (
+                                                                        <img
+                                                                            src={thumbUrl}
+                                                                            alt={vaultChar.name}
+                                                                            className="w-8 h-8 rounded object-cover border border-amber-500/60 shrink-0 bg-black"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center text-xs shrink-0">🎭</div>
+                                                                    )}
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="text-[11px] font-bold text-white truncate">{vaultChar.name}</div>
+                                                                        <div className="text-[9px] text-gray-400 truncate">{vaultChar.wardrobe || vaultChar.voice_style || "Character Vault Anchor"}</div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                <label className="text-[11px] font-bold text-emerald-300 block">
+                                                    🗣️ Dialogue Direction (Guidance for Gemini):
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={intentInputs.dialogue_direction || ""}
+                                                    onChange={(e) => setIntentInputs({ ...intentInputs, dialogue_direction: e.target.value })}
+                                                    placeholder="e.g., passive-aggressive audit banter, rhyming disses..."
+                                                    className="w-full bg-gray-900 border border-emerald-700/60 rounded-lg px-2.5 py-2 text-[11px] text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400"
+                                                />
+                                            </div>
+                                        </div>
+
                                         {/* Dual Action Buttons in Modal */}
                                         <div className="flex flex-wrap items-center justify-end gap-2.5">
                                             <button
@@ -10189,10 +10716,13 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                     <span>Plan Synthesized</span>
                                                 </div>
                                                 <div className="text-xs space-y-1.5 text-gray-300">
-                                                    <p><strong className="text-cyan-300">Cast:</strong> {Array.isArray(compiledIntentPlan.characters) ? compiledIntentPlan.characters.join(", ") : "Cast configured"}</p>
+                                                    <p><strong className="text-cyan-300">Cast:</strong> {Array.isArray(compiledIntentPlan.characters) ? compiledIntentPlan.characters.map(c => typeof c === "string" ? c : c.name).join(", ") : "Cast configured"}</p>
                                                     <p><strong className="text-cyan-300">Setting:</strong> {compiledIntentPlan.environment || "Configured"}</p>
                                                     <p><strong className="text-cyan-300">Style:</strong> {compiledIntentPlan.style_tone || "Configured"}</p>
                                                     <p><strong className="text-cyan-300">Beat:</strong> {compiledIntentPlan.audio_beat || "Configured"}</p>
+                                                    {compiledIntentPlan.dialogue_direction && (
+                                                        <p><strong className="text-emerald-300">Dialogue Direction:</strong> {compiledIntentPlan.dialogue_direction}</p>
+                                                    )}
                                                 </div>
                                                 <div className="pt-2">
                                                     <button
