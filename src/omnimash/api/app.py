@@ -17,6 +17,7 @@ from omnimash.api.routers import (
     generation as generation_router,
     media as media_router,
     projects as projects_router,
+    share as share_router,
     storyboard as storyboard_router,
 )
 
@@ -84,6 +85,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     app.include_router(projects_router.router)
     app.include_router(characters_router.router)
     app.include_router(generation_router.router)
+    app.include_router(share_router.router)
 
     return app
 
