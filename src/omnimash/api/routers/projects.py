@@ -1,5 +1,3 @@
-import re
-
 from fastapi import APIRouter, HTTPException
 
 from omnimash.api.deps import AgentDep
@@ -14,28 +12,20 @@ from omnimash.api.models import (
     ReferenceSheetListResponse,
     SessionListResponse,
 )
+from omnimash.storage.gcs import validate_safe_identifier as _storage_validate_safe_identifier
 
 router = APIRouter()
-
-_SAFE_IDENTIFIER_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
 def validate_safe_identifier(value: str, label: str = "identifier") -> str:
     """SEC-02: Validates project_name / session_name against path traversal and unsafe characters."""
-    cleaned = (value or "").strip()
-    if (
-        not cleaned
-        or ".." in cleaned
-        or "/" in cleaned
-        or "\\" in cleaned
-        or "\x00" in cleaned
-        or not _SAFE_IDENTIFIER_RE.match(cleaned)
-    ):
+    try:
+        return _storage_validate_safe_identifier(value, label)
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid {label} '{value}': must match ^[a-zA-Z0-9_\\-]+$ without path traversal sequences.",
+            detail=str(exc),
         )
-    return cleaned
 
 
 @router.get("/api/projects", response_model=ProjectListResponse)
