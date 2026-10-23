@@ -78,10 +78,12 @@ def render_intent_direct(req: AutoFillIntentPlanRequest, agent: AgentDep) -> Gen
     )
     plan = fill_response.plan
 
+    prompt_to_render = req.compiled_override or plan.raw_compiled_prompt
+
     agent_turn = agent.process_user_turn(
         prompt=plan.intent,
         concept=plan.intent,
-        compiled_override=plan.raw_compiled_prompt,
+        compiled_override=prompt_to_render,
         characters=[c.model_dump() for c in plan.characters],
         vocal_delivery=plan.vocal_delivery,
         session_name=req.session_name,
@@ -98,6 +100,6 @@ def render_intent_direct(req: AutoFillIntentPlanRequest, agent: AgentDep) -> Gen
         depth=agent_turn.depth,
         error=agent_turn.error_message,
         generation_mode=agent_turn.generation_mode,
-        raw_compiled_prompt=agent_turn.raw_compiled_prompt or plan.raw_compiled_prompt,
+        raw_compiled_prompt=agent_turn.raw_compiled_prompt or prompt_to_render,
         reference_analysis=agent_turn.reference_analysis,
     )

@@ -221,3 +221,31 @@ def test_auto_fill_and_render_with_vault_characters_and_dialogue_direction(clien
     render_data = render_res.json()
     assert render_data["success"] is True
     assert "Dialogue Direction" in render_data["raw_compiled_prompt"]
+
+
+def test_render_direct_with_compiled_override(client):
+    custom_override = (
+        "### INPUT ROLES & REFERENCES\n"
+        "Role A: Dumble Dior [gs://bucket/dumble.png]\n"
+        "### CHARACTER PROFILES\n"
+        "[Role A] Dumble Dior: Master wizard in diamond spectacles.\n"
+        "### SCENE INSTRUCTIONS\n"
+        "[SCENE 1]\n"
+        "Action: Casting a customized golden lumos spell.\n"
+        "### TIMELINE\n"
+        "[0-3s] Slow zoom in on glowing wand tip."
+    )
+    payload = {
+        "intent": "Wizard duel in enchanted library",
+        "compiled_override": custom_override,
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "session_name": "custom_override_session",
+    }
+    res = client.post("/api/intent/render-direct", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["video_url"] is not None
+    assert "golden lumos" in data["raw_compiled_prompt"]
+

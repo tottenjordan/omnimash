@@ -177,3 +177,31 @@ def test_project_scoped_feedback_and_scorecard_api(client: TestClient):
         "/api/feedback/scoped_sess/turn_0", params={"project_id": "project_other"}
     )
     assert mismatch_res.status_code == 404
+
+
+def test_post_evaluation_review_endpoint(client: TestClient):
+    payload = {
+        "session_id": "test_session_review_alias",
+        "turn_id": "turn_0",
+        "rating": 5,
+        "defects": [DefectCategory.LIKENESS_DRIFT.value],
+        "critique_text": "Flawless cinematic lighting and framing.",
+        "project_id": "project_alpha",
+    }
+    resp = client.post("/api/evaluation/review", json=payload)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["success"] is True
+    assert "feedback_id" in data
+    assert data["message"] == "Feedback saved to GCS storage."
+
+    # Verify retrieval via feedback GET
+    get_resp = client.get(
+        "/api/feedback/test_session_review_alias/turn_0",
+        params={"project_id": "project_alpha"},
+    )
+    assert get_resp.status_code == 200
+    fb_data = get_resp.json()
+    assert fb_data["rating"] == 5
+    assert fb_data["critique_text"] == "Flawless cinematic lighting and framing."
+

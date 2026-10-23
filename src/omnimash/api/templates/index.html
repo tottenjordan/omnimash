@@ -3505,68 +3505,25 @@
             const handleSubmitDirectorialReview = async () => {
                 setIsSubmittingReview(true);
                 try {
-                    const targetVideo = mode4VideoUrl || currentVideo;
-                    const targetPrompt = compiledIntentPlan?.raw_compiled_prompt || rawCompiledPrompt || (intentPlan && intentPlan.raw_compiled_prompt) || '';
-                    if (studioMode === 'intent') {
-                        const payload = {
-                            video_url: targetVideo,
-                            prompt: targetPrompt,
-                            session_name: sessionName,
-                            rating: directorRating,
-                            defects: selectedDefects,
-                            critique: critiqueText,
-                            session_id: sessionName || "default_session",
-                            turn_id: parentTurnId || "turn_0",
-                            critique_text: critiqueText,
-                            project_id: activeProject || null
-                        };
-                        const res = await fetch("/api/evaluation/review", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(payload)
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (res.ok || (data && data.success)) {
-                            addToast("⭐ Directorial review recorded!", "success");
-                        } else {
-                            // Graceful fallback to /api/feedback if /api/evaluation/review is unmounted
-                            const fbRes = await fetch("/api/feedback", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                    session_id: sessionName || "default_session",
-                                    turn_id: parentTurnId || "turn_0",
-                                    rating: directorRating,
-                                    defects: selectedDefects,
-                                    critique_text: critiqueText,
-                                    project_id: activeProject || null
-                                })
-                            }).catch(() => null);
-                            if (fbRes && fbRes.ok) {
-                                addToast("⭐ Directorial review recorded!", "success");
-                            } else {
-                                addToast("Failed to submit review: " + (data.detail || data.message || "Unknown error"), "error");
-                            }
-                        }
+                    const endpoint = studioMode === 'intent' ? "/api/evaluation/review" : "/api/feedback";
+                    const payload = {
+                        session_id: sessionName || "default_session",
+                        turn_id: parentTurnId || "turn_0",
+                        rating: directorRating,
+                        defects: selectedDefects,
+                        critique_text: critiqueText,
+                        project_id: activeProject || null
+                    };
+                    const res = await fetch(endpoint, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && (data.success || data.feedback_id)) {
+                        addToast("⭐ Directorial review recorded and persisted to GCS!", "success");
                     } else {
-                        const payload = {
-                            session_id: sessionName || "default_session",
-                            turn_id: parentTurnId || "turn_0",
-                            rating: directorRating,
-                            defects: selectedDefects,
-                            critique_text: critiqueText
-                        };
-                        const res = await fetch("/api/feedback", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(payload)
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                            addToast("⭐ Directorial review recorded and persisted to GCS!", "success");
-                        } else {
-                            addToast("Failed to submit review: " + (data.detail || "Unknown error"), "error");
-                        }
+                        addToast("Failed to submit review: " + (data.detail || data.message || "Unknown error"), "error");
                     }
                 } catch (err) {
                     addToast("Review submission error: " + err.message, "error");
@@ -3656,11 +3613,9 @@
             const handleApproveMode4PromptPatch = async () => {
                 if (!evaluationScorecard || !evaluationScorecard.suggested_prompt_patch) return;
                 const patched = evaluationScorecard.suggested_prompt_patch;
-                if (compiledIntentPlan) {
-                    compiledIntentPlan.raw_compiled_prompt = patched;
-                    setCompiledIntentPlan({ ...compiledIntentPlan, raw_compiled_prompt: patched });
-                }
+                setCompiledIntentPlan(prev => prev ? { ...prev, raw_compiled_prompt: patched } : null);
                 setRawCompiledPrompt(patched);
+                setEvaluationScorecard(null);
                 addToast("⚡ Re-rendering Mode 4 shot with AI Critic prompt patch...", "info");
                 await handleRenderIntentDirect(patched);
             };
@@ -4533,12 +4488,13 @@
                 }
             };
 
-            const handleRenderIntentDirect = async () => {
+            const handleRenderIntentDirect = async (promptOverride = null) => {
                 const targetIntent = intentText.trim();
                 if (!targetIntent) {
                     addToast("Please provide an intent or premise to render.", "warning");
                     return;
                 }
+                const effectivePromptOverride = (typeof promptOverride === "string" && promptOverride.trim()) ? promptOverride : null;
                 setIntentRenderLoading(true);
                 try {
                     const res = await fetch("/api/intent/render-direct", {
@@ -4551,7 +4507,8 @@
                             resolution: omniResolution || "720p",
                             aspect_ratio: aspectRatio || "16:9",
                             enable_safety_sanitization: enableSafetySanitization,
-                            session_name: sessionName || activeProject || "prj_default"
+                            session_name: sessionName || activeProject || "prj_default",
+                            compiled_override: effectivePromptOverride || (compiledIntentPlan ? compiledIntentPlan.raw_compiled_prompt : null)
                         })
                     });
                     const data = await res.json();
@@ -6884,6 +6841,7 @@
                                                             type="button"
                                                             data-star={String(star)}
                                                             onClick={() => setDirectorRating(star)}
+                                                            aria-label={`${star} of 5 stars`}
                                                             className={`star-rating-btn px-2 py-1 text-sm font-bold rounded-lg transition ${
                                                                 directorRating >= star
                                                                     ? "text-amber-400 bg-amber-950/80 shadow-sm"
@@ -6928,6 +6886,7 @@
                                                             <button
                                                                 key={defect.id}
                                                                 type="button"
+                                                                aria-pressed={isSelected}
                                                                 onClick={() => toggleDefectSelection(defect.id)}
                                                                 className={`px-3 py-1 rounded-lg text-xs font-medium transition border ${
                                                                     isSelected
@@ -6947,6 +6906,7 @@
                                             <div className="flex flex-col sm:flex-row gap-3 items-stretch">
                                                 <input
                                                     type="text"
+                                                    aria-label="Directorial critique notes"
                                                     value={critiqueText}
                                                     onChange={(e) => setCritiqueText(e.target.value)}
                                                     placeholder="Describe what needs tuning (e.g. face drifted at second 5, bass drowned dialogue)..."
@@ -7013,6 +6973,7 @@
                                                         </span>
                                                         <button
                                                             type="button"
+                                                            aria-label="Dismiss diagnosis scorecard"
                                                             onClick={() => setEvaluationScorecard(null)}
                                                             className="text-gray-400 hover:text-white text-xs px-2 py-1 rounded bg-gray-800"
                                                         >
@@ -10578,7 +10539,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                             <button
                                                 type="button"
                                                 disabled={intentRenderLoading}
-                                                onClick={handleRenderIntentDirect}
+                                                onClick={() => handleRenderIntentDirect()}
                                                 className="bg-gradient-to-r from-cyan-600 to-teal-500 hover:from-cyan-500 hover:to-teal-400 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg flex items-center gap-2 transition disabled:opacity-50"
                                             >
                                                 <span>🎬</span>
@@ -10682,6 +10643,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                             type="button"
                                                             data-star={String(star)}
                                                             onClick={() => setDirectorRating(star)}
+                                                            aria-label={`${star} of 5 stars`}
                                                             className={`star-rating-btn px-2 py-1 text-sm font-bold rounded-lg transition ${
                                                                 directorRating >= star
                                                                     ? "text-amber-400 bg-amber-950/80 shadow-sm"
@@ -10719,6 +10681,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                             <button
                                                                 key={defect.id}
                                                                 type="button"
+                                                                aria-pressed={isSelected}
                                                                 onClick={() => toggleDefectSelection(defect.id)}
                                                                 className={`px-3 py-1 rounded-lg text-xs font-medium transition border ${
                                                                     isSelected
@@ -10739,6 +10702,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                 <input
                                                     type="text"
                                                     id="mode4-critique-input"
+                                                    aria-label="Directorial critique notes"
                                                     value={critiqueText}
                                                     onChange={(e) => setCritiqueText(e.target.value)}
                                                     placeholder="Describe what needs tuning in this Mode 4 cut (e.g. face drifted at second 5, bass drowned dialogue)..."
@@ -10808,6 +10772,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                         </span>
                                                         <button
                                                             type="button"
+                                                            aria-label="Dismiss diagnosis scorecard"
                                                             onClick={() => setEvaluationScorecard(null)}
                                                             className="text-gray-400 hover:text-white text-xs px-2 py-1 rounded bg-gray-800"
                                                         >

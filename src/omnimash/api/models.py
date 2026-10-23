@@ -634,6 +634,7 @@ class AutoFillIntentPlanRequest(BaseModel):
     aspect_ratio: str = "16:9"
     enable_safety_sanitization: bool = True
     session_name: str | None = None
+    compiled_override: str | None = None
 
 
 class CohesiveProductionPlan(BaseModel):
