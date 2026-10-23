@@ -2991,3 +2991,33 @@ def test_ui_html_session_iteration_controls() -> None:
     assert "check-retain-session-settings" in UI_HTML
     assert "btn-quick-fork-mode4" in UI_HTML
     assert "btn-quick-fork-act3" in UI_HTML
+    assert 'htmlFor="input-iteration-session-name"' in UI_HTML
+    assert "Target iteration name must differ from the source session." in UI_HTML
+
+
+def test_ui_html_mode4_directorial_review_bar_and_critic() -> None:
+    """Verify Mode 4 Screening Room contains Directorial Review Bar, star ratings, defect chips, and diagnose trigger."""
+    from omnimash.api.app import UI_HTML
+
+    assert "mode4-directorial-review-bar" in UI_HTML
+    assert "mode4-btn-diagnose-shot" in UI_HTML
+    assert "mode4-btn-submit-review" in UI_HTML
+    assert "mode4-btn-save-exemplar" in UI_HTML
+    assert "/api/evaluation/review" in UI_HTML
+    assert "isEvaluatingCritic" in UI_HTML
+    assert "toggleDefectSelection" in UI_HTML
+    assert "mode4-critique-input" in UI_HTML
+
+
+def test_ui_html_mode4_critic_diagnosis_card_and_patch() -> None:
+    """Verify Mode 4 Screening Room contains AI Critic diagnosis card, dimension pills, and re-render trigger."""
+    from omnimash.api.app import UI_HTML
+
+    assert "mode4-ai-diagnosis-card" in UI_HTML
+    assert "mode4-btn-approve-rerender" in UI_HTML
+    assert "handleApproveMode4PromptPatch" in UI_HTML
+    assert "Approve & Re-Render in Mode 4" in UI_HTML
+    assert "Video-Text Adherence" in UI_HTML
+    assert "Character Likeness" in UI_HTML
+    assert "Audio-Visual Harmony" in UI_HTML
+    assert "Tag & Index Integrity" in UI_HTML or "Tag &amp; Index Integrity" in UI_HTML
