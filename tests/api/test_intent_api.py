@@ -248,4 +248,3 @@ def test_render_direct_with_compiled_override(client):
     assert data["success"] is True
     assert data["video_url"] is not None
     assert "golden lumos" in data["raw_compiled_prompt"]
-

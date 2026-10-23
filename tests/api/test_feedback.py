@@ -204,4 +204,3 @@ def test_post_evaluation_review_endpoint(client: TestClient):
     fb_data = get_resp.json()
     assert fb_data["rating"] == 5
     assert fb_data["critique_text"] == "Flawless cinematic lighting and framing."
-
