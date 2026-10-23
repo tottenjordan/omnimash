@@ -2977,3 +2977,17 @@ def test_ui_html_directorial_memory_modal_and_controls() -> None:
     assert "/api/eval/rules" in UI_HTML
     assert "5-Star Exemplar Memory Bank" in UI_HTML
     assert "Active Strategy Bank Invariants" in UI_HTML
+
+
+def test_ui_html_session_iteration_controls() -> None:
+    """Verify UI_HTML contains session iteration controls, modal, and quick fork actions."""
+    from omnimash.api.app import UI_HTML
+
+    assert "btn-new-iteration" in UI_HTML
+    assert "Start New Iteration" in UI_HTML
+    assert "handleStartNewIteration" in UI_HTML
+    assert "modal-title-iteration" in UI_HTML
+    assert "/api/projects/" in UI_HTML and "/sessions/fork" in UI_HTML
+    assert "check-retain-session-settings" in UI_HTML
+    assert "btn-quick-fork-mode4" in UI_HTML
+    assert "btn-quick-fork-act3" in UI_HTML

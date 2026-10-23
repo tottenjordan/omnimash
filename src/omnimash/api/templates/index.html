@@ -727,6 +727,17 @@
             );
         }
 
+        function calcNextIterationName(currSession) {
+            if (!currSession) return "session_v2";
+            const match = currSession.match(/^(.*?)(?:_v|[-_])(\d+)$/i);
+            if (match) {
+                const base = match[1];
+                const nextNum = parseInt(match[2], 10) + 1;
+                return `${base}_v${nextNum}`;
+            }
+            return `${currSession}_v2`;
+        }
+
         function OmniMashApp() {
             // Non-blocking Toast Notification State (WCAG AA polite live region)
             const [toasts, setToasts] = useState([]);
@@ -760,6 +771,10 @@
             const [showNewSessionModal, setShowNewSessionModal] = useState(false);
             const [newSessionInput, setNewSessionInput] = useState("");
             const [isCreatingSession, setIsCreatingSession] = useState(false);
+            const [retainSettingsInNewSession, setRetainSettingsInNewSession] = useState(false);
+            const [showIterationModal, setShowIterationModal] = useState(false);
+            const [iterationSessionInput, setIterationSessionInput] = useState("");
+            const [isForkingSession, setIsForkingSession] = useState(false);
 
             // Act 1: Character Vault & Saved Cast State
             const [savedVaultCharacters, setSavedVaultCharacters] = useState([]);
@@ -4712,7 +4727,19 @@
                     if (data && data.success) {
                         setAvailableSessions((prev) => (prev.includes(cleaned) ? prev : [...prev, cleaned]));
                         setSessionName(cleaned);
-                        handleResetStudio();
+                        if (retainSettingsInNewSession) {
+                            setParentTurnId(null);
+                            setCurrentVideo("");
+                            setMode4VideoUrl("");
+                            setEvaluationScorecard(null);
+                            setDirectorRating(0);
+                            setSelectedDefects([]);
+                            setCritiqueText("");
+                            setHistory([]);
+                            setDeltaPrompt("");
+                        } else {
+                            handleResetStudio();
+                        }
                         setShowNewSessionModal(false);
                         setNewSessionInput("");
                         addToast(`Created session '${cleaned}'.`, "success");
@@ -4736,9 +4763,58 @@
 
             const handleCreateNewSession = () => {
                 setNewSessionInput("");
-                setCharacters(prev => (prev || []).map(c => ({ ...c, reference_url: "" })));
-                setJ3Characters(prev => (prev || []).map(c => ({ ...c, reference_url: "" })));
+                setRetainSettingsInNewSession(false);
                 setShowNewSessionModal(true);
+            };
+
+            const handleStartNewIteration = () => {
+                const nextName = calcNextIterationName(sessionName);
+                setIterationSessionInput(nextName);
+                setShowIterationModal(true);
+            };
+
+            const handleConfirmStartIteration = async () => {
+                const cleaned = (iterationSessionInput || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+                if (!cleaned) {
+                    addToast("Please enter a valid session name.", "warning");
+                    return;
+                }
+                setIsForkingSession(true);
+                try {
+                    const res = await fetch(`/api/projects/${encodeURIComponent(activeProject)}/sessions/fork`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            source_session_name: sessionName,
+                            new_session_name: cleaned,
+                            copy_roster: true,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        setSessionName(cleaned);
+                        setAvailableSessions((prev) => (prev.includes(cleaned) ? prev : [...prev, cleaned]));
+                        // CRITICAL TURN-0 ISOLATION:
+                        setParentTurnId(null);
+                        setCurrentVideo("");
+                        setMode4VideoUrl("");
+                        setEvaluationScorecard(null);
+                        setDirectorRating(0);
+                        setSelectedDefects([]);
+                        setCritiqueText("");
+                        setHistory([]);
+                        setDeltaPrompt("");
+                        setShowIterationModal(false);
+                        addToast(`🔄 Started iteration '${cleaned}'! Tweak your prompt and render a fresh video from scratch.`, "success");
+                    } else {
+                        addToast("Failed to fork session: " + (data.message || "Unknown error"), "error");
+                    }
+                } catch (err) {
+                    console.error("Fork session failed:", err);
+                    addToast("Error forking session: " + err.message, "error");
+                } finally {
+                    setIsForkingSession(false);
+                }
             };
 
             const isCommitModalVisible = status === "COMMIT_RECOMMENDED" || showCommitModal;
@@ -4832,6 +4908,18 @@
                                             autoFocus
                                         />
                                     </div>
+                                    <div className="flex items-center space-x-2 pt-1">
+                                        <input
+                                            type="checkbox"
+                                            id="check-retain-session-settings"
+                                            checked={retainSettingsInNewSession}
+                                            onChange={(e) => setRetainSettingsInNewSession(e.target.checked)}
+                                            className="w-4 h-4 rounded border-gray-700 bg-gray-950 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                        />
+                                        <label htmlFor="check-retain-session-settings" className="text-xs text-gray-300 cursor-pointer select-none">
+                                            Keep current characters &amp; prompt settings
+                                        </label>
+                                    </div>
                                 </div>
                                 <div className="flex items-center justify-end space-x-3">
                                     <button
@@ -4849,6 +4937,65 @@
                                         className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <span>{isCreatingSession ? "⏳ Creating Session..." : "🚀 Create Session"}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Start New Iteration Modal */}
+                    {showIterationModal && (
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="modal-title-iteration"
+                            className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4"
+                        >
+                            <div className="bg-gray-900 border-2 border-indigo-500/80 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+                                <div className="flex items-center space-x-3 bg-indigo-950/80 border border-indigo-500/50 rounded-xl p-4 mb-5 text-indigo-300">
+                                    <span className="text-2xl">🔄</span>
+                                    <div>
+                                        <h3 id="modal-title-iteration" className="font-bold text-base text-indigo-200">Start New Iteration</h3>
+                                        <p className="text-xs text-indigo-300/80 mt-0.5">Fork session '{sessionName}' under project '{activeProject}'.</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-4 mb-6">
+                                    <div className="bg-black/40 border border-indigo-900/60 rounded-lg p-3 text-xs text-gray-300 leading-relaxed">
+                                        Creates a fresh Turn-0 session preserving all current character roles, reference sheets, and prompt parameters. Previous video latents are isolated so your new render will be generated from scratch.
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">Iteration Session Name</label>
+                                        <input
+                                            type="text"
+                                            id="input-iteration-session-name"
+                                            value={iterationSessionInput}
+                                            onChange={(e) => setIterationSessionInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter") handleConfirmStartIteration();
+                                            }}
+                                            placeholder="e.g. parody_session_v2"
+                                            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-end space-x-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowIterationModal(false)}
+                                        disabled={isForkingSession}
+                                        className="px-4 py-2 text-xs font-medium text-gray-300 hover:text-white disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        id="btn-confirm-iteration"
+                                        onClick={handleConfirmStartIteration}
+                                        disabled={isForkingSession}
+                                        className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <span>{isForkingSession ? "⏳ Starting Iteration..." : "Start Iteration"}</span>
                                     </button>
                                 </div>
                             </div>
@@ -5584,6 +5731,15 @@
                                         ))}
                                         <option value="__NEW_SESSION__">+ New Session...</option>
                                     </select>
+                                    <button
+                                        type="button"
+                                        id="btn-new-iteration"
+                                        onClick={handleStartNewIteration}
+                                        title="Start a fresh iteration with current prompt & characters"
+                                        className="bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 text-xs font-semibold px-2 py-1 rounded transition flex items-center gap-1 shadow-sm"
+                                    >
+                                        🔄 New Iteration
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={handleCreateNewSession}
@@ -6611,6 +6767,15 @@
                                                     >
                                                         <span>➕</span>
                                                         <span>{extendLoading ? "Extending..." : "Extend Video / Next Scene"}</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        id="btn-quick-fork-act3"
+                                                        onClick={handleStartNewIteration}
+                                                        className="text-xs bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/80 font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition"
+                                                        title="Start fresh Turn-0 iteration preserving character roles and prompt"
+                                                    >
+                                                        <span>🔄 Tweak in New Iteration</span>
                                                     </button>
                                                     <button
                                                         type="button"
@@ -10407,6 +10572,15 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                         </div>
 
                                         <div className="flex justify-end gap-3 pt-2">
+                                            <button
+                                                type="button"
+                                                id="btn-quick-fork-mode4"
+                                                onClick={handleStartNewIteration}
+                                                className="text-xs bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-700/80 font-bold py-2 px-4 rounded-xl shadow-lg flex items-center gap-2 transition"
+                                                title="Start fresh Turn-0 iteration preserving character roles and prompt"
+                                            >
+                                                <span>🔄 Tweak in New Iteration</span>
+                                            </button>
                                             <button
                                                 type="button"
                                                 onClick={() => handleOpenShareModal(mode4VideoUrl, "mode4_intent_cut")}
