@@ -45,6 +45,9 @@ class FeedbackSubmitResponse(BaseModel):
     message: str = "Feedback submitted successfully."
 
 
+FeedbackResponse = FeedbackSubmitResponse
+
+
 class DiagnoseRequest(BaseModel):
     session_id: str
     turn_id: str
@@ -55,8 +58,9 @@ class DiagnoseRequest(BaseModel):
     project_id: str | None = None
 
 
-@router.post("/api/feedback", response_model=FeedbackSubmitResponse)
-def submit_feedback(record: UserFeedbackRecord, agent: AgentDep) -> FeedbackSubmitResponse:
+@router.post("/api/feedback", response_model=FeedbackResponse)
+@router.post("/api/evaluation/review", response_model=FeedbackResponse)
+def submit_feedback(record: UserFeedbackRecord, agent: AgentDep) -> FeedbackResponse:
     """Submits directorial feedback for a rendered turn and persists it to GCS."""
     session_id = _validate_safe_id(record.session_id, "session_id")
     turn_id = _validate_safe_id(record.turn_id, "turn_id")

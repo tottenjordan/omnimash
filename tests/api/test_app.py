@@ -2977,3 +2977,71 @@ def test_ui_html_directorial_memory_modal_and_controls() -> None:
     assert "/api/eval/rules" in UI_HTML
     assert "5-Star Exemplar Memory Bank" in UI_HTML
     assert "Active Strategy Bank Invariants" in UI_HTML
+
+
+def test_ui_html_session_iteration_controls() -> None:
+    """Verify UI_HTML contains session iteration controls, modal, and quick fork actions."""
+    from omnimash.api.app import UI_HTML
+
+    assert "btn-new-iteration" in UI_HTML
+    assert "Start New Iteration" in UI_HTML
+    assert "handleStartNewIteration" in UI_HTML
+    assert "modal-title-iteration" in UI_HTML
+    assert "/api/projects/" in UI_HTML and "/sessions/fork" in UI_HTML
+    assert "check-retain-session-settings" in UI_HTML
+    assert "btn-quick-fork-mode4" in UI_HTML
+    assert "btn-quick-fork-act3" in UI_HTML
+    assert 'htmlFor="input-iteration-session-name"' in UI_HTML
+    assert "Target iteration name must differ from the source session." in UI_HTML
+
+
+def test_ui_html_mode4_directorial_review_bar_and_critic() -> None:
+    """Verify Mode 4 Screening Room contains Directorial Review Bar, star ratings, defect chips, and diagnose trigger."""
+    from omnimash.api.app import UI_HTML
+
+    assert "mode4-directorial-review-bar" in UI_HTML
+    assert "mode4-btn-diagnose-shot" in UI_HTML
+    assert "mode4-btn-submit-review" in UI_HTML
+    assert "mode4-btn-save-exemplar" in UI_HTML
+    assert "/api/evaluation/review" in UI_HTML
+    assert "isEvaluatingCritic" in UI_HTML
+    assert "toggleDefectSelection" in UI_HTML
+    assert "mode4-critique-input" in UI_HTML
+    assert 'aria-label="Directorial critique notes"' in UI_HTML
+    assert "aria-label={`${star} of 5 stars`}" in UI_HTML
+    assert "aria-pressed={isSelected}" in UI_HTML
+    assert 'aria-label="Dismiss diagnosis scorecard"' in UI_HTML
+
+
+def test_ui_html_mode4_critic_diagnosis_card_and_patch() -> None:
+    """Verify Mode 4 Screening Room contains AI Critic diagnosis card, dimension pills, and re-render trigger."""
+    from omnimash.api.app import UI_HTML
+
+    assert "mode4-ai-diagnosis-card" in UI_HTML
+    assert "mode4-btn-approve-rerender" in UI_HTML
+    assert "handleApproveMode4PromptPatch" in UI_HTML
+    assert "Approve & Re-Render in Mode 4" in UI_HTML
+    assert "Video-Text Adherence" in UI_HTML
+    assert "Character Likeness" in UI_HTML
+    assert "Audio-Visual Harmony" in UI_HTML
+    assert "Tag & Index Integrity" in UI_HTML or "Tag &amp; Index Integrity" in UI_HTML
+    assert "handleRenderIntentDirect(patched)" in UI_HTML
+    assert "setEvaluationScorecard(null)" in UI_HTML
+
+
+def test_evaluation_review_endpoint_returns_200() -> None:
+    """Verify POST /api/evaluation/review route returns HTTP 200 with FeedbackResponse."""
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+    payload = {
+        "session_id": "test_session_review_200",
+        "turn_id": "turn_0",
+        "rating": 5,
+        "defects": [],
+        "critique_text": "Looks great",
+    }
+    res = client.post("/api/evaluation/review", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "feedback_id" in data
