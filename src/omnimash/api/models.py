@@ -111,6 +111,22 @@ class CreateSessionResponse(BaseModel):
     message: str = ""
 
 
+class ForkSessionRequest(BaseModel):
+    source_session_name: str
+    new_session_name: str
+    copy_roster: bool = True
+
+
+class ForkSessionResponse(BaseModel):
+    success: bool
+    project_name: str
+    session_name: str
+    parent_session_name: str
+    gcs_uri: str
+    iteration_number: int = 2
+    message: str
+
+
 class ReferenceSheetListResponse(BaseModel):
     reference_sheets: list[dict[str, Any]] = Field(default_factory=list)
 

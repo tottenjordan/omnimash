@@ -8,6 +8,8 @@ from omnimash.api.models import (
     CreateProjectResponse,
     CreateSessionRequest,
     CreateSessionResponse,
+    ForkSessionRequest,
+    ForkSessionResponse,
     ProjectListResponse,
     ReferenceSheetListResponse,
     SessionListResponse,
@@ -67,6 +69,44 @@ def create_project_session(
         session_name=safe_session,
         gcs_uri=gcs_uri,
         message=f"Session '{safe_session}' created under project '{safe_project}'",
+    )
+
+
+@router.post(
+    "/api/projects/{project_name}/sessions/fork",
+    response_model=ForkSessionResponse,
+)
+def fork_project_session(
+    project_name: str, req: ForkSessionRequest, agent: AgentDep
+) -> ForkSessionResponse:
+    safe_project = validate_safe_identifier(project_name, "project_name")
+    safe_source = validate_safe_identifier(req.source_session_name, "source_session_name")
+    safe_new = validate_safe_identifier(req.new_session_name, "new_session_name")
+
+    if safe_source == safe_new:
+        raise HTTPException(
+            status_code=400,
+            detail="Target session cannot be identical to source session.",
+        )
+
+    try:
+        res = agent.storage.fork_session(
+            source_session=safe_source,
+            new_session=safe_new,
+            project_id=safe_project,
+            copy_roster=req.copy_roster,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return ForkSessionResponse(
+        success=bool(res.get("success", True)),
+        project_name=safe_project,
+        session_name=safe_new,
+        parent_session_name=safe_source,
+        gcs_uri=str(res.get("gcs_uri", "")),
+        iteration_number=int(res.get("iteration_number", 2)),
+        message=f"Session '{safe_source}' forked to '{safe_new}' under project '{safe_project}'",
     )
 
 

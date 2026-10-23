@@ -145,6 +145,20 @@ def test_fork_session_safe_identifier_validation():
             )
 
 
+def test_fork_session_identical_source_and_target_raises():
+    storage = GcsStorageManager(mock_mode=True)
+    storage.create_session("s1", project_id="prj_identical")
+
+    with pytest.raises(
+        ValueError, match="Target session 's1' cannot be identical to source session."
+    ):
+        storage.fork_session(
+            source_session="s1",
+            new_session="s1",
+            project_id="prj_identical",
+        )
+
+
 def test_validate_safe_identifier_standalone():
     assert validate_safe_identifier("clean_session-123") == "clean_session-123"
     assert validate_safe_identifier("Project_Alpha") == "Project_Alpha"
@@ -194,6 +208,33 @@ def test_copy_session_roster_direct():
 
     # Copying from non-existent session returns None
     assert storage.copy_session_roster("non_existent", "target") is None
+
+
+def test_copy_session_roster_fallback_character_roles():
+    storage = GcsStorageManager(mock_mode=True)
+    storage.create_session("sess_roles_list", project_id="roles_prj")
+    # Manually store a manifest with character_roles as a list
+    manifest_list = {
+        "session_name": "sess_roles_list",
+        "character_roles": [{"role_id": "Hero", "name": "Arthur"}],
+    }
+    storage._mock_session_manifests["roles_prj/sess_roles_list"] = manifest_list
+
+    copied = storage.copy_session_roster("sess_roles_list", "sess_target_1", project_id="roles_prj")
+    assert copied == [{"role_id": "Hero", "name": "Arthur"}]
+
+    # Test with character_roles as a dict
+    storage.create_session("sess_roles_dict", project_id="roles_prj")
+    manifest_dict = {
+        "session_name": "sess_roles_dict",
+        "character_roles": {"hero": {"role_id": "Hero", "name": "Lancelot"}},
+    }
+    storage._mock_session_manifests["roles_prj/sess_roles_dict"] = manifest_dict
+
+    copied_dict = storage.copy_session_roster(
+        "sess_roles_dict", "sess_target_2", project_id="roles_prj"
+    )
+    assert copied_dict == [{"role_id": "Hero", "name": "Lancelot"}]
 
 
 def test_fork_session_cloud_mode():

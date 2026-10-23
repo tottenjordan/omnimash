@@ -1388,6 +1388,10 @@ class GcsStorageManager:
                     roster = parent_manifest["roster"]
                 elif isinstance(parent_manifest.get("characters"), list):
                     roster = parent_manifest["characters"]
+                elif isinstance(parent_manifest.get("character_roles"), list):
+                    roster = parent_manifest["character_roles"]
+                elif isinstance(parent_manifest.get("character_roles"), dict):
+                    roster = list(parent_manifest["character_roles"].values())
 
         if not self.mock_mode and self._bucket:
             try:
@@ -1427,6 +1431,11 @@ class GcsStorageManager:
         if project_id is None:
             project_id = "default_project"
         project_id = validate_safe_identifier(project_id, "project_id")
+
+        if source_session == new_session:
+            raise ValueError(
+                f"Target session '{new_session}' cannot be identical to source session."
+            )
 
         # 1. Ensure directory and .keep blobs exist
         gcs_uri = self.create_session(new_session, project_id=project_id)
@@ -1492,8 +1501,6 @@ class GcsStorageManager:
                         "turns",
                     ]:
                         manifest[key] = val
-                    elif key == "character_roles" and key not in manifest:
-                        manifest["character_roles"] = val
 
         # 5. Persist manifest.json to projects/{project_id}/sessions/{new_session}/manifest.json
         manifest_blob_path = f"projects/{project_id}/sessions/{new_session}/manifest.json"
