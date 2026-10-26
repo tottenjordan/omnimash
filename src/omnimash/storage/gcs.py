@@ -53,9 +53,30 @@ try:
 except ImportError:
     storage: Any = None
 
+_SAFE_IDENTIFIER_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
+def validate_safe_identifier(value: str, label: str = "identifier") -> str:
+    """SEC-02: Validates project_name / session_name against path traversal and unsafe characters."""
+    cleaned = (value or "").strip()
+    if (
+        not cleaned
+        or ".." in cleaned
+        or "/" in cleaned
+        or "\\" in cleaned
+        or "\x00" in cleaned
+        or not _SAFE_IDENTIFIER_RE.match(cleaned)
+    ):
+        raise ValueError(
+            f"Invalid {label} '{value}': must match ^[a-zA-Z0-9_\\-]+$ without path traversal sequences."
+        )
+    return cleaned
+
 
 class GcsStorageManager:
     """Manages persistent cloud storage for session-scoped video, audio, prompt, and reference artifacts."""
+
+    validate_safe_identifier = staticmethod(validate_safe_identifier)
 
     _SHARED_CLIENTS: dict[str, Any] = {}
 
@@ -563,9 +584,11 @@ class GcsStorageManager:
                     project_id=project_id,
                 )
             )
+            candidate_paths.append(f"projects/{project_id}/sessions/{session_id}/manifest.json")
         candidate_paths.append(
             self.build_session_blob_path(session_id, "prompts", "session_manifest.json")
         )
+        candidate_paths.append(f"sessions/{session_id}/manifest.json")
         for blob_path in candidate_paths:
             res = self._download_json_payload(
                 blob_path,
@@ -574,6 +597,8 @@ class GcsStorageManager:
             )
             if res is not None:
                 self._mock_session_manifests[session_id] = res
+                if project_id:
+                    self._mock_session_manifests[key] = res
                 return res
 
         return None
@@ -1331,6 +1356,184 @@ class GcsStorageManager:
         self.upload_bytes(b"", blob_path, content_type="text/plain")
         return self.get_gcs_uri(blob_path)
 
+    def save_project_character(
+        self,
+        project_id: str,
+        character: dict[str, Any],
+    ) -> tuple[str, str]:
+        """Saves a character definition under a project in GCS."""
+        return self.save_character(character, project_id=project_id)
+
+    def copy_session_roster(
+        self,
+        source_session: str,
+        target_session: str,
+        project_id: str = "default_project",
+    ) -> list[dict[str, Any]] | None:
+        """Copies session cast roster and character assets from source_session to target_session."""
+        source_session = validate_safe_identifier(source_session, "source_session")
+        target_session = validate_safe_identifier(target_session, "target_session")
+        if project_id is None:
+            project_id = "default_project"
+        project_id = validate_safe_identifier(project_id, "project_id")
+
+        roster = self.load_session_roster(source_session, project_id=project_id)
+        if not roster and f"{project_id}/{source_session}" in self._mock_rosters:
+            roster = self._mock_rosters.get(f"{project_id}/{source_session}")
+
+        if not roster:
+            parent_manifest = self.get_session_manifest(source_session, project_id=project_id)
+            if parent_manifest:
+                if isinstance(parent_manifest.get("roster"), list):
+                    roster = parent_manifest["roster"]
+                elif isinstance(parent_manifest.get("characters"), list):
+                    roster = parent_manifest["characters"]
+                elif isinstance(parent_manifest.get("character_roles"), list):
+                    roster = parent_manifest["character_roles"]
+                elif isinstance(parent_manifest.get("character_roles"), dict):
+                    roster = list(parent_manifest["character_roles"].values())
+
+        if not self.mock_mode and self._bucket:
+            try:
+                source_prefix = f"projects/{project_id}/sessions/{source_session}/characters/"
+                blobs = self._bucket.list_blobs(prefix=source_prefix, timeout=self.timeout)
+                for blob in blobs:
+                    name = getattr(blob, "name", "")
+                    if name.endswith("roster.json"):
+                        continue
+                    rel_name = name.removeprefix(source_prefix)
+                    if rel_name:
+                        target_path = (
+                            f"projects/{project_id}/sessions/{target_session}/characters/{rel_name}"
+                        )
+                        self._bucket.copy_blob(
+                            blob, self._bucket, target_path, timeout=self.timeout
+                        )
+            except Exception as exc:
+                logger.warning("Failed to copy character blobs in copy_session_roster: %s", exc)
+
+        if roster:
+            self.save_session_roster(target_session, roster, project_id=project_id)
+            return roster
+
+        return None
+
+    def fork_session(
+        self,
+        source_session: str,
+        new_session: str,
+        project_id: str = "default_project",
+        copy_roster: bool = True,
+    ) -> dict[str, Any]:
+        """Forks an existing session into a new session under a project, tracking lineage."""
+        source_session = validate_safe_identifier(source_session, "source_session")
+        new_session = validate_safe_identifier(new_session, "new_session")
+        if project_id is None:
+            project_id = "default_project"
+        project_id = validate_safe_identifier(project_id, "project_id")
+
+        if source_session == new_session:
+            raise ValueError(
+                f"Target session '{new_session}' cannot be identical to source session."
+            )
+
+        # 1. Ensure directory and .keep blobs exist
+        gcs_uri = self.create_session(new_session, project_id=project_id)
+        for subfolder in ("intermediate", "finalized", "prompts"):
+            self.upload_bytes(
+                b"",
+                f"projects/{project_id}/sessions/{new_session}/{subfolder}/.keep",
+                content_type="text/plain",
+            )
+
+        # 2. Inspect parent manifest and determine iteration number
+        parent_manifest = self.get_session_manifest(source_session, project_id=project_id)
+
+        new_m = re.search(r"(?:_v|v|_iteration_|_iter_|_iter|_iteration|_)(\d+)$", new_session)
+        parsed_new = int(new_m.group(1)) if new_m else None
+
+        if parsed_new is not None and parsed_new > 1:
+            iteration_number = parsed_new
+        elif parent_manifest and "iteration_number" in parent_manifest:
+            try:
+                iteration_number = int(parent_manifest["iteration_number"]) + 1
+            except (ValueError, TypeError):
+                iteration_number = 2
+        else:
+            src_m = re.search(
+                r"(?:_v|v|_iteration_|_iter_|_iter|_iteration|_)(\d+)$", source_session
+            )
+            if src_m:
+                iteration_number = int(src_m.group(1)) + 1
+            else:
+                iteration_number = 2
+
+        # 3. Build session manifest
+        manifest: dict[str, Any] = {
+            "session_name": new_session,
+            "parent_session": source_session,
+            "parent_session_name": source_session,
+            "iteration_number": iteration_number,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "copied_from": source_session,
+            "project_id": project_id,
+        }
+
+        # 4. Copy roster and session configs if requested
+        if copy_roster:
+            copied_roster = self.copy_session_roster(
+                source_session, new_session, project_id=project_id
+            )
+            if copied_roster:
+                manifest["roster"] = copied_roster
+                manifest["characters"] = copied_roster
+            elif parent_manifest and "roster" in parent_manifest:
+                manifest["roster"] = parent_manifest["roster"]
+            elif parent_manifest and "characters" in parent_manifest:
+                manifest["characters"] = parent_manifest["characters"]
+
+            if parent_manifest:
+                for key, val in parent_manifest.items():
+                    if key not in manifest and key not in [
+                        "session_id",
+                        "session_name",
+                        "created_at",
+                        "turns",
+                    ]:
+                        manifest[key] = val
+
+        # 5. Persist manifest.json to projects/{project_id}/sessions/{new_session}/manifest.json
+        manifest_blob_path = f"projects/{project_id}/sessions/{new_session}/manifest.json"
+        self._upload_json_payload(
+            manifest_blob_path,
+            manifest,
+            mock_cache_dict=self._mock_session_manifests,
+            mock_cache_key=f"{project_id}/{new_session}",
+        )
+        self._mock_session_manifests[new_session] = manifest
+        self._mock_session_manifests[f"{project_id}/{new_session}"] = manifest
+
+        # Also write to prompts/session_manifest.json for system-wide compatibility
+        prompt_manifest_path = self.build_session_blob_path(
+            new_session, "prompts", "session_manifest.json", project_id=project_id
+        )
+        self._upload_json_payload(
+            prompt_manifest_path,
+            manifest,
+            mock_cache_dict=self._mock_session_manifests,
+            mock_cache_key=f"{project_id}/{new_session}",
+        )
+
+        return {
+            "success": True,
+            "session_name": new_session,
+            "parent_session_name": source_session,
+            "project_id": project_id,
+            "gcs_uri": gcs_uri,
+            "iteration_number": iteration_number,
+            "manifest": manifest,
+        }
+
     def list_project_characters(self, project_id: str = "default_project") -> list[dict[str, Any]]:
         """Lists character dicts from projects/{project_id}/saved_characters/ and legacy session subfolders."""
         characters: list[dict[str, Any]] = []
@@ -1514,31 +1717,65 @@ class GcsStorageManager:
         self,
         session_id: str,
         characters: list[dict[str, Any]],
+        project_id: str | None = None,
     ) -> tuple[str, str]:
         """Saves session cast roster to sessions/{session_id}/characters/roster.json."""
-        blob_path = f"sessions/{session_id}/characters/roster.json"
-        return self._upload_json_payload(
+        if project_id:
+            blob_path = f"projects/{project_id}/sessions/{session_id}/characters/roster.json"
+            key = f"{project_id}/{session_id}"
+        else:
+            blob_path = f"sessions/{session_id}/characters/roster.json"
+            key = session_id
+        pub_url, gcs_uri = self._upload_json_payload(
             blob_path,
             characters,
             mock_cache_dict=self._mock_rosters,
-            mock_cache_key=session_id,
+            mock_cache_key=key,
         )
+        self._mock_rosters[session_id] = characters
+        if project_id:
+            self._mock_rosters[key] = characters
+            legacy_path = f"sessions/{session_id}/characters/roster.json"
+            self._upload_json_payload(
+                legacy_path,
+                characters,
+                mock_cache_dict=self._mock_rosters,
+                mock_cache_key=session_id,
+            )
+        return pub_url, gcs_uri
 
     def load_session_roster(
         self,
         session_id: str,
+        project_id: str | None = None,
     ) -> list[dict[str, Any]] | None:
         """Loads session cast roster JSON for a given session ID."""
-        blob_path = f"sessions/{session_id}/characters/roster.json"
-        data = self._download_json_payload(
-            blob_path,
-            mock_cache_dict=self._mock_rosters,
-            mock_cache_key=session_id,
-        )
-        if isinstance(data, list):
-            return data
+        key = f"{project_id}/{session_id}" if project_id else session_id
+        if key in self._mock_rosters:
+            return self._mock_rosters[key]
+        if session_id in self._mock_rosters:
+            return self._mock_rosters[session_id]
 
-        return self._mock_rosters.get(session_id)
+        candidate_paths = []
+        if project_id:
+            candidate_paths.append(
+                f"projects/{project_id}/sessions/{session_id}/characters/roster.json"
+            )
+        candidate_paths.append(f"sessions/{session_id}/characters/roster.json")
+
+        for blob_path in candidate_paths:
+            data = self._download_json_payload(
+                blob_path,
+                mock_cache_dict=self._mock_rosters,
+                mock_cache_key=key,
+            )
+            if isinstance(data, list):
+                self._mock_rosters[session_id] = data
+                if project_id:
+                    self._mock_rosters[key] = data
+                return data
+
+        return self._mock_rosters.get(key) or self._mock_rosters.get(session_id)
 
     def list_session_ids(self) -> list[str]:
         """Returns list of session IDs found in storage, sorted with the most recently created/updated sessions first."""

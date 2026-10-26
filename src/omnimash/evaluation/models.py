@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from enum import Enum
 import uuid
@@ -16,6 +18,15 @@ class DefectCategory(str, Enum):
     AUDIO_VOCAL_HALLUCINATION = "AUDIO_VOCAL_HALLUCINATION"
     TEMPORAL_BEAT_MISSED = "TEMPORAL_BEAT_MISSED"
     OFFSCREEN_LIPSYNC_ERROR = "OFFSCREEN_LIPSYNC_ERROR"
+
+    @classmethod
+    def _missing_(cls, value: object) -> DefectCategory | None:
+        if isinstance(value, str):
+            normalized = value.strip().upper().replace("-", "_")
+            for member in cls:
+                if member.value == normalized or member.name == normalized:
+                    return member
+        return None
 
 
 class UserFeedbackRecord(BaseModel):
