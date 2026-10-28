@@ -1,13 +1,16 @@
-"""Persistent run store, reference kit & storyboard synthesis helpers for Mode 5: Commercial Soundstage."""
+"""Persistent run store, media confinement, and kit/board synthesis helpers for Mode 5: Commercial Soundstage."""
 
 from __future__ import annotations
 
+import base64
+import binascii
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import os
 import re
 import threading
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
 import uuid
 
 from omnimash.api.models import CharacterRoleModel
@@ -39,6 +42,11 @@ from omnimash.prompts.parody import sanitize_real_names
 from omnimash.stitching.commercial_conformer import CANONICAL_SUBSHOT_IDS
 from omnimash.storage.gcs import GcsStorageManager, validate_safe_identifier
 
+MAX_DATA_URI_BYTES = 10 * 1024 * 1024
+MAX_DATA_URI_CHARS = 14 * 1024 * 1024
+_ALLOWED_DATA_IMAGE_SUBTYPES = frozenset({"png", "jpeg", "jpg", "webp", "svg+xml"})
+_GCS_BUCKET_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
 _THIRD_PARTY_BRAND_RE = re.compile(
     r"\b(?:Nike|Adidas|Porsche|Ferrari|Lamborghini|Tesla|Apple|Samsung|Rolex|Omega|"
     r"Gucci|Prada|Dior|Chanel|Hermes|Starbucks|Nespresso|Coca-Cola|Pepsi|Red\s+Bull|"
@@ -56,7 +64,7 @@ class SoundstageGuardrailBlockedError(PermissionError):
 
 
 class SoundstageConflictError(RuntimeError):
-    """Raised when an operation requires rendered acts or conformed deliverables not yet available."""
+    """Raised when an operation conflicts with run state or an active job on `run_id`."""
 
 
 def utc_now_iso() -> str:
@@ -74,20 +82,123 @@ def scrub_commercial_note(text: str, subject: str, offering: str) -> str:
     return re.sub(r"\s{2,}", " ", cleaned).strip(" ,;-")
 
 
+def _validate_and_decode_data_image_uri(uri: str) -> bytes:
+    """Validates `data:image/(png|jpeg|jpg|webp|svg+xml);base64,<payload>` within 10 MiB decoded cap."""
+    if len(uri) > MAX_DATA_URI_CHARS:
+        raise ValueError(f"data:image URI exceeds maximum {MAX_DATA_URI_BYTES} byte limit.")
+    header, sep, b64_body = uri.partition(",")
+    header_low = header.strip().lower()
+    if sep != "," or not header_low.startswith("data:image/") or not header_low.endswith(";base64"):
+        raise ValueError("Invalid data:image URI format; expected base64-encoded image.")
+    subtype = header_low[len("data:image/") : -len(";base64")]
+    if subtype not in _ALLOWED_DATA_IMAGE_SUBTYPES:
+        raise ValueError(f"Unsupported data:image subtype '{subtype}'.")
+    compact = "".join(b64_body.split())
+    if not compact:
+        raise ValueError("Empty base64 payload in data:image URI.")
+    try:
+        decoded = base64.b64decode(compact, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Malformed base64 payload in data:image URI.") from exc
+    if not decoded or len(decoded) > MAX_DATA_URI_BYTES:
+        raise ValueError(f"Decoded data:image payload exceeds {MAX_DATA_URI_BYTES} byte limit.")
+    return decoded
+
+
+def _unwrap_media_proxy_uri(url: str, max_hops: int = 3) -> str:
+    """Unwraps `/api/media-proxy?uri=...` up to `max_hops` hops, rejecting deeper nesting or empty URIs."""
+    current = url.strip()
+    for _ in range(max_hops):
+        parsed = urlparse(current)
+        if parsed.path != "/api/media-proxy" and not current.startswith("/api/media-proxy"):
+            break
+        qs = parse_qs(parsed.query)
+        inner = unquote((qs.get("uri") or [""])[0]).strip()
+        if not inner:
+            raise ValueError("Missing or empty 'uri' parameter in /api/media-proxy URL.")
+        current = inner
+    parsed_final = urlparse(current)
+    if parsed_final.path == "/api/media-proxy" or current.startswith("/api/media-proxy"):
+        raise ValueError(f"Exceeded maximum {max_hops}-hop /api/media-proxy unwrap depth.")
+    return current
+
+
+def _validate_bucket_and_object_path(bucket: str, obj_path: str, field_name: str) -> None:
+    clean_bucket = bucket.strip()
+    clean_obj = obj_path.split("?", 1)[0].strip("/")
+    if (
+        not clean_bucket
+        or clean_bucket in {".", ".."}
+        or not _GCS_BUCKET_NAME_RE.match(clean_bucket)
+        or not clean_obj
+        or "\x00" in clean_obj
+        or "\\" in clean_obj
+        or ".." in clean_obj.split("/")
+    ):
+        raise ValueError(
+            f"Invalid storage URI in {field_name}: expected <bucket>/<object> without '..'."
+        )
+
+
+def _validate_unwrapped_media_target(unwrapped: str, field_name: str) -> None:
+    if unwrapped.lower().startswith("data:"):
+        raise ValueError(f"data: URIs are not permitted in {field_name}.")
+    if unwrapped.startswith("gs://"):
+        rest = unwrapped[5:]
+        if "/" not in rest:
+            raise ValueError(f"Invalid GCS URI in {field_name}: expected gs://<bucket>/<object>.")
+        bucket, obj_path = rest.split("/", 1)
+        _validate_bucket_and_object_path(bucket, obj_path, field_name)
+        return
+    if unwrapped.startswith("https://storage.googleapis.com/"):
+        rest = unwrapped[len("https://storage.googleapis.com/") :]
+        if "/" not in rest:
+            raise ValueError(f"Invalid storage URL in {field_name}: expected bucket and object.")
+        bucket, obj_path = rest.split("/", 1)
+        _validate_bucket_and_object_path(bucket, obj_path, field_name)
+        return
+    if unwrapped.startswith(("http://", "https://")):
+        if not validate_remote_media_url(unwrapped):
+            raise ValueError(f"Disallowed or internal remote host in {field_name}.")
+        return
+    if validate_local_media_path(unwrapped) is not None:
+        return
+    raise ValueError(f"Disallowed or unconfined local path in {field_name}.")
+
+
 def validate_confined_custom_image_url(url: str) -> str:
-    """Validates that a user-supplied custom image reference stays within confined local/GCS/HTTPS bounds."""
+    """Validates custom image references across bounded `data:image/`, 3-hop media-proxy, GCS, HTTPS, and local roots."""
     cleaned = (url or "").strip()
     if not cleaned:
         raise ValueError("custom_image_url must not be empty.")
-    if cleaned.startswith(("gs://", "/api/media-proxy?uri=", "https://storage.googleapis.com/")):
+    if cleaned.lower().startswith("data:"):
+        _validate_and_decode_data_image_uri(cleaned)
         return cleaned
-    if cleaned.startswith(("http://", "https://")):
-        if not validate_remote_media_url(cleaned):
-            raise ValueError("Disallowed or internal remote host in custom_image_url.")
-        return cleaned
-    if validate_local_media_path(cleaned) is not None:
-        return cleaned
-    raise ValueError("Disallowed or unconfined local path in custom_image_url.")
+    unwrapped = _unwrap_media_proxy_uri(cleaned, max_hops=3)
+    _validate_unwrapped_media_target(unwrapped, "custom_image_url")
+    return cleaned
+
+
+def validate_confined_audio_url(url: str) -> str:
+    """Validates `background_music_path` rejecting `data:` URIs, SSRF URLs, out-of-root paths, and proxy bypasses."""
+    cleaned = (url or "").strip()
+    if not cleaned:
+        raise ValueError("background_music_path must not be empty.")
+    if cleaned.lower().startswith("data:"):
+        raise ValueError("data: URIs are not permitted for background_music_path.")
+    unwrapped = _unwrap_media_proxy_uri(cleaned, max_hops=3)
+    _validate_unwrapped_media_target(unwrapped, "background_music_path")
+    return cleaned
+
+
+def normalize_optional_confined_audio_url(url: str | None) -> str | None:
+    """Normalizes whitespace-only audio path to `None` and validates non-empty paths."""
+    if url is None:
+        return None
+    cleaned = url.strip()
+    if not cleaned:
+        return None
+    return validate_confined_audio_url(cleaned)
 
 
 def default_reference_kit(
@@ -137,12 +248,13 @@ def materialize_media_ref_if_data_uri(
     stem: str,
     storage: GcsStorageManager,
 ) -> str | None:
-    """Writes `data:image/...` URIs to confined `/tmp` PNG files for FFmpeg & ZIP packaging."""
+    """Validates bounded `data:image/...` URIs and writes them to confined `/tmp` PNG files."""
     if not ref or not isinstance(ref, str):
         return None
     cleaned = ref.strip()
-    if not cleaned.startswith("data:image/"):
+    if not cleaned.lower().startswith("data:"):
         return cleaned
+    _validate_and_decode_data_image_uri(cleaned)
     img_bytes, _ = fetch_media_bytes(cleaned, storage=storage)
     if not img_bytes:
         return None
@@ -206,6 +318,7 @@ class SoundstageRunStore:
     def __init__(self, storage: GcsStorageManager) -> None:
         self.storage = storage
         self._lock = threading.RLock()
+        self._gcs_locks: dict[str, threading.RLock] = {}
         self._runs: dict[str, SoundstageStatusResponse] = {}
         if not hasattr(self.storage, "_mock_soundstage_runs"):
             setattr(self.storage, "_mock_soundstage_runs", {})
@@ -218,8 +331,16 @@ class SoundstageRunStore:
             setattr(self.storage, "_mock_soundstage_runs", cache)
         return cache
 
+    def _gcs_lock_for(self, safe_run_id: str) -> threading.RLock:
+        with self._lock:
+            lock = self._gcs_locks.get(safe_run_id)
+            if lock is None:
+                lock = threading.RLock()
+                self._gcs_locks[safe_run_id] = lock
+            return lock
+
     def save(self, status: SoundstageStatusResponse) -> SoundstageStatusResponse:
-        """Validates SEC-02 identifiers and persists run snapshot to memory and 3 GCS JSON paths."""
+        """Snapshots state in memory under `_lock`, then performs GCS uploads under per-run I/O lock."""
         safe_run_id = validate_safe_identifier(status.run_id, "run_id")
         safe_session = validate_safe_identifier(status.session_name, "session_name")
         safe_project = validate_safe_identifier(status.project_name, "project_name")
@@ -228,7 +349,10 @@ class SoundstageRunStore:
             payload = status.model_dump(mode="json")
             snapshot = SoundstageStatusResponse.model_validate(payload)
             self._runs[safe_run_id] = snapshot
+            gcs_lock = self._gcs_lock_for(safe_run_id)
+            returned = snapshot.model_copy(deep=True)
 
+        with gcs_lock:
             for blob_path, cache_key in (
                 (
                     f"sessions/{safe_session}/soundstage/{safe_run_id}.json",
@@ -246,7 +370,7 @@ class SoundstageRunStore:
                     mock_cache_dict=self._mock_cache,
                     mock_cache_key=cache_key,
                 )
-            return snapshot.model_copy(deep=True)
+        return returned
 
     def get(
         self,
@@ -267,6 +391,13 @@ class SoundstageRunStore:
             cached = self._runs.get(safe_run_id)
             if cached is not None:
                 return cached.model_copy(deep=True)
+            gcs_lock = self._gcs_lock_for(safe_run_id)
+
+        with gcs_lock:
+            with self._lock:
+                cached = self._runs.get(safe_run_id)
+                if cached is not None:
+                    return cached.model_copy(deep=True)
 
             lookup_targets: list[tuple[str, str]] = []
             if safe_project and safe_session:
@@ -293,7 +424,8 @@ class SoundstageRunStore:
                 )
                 if isinstance(loaded, dict):
                     restored = SoundstageStatusResponse.model_validate(loaded)
-                    self._runs[safe_run_id] = restored
+                    with self._lock:
+                        self._runs[safe_run_id] = restored
                     return restored.model_copy(deep=True)
 
         raise SoundstageNotFoundError(f"Soundstage run '{safe_run_id}' not found.")
@@ -323,7 +455,7 @@ class SoundstageRunStore:
                     data=dict(data or {}),
                 )
             )
-            return self.save(status)
+        return self.save(status)
 
 
 def rebuild_plan_preserving_state(
@@ -348,6 +480,14 @@ def rebuild_plan_preserving_state(
         territory_override=plan.territory,
         palette_override=plan.palette,
     )
+
+
+def _invalidate_prefilming_boards(run: SoundstageStatusResponse) -> None:
+    if run.deliverables is None and not run.acts:
+        run.boards.clear()
+        run.board_checks.clear()
+        run.flagged_shot_ids.clear()
+        run.auto_advance_filming = False
 
 
 def execute_cast_and_kit_update(
@@ -422,6 +562,7 @@ def execute_cast_and_kit_update(
             lead_cast_candidates=candidates,
             cast_locked=True,
         )
+        _invalidate_prefilming_boards(run)
         return store.append_event(
             run,
             stage=next_stage,
@@ -487,6 +628,7 @@ def execute_cast_and_kit_update(
             lead_cast_candidates=[raw_ref_url],
             cast_locked=True,
         )
+        _invalidate_prefilming_boards(run)
         return store.append_event(
             run,
             stage=next_stage,
@@ -533,6 +675,7 @@ def execute_cast_and_kit_update(
     run.reference_kit[f"{req.action}_candidates"] = kit_candidates
     if req.action == "packshot":
         run.plan.hero_offering_role.reference_url = chosen
+        _invalidate_prefilming_boards(run)
     return store.append_event(
         run,
         stage=next_stage,
@@ -620,7 +763,6 @@ def execute_boards_synthesis(
             ]
             chars: list[Any] | None = [plan.lead_character]
         else:
-            # STRICT ISOLATION: Never attach lead_cast_url or human characters to person-free shots!
             refs = [packshot_url] if packshot_url else []
             chars = None
 

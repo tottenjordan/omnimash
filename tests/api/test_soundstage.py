@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 import zipfile
@@ -18,8 +19,9 @@ from omnimash.stitching.commercial_conformer import CANONICAL_SUBSHOT_IDS
 
 
 @pytest.fixture()
-def soundstage_app_and_client() -> tuple[Any, TestClient]:
+def soundstage_app_and_client(tmp_path: Path) -> tuple[Any, TestClient]:
     app = create_app(mock_mode=True)
+    get_soundstage_service(app.state.agent).output_dir = str(tmp_path)
     return app, TestClient(app)
 
 

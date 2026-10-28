@@ -35,7 +35,6 @@ from omnimash.api.soundstage_models import (
 
 router = APIRouter(prefix="/api/soundstage", tags=["soundstage"])
 
-_ACTIVE_STREAM_STAGES = frozenset({"filming_acts", "conforming", "critic_evaluated"})
 _SSE_STREAM_TIMEOUT_SEC = 180.0
 
 
@@ -134,7 +133,7 @@ async def stream_soundstage_events(
     """Streams calibrated Mode 5 Soundstage progress events as `text/event-stream` SSE frames."""
     service = get_soundstage_service(agent)
     try:
-        initial_status = service.get_status(run_id)
+        initial_status = await asyncio.to_thread(service.get_status, run_id)
     except Exception as exc:
         _raise_http_for_soundstage_error(exc)
 
@@ -176,11 +175,9 @@ async def stream_soundstage_events(
                 )
                 return
 
-            is_active = (current.stage in _ACTIVE_STREAM_STAGES) or service.is_actively_running(
-                run_id
-            )
+            is_active = service.is_actively_running(run_id)
             if not is_active and not once:
-                latest = service.get_status(run_id)
+                latest = await asyncio.to_thread(service.get_status, run_id)
                 if len(latest.events) > seen_count or latest.stage != current.stage:
                     current = latest
                     continue
@@ -207,7 +204,7 @@ async def stream_soundstage_events(
                 return
 
             await asyncio.sleep(0.04)
-            current = service.get_status(run_id)
+            current = await asyncio.to_thread(service.get_status, run_id)
 
     return StreamingResponse(
         _event_generator(),
