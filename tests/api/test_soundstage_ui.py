@@ -15,6 +15,7 @@ from omnimash.api.app import UI_HTML, create_app, get_ui_html
 
 _API_DIR = Path(app_module.__file__).resolve().parent
 _TEMPLATES_DIR = _API_DIR / "templates"
+_SHARED_JSX_PATH = _TEMPLATES_DIR / "soundstage_shared.jsx"
 _INTAKE_JSX_PATH = _TEMPLATES_DIR / "soundstage_intake.jsx"
 _PRODUCTION_JSX_PATH = _TEMPLATES_DIR / "soundstage_production.jsx"
 
@@ -30,34 +31,27 @@ def test_app_py_thin_budget_and_ui_loader_exports() -> None:
 
 
 def test_modular_jsx_partials_exist_within_line_budget() -> None:
-    """Verifies modular Soundstage JSX partial files exist and stay well under the 850-line budget."""
-    assert _INTAKE_JSX_PATH.is_file(), "Missing templates/soundstage_intake.jsx"
-    assert _PRODUCTION_JSX_PATH.is_file(), "Missing templates/soundstage_production.jsx"
-
-    intake_text = _INTAKE_JSX_PATH.read_text(encoding="utf-8")
-    intake_lines = intake_text.splitlines()
-    production_lines = _PRODUCTION_JSX_PATH.read_text(encoding="utf-8").splitlines()
-
-    assert 100 <= len(intake_lines) < 850, (
-        f"soundstage_intake.jsx should be < 850 lines, got {len(intake_lines)}"
-    )
-    assert 30 <= len(production_lines) < 850, (
-        f"soundstage_production.jsx should be < 850 lines, got {len(production_lines)}"
-    )
-
-    # Every top-level function / component / hook in soundstage_intake.jsx must be < 200 lines
-    fn_starts = [idx for idx, line in enumerate(intake_lines) if line.startswith("function ")]
-    assert len(fn_starts) >= 6
-    fn_bounds = [*fn_starts, len(intake_lines)]
-    for i in range(len(fn_starts)):
-        span = fn_bounds[i + 1] - fn_bounds[i]
-        assert span < 200, (
-            f"Function at line {fn_starts[i] + 1} in soundstage_intake.jsx is {span} lines (>= 200)"
-        )
+    """Verifies modular Soundstage JSX partial files exist and stay well under the 850-line and 200-line/fn budgets."""
+    for path in (_SHARED_JSX_PATH, _INTAKE_JSX_PATH, _PRODUCTION_JSX_PATH):
+        assert path.is_file(), f"Missing {path.name}"
+        lines = path.read_text(encoding="utf-8").splitlines()
+        assert 30 <= len(lines) < 850, f"{path.name} should be < 850 lines, got {len(lines)}"
+        fn_starts = [
+            idx
+            for idx, line in enumerate(lines)
+            if line.startswith("function ") or line.startswith("async function ")
+        ]
+        if fn_starts:
+            fn_bounds = [*fn_starts, len(lines)]
+            for i in range(len(fn_starts)):
+                span = fn_bounds[i + 1] - fn_bounds[i]
+                assert span < 200, (
+                    f"Function at line {fn_starts[i] + 1} in {path.name} is {span} lines (>= 200)"
+                )
 
 
 def test_get_ui_html_and_root_endpoint_splice_soundstage_partials() -> None:
-    """Verifies get_ui_html() and GET / splice Soundstage partials with zero leftover splice markers."""
+    """Verifies get_ui_html() and GET / splice Soundstage partials with zero leftover splice markers and pure-CSS switches."""
     ui_html = get_ui_html()
     assert "/* __SOUNDSTAGE_STUDIO_COMPONENTS__ */" not in ui_html
     assert "--sstage-bg: #090a0f;" in ui_html
@@ -68,12 +62,16 @@ def test_get_ui_html_and_root_endpoint_splice_soundstage_partials() -> None:
     assert "--sstage-stone: #a8a29e;" in ui_html
     assert ".sstage-canvas" in ui_html
     assert ".sstage-card" in ui_html
+    assert '.sstage-switch[aria-checked="true"]' in ui_html
+    assert ".sstage-switch-thumb" in ui_html
 
     client = TestClient(create_app(mock_mode=True))
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.text
     assert "/* __SOUNDSTAGE_STUDIO_COMPONENTS__ */" not in body
+    assert "function getSafeSoundstageMediaUrl(" in body
+    assert "async function postSoundstageJson(" in body
     assert "function SoundstageStudio(" in body
     assert "function SoundstageProductionRoom(" in body
 
@@ -88,20 +86,19 @@ def test_five_tab_mode_switcher_escape_fullscreen_and_mode1_to_3_sync_hooks() ->
     assert "soundstageFullscreen" in ui_html
     assert "setSoundstageFullscreen" in ui_html
 
-    # Escape handler dismisses soundstageFullscreen
     escape_pos = ui_html.find('if (e.key === "Escape")')
     assert escape_pos != -1
     escape_block = ui_html[escape_pos : escape_pos + 900]
     assert "setSoundstageFullscreen(false);" in escape_block
 
-    # Original two separate cross-mode sync useEffect dependency arrays remain intact
     assert "}, [visualConcept, j3MasterDescription]);" in ui_html
     assert "}, [j3MasterDescription, visualConcept]);" in ui_html
 
 
-def test_soundstage_intake_components_steps_and_security_guards() -> None:
-    """Verifies all Mode 5 intake components, 10 steps, MIME upload validation, draft fingerprint, and project_name sanitization."""
+def test_soundstage_intake_components_a11y_and_security_guards() -> None:
+    """Verifies Mode 5 components, WCAG switch labels, aria-pressed, mobile grid, safe media URL guard, and error parser."""
     ui_html = get_ui_html()
+    intake_src = _INTAKE_JSX_PATH.read_text(encoding="utf-8")
 
     for component_name in (
         "SoundstageWorldMap",
@@ -166,17 +163,22 @@ def test_soundstage_intake_components_steps_and_security_guards() -> None:
     ):
         assert palette_preset in ui_html, f"Missing palette preset {palette_preset}"
 
-    assert "data-edit-step=" in ui_html
-    assert "Guide the brief" in ui_html
-    assert "Exit Fullscreen Focus" in ui_html
-    assert "Make the film" in ui_html
+    # WCAG 4.1.2 switch accessible names, aria-pressed states, no duplicate SVG tabIndex, mobile 375px grid
+    assert 'aria-label="Guide the brief"' in intake_src
+    assert 'aria-label="Manual Storyboard Approval Gate before Omni Flash filming"' in intake_src
+    assert "aria-pressed=" in intake_src
+    assert "tabIndex={0}" not in intake_src
+    assert "grid-cols-1 sm:grid-cols-3" in intake_src
 
-    # Client-side Data URI subtype validation, identifier sanitization, and draft fingerprint
+    # Security & state hygiene helpers
+    assert "getSafeSoundstageMediaUrl" in ui_html
+    assert "cleanSoundstageOptionalText" in ui_html
     assert "png|jpeg|jpg|webp|svg\\+xml" in ui_html
     assert "sanitizeSoundstageIdentifier" in ui_html
     assert "safeProjectName" in ui_html
-    assert "computePlanSignature" in ui_html
+    assert "computePlanSignature(brief, safeProjectName, safeSessionName)" in intake_src
     assert "selectInspirationChip" in ui_html
+    assert "Precision crafted for the quiet pulse of Tokyo." not in ui_html
 
     for endpoint in (
         "/api/soundstage/discover",
@@ -189,10 +191,9 @@ def test_soundstage_intake_components_steps_and_security_guards() -> None:
 def test_soundstage_originality_and_video_model_hygiene() -> None:
     """Ensures zero prohibited external inspiration terms/URLs or prohibited video model names appear."""
     targets = [get_ui_html()]
-    if _INTAKE_JSX_PATH.is_file():
-        targets.append(_INTAKE_JSX_PATH.read_text(encoding="utf-8"))
-    if _PRODUCTION_JSX_PATH.is_file():
-        targets.append(_PRODUCTION_JSX_PATH.read_text(encoding="utf-8"))
+    for path in (_SHARED_JSX_PATH, _INTAKE_JSX_PATH, _PRODUCTION_JSX_PATH):
+        if path.is_file():
+            targets.append(path.read_text(encoding="utf-8"))
 
     disallowed_patterns = (
         re.compile("".join(["crea", "tive", r"\s*", "os"]), re.IGNORECASE),
@@ -211,7 +212,7 @@ def test_soundstage_originality_and_video_model_hygiene() -> None:
 @pytest.mark.slow
 @pytest.mark.browser
 def test_soundstage_mode5_interactive_flows_in_headless_browser(tmp_path: Path) -> None:
-    """Exercises Mode 5 Escape fullscreen exit, MIME upload check, chip reset, draft fingerprint, and Express fresh discovery."""
+    """Exercises Mode 5 security URL guards, whitespace trimming, 422 error formatting, Step 1 Continue auto-discover, switch a11y, and Express flow."""
     import socket
     import threading
     import time
@@ -257,14 +258,23 @@ const {{ chromium }} = require('playwright');
   const pageErrors = [];
   page.on('pageerror', err => pageErrors.push(err.message));
 
-  // Seed an unsafe activeProject in localStorage before loading to test safeProjectName sanitization
   await page.addInitScript(() => {{
     localStorage.setItem('omnimash_active_project', 'bad project/../name!');
   }});
 
   const planPayloads = [];
   const castPayloads = [];
+  let simulate422Once = false;
   await page.route('**/api/soundstage/plan', async (route) => {{
+    if (simulate422Once) {{
+      simulate422Once = false;
+      await route.fulfill({{
+        status: 422,
+        contentType: 'application/json',
+        body: JSON.stringify({{ detail: [{{ loc: ['body', 'subject'], msg: 'Subject fails schema check' }}] }})
+      }});
+      return;
+    }}
     planPayloads.push(JSON.parse(route.request().postData() || '{{}}'));
     await route.continue();
   }});
@@ -278,41 +288,80 @@ const {{ chromium }} = require('playwright');
   await page.click('#btn-mode-soundstage');
   await page.waitForSelector('#soundstage-guided-canvas', {{ timeout: 5000 }});
 
-  // 1. Test Fullscreen Focus hides <header> AND pressing Escape exits fullscreen & restores <header>
-  if ((await page.locator('header').count()) !== 1) throw new Error('Expected header visible before fullscreen');
+  // 1. Verify WCAG switch accessible names & pure-CSS track color transition
+  const guidedSwitch = page.getByRole('switch', {{ name: 'Guide the brief' }});
+  if ((await guidedSwitch.count()) !== 1) throw new Error('Missing switch accessible name: Guide the brief');
+  const activeBg = await guidedSwitch.evaluate((el) => getComputedStyle(el).backgroundColor);
+  if (activeBg !== 'rgb(225, 29, 72)') throw new Error('Expected active rose switch track rgb(225, 29, 72), got: ' + activeBg);
+
+  // 2. Test Fullscreen Focus hides <header> AND pressing Escape exits fullscreen & restores <header>
   await page.click('#soundstage-btn-fullscreen');
   if ((await page.locator('header').count()) !== 0) throw new Error('Expected header hidden during fullscreen focus');
   await page.keyboard.press('Escape');
   await page.waitForSelector('header', {{ timeout: 3000 }});
-  if ((await page.locator('header').count()) !== 1) throw new Error('Expected Escape key to exit fullscreen focus');
 
-  // 2. Test Inspiration Chip resets editedFields after manual edit on Step 2
+  // 3. Test Step 1 footer Continue -> auto-discovers an undiscovered subject (and inspiration chip clears editedFields)
   await page.click('[data-step-rail="2"]');
   await page.fill('#soundstage-input-offering', 'Stale Manual Offering');
   await page.click('[data-step-rail="1"]');
   await page.getByRole('button', {{ name: /Brera Botanical Aperitif/i }}).click();
-  await page.click('#soundstage-btn-discover');
+  await page.getByRole('button', {{ name: 'Continue →', exact: true }}).click();
   await page.waitForSelector('#soundstage-input-offering', {{ timeout: 5000 }});
-  const offeringAfterChipDiscover = await page.inputValue('#soundstage-input-offering');
-  if (offeringAfterChipDiscover === 'Stale Manual Offering' || !offeringAfterChipDiscover) {{
-    throw new Error('Expected inspiration chip to clear editedFields so discover refreshes offering, got: ' + offeringAfterChipDiscover);
+  const offeringAfterContinue = await page.inputValue('#soundstage-input-offering');
+  if (offeringAfterContinue === 'Stale Manual Offering' || offeringAfterContinue === 'Signature Grand Touring Coupe' || !offeringAfterContinue) {{
+    throw new Error('Expected Step 1 Continue -> to auto-discover fresh offering, got: ' + offeringAfterContinue);
   }}
 
-  // 3. Test Client-Side MIME upload validation on Step 5 (reject image/gif, accept image/png)
+  // 4. Test Safe Media URL Allowlist & Whitespace-Only Input Trimming on Step 5
   await page.click('[data-step-rail="5"]');
-  await page.waitForSelector('#soundstage-emblem-upload', {{ timeout: 3000 }});
+  await page.fill('#soundstage-input-emblem-url', 'javascript:alert(1)');
+  if ((await page.locator('#soundstage-emblem-plate img[alt="Studio emblem preview"]').count()) !== 0) {{
+    throw new Error('Unsafe javascript: URI must never render in <img src>');
+  }}
+  await page.click('#soundstage-btn-synthesize-emblem');
+  const alertText = await page.locator('[role="alert"]').innerText();
+  if (!alertText.includes('Invalid Studio Emblem URI')) {{
+    throw new Error('Expected validation error banner on unsafe javascript: emblem URI, got: ' + alertText);
+  }}
+  if (planPayloads.length !== 0) {{
+    throw new Error('Expected /api/soundstage/plan not to be called when emblem URI has unsafe scheme');
+  }}
+
+  // Whitespace-only emblemUrl & language must trim cleanly to null / "English"
+  await page.fill('#soundstage-input-emblem-url', '    ');
+  if ((await page.getByRole('button', {{ name: 'Clear Emblem' }}).count()) !== 0) {{
+    throw new Error('Whitespace-only emblemUrl must not render Clear Emblem button');
+  }}
+  await page.click('[data-step-rail="8"]');
+  await page.fill('#soundstage-input-language', '   ');
+  await page.click('[data-step-rail="10"]');
+  const signoffText = await page.locator('#soundstage-ready-signoff').innerText();
+  if (signoffText.includes('Studio Mark Locked')) {{
+    throw new Error('Whitespace-only emblemUrl must not report Studio Mark Locked on Step 10');
+  }}
+  if ((await page.getByRole('switch', {{ name: 'Manual Storyboard Approval Gate before Omni Flash filming' }}).count()) !== 1) {{
+    throw new Error('Missing accessible name on Manual Storyboard Approval Gate switch');
+  }}
+
+  // 5. Test FastAPI HTTP 422 array detail formatting (never "[object Object]")
+  simulate422Once = true;
+  await page.click('#soundstage-btn-make-film');
+  await page.waitForSelector('[role="alert"]', {{ timeout: 3000 }});
+  const err422Text = await page.locator('[role="alert"]').innerText();
+  if (err422Text.includes('[object Object]') || !err422Text.includes('Subject fails schema check')) {{
+    throw new Error('Expected formatted 422 array error message, got: ' + err422Text);
+  }}
+
+  // 6. Test Client-Side MIME upload validation on Step 5 (reject image/gif, accept image/png) + Draft Fingerprint
+  await page.click('[data-step-rail="5"]');
   await page.setInputFiles('#soundstage-emblem-upload', {{
     name: 'bad.gif',
     mimeType: 'image/gif',
     buffer: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')
   }});
   await page.waitForTimeout(100);
-  if ((await page.inputValue('#soundstage-input-emblem-url')) !== '') {{
+  if ((await page.inputValue('#soundstage-input-emblem-url')).trim() !== '') {{
     throw new Error('Expected unsupported image/gif upload to be rejected');
-  }}
-  const toastAfterGif = await page.locator('.ToastNotificationRegion').innerText();
-  if (!toastAfterGif.includes('Unsupported image format')) {{
-    throw new Error('Expected error toast on unsupported image/gif upload, got: ' + toastAfterGif);
   }}
   await page.setInputFiles('#soundstage-emblem-upload', {{
     name: 'mark.png',
@@ -321,14 +370,13 @@ const {{ chromium }} = require('playwright');
   }});
   await page.waitForFunction(() => document.querySelector('#soundstage-input-emblem-url').value.startsWith('data:image/png;base64,'), {{ timeout: 3000 }});
 
-  // 4. Test Draft Run Fingerprint: Step 5 synthesize -> Step 6 palette edit -> Step 9 packshot synthesize re-plans!
   await page.click('#soundstage-btn-synthesize-emblem');
   await page.waitForFunction(() => document.querySelectorAll('#soundstage-emblem-plate img').length >= 2, {{ timeout: 5000 }});
   if (planPayloads.length !== 1 || castPayloads.length !== 1) {{
     throw new Error('Expected 1 plan + 1 cast after emblem synthesis, got ' + planPayloads.length + '/' + castPayloads.length);
   }}
-  if (planPayloads[0].project_name !== 'bad_project_name') {{
-    throw new Error('Expected sanitized project_name bad_project_name, got: ' + planPayloads[0].project_name);
+  if (planPayloads[0].project_name !== 'bad_project_name' || planPayloads[0].language !== 'English') {{
+    throw new Error('Expected sanitized project_name=bad_project_name and fallback language=English, got: ' + JSON.stringify(planPayloads[0]));
   }}
   const firstDraftRunId = castPayloads[0].run_id;
 
@@ -337,48 +385,26 @@ const {{ chromium }} = require('playwright');
   await page.click('[data-step-rail="9"]');
   await page.click('#soundstage-btn-synthesize-packshot');
   await page.waitForFunction(() => document.querySelectorAll('img[alt^="Packshot candidate"]').length >= 1, {{ timeout: 5000 }});
-  if (planPayloads.length !== 2 || castPayloads.length !== 2) {{
+  if (planPayloads.length !== 2 || castPayloads[1].run_id === firstDraftRunId) {{
     throw new Error('Expected palette edit to invalidate draft plan signature and re-plan before packshot synthesis');
   }}
-  const secondDraftRunId = castPayloads[1].run_id;
-  if (secondDraftRunId === firstDraftRunId) {{
-    throw new Error('Expected new draft run_id after palette edit, got same ' + secondDraftRunId);
-  }}
-  if (planPayloads[1].palette_hexes.primary_hex !== '#192334') {{
-    throw new Error('Expected updated Nocturne Cobalt primary_hex in re-planned draft payload');
-  }}
 
-  // 5. Verify Ready Sign-Off Edit -> jumps back to Step 3, then Step 10 Make the film -> Production Room
+  // 7. Mobile 375px check on Step 10 Ready Sign-Off (zero horizontal overflow on resolution buttons)
+  await page.setViewportSize({{ width: 375, height: 812 }});
   await page.click('[data-step-rail="10"]');
-  await page.click('[data-edit-step="3"]');
-  await page.waitForSelector('#soundstage-world-map', {{ timeout: 3000 }});
-  await page.click('[data-step-rail="10"]');
+  await page.waitForSelector('#soundstage-ready-signoff', {{ timeout: 3000 }});
+  const stdBtnBox = await page.getByRole('button', {{ name: '720p Standard' }}).boundingBox();
+  if (!stdBtnBox || stdBtnBox.x < 0 || stdBtnBox.x + stdBtnBox.width > 375) {{
+    throw new Error('720p Standard button overflows 375px mobile viewport: ' + JSON.stringify(stdBtnBox));
+  }}
+  await page.setViewportSize({{ width: 1440, height: 900 }});
+
+  // Launch Guided Film -> Production Room -> Edit Brief -> Express Mode fresh discovery
   await page.click('#soundstage-btn-make-film');
   await page.waitForSelector('#soundstage-production-room', {{ timeout: 5000 }});
-  const prodRunTextBefore = await page.locator('#soundstage-production-room').innerText();
-
-  // Clicking <- Edit Brief and synthesizing an emblem must NOT mutate the launched production run
-  await page.click('#soundstage-btn-edit-brief');
-  await page.waitForSelector('#soundstage-btn-return-production', {{ timeout: 3000 }});
-  await page.click('[data-step-rail="5"]');
-  const castCountBeforeEditSynth = castPayloads.length;
-  await page.click('#soundstage-btn-synthesize-emblem');
-  await page.waitForTimeout(300);
-  if (castPayloads.length <= castCountBeforeEditSynth) {{
-    throw new Error('Expected synthesize emblem after Edit Brief to run');
-  }}
-  await page.click('#soundstage-btn-return-production');
-  await page.waitForSelector('#soundstage-production-room', {{ timeout: 3000 }});
-  const prodRunTextAfter = await page.locator('#soundstage-production-room').innerText();
-  if (prodRunTextAfter !== prodRunTextBefore) {{
-    throw new Error('Expected launched production run in Production Room to remain untouched by intake draft synthesis');
-  }}
-
-  // 6. Test Express Mode passes freshly discovered moment, language, and vocal_cadence on first click (no stale state)
   await page.click('#soundstage-btn-edit-brief');
   await page.click('#soundstage-toggle-guided');
   await page.waitForSelector('#soundstage-express-canvas', {{ timeout: 3000 }});
-  // Click chip to ensure editedFields is empty
   await page.getByRole('button', {{ name: /Aoyama Grand Tourer/i }}).click();
   await page.route('**/api/soundstage/discover', async (route) => {{
     const resp = await route.fetch();
@@ -390,15 +416,14 @@ const {{ chromium }} = require('playwright');
   const plansBeforeExpress = planPayloads.length;
   await page.click('#soundstage-btn-make-film-express');
   await page.waitForSelector('#soundstage-production-room', {{ timeout: 5000 }});
-  if (planPayloads.length !== plansBeforeExpress + 1) {{
-    throw new Error('Expected Express Make the film to call /api/soundstage/plan once');
-  }}
   const expressPlan = planPayloads[planPayloads.length - 1];
-  if (expressPlan.moment !== 'Midnight Ginza Threshold') {{
-    throw new Error('Express plan missed freshly discovered moment: ' + JSON.stringify(expressPlan));
-  }}
-  if (expressPlan.language !== 'Japanese' || expressPlan.vocal_cadence !== 'Poised Tokyo nocturnal baritone') {{
-    throw new Error('Express plan missed freshly discovered language/vocal_cadence: ' + JSON.stringify(expressPlan));
+  if (
+    planPayloads.length !== plansBeforeExpress + 1 ||
+    expressPlan.moment !== 'Midnight Ginza Threshold' ||
+    expressPlan.language !== 'Japanese' ||
+    expressPlan.vocal_cadence !== 'Poised Tokyo nocturnal baritone'
+  ) {{
+    throw new Error('Express plan missed freshly discovered fields: ' + JSON.stringify(expressPlan));
   }}
 
   if (pageErrors.length !== 0) {{

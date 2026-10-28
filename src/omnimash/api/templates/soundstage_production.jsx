@@ -20,15 +20,18 @@ function SoundstageProductionRoom({
     };
     const physics = plan.physics || {};
     const refKit = (activeRun && activeRun.reference_kit) || {};
-    const leadCastDisplayUrl = refKit.lead_cast_url
-        ? getDisplayableRefUrl(refKit.lead_cast_url)
-        : "";
-    const emblemDisplayUrl = refKit.emblem_url
-        ? getDisplayableRefUrl(refKit.emblem_url)
-        : "";
-    const packshotDisplayUrl = refKit.packshot_url
-        ? getDisplayableRefUrl(refKit.packshot_url)
-        : "";
+    const leadCastDisplayUrl = getSafeSoundstageMediaUrl(
+        refKit.lead_cast_url,
+        getDisplayableRefUrl
+    );
+    const emblemDisplayUrl = getSafeSoundstageMediaUrl(
+        refKit.emblem_url,
+        getDisplayableRefUrl
+    );
+    const packshotDisplayUrl = getSafeSoundstageMediaUrl(
+        refKit.packshot_url,
+        getDisplayableRefUrl
+    );
     const progressPct = activeRun && typeof activeRun.progress_pct === "number"
         ? activeRun.progress_pct
         : 20;

@@ -55,6 +55,10 @@
         .sstage-canvas { background-color: var(--sstage-bg); color: var(--sstage-ivory); }
         .sstage-card { background-color: var(--sstage-surface); border: 1px solid var(--sstage-border); }
         .sstage-elevated { background-color: var(--sstage-elevated); border: 1px solid rgba(245, 242, 235, 0.14); }
+        .sstage-switch { position: relative; display: inline-flex; align-items: center; width: 2.75rem; height: 1.5rem; padding: 2px; border-radius: 9999px; background-color: #44403c; border: 1px solid rgba(245, 242, 235, 0.16); transition: background-color 150ms ease; cursor: pointer; flex-shrink: 0; }
+        .sstage-switch[aria-checked="true"] { background-color: #e11d48; }
+        .sstage-switch-thumb { width: 1.125rem; height: 1.125rem; border-radius: 9999px; background-color: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); transform: translateX(0); transition: transform 150ms ease; pointer-events: none; }
+        .sstage-switch[aria-checked="true"] .sstage-switch-thumb { transform: translateX(1.25rem); }
         button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
             outline: 2px solid var(--focus-ring);
             outline-offset: 2px;

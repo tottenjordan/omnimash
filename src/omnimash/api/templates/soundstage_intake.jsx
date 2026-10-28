@@ -1,114 +1,5 @@
 // Mode 5: Commercial Soundstage — 10-Step Editorial Intake & Express Canvas (Modular JSX Partial)
 
-const SOUNDSTAGE_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const SOUNDSTAGE_HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;
-const SOUNDSTAGE_DATA_IMAGE_PATTERN = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/i;
-
-const SOUNDSTAGE_WORLD_TERRITORIES = [
-    { place_name: "New York · SoHo", x: 232, y: 136, temperature_c: 18, condition: "Clear autumn dusk · Cast-iron facade rim light", lighting_directive: "35mm prime lens, directional golden-hour street canyon shafts with soft bounce fill", cultural_pulse: "Creative loft energy across cobblestone blocks and gallery thresholds" },
-    { place_name: "Los Angeles · Silver Lake", x: 146, y: 152, temperature_c: 22, condition: "Golden-hour haze · Warm canyon rim light", lighting_directive: "Anamorphic 40mm cinema lens, warm sun-drenched hillside glow", cultural_pulse: "Modernist courtyard calm and West Coast studio craft" },
-    { place_name: "São Paulo · Jardins", x: 288, y: 268, temperature_c: 24, condition: "Tropical dusk · Lush concrete gallery shadows", lighting_directive: "35mm cinema prime, brutalist concrete chiaroscuro with warm canopy bounce", cultural_pulse: "Verdant modernist architecture meeting cosmopolitan evening poise" },
-    { place_name: "Reykjavik · Harbor", x: 356, y: 84, temperature_c: 7, condition: "Sub-arctic blue hour · Basalt mist reflections", lighting_directive: "50mm prime lens, crisp silver-blue twilight over dark volcanic basalt", cultural_pulse: "Elemental Nordic clarity and quiet geothermal warmth" },
-    { place_name: "London · Soho", x: 392, y: 118, temperature_c: 14, condition: "Blue-hour drizzle · Warm brass doorway reflections", lighting_directive: "35mm cinema lens, moody blue-hour ambience balanced by warm practical spill", cultural_pulse: "Tailored heritage craft colliding with contemporary nocturnal culture" },
-    { place_name: "Paris · Le Marais", x: 404, y: 128, temperature_c: 19, condition: "Luminous morning · Soft limestone courtyard diffusion", lighting_directive: "50mm cinema prime, diffused natural skylight across warm Haussmann stone", cultural_pulse: "Effortless atelier refinement and unhurried morning cafe poise" },
-    { place_name: "Milan · Brera", x: 422, y: 136, temperature_c: 21, condition: "Warm late afternoon · Sunlit travertine colonnade", lighting_directive: "Anamorphic 40mm lens, rich amber architectural chiaroscuro and stone speculars", cultural_pulse: "Tactile industrial design heritage and aperitivo-hour elegance" },
-    { place_name: "Seoul · Hannam", x: 654, y: 146, temperature_c: 17, condition: "Crisp evening · Hillside glass & warm amber spill", lighting_directive: "35mm anamorphic prime, sleek architectural glass reflections at dusk", cultural_pulse: "Hyper-curated gallery precision and kinetic metropolitan poise" },
-    { place_name: "Kyoto · Higashiyama", x: 676, y: 154, temperature_c: 15, condition: "Misty dawn · Cedar eaves and damp slate flagstones", lighting_directive: "50mm cinema lens, tranquil silver-amber dawn light through timber lattices", cultural_pulse: "Contemplative artisanal mastery and timeless material harmony" },
-    { place_name: "Tokyo · Aoyama", x: 690, y: 150, temperature_c: 16, condition: "Crisp twilight · Golden-hour wet asphalt reflections", lighting_directive: "Anamorphic 35mm cinema lens, warm tungsten glow against slate twilight blue", cultural_pulse: "Precision evening rhythm where architectural minimalism meets metropolitan flow" }
-];
-
-const SOUNDSTAGE_PALETTE_PRESETS = [
-    { label: "Obsidian & Sienna", primary_hex: "#1A222D", primary_name: "Obsidian Slate", secondary_hex: "#C4633B", secondary_name: "Sienna Saddle", neutral_hex: "#EAE6DF", neutral_name: "Chalk Travertine" },
-    { label: "Brera Travertine & Espresso", primary_hex: "#2A211B", primary_name: "Espresso Walnut", secondary_hex: "#B86B3A", secondary_name: "Burnished Copper", neutral_hex: "#F2EDE4", neutral_name: "Brera Travertine" },
-    { label: "Kyoto Cedar & Alabaster", primary_hex: "#2C332E", primary_name: "Cypress Basalt", secondary_hex: "#B98352", secondary_name: "Aged Cedar", neutral_hex: "#F4F1EA", neutral_name: "Satin Alabaster" },
-    { label: "Nocturne Cobalt & Quartz", primary_hex: "#192334", primary_name: "Nocturne Cobalt", secondary_hex: "#3B82C4", secondary_name: "Cerulean Accent", neutral_hex: "#F3F5F8", neutral_name: "Frosted Quartz" }
-];
-
-const SOUNDSTAGE_INSPIRATION_CHIPS = [
-    { label: "Aoyama Grand Tourer", subject: "Atelier Kuroda Motors", dna: "Sculpted nocturnal grand touring coupe gliding through wet Tokyo twilight" },
-    { label: "Brera Botanical Aperitif", subject: "Casa Solari Milano", dna: "Chilled artisanal citrus-bitter glass bottle on sunlit travertine" },
-    { label: "Trapwarts Arcane Wand", subject: "Trapwarts Alchemical Guild", dna: "Parody luxury commercial for a hand-carved obsidian spellcraft wand" },
-    { label: "Kyoto Pour-Over System", subject: "Higashiyama Precision Craft", dna: "Countertop dual-boiler brushed gunmetal espresso ritual at dawn" }
-];
-
-const SOUNDSTAGE_DEFAULT_LANGUAGES = [
-    { code: "en", label: "English", vocal_cadence: "Measured, intimate international cinema baritone with crisp articulation" },
-    { code: "ja", label: "Japanese", vocal_cadence: "Poised, resonant Tokyo editorial narration with calm rhythmic pauses" },
-    { code: "fr", label: "French", vocal_cadence: "Warm Parisian atelier cadence with effortless velvet phrasing" },
-    { code: "it", label: "Italian", vocal_cadence: "Expressive Milanese architectural warmth with crisp consonant poise" },
-    { code: "es", label: "Spanish", vocal_cadence: "Luminous contemporary cinema narration with confident rhythmic cadence" }
-];
-
-const SOUNDSTAGE_STEPS = [
-    { num: 1, shortLabel: "Subject", title: "Step 1 · Subject or Brand", subtitle: "Name the commercial house, studio label, or parody universe." },
-    { num: 2, shortLabel: "Offering", title: "Step 2 · Hero Offering & Physics", subtitle: "Select or define the physical offering and verify deduced ergonomics." },
-    { num: 3, shortLabel: "Territory", title: "Step 3 · Filming Territory", subtitle: "Anchor architectural geography and local cultural rhythm." },
-    { num: 4, shortLabel: "Atmosphere", title: "Step 4 · Weather & Lighting", subtitle: "Lock micro-climate, optical lens mood, and daylight equilibrium." },
-    { num: 5, shortLabel: "Emblem", title: "Step 5 · Studio Mark & End-Card Plate", subtitle: "Verify WCAG contrast backing plate or synthesize a clean geometric emblem." },
-    { num: 6, shortLabel: "Palette", title: "Step 6 · 60 / 30 / 10 Color Lock", subtitle: "Enforce architectural set, wardrobe, and hero plinth color ratios." },
-    { num: 7, shortLabel: "Moment", title: "Step 7 · Cultural Moment", subtitle: "Frame the human threshold ritual driving the 3-act arc." },
-    { num: 8, shortLabel: "Cadence", title: "Step 8 · Language & Vocal Cadence", subtitle: "Set spoken narration tongue and acoustic pacing." },
-    { num: 9, shortLabel: "Packshot", title: "Step 9 · Hero Reference / Packshot", subtitle: "Lock a 1:1 visual object anchor for Act 2 and Act 3 payoff." },
-    { num: 10, shortLabel: "Sign-Off", title: "Step 10 · Ready Sign-Off", subtitle: "Review every brief decision, confirm resolution tier, and roll cameras." }
-];
-
-function computeWcagRelativeLuminance(hexColor) {
-    const clean = SOUNDSTAGE_HEX_PATTERN.test(String(hexColor || "").trim()) ? String(hexColor).trim().slice(1) : "1A222D";
-    const ch = [0, 2, 4].map((idx) => {
-        const c = parseInt(clean.slice(idx, idx + 2), 16) / 255;
-        return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
-}
-
-function computeWcagContrastRatio(lumA, lumB) {
-    return (Math.max(lumA, lumB) + 0.05) / (Math.min(lumA, lumB) + 0.05);
-}
-
-function buildSoundstagePaletteDirective(pal) {
-    const pName = (pal && pal.primary_name) || "Obsidian Slate";
-    const pHex = (pal && pal.primary_hex) || "#1A222D";
-    const sName = (pal && pal.secondary_name) || "Sienna Saddle";
-    const sHex = (pal && pal.secondary_hex) || "#C4633B";
-    const nName = (pal && pal.neutral_name) || "Chalk Travertine";
-    const nHex = (pal && pal.neutral_hex) || "#EAE6DF";
-    return `60% ${pName} (${pHex}) architectural & set surfaces / 30% ${sName} (${sHex}) wardrobe & practical props / 10% ${nName} (${nHex}) foundational hero surface`;
-}
-
-function sanitizeSoundstageIdentifier(raw, fallback) {
-    const cleaned = String(raw || "").trim().replace(/[^A-Za-z0-9_-]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 128);
-    return cleaned || fallback;
-}
-
-function computePlanSignature(b) {
-    return JSON.stringify({
-        subject: String((b && b.subject) || "").trim(), offering: (b && b.offering) || "",
-        territory: (b && b.territory) || "", weatherCondition: (b && b.weatherCondition) || "",
-        tagline: (b && b.tagline) || "", palette: (b && b.palette) || null,
-        moment: (b && b.moment) || "", language: (b && b.language) || "",
-        vocalCadence: (b && b.vocalCadence) || "", customDna: (b && b.customDna) || ""
-    });
-}
-
-function readSoundstageFileAsDataUrl(file, addToast, onLoaded) {
-    if (!file) return;
-    if (file.size > SOUNDSTAGE_MAX_UPLOAD_BYTES) {
-        if (addToast) addToast("Image exceeds 10 MiB limit. Choose an image under 10 MiB.", "error");
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-        const res = typeof reader.result === "string" ? reader.result : "";
-        if (!SOUNDSTAGE_DATA_IMAGE_PATTERN.test(res)) {
-            if (addToast) addToast("Unsupported image format. Upload PNG, JPEG, WebP, or SVG.", "error");
-            return;
-        }
-        onLoaded(res);
-    };
-    reader.onerror = () => { if (addToast) addToast("Could not read selected image file.", "error"); };
-    reader.readAsDataURL(file);
-}
-
 function SoundstageWorldMap({ territory, suggestedTerritories, onSelectTerritory, onCustomTerritoryChange }) {
     const mergedSuggestions = Array.isArray(suggestedTerritories) ? suggestedTerritories : [];
     const lookupSpec = (placeName) => {
@@ -136,7 +27,7 @@ function SoundstageWorldMap({ territory, suggestedTerritories, onSelectTerritory
                         const isSelected = String(territory || "").toLowerCase() === pin.place_name.toLowerCase();
                         const fillHex = isSelected ? "#e11d48" : "#a8a29e";
                         return (
-                            <g key={pin.place_name} role="button" tabIndex={0} aria-label={`Select filming territory ${pin.place_name}`} onClick={() => onSelectTerritory(lookupSpec(pin.place_name) || pin)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectTerritory(lookupSpec(pin.place_name) || pin); } }} className="cursor-pointer">
+                            <g key={pin.place_name} data-territory-pin={pin.place_name} aria-pressed={isSelected} onClick={() => onSelectTerritory(lookupSpec(pin.place_name) || pin)} className="cursor-pointer">
                                 <circle cx={pin.x} cy={pin.y} r={isSelected ? 11 : 6} fill={fillHex} fillOpacity={isSelected ? "0.28" : "0.14"} />
                                 <circle cx={pin.x} cy={pin.y} r={isSelected ? 4.5 : 3} fill={fillHex} stroke="#f5f2eb" strokeWidth={isSelected ? "1.4" : "0.6"} />
                             </g>
@@ -148,7 +39,7 @@ function SoundstageWorldMap({ territory, suggestedTerritories, onSelectTerritory
                 {SOUNDSTAGE_WORLD_TERRITORIES.map((pin) => {
                     const isSelected = String(territory || "").toLowerCase() === pin.place_name.toLowerCase();
                     const cls = isSelected ? "bg-rose-600/25 text-rose-100 border-rose-500 font-semibold" : "bg-stone-900/80 text-stone-300 border-stone-800 hover:border-stone-600 hover:text-stone-100";
-                    return (<button key={pin.place_name} type="button" onClick={() => onSelectTerritory(lookupSpec(pin.place_name) || pin)} className={`px-3 py-1.5 rounded-lg text-xs border transition ${cls}`}>{pin.place_name}</button>);
+                    return (<button key={pin.place_name} type="button" aria-pressed={isSelected} onClick={() => onSelectTerritory(lookupSpec(pin.place_name) || pin)} className={`px-3 py-1.5 rounded-lg text-xs border transition ${cls}`}>{pin.place_name}</button>);
                 })}
             </div>
             {mergedSuggestions.length !== 0 && (
@@ -157,7 +48,7 @@ function SoundstageWorldMap({ territory, suggestedTerritories, onSelectTerritory
                         const isSelected = String(territory || "").toLowerCase() === String(spec.place_name || "").toLowerCase();
                         const cls = isSelected ? "border-rose-500/70 bg-rose-950/20" : "border-stone-800 bg-stone-950/60 hover:border-stone-600";
                         return (
-                            <button key={spec.place_name} type="button" onClick={() => onSelectTerritory(spec)} className={`text-left rounded-xl p-3.5 border transition space-y-1 ${cls}`}>
+                            <button key={spec.place_name} type="button" aria-pressed={isSelected} onClick={() => onSelectTerritory(spec)} className={`text-left rounded-xl p-3.5 border transition space-y-1 ${cls}`}>
                                 <div className="flex items-center justify-between gap-2">
                                     <span className="text-xs font-bold text-stone-100">{spec.place_name}</span>
                                     <span className="text-xs font-mono text-rose-300">{spec.temperature_c}°C</span>
@@ -176,7 +67,7 @@ function SoundstageWorldMap({ territory, suggestedTerritories, onSelectTerritory
     );
 }
 
-function SoundstageEmblemPlate({ palette, emblemUrl, setEmblemUrl, emblemCandidates, isSynthesizing, onSynthesizeEmblem, addToast, getDisplayableRefUrl }) {
+function SoundstageEmblemPlate({ palette, emblemUrl, setEmblemUrl, emblemCandidates, isSynthesizing, isBusy, onSynthesizeEmblem, addToast, getDisplayableRefUrl }) {
     const [plateMode, setPlateMode] = useState("auto");
     const markLum = computeWcagRelativeLuminance(palette && palette.primary_hex) * 0.65 + computeWcagRelativeLuminance(palette && palette.neutral_hex) * 0.35;
     const contrastOnDark = computeWcagContrastRatio(markLum, computeWcagRelativeLuminance("#090A0F"));
@@ -184,7 +75,9 @@ function SoundstageEmblemPlate({ palette, emblemUrl, setEmblemUrl, emblemCandida
     const autoPrefersLight = contrastOnLight > contrastOnDark;
     const useLightPlate = plateMode === "light" || (plateMode === "auto" && autoPrefersLight);
     const activeRatio = (useLightPlate ? contrastOnLight : contrastOnDark).toFixed(1);
-    const displayUrl = emblemUrl ? getDisplayableRefUrl(emblemUrl) : "";
+    const cleanEmblem = cleanSoundstageOptionalText(emblemUrl);
+    const displayUrl = getSafeSoundstageMediaUrl(emblemUrl, getDisplayableRefUrl);
+    const hasInvalidScheme = Boolean(cleanEmblem && !displayUrl);
     const candidates = Array.isArray(emblemCandidates) ? emblemCandidates : [];
 
     return (
@@ -192,7 +85,7 @@ function SoundstageEmblemPlate({ palette, emblemUrl, setEmblemUrl, emblemCandida
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-1.5 bg-stone-950 border border-stone-800 rounded-lg p-1" role="group" aria-label="Emblem backing plate contrast mode">
                     {[{ id: "auto", label: "Auto" }, { id: "dark", label: "Dark Plate" }, { id: "light", label: "Light Plate" }].map((opt) => (
-                        <button key={opt.id} type="button" onClick={() => setPlateMode(opt.id)} className={`px-2.5 py-1 rounded text-xs font-medium transition ${plateMode === opt.id ? "bg-rose-600 text-white" : "text-stone-300 hover:text-white"}`}>{opt.label}</button>
+                        <button key={opt.id} type="button" aria-pressed={plateMode === opt.id} onClick={() => setPlateMode(opt.id)} className={`px-2.5 py-1 rounded text-xs font-medium transition ${plateMode === opt.id ? "bg-rose-600 text-white" : "text-stone-300 hover:text-white"}`}>{opt.label}</button>
                     ))}
                 </div>
                 <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-700 text-stone-200">
@@ -216,22 +109,27 @@ function SoundstageEmblemPlate({ palette, emblemUrl, setEmblemUrl, emblemCandida
                 </div>
                 <div>
                     <label htmlFor="soundstage-input-emblem-url" className="block text-xs font-mono uppercase tracking-wider text-stone-300 mb-1">{"Direct Emblem URI (gs://, https://, data:image/)"}</label>
-                    <input id="soundstage-input-emblem-url" type="text" value={emblemUrl} onChange={(e) => setEmblemUrl(e.target.value)} placeholder="gs://... or https://..." className="w-full rounded-xl bg-stone-950/90 border border-stone-700/80 px-3 py-2 text-xs text-stone-100" />
+                    <input id="soundstage-input-emblem-url" type="text" value={emblemUrl} onChange={(e) => setEmblemUrl(e.target.value)} placeholder="gs://... or https://..." className={`w-full rounded-xl bg-stone-950/90 border px-3 py-2 text-xs text-stone-100 ${hasInvalidScheme ? "border-rose-500" : "border-stone-700/80"}`} />
                 </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
-                <button type="button" id="soundstage-btn-synthesize-emblem" disabled={isSynthesizing} onClick={onSynthesizeEmblem} className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50">
+                <button type="button" id="soundstage-btn-synthesize-emblem" disabled={isBusy} onClick={onSynthesizeEmblem} className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50">
                     {isSynthesizing ? "Synthesizing Studio Marks..." : "Synthesize Studio Mark"}
                 </button>
-                {emblemUrl && (<button type="button" onClick={() => setEmblemUrl("")} className="text-xs text-stone-400 hover:text-stone-200 underline">Clear Emblem</button>)}
+                {cleanEmblem && (<button type="button" onClick={() => setEmblemUrl("")} className="text-xs text-stone-400 hover:text-stone-200 underline">Clear Emblem</button>)}
             </div>
             {candidates.length !== 0 && (
                 <div className="grid grid-cols-3 gap-2.5">
-                    {candidates.map((candUrl, idx) => (
-                        <button key={`${candUrl}_${idx}`} type="button" onClick={() => setEmblemUrl(candUrl)} className={`p-2 rounded-xl border transition ${candUrl === emblemUrl ? "border-rose-500 bg-rose-950/30" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
-                            <img src={getDisplayableRefUrl(candUrl)} alt={`Emblem candidate ${idx + 1}`} className="h-16 w-full object-contain rounded" />
-                        </button>
-                    ))}
+                    {candidates.map((candUrl, idx) => {
+                        const safeCand = getSafeSoundstageMediaUrl(candUrl, getDisplayableRefUrl);
+                        if (!safeCand) return null;
+                        const isSelected = candUrl === emblemUrl;
+                        return (
+                            <button key={`${candUrl}_${idx}`} type="button" aria-pressed={isSelected} onClick={() => setEmblemUrl(candUrl)} className={`p-2 rounded-xl border transition ${isSelected ? "border-rose-500 bg-rose-950/30" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
+                                <img src={safeCand} alt={`Emblem candidate ${idx + 1}`} className="h-16 w-full object-contain rounded" />
+                            </button>
+                        );
+                    })}
                 </div>
             )}
         </div>
@@ -252,14 +150,17 @@ function SoundstagePaletteEditor({ palette, onChangePalette }) {
     return (
         <div id="soundstage-palette-editor" className="space-y-4">
             <div className="flex flex-wrap gap-2" role="group" aria-label="Editorial 60/30/10 palette presets">
-                {SOUNDSTAGE_PALETTE_PRESETS.map((p) => (
-                    <button key={p.label} type="button" onClick={() => applyPatch({ primary_hex: p.primary_hex, primary_name: p.primary_name, secondary_hex: p.secondary_hex, secondary_name: p.secondary_name, neutral_hex: p.neutral_hex, neutral_name: p.neutral_name })} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700/80 flex items-center gap-2 transition">
-                        <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.primary_hex }} />
-                        <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.secondary_hex }} />
-                        <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.neutral_hex }} />
-                        <span>{p.label}</span>
-                    </button>
-                ))}
+                {SOUNDSTAGE_PALETTE_PRESETS.map((p) => {
+                    const isPresetActive = palette.primary_hex === p.primary_hex && palette.secondary_hex === p.secondary_hex && palette.neutral_hex === p.neutral_hex;
+                    return (
+                        <button key={p.label} type="button" aria-pressed={isPresetActive} onClick={() => applyPatch({ primary_hex: p.primary_hex, primary_name: p.primary_name, secondary_hex: p.secondary_hex, secondary_name: p.secondary_name, neutral_hex: p.neutral_hex, neutral_name: p.neutral_name })} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700/80 flex items-center gap-2 transition">
+                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.primary_hex }} />
+                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.secondary_hex }} />
+                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.neutral_hex }} />
+                            <span>{p.label}</span>
+                        </button>
+                    );
+                })}
             </div>
             <div className="h-6 w-full rounded-xl overflow-hidden flex border border-stone-700/80 shadow-inner" aria-label="60 30 10 color ratio bar">
                 <div style={{ width: "60%", backgroundColor: palette.primary_hex }} title={`60% ${palette.primary_name}`} />
@@ -293,7 +194,7 @@ function SoundstagePaletteEditor({ palette, onChangePalette }) {
 }
 
 function SoundstageReadySignoff({ ctrl }) {
-    const { brief, setField, summaryRows, setCurrentStep, launchFilm, isLaunchingFilm } = ctrl;
+    const { brief, setField, summaryRows, setCurrentStep, launchFilm, isLaunchingFilm, isBusy } = ctrl;
     return (
         <div id="soundstage-ready-signoff" className="space-y-5">
             <div className="rounded-xl border border-stone-800 overflow-hidden divide-y divide-stone-800/90 bg-stone-950/60">
@@ -314,21 +215,21 @@ function SoundstageReadySignoff({ ctrl }) {
                 </div>
                 <div>
                     <span className="block text-xs font-mono uppercase tracking-wider text-stone-300 mb-1.5">Omni Flash Resolution Tier</span>
-                    <div className="grid grid-cols-3 gap-2" role="group" aria-label="Resolution Tier">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="group" aria-label="Resolution Tier">
                         {[{ id: "360p", label: "360p Draft" }, { id: "720p", label: "720p Standard" }, { id: "4k", label: "4K Master" }].map((tier) => (
-                            <button key={tier.id} type="button" onClick={() => setField("resolution", tier.id, false)} className={`py-2 px-2.5 rounded-xl text-xs font-mono border transition ${brief.resolution === tier.id ? "bg-rose-600/25 text-rose-100 border-rose-500 font-bold" : "bg-stone-900 text-stone-300 border-stone-800 hover:border-stone-600"}`}>{tier.label}</button>
+                            <button key={tier.id} type="button" aria-pressed={brief.resolution === tier.id} onClick={() => setField("resolution", tier.id, false)} className={`py-2 px-2.5 rounded-xl text-xs font-mono border transition ${brief.resolution === tier.id ? "bg-rose-600/25 text-rose-100 border-rose-500 font-bold" : "bg-stone-900 text-stone-300 border-stone-800 hover:border-stone-600"}`}>{tier.label}</button>
                         ))}
                     </div>
                 </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-stone-800/80">
                 <div className="flex items-center gap-3">
-                    <button type="button" id="soundstage-toggle-manual-board-gate" role="switch" aria-checked={brief.manualBoardGate} onClick={() => setField("manualBoardGate", !brief.manualBoardGate, false)} className={`w-11 h-6 rounded-full transition p-0.5 flex items-center ${brief.manualBoardGate ? "bg-rose-600 justify-end" : "bg-stone-700 justify-start"}`}>
-                        <span className="w-5 h-5 rounded-full bg-white shadow" />
+                    <button type="button" id="soundstage-toggle-manual-board-gate" role="switch" aria-label="Manual Storyboard Approval Gate before Omni Flash filming" aria-checked={brief.manualBoardGate} onClick={() => setField("manualBoardGate", !brief.manualBoardGate, false)} className="sstage-switch">
+                        <span className="sstage-switch-thumb" />
                     </button>
                     <span className="text-xs text-stone-200">Manual Storyboard Approval Gate before Omni Flash filming</span>
                 </div>
-                <button type="button" id="soundstage-btn-make-film" disabled={isLaunchingFilm} onClick={() => launchFilm(false)} className="px-6 py-3 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition disabled:opacity-50">
+                <button type="button" id="soundstage-btn-make-film" disabled={isBusy} onClick={() => launchFilm(false)} className="px-6 py-3 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition disabled:opacity-50">
                     {isLaunchingFilm ? "Compiling Plan & Locking Cast..." : "Make the film →"}
                 </button>
             </div>
@@ -337,7 +238,7 @@ function SoundstageReadySignoff({ ctrl }) {
 }
 
 function SoundstageStepsOneToFour({ ctrl }) {
-    const { currentStep, brief, setField, selectTerritory, selectInspirationChip, discovery, isDiscovering, handleDiscover } = ctrl;
+    const { currentStep, brief, setField, setSubject, selectTerritory, selectInspirationChip, discovery, isDiscovering, isBusy, handleDiscover } = ctrl;
     const physics = (discovery && discovery.physics) || null;
     const offerings = (discovery && Array.isArray(discovery.suggested_offerings)) ? discovery.suggested_offerings : [];
 
@@ -346,18 +247,18 @@ function SoundstageStepsOneToFour({ ctrl }) {
             <div className="space-y-4">
                 <div>
                     <label htmlFor="soundstage-input-subject" className="block text-xs font-mono uppercase tracking-wider text-stone-300 mb-1.5">Subject, Brand House, or Parody Concept</label>
-                    <input id="soundstage-input-subject" type="text" value={brief.subject} onChange={(e) => setField("subject", e.target.value, false)} placeholder="e.g., Atelier Kuroda Motors, Casa Solari, or Trapwarts Alchemical Guild" className="w-full rounded-xl bg-stone-950/90 border border-stone-700/80 px-4 py-3 text-base text-stone-100 focus:border-rose-500" />
+                    <input id="soundstage-input-subject" type="text" value={brief.subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g., Atelier Kuroda Motors, Casa Solari, or Trapwarts Alchemical Guild" className="w-full rounded-xl bg-stone-950/90 border border-stone-700/80 px-4 py-3 text-base text-stone-100 focus:border-rose-500" />
                 </div>
                 <div className="flex flex-wrap gap-2" role="group" aria-label="Campaign inspiration presets">
                     {SOUNDSTAGE_INSPIRATION_CHIPS.map((chip) => (
-                        <button key={chip.label} type="button" onClick={() => selectInspirationChip(chip)} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 transition">✦ {chip.label}</button>
+                        <button key={chip.label} type="button" aria-pressed={brief.subject === chip.subject} onClick={() => selectInspirationChip(chip)} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 transition">✦ {chip.label}</button>
                     ))}
                 </div>
                 <div>
                     <label htmlFor="soundstage-input-dna" className="block text-xs font-mono uppercase tracking-wider text-stone-300 mb-1.5">Optional Creative DNA / Aesthetic Hint</label>
                     <input id="soundstage-input-dna" type="text" value={brief.customDna} onChange={(e) => setField("customDna", e.target.value, false)} placeholder="e.g., Anamorphic nocturnal rain, tactile brushed titanium, calm minimalist pacing" className="w-full rounded-xl bg-stone-950/90 border border-stone-800 px-3.5 py-2.5 text-sm text-stone-200" />
                 </div>
-                <button type="button" id="soundstage-btn-discover" disabled={isDiscovering} onClick={() => handleDiscover(true)} className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50">
+                <button type="button" id="soundstage-btn-discover" disabled={isBusy} onClick={() => handleDiscover(true)} className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50">
                     {isDiscovering ? "Analyzing Offering Physics & Palette..." : "Discover Brief & Continue →"}
                 </button>
             </div>
@@ -368,13 +269,16 @@ function SoundstageStepsOneToFour({ ctrl }) {
             <div className="space-y-4">
                 {offerings.length !== 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {offerings.map((item) => (
-                            <button key={item.name} type="button" onClick={() => setField("offering", item.name, true)} className={`text-left rounded-xl p-3.5 border transition space-y-1 ${brief.offering === item.name ? "border-rose-500 bg-rose-950/25" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
-                                <span className="text-xs font-mono text-rose-300 block">{item.category || "Hero Edition"}</span>
-                                <span className="text-sm font-bold text-stone-100 block">{item.name}</span>
-                                <span className="text-xs text-stone-300 block">{item.description || item.rationale || ""}</span>
-                            </button>
-                        ))}
+                        {offerings.map((item) => {
+                            const isSelected = brief.offering === item.name;
+                            return (
+                                <button key={item.name} type="button" aria-pressed={isSelected} onClick={() => setField("offering", item.name, true)} className={`text-left rounded-xl p-3.5 border transition space-y-1 ${isSelected ? "border-rose-500 bg-rose-950/25" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
+                                    <span className="text-xs font-mono text-rose-300 block">{item.category || "Hero Edition"}</span>
+                                    <span className="text-sm font-bold text-stone-100 block">{item.name}</span>
+                                    <span className="text-xs text-stone-300 block">{item.description || item.rationale || ""}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
                 <div>
@@ -406,7 +310,7 @@ function SoundstageStepsOneToFour({ ctrl }) {
             </div>
             <div className="flex flex-wrap gap-2">
                 {presets.map((cond) => (
-                    <button key={cond} type="button" onClick={() => setField("weatherCondition", cond, true)} className={`px-3 py-1.5 rounded-lg text-xs border transition ${brief.weatherCondition === cond ? "border-rose-500 bg-rose-950/30 text-rose-100" : "border-stone-800 bg-stone-900 text-stone-300"}`}>{cond}</button>
+                    <button key={cond} type="button" aria-pressed={brief.weatherCondition === cond} onClick={() => setField("weatherCondition", cond, true)} className={`px-3 py-1.5 rounded-lg text-xs border transition ${brief.weatherCondition === cond ? "border-rose-500 bg-rose-950/30 text-rose-100" : "border-stone-800 bg-stone-900 text-stone-300"}`}>{cond}</button>
                 ))}
             </div>
             <div>
@@ -422,9 +326,9 @@ function SoundstageStepsOneToFour({ ctrl }) {
 }
 
 function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
-    const { currentStep, brief, setField, discovery, emblemCandidates, packshotCandidates, isSynthesizingEmblem, isSynthesizingPackshot, handleSynthesizeAsset } = ctrl;
+    const { currentStep, brief, setField, discovery, emblemCandidates, packshotCandidates, isSynthesizingEmblem, isSynthesizingPackshot, isBusy, handleSynthesizeAsset } = ctrl;
     if (currentStep === 5) {
-        return (<SoundstageEmblemPlate palette={brief.palette} emblemUrl={brief.emblemUrl} setEmblemUrl={(val) => setField("emblemUrl", val, false)} emblemCandidates={emblemCandidates} isSynthesizing={isSynthesizingEmblem} onSynthesizeEmblem={() => handleSynthesizeAsset("emblem")} addToast={addToast} getDisplayableRefUrl={getDisplayableRefUrl} />);
+        return (<SoundstageEmblemPlate palette={brief.palette} emblemUrl={brief.emblemUrl} setEmblemUrl={(val) => setField("emblemUrl", val, false)} emblemCandidates={emblemCandidates} isSynthesizing={isSynthesizingEmblem} isBusy={isBusy} onSynthesizeEmblem={() => handleSynthesizeAsset("emblem")} addToast={addToast} getDisplayableRefUrl={getDisplayableRefUrl} />);
     }
     if (currentStep === 6) {
         return (<SoundstagePaletteEditor palette={brief.palette} onChangePalette={(pal) => setField("palette", pal, true)} />);
@@ -442,8 +346,9 @@ function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {moments.map((m) => {
                         const title = m.title || m.label || "Cultural Ritual";
+                        const isSelected = brief.moment === title;
                         return (
-                            <button key={title} type="button" onClick={() => setField("moment", title, true)} className={`text-left rounded-xl p-3.5 border transition space-y-1 ${brief.moment === title ? "border-rose-500 bg-rose-950/25" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
+                            <button key={title} type="button" aria-pressed={isSelected} onClick={() => setField("moment", title, true)} className={`text-left rounded-xl p-3.5 border transition space-y-1 ${isSelected ? "border-rose-500 bg-rose-950/25" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
                                 <span className="text-sm font-bold text-stone-100 block">{title}</span>
                                 <span className="text-xs text-stone-300 block">{m.description || m.context || ""}</span>
                             </button>
@@ -462,15 +367,18 @@ function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
         return (
             <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                    {languages.map((lang) => (
-                        <button key={lang.code || lang.label} type="button" onClick={() => { setField("language", lang.label, true); if (lang.vocal_cadence) setField("vocalCadence", lang.vocal_cadence, true); }} className={`text-left rounded-xl p-3 border transition space-y-1 ${brief.language === lang.label ? "border-rose-500 bg-rose-950/25" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-stone-100">{lang.label}</span>
-                                <span className="text-xs font-mono uppercase text-rose-300">{lang.code}</span>
-                            </div>
-                            <p className="text-xs text-stone-300">{lang.vocal_cadence}</p>
-                        </button>
-                    ))}
+                    {languages.map((lang) => {
+                        const isSelected = brief.language === lang.label;
+                        return (
+                            <button key={lang.code || lang.label} type="button" aria-pressed={isSelected} onClick={() => { setField("language", lang.label, true); if (lang.vocal_cadence) setField("vocalCadence", lang.vocal_cadence, true); }} className={`text-left rounded-xl p-3 border transition space-y-1 ${isSelected ? "border-rose-500 bg-rose-950/25" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-stone-100">{lang.label}</span>
+                                    <span className="text-xs font-mono uppercase text-rose-300">{lang.code}</span>
+                                </div>
+                                <p className="text-xs text-stone-300">{lang.vocal_cadence}</p>
+                            </button>
+                        );
+                    })}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
@@ -486,7 +394,9 @@ function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
         );
     }
     if (currentStep === 9) {
-        const displayPackshot = brief.packshotUrl ? getDisplayableRefUrl(brief.packshotUrl) : "";
+        const cleanPackshot = cleanSoundstageOptionalText(brief.packshotUrl);
+        const displayPackshot = getSafeSoundstageMediaUrl(brief.packshotUrl, getDisplayableRefUrl);
+        const hasInvalidPackshot = Boolean(cleanPackshot && !displayPackshot);
         const packCandidates = Array.isArray(packshotCandidates) ? packshotCandidates : [];
         return (
             <div className="space-y-4">
@@ -500,19 +410,27 @@ function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
                     </div>
                     <div>
                         <label htmlFor="soundstage-input-packshot-url" className="block text-xs font-mono uppercase tracking-wider text-stone-300 mb-1">Direct Packshot URI</label>
-                        <input id="soundstage-input-packshot-url" type="text" value={brief.packshotUrl} onChange={(e) => setField("packshotUrl", e.target.value, false)} placeholder="gs://... or https://..." className="w-full rounded-xl bg-stone-950/90 border border-stone-700/80 px-3 py-2 text-xs text-stone-100" />
+                        <input id="soundstage-input-packshot-url" type="text" value={brief.packshotUrl} onChange={(e) => setField("packshotUrl", e.target.value, false)} placeholder="gs://... or https://..." className={`w-full rounded-xl bg-stone-950/90 border px-3 py-2 text-xs text-stone-100 ${hasInvalidPackshot ? "border-rose-500" : "border-stone-700/80"}`} />
                     </div>
                 </div>
-                <button type="button" id="soundstage-btn-synthesize-packshot" disabled={isSynthesizingPackshot} onClick={() => handleSynthesizeAsset("packshot")} className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50">
-                    {isSynthesizingPackshot ? "Synthesizing Studio Packshots..." : "Synthesize Hero Packshot"}
-                </button>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <button type="button" id="soundstage-btn-synthesize-packshot" disabled={isBusy} onClick={() => handleSynthesizeAsset("packshot")} className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50">
+                        {isSynthesizingPackshot ? "Synthesizing Studio Packshots..." : "Synthesize Hero Packshot"}
+                    </button>
+                    {cleanPackshot && (<button type="button" onClick={() => setField("packshotUrl", "", false)} className="text-xs text-stone-400 hover:text-stone-200 underline">Clear Packshot</button>)}
+                </div>
                 {packCandidates.length !== 0 && (
                     <div className="grid grid-cols-3 gap-2.5">
-                        {packCandidates.map((candUrl, idx) => (
-                            <button key={`${candUrl}_${idx}`} type="button" onClick={() => setField("packshotUrl", candUrl, false)} className={`p-2 rounded-xl border transition ${candUrl === brief.packshotUrl ? "border-rose-500 bg-rose-950/30" : "border-stone-800 bg-stone-950/60"}`}>
-                                <img src={getDisplayableRefUrl(candUrl)} alt={`Packshot candidate ${idx + 1}`} className="h-20 w-full object-cover rounded" />
-                            </button>
-                        ))}
+                        {packCandidates.map((candUrl, idx) => {
+                            const safeCand = getSafeSoundstageMediaUrl(candUrl, getDisplayableRefUrl);
+                            if (!safeCand) return null;
+                            const isSelected = candUrl === brief.packshotUrl;
+                            return (
+                                <button key={`${candUrl}_${idx}`} type="button" aria-pressed={isSelected} onClick={() => setField("packshotUrl", candUrl, false)} className={`p-2 rounded-xl border transition ${isSelected ? "border-rose-500 bg-rose-950/30" : "border-stone-800 bg-stone-950/60"}`}>
+                                    <img src={safeCand} alt={`Packshot candidate ${idx + 1}`} className="h-20 w-full object-cover rounded" />
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -522,12 +440,12 @@ function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
 }
 
 function SoundstageGuidedIntake({ ctrl, fullscreenFocus, setFullscreenFocus, addToast, getDisplayableRefUrl }) {
-    const { guidedBriefMode, setGuidedBriefMode, activeRun, setViewMode, currentStep, setCurrentStep, brief, setField, selectInspirationChip, launchFilm, isLaunchingFilm } = ctrl;
+    const { guidedBriefMode, setGuidedBriefMode, activeRun, setViewMode, currentStep, setCurrentStep, handleStepContinue, brief, setField, setSubject, selectInspirationChip, launchFilm, isLaunchingFilm, isDiscovering, isBusy } = ctrl;
     const stepMeta = SOUNDSTAGE_STEPS[currentStep - 1] || SOUNDSTAGE_STEPS[0];
     const isEarlyStep = currentStep <= 4;
 
     return (
-        <section aria-label="Mode 5 Commercial Soundstage Brief" className="sstage-canvas rounded-2xl p-6 sm:p-8 border border-stone-800/80 shadow-2xl space-y-6">
+        <section aria-label="Mode 5 Commercial Soundstage Brief" className="sstage-canvas rounded-2xl p-4 sm:p-8 border border-stone-800/80 shadow-2xl space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-stone-800/80 pb-4">
                 <div>
                     <span className="text-xs font-mono uppercase tracking-widest text-rose-400 font-semibold block">Mode 5 · Commercial Soundstage</span>
@@ -536,8 +454,8 @@ function SoundstageGuidedIntake({ ctrl, fullscreenFocus, setFullscreenFocus, add
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2 bg-stone-950/90 border border-stone-800 rounded-xl px-3 py-1.5">
                         <span className="text-xs font-medium text-stone-200">Guide the brief</span>
-                        <button type="button" id="soundstage-toggle-guided" role="switch" aria-checked={guidedBriefMode} onClick={() => setGuidedBriefMode(!guidedBriefMode)} className={`w-10 h-5 rounded-full transition p-0.5 flex items-center ${guidedBriefMode ? "bg-rose-600 justify-end" : "bg-stone-700 justify-start"}`}>
-                            <span className="w-4 h-4 rounded-full bg-white shadow" />
+                        <button type="button" id="soundstage-toggle-guided" role="switch" aria-label="Guide the brief" aria-checked={guidedBriefMode} onClick={() => setGuidedBriefMode(!guidedBriefMode)} className="sstage-switch">
+                            <span className="sstage-switch-thumb" />
                         </button>
                     </div>
                     <button type="button" id="soundstage-btn-fullscreen" onClick={() => setFullscreenFocus(!fullscreenFocus)} className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700 transition">
@@ -550,18 +468,18 @@ function SoundstageGuidedIntake({ ctrl, fullscreenFocus, setFullscreenFocus, add
             </div>
 
             {!guidedBriefMode ? (
-                <div id="soundstage-express-canvas" className="sstage-card rounded-2xl p-6 space-y-5 max-w-3xl mx-auto">
+                <div id="soundstage-express-canvas" className="sstage-card rounded-2xl p-4 sm:p-6 space-y-5 max-w-3xl mx-auto">
                     <div className="space-y-1">
                         <h3 className="text-lg font-bold text-stone-100">Express Soundstage Canvas</h3>
                         <p className="text-xs text-stone-300">Enter a commercial brand or parody concept. Soundstage automatically deduces offering physics, 60/30/10 palette, and lead cast anchors.</p>
                     </div>
                     <div>
                         <label htmlFor="soundstage-express-subject" className="block text-xs font-mono uppercase tracking-wider text-stone-300 mb-1.5">Subject, Brand, or Parody Concept</label>
-                        <input id="soundstage-express-subject" type="text" value={brief.subject} onChange={(e) => setField("subject", e.target.value, false)} placeholder="e.g., Atelier Kuroda Motors or Trapwarts Alchemical Guild" className="w-full rounded-xl bg-stone-950 border border-stone-700 px-4 py-3 text-base text-stone-100 focus:border-rose-500" />
+                        <input id="soundstage-express-subject" type="text" value={brief.subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g., Atelier Kuroda Motors or Trapwarts Alchemical Guild" className="w-full rounded-xl bg-stone-950 border border-stone-700 px-4 py-3 text-base text-stone-100 focus:border-rose-500" />
                     </div>
                     <div className="flex flex-wrap gap-2">
                         {SOUNDSTAGE_INSPIRATION_CHIPS.map((chip) => (
-                            <button key={chip.label} type="button" onClick={() => selectInspirationChip(chip)} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 transition">✦ {chip.label}</button>
+                            <button key={chip.label} type="button" aria-pressed={brief.subject === chip.subject} onClick={() => selectInspirationChip(chip)} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 transition">✦ {chip.label}</button>
                         ))}
                     </div>
                     <div>
@@ -572,14 +490,14 @@ function SoundstageGuidedIntake({ ctrl, fullscreenFocus, setFullscreenFocus, add
                         <div className="flex flex-wrap items-center gap-3">
                             <div className="flex items-center gap-1.5" role="group" aria-label="Express Resolution Tier">
                                 {["360p", "720p", "4k"].map((tier) => (
-                                    <button key={tier} type="button" onClick={() => setField("resolution", tier, false)} className={`px-2.5 py-1 rounded-lg text-xs font-mono border ${brief.resolution === tier ? "bg-rose-600/25 text-rose-100 border-rose-500 font-bold" : "bg-stone-900 text-stone-300 border-stone-800"}`}>{tier}</button>
+                                    <button key={tier} type="button" aria-pressed={brief.resolution === tier} onClick={() => setField("resolution", tier, false)} className={`px-2.5 py-1 rounded-lg text-xs font-mono border ${brief.resolution === tier ? "bg-rose-600/25 text-rose-100 border-rose-500 font-bold" : "bg-stone-900 text-stone-300 border-stone-800"}`}>{tier}</button>
                                 ))}
                             </div>
                             <button type="button" role="switch" aria-checked={brief.manualBoardGate} onClick={() => setField("manualBoardGate", !brief.manualBoardGate, false)} className="text-xs text-stone-300 hover:text-stone-100 px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-800">
                                 Manual Board Gate: {brief.manualBoardGate ? "On" : "Off"}
                             </button>
                         </div>
-                        <button type="button" id="soundstage-btn-make-film-express" disabled={isLaunchingFilm} onClick={() => launchFilm(true)} className="px-6 py-3 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition disabled:opacity-50">
+                        <button type="button" id="soundstage-btn-make-film-express" disabled={isBusy} onClick={() => launchFilm(true)} className="px-6 py-3 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition disabled:opacity-50">
                             {isLaunchingFilm ? "Launching Soundstage..." : "Make the film →"}
                         </button>
                     </div>
@@ -598,15 +516,15 @@ function SoundstageGuidedIntake({ ctrl, fullscreenFocus, setFullscreenFocus, add
                             );
                         })}
                     </nav>
-                    <div className="sstage-card rounded-2xl p-6 space-y-5">
+                    <div className="sstage-card rounded-2xl p-4 sm:p-6 space-y-5">
                         <div className="border-b border-stone-800/80 pb-3.5">
                             <h3 className="text-lg font-bold text-stone-100">{stepMeta.title}</h3>
                             <p className="text-xs text-stone-300 mt-0.5">{stepMeta.subtitle}</p>
                         </div>
                         {isEarlyStep ? (<SoundstageStepsOneToFour ctrl={ctrl} />) : (<SoundstageStepsFiveToTen ctrl={ctrl} addToast={addToast} getDisplayableRefUrl={getDisplayableRefUrl} />)}
                         <div className="flex items-center justify-between pt-4 border-t border-stone-800/80">
-                            <button type="button" disabled={currentStep === 1} onClick={() => setCurrentStep(Math.max(1, currentStep - 1))} className="px-4 py-2 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700 transition disabled:opacity-40">← Previous</button>
-                            {currentStep !== 10 && (<button type="button" onClick={() => setCurrentStep(Math.min(10, currentStep + 1))} className="px-4 py-2 rounded-xl text-xs font-semibold bg-stone-100 hover:bg-white text-stone-950 transition">Continue →</button>)}
+                            <button type="button" disabled={currentStep === 1 || isBusy} onClick={() => setCurrentStep(Math.max(1, currentStep - 1))} className="px-4 py-2 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700 transition disabled:opacity-40">← Previous</button>
+                            {currentStep !== 10 && (<button type="button" disabled={isBusy} onClick={handleStepContinue} className="px-4 py-2 rounded-xl text-xs font-semibold bg-stone-100 hover:bg-white text-stone-950 transition disabled:opacity-50">{currentStep === 1 && isDiscovering ? "Discovering..." : "Continue →"}</button>)}
                         </div>
                     </div>
                 </div>
@@ -622,7 +540,11 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
     const [activeRun, setActiveRun] = useState(null);
     const [draftAssetRun, setDraftAssetRun] = useState(null);
     const [discovery, setDiscovery] = useState(null);
+    const [discoveredSubject, setDiscoveredSubject] = useState("");
     const [editedFields, setEditedFields] = useState({});
+    const editedFieldsRef = useRef({});
+    const busyRef = useRef(false);
+    const reqSeqRef = useRef(0);
     const [errorBanner, setErrorBanner] = useState("");
     const [emblemCandidates, setEmblemCandidates] = useState([]);
     const [packshotCandidates, setPackshotCandidates] = useState([]);
@@ -636,15 +558,27 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
         lightingDirective: SOUNDSTAGE_WORLD_TERRITORIES[9].lighting_directive, culturalPulse: SOUNDSTAGE_WORLD_TERRITORIES[9].cultural_pulse,
         emblemUrl: "", palette: { ...SOUNDSTAGE_PALETTE_PRESETS[0], production_design_directive: buildSoundstagePaletteDirective(SOUNDSTAGE_PALETTE_PRESETS[0]) },
         moment: "Twilight Threshold Ritual", language: "English", vocalCadence: SOUNDSTAGE_DEFAULT_LANGUAGES[0].vocal_cadence,
-        packshotUrl: "", tagline: "Precision crafted for the quiet pulse of Tokyo.", resolution: "720p", manualBoardGate: false
+        packshotUrl: "", tagline: SOUNDSTAGE_NEUTRAL_DEFAULT_TAGLINE, resolution: "720p", manualBoardGate: false
     }));
 
+    const isBusy = isDiscovering || isSynthesizingEmblem || isSynthesizingPackshot || isLaunchingFilm;
+    const markEdited = (key) => {
+        const nextEdits = { ...editedFieldsRef.current, [key]: true };
+        editedFieldsRef.current = nextEdits; setEditedFields(nextEdits);
+    };
     const setField = (key, value, trackEdit) => {
-        if (trackEdit) setEditedFields((prev) => ({ ...prev, [key]: true }));
+        if (trackEdit) markEdited(key);
         setBrief((prev) => ({ ...prev, [key]: value }));
     };
+    const setSubject = (val) => {
+        setBrief((prev) => ({
+            ...prev, subject: val,
+            offering: editedFieldsRef.current.offering ? prev.offering : "Signature Edition",
+            tagline: editedFieldsRef.current.tagline ? prev.tagline : SOUNDSTAGE_NEUTRAL_DEFAULT_TAGLINE
+        }));
+    };
     const selectTerritory = (spec) => {
-        setEditedFields((prev) => ({ ...prev, territory: true }));
+        markEdited("territory");
         setBrief((prev) => ({
             ...prev, territory: spec.place_name,
             temperatureC: typeof spec.temperature_c === "number" ? spec.temperature_c : prev.temperatureC,
@@ -654,141 +588,112 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
         }));
     };
     const selectInspirationChip = (chip) => {
-        setEditedFields({});
-        setDraftAssetRun(null);
-        setBrief((prev) => ({ ...prev, subject: chip.subject, customDna: chip.dna }));
+        reqSeqRef.current += 1;
+        editedFieldsRef.current = {}; setEditedFields({});
+        setDraftAssetRun(null); setDiscovery(null); setDiscoveredSubject("");
+        setBrief((prev) => ({ ...prev, subject: chip.subject, customDna: chip.dna, offering: "Signature Edition", tagline: SOUNDSTAGE_NEUTRAL_DEFAULT_TAGLINE }));
     };
     const safeSessionName = sanitizeSoundstageIdentifier(sessionName, "soundstage_session");
     const safeProjectName = sanitizeSoundstageIdentifier(activeProject, "default_project");
 
-    const postJson = async (url, payload) => {
-        const resp = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error((data && data.detail) || `Soundstage request failed (${resp.status})`);
-        return data;
+    const validateBriefMediaUrls = (b) => {
+        const cleanEmb = cleanSoundstageOptionalText(b.emblemUrl);
+        if (cleanEmb && !isAllowedSoundstageMediaUri(cleanEmb)) {
+            const msg = "Invalid Studio Emblem URI. Use https://, gs://, /static/, or a PNG/JPEG/WebP/SVG data:image URI.";
+            setErrorBanner(msg); if (addToast) addToast(msg, "error"); return false;
+        }
+        const cleanPack = cleanSoundstageOptionalText(b.packshotUrl);
+        if (cleanPack && !isAllowedSoundstageMediaUri(cleanPack)) {
+            const msg = "Invalid Hero Packshot URI. Use https://, gs://, /static/, or a PNG/JPEG/WebP/SVG data:image URI.";
+            setErrorBanner(msg); if (addToast) addToast(msg, "error"); return false;
+        }
+        return true;
     };
 
     const applyDiscoveryDefaults = (disc) => {
+        const liveEdits = editedFieldsRef.current;
         setDiscovery(disc);
-        setBrief((prev) => {
-            const next = { ...prev };
-            if (!editedFields.offering && disc.suggested_offerings && disc.suggested_offerings[0]) next.offering = disc.suggested_offerings[0].name;
-            if (!editedFields.territory && disc.suggested_territories && disc.suggested_territories[0]) {
-                const t0 = disc.suggested_territories[0];
-                next.territory = t0.place_name;
-                next.temperatureC = t0.temperature_c;
-                if (!editedFields.weatherCondition) next.weatherCondition = t0.condition;
-                next.lightingDirective = t0.lighting_directive;
-                next.culturalPulse = t0.cultural_pulse;
-            }
-            if (!editedFields.palette && disc.palette) next.palette = disc.palette;
-            if (!editedFields.moment && disc.cultural_moments && disc.cultural_moments[0]) next.moment = disc.cultural_moments[0].title || disc.cultural_moments[0].label || prev.moment;
-            if (!editedFields.language && disc.spoken_languages && disc.spoken_languages[0]) {
-                const l0 = disc.spoken_languages[0];
-                if (l0.label) next.language = l0.label;
-                if (!editedFields.vocalCadence && l0.vocal_cadence) next.vocalCadence = l0.vocal_cadence;
-            }
-            if (!editedFields.tagline && disc.tagline) next.tagline = disc.tagline;
-            return next;
-        });
+        setBrief((prev) => mergeSoundstageDiscoveryBrief(prev, disc, liveEdits));
     };
 
     const handleDiscover = async (advanceStep) => {
-        const cleanSubj = String(brief.subject || "").trim();
+        if (busyRef.current) return null;
+        const cleanSubj = cleanSoundstageOptionalText(brief.subject);
         if (!cleanSubj) { setErrorBanner("Enter a Subject, Brand House, or Parody Concept to discover the brief."); return null; }
+        busyRef.current = true; const mySeq = ++reqSeqRef.current;
         setErrorBanner(""); setIsDiscovering(true);
         try {
-            const disc = await postJson("/api/soundstage/discover", { subject: cleanSubj, offering: editedFields.offering ? brief.offering : null, territory: editedFields.territory ? brief.territory : null, custom_dna: brief.customDna || null });
-            applyDiscoveryDefaults(disc);
+            const liveEdits = editedFieldsRef.current;
+            const disc = await postSoundstageJson("/api/soundstage/discover", { subject: cleanSubj, offering: liveEdits.offering ? cleanSoundstageOptionalText(brief.offering) : null, territory: liveEdits.territory ? cleanSoundstageOptionalText(brief.territory) : null, custom_dna: cleanSoundstageOptionalText(brief.customDna) });
+            if (reqSeqRef.current !== mySeq) return null;
+            applyDiscoveryDefaults(disc); setDiscoveredSubject(cleanSubj);
             if (advanceStep) setCurrentStep(2);
             return disc;
-        } catch (err) { setErrorBanner(err.message || "Discovery failed."); return null; } finally { setIsDiscovering(false); }
+        } catch (err) { if (reqSeqRef.current === mySeq) setErrorBanner(err.message || "Discovery failed."); return null; }
+        finally { busyRef.current = false; setIsDiscovering(false); }
     };
 
-    const buildPlanPayload = (ov = {}) => ({
-        subject: String(brief.subject || "").trim() || "Artisan Studio",
-        offering: (ov.offering !== undefined ? ov.offering : brief.offering) || null,
-        territory: (ov.territory !== undefined ? ov.territory : brief.territory) || null,
-        weather_condition: (ov.weather_condition !== undefined ? ov.weather_condition : brief.weatherCondition) || null,
-        tagline: (ov.tagline !== undefined ? ov.tagline : brief.tagline) || null,
-        palette_hexes: ov.palette_hexes || brief.palette,
-        moment: (ov.moment !== undefined ? ov.moment : brief.moment) || null,
-        language: (ov.language !== undefined ? ov.language : brief.language) || "English",
-        vocal_cadence: ov.vocal_cadence !== undefined ? ov.vocal_cadence : (brief.vocalCadence || null),
-        emblem_url: brief.emblemUrl || null, packshot_url: brief.packshotUrl || null,
-        custom_dna: brief.customDna || null, manual_board_gate: brief.manualBoardGate,
-        resolution: brief.resolution, session_name: safeSessionName, project_name: safeProjectName
-    });
+    const handleStepContinue = async () => {
+        if (currentStep === 1) {
+            const cleanSubj = cleanSoundstageOptionalText(brief.subject);
+            if (!cleanSubj) { setErrorBanner("Enter a Subject, Brand House, or Parody Concept to continue."); return; }
+            if (discoveredSubject !== cleanSubj) { await handleDiscover(true); return; }
+        }
+        setCurrentStep(Math.min(10, currentStep + 1));
+    };
 
     const handleSynthesizeAsset = async (assetAction) => {
+        if (busyRef.current || !validateBriefMediaUrls(brief)) return;
         const isEmblem = assetAction === "emblem";
+        busyRef.current = true; const mySeq = ++reqSeqRef.current;
         if (isEmblem) setIsSynthesizingEmblem(true); else setIsSynthesizingPackshot(true);
         setErrorBanner("");
         try {
-            const sig = computePlanSignature(brief);
+            const sig = computePlanSignature(brief, safeProjectName, safeSessionName);
             let targetRunId = (draftAssetRun && draftAssetRun.signature === sig) ? draftAssetRun.runId : null;
             if (!targetRunId) {
-                const draftRun = await postJson("/api/soundstage/plan", buildPlanPayload());
-                targetRunId = draftRun.run_id;
-                setDraftAssetRun({ runId: targetRunId, signature: sig });
+                const draftRun = await postSoundstageJson("/api/soundstage/plan", buildSoundstagePlanPayload(brief, safeSessionName, safeProjectName));
+                targetRunId = draftRun.run_id; setDraftAssetRun({ runId: targetRunId, signature: sig });
             }
-            const updatedRun = await postJson("/api/soundstage/cast", { run_id: targetRunId, action: assetAction, candidate_count: 3 });
+            const updatedRun = await postSoundstageJson("/api/soundstage/cast", { run_id: targetRunId, action: assetAction, candidate_count: 3 });
+            if (reqSeqRef.current !== mySeq) return;
             const kit = updatedRun.reference_kit || {};
             if (isEmblem) { setEmblemCandidates(kit.emblem_candidates || []); if (kit.emblem_url) setField("emblemUrl", kit.emblem_url, false); }
             else { setPackshotCandidates(kit.packshot_candidates || []); if (kit.packshot_url) setField("packshotUrl", kit.packshot_url, false); }
-        } catch (err) { setErrorBanner(err.message || `Could not synthesize ${assetAction}.`); }
-        finally { if (isEmblem) setIsSynthesizingEmblem(false); else setIsSynthesizingPackshot(false); }
+        } catch (err) { if (reqSeqRef.current === mySeq) setErrorBanner(err.message || `Could not synthesize ${assetAction}.`); }
+        finally { busyRef.current = false; if (isEmblem) setIsSynthesizingEmblem(false); else setIsSynthesizingPackshot(false); }
     };
 
     const launchFilm = async (isExpress) => {
-        const cleanSubj = String(brief.subject || "").trim();
+        if (busyRef.current || !validateBriefMediaUrls(brief)) return;
+        const cleanSubj = cleanSoundstageOptionalText(brief.subject);
         if (!cleanSubj) { setErrorBanner("Enter a Subject, Brand House, or Parody Concept before rolling cameras."); return; }
+        busyRef.current = true; const mySeq = ++reqSeqRef.current;
         setErrorBanner(""); setIsLaunchingFilm(true);
         try {
             let planOverrides = {};
             if (isExpress) {
-                const disc = await postJson("/api/soundstage/discover", { subject: cleanSubj, offering: brief.customDna || null, territory: null, custom_dna: brief.customDna || null });
-                applyDiscoveryDefaults(disc);
-                const firstOff = disc.suggested_offerings && disc.suggested_offerings[0] && disc.suggested_offerings[0].name;
-                const firstTerr = disc.suggested_territories && disc.suggested_territories[0];
-                const firstMoment = disc.cultural_moments && disc.cultural_moments[0] && (disc.cultural_moments[0].title || disc.cultural_moments[0].label);
-                const firstLang = disc.spoken_languages && disc.spoken_languages[0];
-                planOverrides = {
-                    offering: editedFields.offering ? brief.offering : (firstOff || brief.offering),
-                    territory: editedFields.territory ? brief.territory : ((firstTerr && firstTerr.place_name) || brief.territory),
-                    weather_condition: editedFields.weatherCondition ? brief.weatherCondition : ((firstTerr && firstTerr.condition) || brief.weatherCondition),
-                    tagline: editedFields.tagline ? brief.tagline : (disc.tagline || brief.tagline),
-                    palette_hexes: editedFields.palette ? brief.palette : (disc.palette || brief.palette),
-                    moment: editedFields.moment ? brief.moment : (firstMoment || brief.moment),
-                    language: editedFields.language ? brief.language : ((firstLang && firstLang.label) || brief.language),
-                    vocal_cadence: editedFields.vocalCadence ? brief.vocalCadence : ((firstLang && firstLang.vocal_cadence) || brief.vocalCadence)
-                };
+                const disc = await postSoundstageJson("/api/soundstage/discover", { subject: cleanSubj, offering: cleanSoundstageOptionalText(brief.customDna), territory: null, custom_dna: cleanSoundstageOptionalText(brief.customDna) });
+                if (reqSeqRef.current !== mySeq) return;
+                applyDiscoveryDefaults(disc); setDiscoveredSubject(cleanSubj);
+                planOverrides = buildSoundstageExpressOverrides(disc, brief, editedFieldsRef.current);
             }
-            const plannedRun = await postJson("/api/soundstage/plan", buildPlanPayload(planOverrides));
-            const castReadyRun = await postJson("/api/soundstage/cast", { run_id: plannedRun.run_id, action: "generate", candidate_count: 2 });
+            const plannedRun = await postSoundstageJson("/api/soundstage/plan", buildSoundstagePlanPayload(brief, safeSessionName, safeProjectName, planOverrides));
+            const castReadyRun = await postSoundstageJson("/api/soundstage/cast", { run_id: plannedRun.run_id, action: "generate", candidate_count: 2 });
+            if (reqSeqRef.current !== mySeq) return;
             setDraftAssetRun(null); setActiveRun(castReadyRun); setViewMode("production");
             if (addToast) addToast("Commercial Soundstage plan & lead cast locked.", "success");
-        } catch (err) { setErrorBanner(err.message || "Failed to launch Commercial Soundstage run."); }
-        finally { setIsLaunchingFilm(false); }
+        } catch (err) { if (reqSeqRef.current === mySeq) setErrorBanner(err.message || "Failed to launch Commercial Soundstage run."); }
+        finally { busyRef.current = false; setIsLaunchingFilm(false); }
     };
 
-    const summaryRows = [
-        { step: 1, label: "Subject / Brand", value: brief.subject || "Unset" },
-        { step: 2, label: "Hero Offering", value: brief.offering || "Signature Edition" },
-        { step: 3, label: "Filming Territory", value: brief.territory || "Tokyo · Aoyama" },
-        { step: 4, label: "Weather & Atmosphere", value: `${brief.temperatureC}°C · ${brief.weatherCondition}` },
-        { step: 5, label: "Studio Emblem", value: brief.emblemUrl ? "Custom / Synthesized Studio Mark Locked" : "Clean Typographic End-Card Plate" },
-        { step: 6, label: "60 / 30 / 10 Palette", value: `${brief.palette.primary_name} (${brief.palette.primary_hex}) · ${brief.palette.secondary_name} · ${brief.palette.neutral_name}` },
-        { step: 7, label: "Cultural Moment", value: brief.moment },
-        { step: 8, label: "Language & Cadence", value: `${brief.language} · ${brief.vocalCadence}` },
-        { step: 9, label: "Hero Packshot", value: brief.packshotUrl ? "1:1 Hero Packshot Anchor Locked" : "Auto-Synthesize Hero Packshot on Cast Stage" }
-    ];
+    const summaryRows = buildSoundstageSummaryRows(brief);
 
     return {
-        viewMode, setViewMode, guidedBriefMode, setGuidedBriefMode, currentStep, setCurrentStep,
+        viewMode, setViewMode, guidedBriefMode, setGuidedBriefMode, currentStep, setCurrentStep, handleStepContinue,
         activeRun, setActiveRun, discovery, errorBanner, setErrorBanner, emblemCandidates, packshotCandidates,
-        isDiscovering, isSynthesizingEmblem, isSynthesizingPackshot, isLaunchingFilm,
-        brief, setField, selectTerritory, selectInspirationChip, handleDiscover, handleSynthesizeAsset, launchFilm, summaryRows
+        isDiscovering, isSynthesizingEmblem, isSynthesizingPackshot, isLaunchingFilm, isBusy,
+        brief, setField, setSubject, selectTerritory, selectInspirationChip, handleDiscover, handleSynthesizeAsset, launchFilm, summaryRows
     };
 }
 

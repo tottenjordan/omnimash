@@ -8,6 +8,7 @@ _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 _TEMPLATE_PATH = os.path.join(_TEMPLATES_DIR, "index.html")
 _SOUNDSTAGE_SPLICE_MARKER = "/* __SOUNDSTAGE_STUDIO_COMPONENTS__ */"
 _SOUNDSTAGE_JSX_PARTIALS: tuple[str, ...] = (
+    os.path.join(_TEMPLATES_DIR, "soundstage_shared.jsx"),
     os.path.join(_TEMPLATES_DIR, "soundstage_intake.jsx"),
     os.path.join(_TEMPLATES_DIR, "soundstage_production.jsx"),
 )
