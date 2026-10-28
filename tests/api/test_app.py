@@ -976,7 +976,14 @@ def test_ui_html_renders_in_browser_without_syntax_error(tmp_path):
     import os
     import subprocess
 
-    skill_dir = "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill"
+    skill_dir_candidates = (
+        "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill",
+        "/usr/local/google/home/jordantotten/.gemini/jetski/skills/playwright-skill",
+    )
+    skill_dir = next(
+        (path for path in skill_dir_candidates if os.path.exists(path)),
+        skill_dir_candidates[0],
+    )
     if os.path.exists(skill_dir):
         html_file = tmp_path / "ui_check.html"
         html_file.write_text(UI_HTML, encoding="utf-8")
@@ -985,6 +992,8 @@ def test_ui_html_renders_in_browser_without_syntax_error(tmp_path):
             "(async () => {"
             "  const browser = await chromium.launch({ headless: true });"
             "  const page = await browser.newPage();"
+            "  await page.route('**fonts.googleapis.com**', r => r.abort());"
+            "  await page.route('**fonts.gstatic.com**', r => r.abort());"
             "  page.on('pageerror', err => console.log('BROWSER ERROR:', err.message));"
             f"  await page.goto('file://{html_file}', {{ waitUntil: 'domcontentloaded' }});"
             "  await page.waitForFunction(() => {"
