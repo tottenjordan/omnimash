@@ -238,7 +238,7 @@ function SoundstageCastGateView({
                                 const isChosen = candUrl === refKit.lead_cast_url;
                                 const candCls = isChosen ? "rounded-lg overflow-hidden border-2 border-rose-500" : "rounded-lg overflow-hidden border border-stone-800 opacity-75 hover:opacity-100";
                                 return (
-                                    <button key={candUrl + "::" + idx} type="button" aria-pressed={isChosen} onClick={() => onSelectCandidate(candUrl)} className={candCls}>
+                                    <button key={candUrl + "::" + idx} type="button" data-cast-candidate={idx + 1} aria-pressed={isChosen} disabled={isBusy} onClick={() => onSelectCandidate(candUrl)} className={candCls + " disabled:opacity-50"}>
                                         <img src={safeCand || SOUNDSTAGE_FALLBACK_PLATE_DATA_URI} alt={"Cast candidate " + (idx + 1)} onError={handleSoundstagePlateImgError} className="w-full h-16 object-cover bg-black" />
                                     </button>
                                 );
@@ -614,7 +614,7 @@ function SoundstageProductionRoom({
                         <span className="text-xs font-mono px-2 py-0.5 rounded bg-rose-950/80 text-rose-200 border border-rose-800/60">{(pCtrl.isFilming ? pCtrl.liveStageLabel : (activeRun && activeRun.stage)) || "cast_ready"} · {headerPct}%</span>
                         <span className="text-xs font-mono px-2 py-0.5 rounded bg-stone-900 text-stone-300 border border-stone-700/70">{(activeRun && activeRun.resolution) || "720p"}</span>
                         <span className="text-xs font-mono px-2 py-0.5 rounded bg-stone-950 text-stone-400 border border-stone-800">{(activeRun && activeRun.run_id) || "pending"}</span>
-                        <span id="soundstage-session-badge" className="text-xs font-mono px-2 py-0.5 rounded bg-stone-950 text-stone-300 border border-stone-800">{sessionName || (activeRun && activeRun.session_name) || "default_session"}</span>
+                        <span id="soundstage-session-badge" className="text-xs font-mono px-2 py-0.5 rounded bg-stone-950 text-stone-300 border border-stone-800">{(activeRun && activeRun.session_name) || sessionName || "default_session"}</span>
                         {activeRun && activeRun.parent_run_id && (
                             <span id="soundstage-forked-badge" className="text-xs font-mono px-2.5 py-0.5 rounded bg-amber-950/80 text-amber-200 border border-amber-700/70">
                                 Forked Variation ({activeRun.variation_axis || "place"}) · Parent {activeRun.parent_run_id}
@@ -663,7 +663,7 @@ function SoundstageProductionRoom({
                     setManualBoardGate={pCtrl.setManualBoardGate}
                     isBusy={pCtrl.isBusy || pCtrl.isFilming}
                     onCastAction={pCtrl.handleCastAction}
-                    onSelectCandidate={(candUrl) => setActiveRun({ ...activeRun, reference_kit: { ...(activeRun.reference_kit || {}), lead_cast_url: candUrl } })}
+                    onSelectCandidate={(candUrl) => pCtrl.handleCastAction({ action: "select", custom_image_url: candUrl })}
                     onHydrateVaultChar={pCtrl.handleHydrateVaultChar}
                     onApproveCast={pCtrl.handleApproveCastAndDrawBoards}
                     vaultCharacters={vaultCharacters}

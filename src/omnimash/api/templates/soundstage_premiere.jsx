@@ -194,10 +194,10 @@ function SoundstagePremierePlayerCard({
                                     <span className={verdictCls}>{ratingNum} / 100 · {passed ? "PASS" : "REVIEW"}</span>
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs font-mono text-stone-300">
-                                    <span>Text: {(sc && sc.video_text_adherence && sc.video_text_adherence.score) || 95}</span>
-                                    <span>Cast: {(sc && sc.character_likeness && sc.character_likeness.score) || 94}</span>
-                                    <span>Audio: {(sc && sc.audio_visual_harmony && sc.audio_visual_harmony.score) || 93}</span>
-                                    <span>Tags: {(sc && sc.tag_and_index_integrity && sc.tag_and_index_integrity.score) || 98}</span>
+                                    <span>Text: {sc && sc.video_text_adherence && typeof sc.video_text_adherence.score === "number" ? sc.video_text_adherence.score : 95}</span>
+                                    <span>Cast: {sc && sc.character_likeness && typeof sc.character_likeness.score === "number" ? sc.character_likeness.score : 94}</span>
+                                    <span>Audio: {sc && sc.audio_visual_harmony && typeof sc.audio_visual_harmony.score === "number" ? sc.audio_visual_harmony.score : 93}</span>
+                                    <span>Tags: {sc && sc.tag_and_index_integrity && typeof sc.tag_and_index_integrity.score === "number" ? sc.tag_and_index_integrity.score : 98}</span>
                                 </div>
                                 {sc && sc.verbal_critique && <p className="text-xs text-stone-300 leading-relaxed">{sc.verbal_critique}</p>}
                             </div>

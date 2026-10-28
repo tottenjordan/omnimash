@@ -10921,7 +10921,7 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                             <SoundstageStudio
                                 activeProject={activeProject}
                                 sessionName={sessionName}
-                                setSessionName={setSessionName}
+                                setSessionName={(next) => { setSessionName(next); if (next) setAvailableSessions((prev) => (prev.includes(next) ? prev : [...prev, next])); }}
                                 vaultCharacters={availableVaultLibraryCharacters}
                                 addToast={addToast}
                                 getDisplayableRefUrl={getDisplayableRefUrl}

@@ -546,7 +546,7 @@ def execute_cast_and_kit_update(
                     description=(
                         enriched_desc
                         if req.candidate_count == 1
-                        else f"{enriched_desc} (casting take {idx + 1})"
+                        else f"Take {idx + 1} — {enriched_desc}"
                     ),
                     aesthetic_tags=list(plan.lead_character.aesthetic_tags),
                     session_id=run.session_name,
@@ -571,6 +571,23 @@ def execute_cast_and_kit_update(
             data={"action": req.action, "candidate_count": len(candidates)},
         )
 
+    if req.action == "select":
+        chosen = validate_confined_custom_image_url(req.custom_image_url or "")
+        existing_cands = list(run.reference_kit.get("lead_cast_candidates") or [])
+        chosen_cands = existing_cands if chosen in existing_cands else [chosen, *existing_cands]
+        run.plan.lead_character.reference_url = chosen
+        run.reference_kit.update(
+            lead_cast_url=chosen, lead_cast_candidates=chosen_cands, cast_locked=True
+        )
+        _invalidate_prefilming_boards(run)
+        return store.append_event(
+            run,
+            stage=next_stage,
+            progress_pct=target_pct,
+            message=f"Selected lead cast candidate for {plan.identity.omni_safe_cast_handle}.",
+            data={"action": "select", "candidate_count": len(chosen_cands)},
+        )
+
     if req.action == "vault":
         slug = (req.vault_character_slug or "").strip()
         if not slug:
@@ -578,19 +595,13 @@ def execute_cast_and_kit_update(
         vault_char = storage.load_character(slug, session_id=run.session_name)
         if not isinstance(vault_char, dict):
             target_slug = storage._slugify(slug)
-            project_chars = storage.list_project_characters(project_id=run.project_name)
-            vault_char = next(
-                (
-                    c
-                    for c in (project_chars or [])
-                    if isinstance(c, dict)
-                    and (
-                        storage._slugify(str(c.get("name", ""))) == target_slug
-                        or storage._slugify(str(c.get("role_id", ""))) == target_slug
-                    )
-                ),
-                None,
-            )
+            for cand in storage.list_project_characters(project_id=run.project_name) or []:
+                if isinstance(cand, dict) and target_slug in {
+                    storage._slugify(str(cand.get("name", ""))),
+                    storage._slugify(str(cand.get("role_id", ""))),
+                }:
+                    vault_char = cand
+                    break
         if not isinstance(vault_char, dict):
             raise SoundstageNotFoundError(
                 f"Vault character '{slug}' not found in session or library."
@@ -814,15 +825,13 @@ def execute_boards_synthesis(
         if sid in run.board_checks and not run.board_checks[sid].passed
     ]
     run.auto_advance_filming = (len(run.flagged_shot_ids) == 0) and (not run.manual_board_gate)
-    if run.deliverables is not None:
-        next_stage = "completed"
-        target_pct = 100
-    elif run.stage == "filming_acts":
-        next_stage = "filming_acts"
-        target_pct = max(run.progress_pct, 34)
-    else:
-        next_stage = "boards_ready"
-        target_pct = 30
+    next_stage, target_pct = (
+        ("completed", 100)
+        if run.deliverables is not None
+        else ("filming_acts", max(run.progress_pct, 34))
+        if run.stage == "filming_acts"
+        else ("boards_ready", 30)
+    )
     return store.append_event(
         run,
         stage=next_stage,

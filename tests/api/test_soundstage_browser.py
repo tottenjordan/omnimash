@@ -306,7 +306,7 @@ const {{ chromium }} = require('playwright');
     {{ timeout: 5000 }}
   );
 
-  // 12. Test Auto-Advance Filming (manualBoardGate = false & 0 flagged frames -> Cast Gate straight to Premiere!)
+  // 12. Test Candidate #2 Backend Persistence Across Boards + Auto-Advance Filming (manualBoardGate = false & 0 flagged frames -> Cast Gate straight to Premiere!)
   await page.click('#btn-mode-soundstage');
   await page.waitForSelector('#soundstage-guided-canvas', {{ timeout: 5000 }});
   await page.click('#soundstage-toggle-guided');
@@ -315,6 +315,25 @@ const {{ chromium }} = require('playwright');
   await page.click('#soundstage-btn-make-film-express');
   await page.waitForSelector('#soundstage-cast-gate', {{ timeout: 10000 }});
 
+  const autoHeaderText = await page.locator('#soundstage-production-room').innerText();
+  const autoRunMatch = autoHeaderText.match(/sstage_[a-f0-9]+/);
+  if (!autoRunMatch) throw new Error('Expected auto-advance run_id in header');
+  const autoRunId = autoRunMatch[0];
+  const preSelectJson = await (await page.request.get(`http://127.0.0.1:{port}/api/soundstage/${{autoRunId}}/status`)).json();
+  const initialCands = preSelectJson.reference_kit.lead_cast_candidates || [];
+  if (initialCands.length !== 2 || initialCands[0] === initialCands[1]) {{
+    throw new Error('Expected 2 distinct cast candidates on launch');
+  }}
+  const cand2Expected = initialCands[1];
+  await page.click('[data-cast-candidate="2"]');
+  await page.waitForFunction(
+    () => {{
+      const btn2 = document.querySelector('[data-cast-candidate="2"]');
+      return btn2 && !btn2.disabled && btn2.getAttribute('aria-pressed') === 'true';
+    }},
+    {{ timeout: 5000 }}
+  );
+
   const autoSwitch = page.locator('#soundstage-cast-toggle-manual-boards');
   if ((await autoSwitch.getAttribute('aria-checked')) === 'true') {{
     await autoSwitch.click();
@@ -322,6 +341,13 @@ const {{ chromium }} = require('playwright');
   await page.click('#soundstage-btn-approve-cast');
   await page.waitForSelector('#soundstage-premiere-view', {{ timeout: 30000 }});
   await page.waitForSelector('#soundstage-premiere-video', {{ timeout: 10000 }});
+  const postAutoJson = await (await page.request.get(`http://127.0.0.1:{port}/api/soundstage/${{autoRunId}}/status`)).json();
+  if (
+    postAutoJson.reference_kit.lead_cast_url !== cand2Expected ||
+    postAutoJson.plan.lead_character.reference_url !== cand2Expected
+  ) {{
+    throw new Error('Candidate #2 selection did not persist across 3x3 boards & filming');
+  }}
   const autoMasterUrl = await page.getAttribute('#soundstage-premiere-video', 'data-deliverable-url');
   if (!autoMasterUrl || !autoMasterUrl.includes('30s_16x9_master')) {{
     throw new Error('Auto-advance filming failed to land in Premiere with conformed 30s_16x9_master, got: ' + autoMasterUrl);
