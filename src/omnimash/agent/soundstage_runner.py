@@ -95,10 +95,23 @@ class SoundstageProductionService:
         self.store = store or SoundstageRunStore(storage=self.storage)
         self.discovery_engine = SoundstageDiscoveryEngine(mock_mode=self.mock_mode)
         self.planner = SoundstageThreeActPlanner(mock_mode=self.mock_mode)
-        self.keyframe_client = KeyframeClient(
-            mock_mode=self.mock_mode,
-            storage=self.storage,
-        )
+        omni_client = getattr(agent, "omni_client", None)
+        existing_kf = getattr(omni_client, "_keyframe_client", None)
+        if isinstance(existing_kf, KeyframeClient) and existing_kf.storage is self.storage:
+            self.keyframe_client = existing_kf
+        else:
+            default_proj = getattr(settings, "google_cloud_project", "hybrid-vertex")
+            self.keyframe_client = KeyframeClient(
+                mock_mode=self.mock_mode,
+                storage=self.storage,
+                api_key=getattr(omni_client, "api_key", None),
+                project=getattr(omni_client, "project", default_proj),
+                genai_client=getattr(omni_client, "_genai_client", None),
+                log_inference_fn=getattr(omni_client, "_log_multimodal_inference", None),
+                storage_getter=lambda: self.storage,
+                api_key_getter=lambda: getattr(omni_client, "api_key", None),
+                project_getter=lambda: getattr(omni_client, "project", default_proj),
+            )
         self.conformer = CommercialConformer(
             mock_mode=self.mock_mode,
             storage=self.storage,
@@ -197,15 +210,18 @@ class SoundstageProductionService:
         )
         custom_hexes, palette_override = coerce_palette_inputs(req.palette_hexes)
 
+        clean_lead_name = (req.lead_name or "").strip()
+        clean_lead_wardrobe = (req.lead_wardrobe or "").strip()
+        clean_vocal_cadence = (req.vocal_cadence or "").strip()
         lead_override: CharacterRoleModel | None = None
-        if req.lead_name or req.lead_wardrobe or req.vocal_cadence:
+        if clean_lead_name or clean_lead_wardrobe or clean_vocal_cadence:
             lead_override = CharacterRoleModel(
                 role_id="Role A",
-                name=(req.lead_name or "").strip(),
+                name=clean_lead_name,
                 description="",
                 reference_url=None,
-                wardrobe=(req.lead_wardrobe or "").strip(),
-                voice_style=(req.vocal_cadence or "").strip(),
+                wardrobe=clean_lead_wardrobe,
+                voice_style=clean_vocal_cadence,
             )
 
         self.storage.create_session(safe_session, project_id=safe_project)
@@ -256,7 +272,15 @@ class SoundstageProductionService:
         """Generates or hydrates lead cast turnaround sheets, brand emblems, and hero offering packshots."""
         self._screen_text_fields(req.tweak_note, req.wardrobe_note, req.vault_character_slug)
         run = self.store.get(req.run_id)
+        if self.is_actively_running(run.run_id):
+            raise SoundstageConflictError(
+                f"Soundstage run '{run.run_id}' already has an active filming or conform job in progress."
+            )
         with self._lock_for_run(run.run_id):
+            if self.is_actively_running(run.run_id):
+                raise SoundstageConflictError(
+                    f"Soundstage run '{run.run_id}' already has an active filming or conform job in progress."
+                )
             latest = self.store.get(req.run_id)
             return execute_cast_and_kit_update(
                 latest,
@@ -267,18 +291,29 @@ class SoundstageProductionService:
                 store=self.store,
             )
 
+    def _generate_boards_locked(self, req: SoundstageBoardsRequest) -> SoundstageStatusResponse:
+        latest = self.store.get(req.run_id)
+        return execute_boards_synthesis(
+            latest,
+            req,
+            keyframe_client=self.keyframe_client,
+            store=self.store,
+        )
+
     def generate_boards(self, req: SoundstageBoardsRequest) -> SoundstageStatusResponse:
         """Synthesizes all 9 storyboard plates (or 1 target shot_id) with strict person-free reference isolation."""
         self._screen_text_fields(req.director_note)
         run = self.store.get(req.run_id)
-        with self._lock_for_run(run.run_id):
-            latest = self.store.get(req.run_id)
-            return execute_boards_synthesis(
-                latest,
-                req,
-                keyframe_client=self.keyframe_client,
-                store=self.store,
+        if self.is_actively_running(run.run_id):
+            raise SoundstageConflictError(
+                f"Soundstage run '{run.run_id}' already has an active filming or conform job in progress."
             )
+        with self._lock_for_run(run.run_id):
+            if self.is_actively_running(run.run_id):
+                raise SoundstageConflictError(
+                    f"Soundstage run '{run.run_id}' already has an active filming or conform job in progress."
+                )
+            return self._generate_boards_locked(req)
 
     def _film_single_act(
         self,
@@ -413,7 +448,7 @@ class SoundstageProductionService:
                     run.background_music_path = background_music_path
 
                 if set(run.boards.keys()) != set(CANONICAL_SUBSHOT_IDS):
-                    run = self.generate_boards(SoundstageBoardsRequest(run_id=run_id))
+                    run = self._generate_boards_locked(SoundstageBoardsRequest(run_id=run_id))
                     run.error = None
                     run.resolution = effective_resolution
                     run.end_card_duration_sec = end_card_duration_sec

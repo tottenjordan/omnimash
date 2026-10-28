@@ -116,7 +116,7 @@ class SoundstagePlanRequest(BaseModel):
     palette_hexes: tuple[str, str, str] | list[str] | dict[str, Any] | Palette603010 | None = None
     moment: str | None = None
     language: str = "English"
-    vocal_cadence: str = "Measured, warm editorial authority"
+    vocal_cadence: str | None = None
     lead_name: str | None = None
     lead_wardrobe: str | None = None
     emblem_url: str | None = None

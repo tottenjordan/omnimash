@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import os
 from pathlib import Path
+import threading
+import time
 from typing import Any
 from unittest.mock import patch
 
@@ -378,3 +380,128 @@ def test_superseded_deliverable_cleanup_board_invalidation_and_store_isolation(
     assert refreshed_service is not prev_service
     assert refreshed_service.storage is replacement_storage
     assert isinstance(refreshed_service.store, SoundstageRunStore)
+
+
+def test_service_reuses_agent_omni_keyframe_client_project_and_telemetry(
+    isolated_app_and_client: tuple[Any, TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Important #1: SoundstageProductionService reuses agent.omni_client._keyframe_client project & telemetry."""
+    from omnimash.agent.soundstage_runner import SoundstageProductionService
+
+    app, _, tmp_path = isolated_app_and_client
+    agent = app.state.agent
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    agent.omni_client.project = "custom-soundstage-gcp-proj"
+
+    service = SoundstageProductionService(agent, output_dir=str(tmp_path))
+    assert service.keyframe_client is agent.omni_client._keyframe_client
+    assert service.keyframe_client.project == "custom-soundstage-gcp-proj"
+    assert service.keyframe_client._log_inference_fn == agent.omni_client._log_multimodal_inference
+
+
+def test_plan_resolves_native_spoken_language_cadence_when_vocal_cadence_omitted(
+    isolated_app_and_client: tuple[Any, TestClient, Path],
+) -> None:
+    """Important #2: Omitting vocal_cadence preserves native SPOKEN_LANGUAGES cadence (e.g. Japanese)."""
+    _, client, _ = isolated_app_and_client
+
+    ja_resp = client.post(
+        "/api/soundstage/plan",
+        json={
+            "subject": "Atelier",
+            "offering": "Porcelain Tea Vessel",
+            "language": "Japanese",
+        },
+    )
+    assert ja_resp.status_code == 200
+    assert (
+        ja_resp.json()["plan"]["lead_character"]["voice_style"]
+        == "Poised, resonant Tokyo editorial narration with calm rhythmic pauses"
+    )
+
+    ws_resp = client.post(
+        "/api/soundstage/plan",
+        json={
+            "subject": "Atelier",
+            "offering": "Silk Scarf",
+            "language": "French",
+            "vocal_cadence": "   ",
+        },
+    )
+    assert ws_resp.status_code == 200
+    assert (
+        ws_resp.json()["plan"]["lead_character"]["voice_style"]
+        == "Warm Parisian atelier cadence with effortless velvet phrasing"
+    )
+
+    override_resp = client.post(
+        "/api/soundstage/plan",
+        json={
+            "subject": "Atelier",
+            "offering": "Porcelain Tea Vessel",
+            "language": "Japanese",
+            "vocal_cadence": "Crisp Kyoto whisper narration",
+        },
+    )
+    assert override_resp.status_code == 200
+    assert (
+        override_resp.json()["plan"]["lead_character"]["voice_style"]
+        == "Crisp Kyoto whisper narration"
+    )
+
+
+def test_cast_and_boards_fail_fast_with_409_during_active_filming_while_internal_hydration_succeeds(
+    isolated_app_and_client: tuple[Any, TestClient, Path],
+) -> None:
+    """Minor #2: /cast and /boards fail fast with 409 during active filming without breaking /run hydration."""
+    app, client, _ = isolated_app_and_client
+    service = get_soundstage_service(app.state.agent)
+
+    run_id = client.post(
+        "/api/soundstage/plan",
+        json={"subject": "Kuro", "offering": "Brushed Titanium Kettle", "resolution": "360p"},
+    ).json()["run_id"]
+    assert service.get_status(run_id).boards == {}
+
+    filming_started = threading.Event()
+    release_gate = threading.Event()
+    original_film = service._film_single_act
+
+    def _gated_film(*args: Any, **kwargs: Any) -> Any:
+        filming_started.set()
+        release_gate.wait(timeout=5.0)
+        return original_film(*args, **kwargs)
+
+    with patch.object(service, "_film_single_act", side_effect=_gated_film):
+        start_resp = client.post(
+            "/api/soundstage/run",
+            json={"run_id": run_id, "async_execution": True},
+        )
+        assert start_resp.status_code == 200
+        assert filming_started.wait(timeout=5.0)
+
+        # Internal auto-hydration generated all 9 boards inside _execute_filming_pipeline
+        assert len(service.get_status(run_id).boards) == 9
+
+        # External /cast and /boards fail fast with 409 without blocking on _lock_for_run
+        t0 = time.monotonic()
+        cast_conflict = client.post(
+            "/api/soundstage/cast",
+            json={"run_id": run_id, "action": "recast"},
+        )
+        assert cast_conflict.status_code == 409
+        assert (time.monotonic() - t0) < 1.5
+
+        t1 = time.monotonic()
+        boards_conflict = client.post(
+            "/api/soundstage/boards",
+            json={"run_id": run_id},
+        )
+        assert boards_conflict.status_code == 409
+        assert (time.monotonic() - t1) < 1.5
+
+        release_gate.set()
+        events_resp = client.get(f"/api/soundstage/{run_id}/events")
+        assert events_resp.status_code == 200
+        assert "event: complete" in events_resp.text
