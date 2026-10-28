@@ -2,6 +2,7 @@
 
 const SOUNDSTAGE_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const SOUNDSTAGE_HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;
+const SOUNDSTAGE_DATA_IMAGE_PATTERN = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/i;
 
 const SOUNDSTAGE_WORLD_TERRITORIES = [
     { place_name: "New York · SoHo", x: 232, y: 136, temperature_c: 18, condition: "Clear autumn dusk · Cast-iron facade rim light", lighting_directive: "35mm prime lens, directional golden-hour street canyon shafts with soft bounce fill", cultural_pulse: "Creative loft energy across cobblestone blocks and gallery thresholds" },
@@ -74,6 +75,21 @@ function buildSoundstagePaletteDirective(pal) {
     return `60% ${pName} (${pHex}) architectural & set surfaces / 30% ${sName} (${sHex}) wardrobe & practical props / 10% ${nName} (${nHex}) foundational hero surface`;
 }
 
+function sanitizeSoundstageIdentifier(raw, fallback) {
+    const cleaned = String(raw || "").trim().replace(/[^A-Za-z0-9_-]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 128);
+    return cleaned || fallback;
+}
+
+function computePlanSignature(b) {
+    return JSON.stringify({
+        subject: String((b && b.subject) || "").trim(), offering: (b && b.offering) || "",
+        territory: (b && b.territory) || "", weatherCondition: (b && b.weatherCondition) || "",
+        tagline: (b && b.tagline) || "", palette: (b && b.palette) || null,
+        moment: (b && b.moment) || "", language: (b && b.language) || "",
+        vocalCadence: (b && b.vocalCadence) || "", customDna: (b && b.customDna) || ""
+    });
+}
+
 function readSoundstageFileAsDataUrl(file, addToast, onLoaded) {
     if (!file) return;
     if (file.size > SOUNDSTAGE_MAX_UPLOAD_BYTES) {
@@ -81,7 +97,14 @@ function readSoundstageFileAsDataUrl(file, addToast, onLoaded) {
         return;
     }
     const reader = new FileReader();
-    reader.onload = () => { if (typeof reader.result === "string") onLoaded(reader.result); };
+    reader.onload = () => {
+        const res = typeof reader.result === "string" ? reader.result : "";
+        if (!SOUNDSTAGE_DATA_IMAGE_PATTERN.test(res)) {
+            if (addToast) addToast("Unsupported image format. Upload PNG, JPEG, WebP, or SVG.", "error");
+            return;
+        }
+        onLoaded(res);
+    };
     reader.onerror = () => { if (addToast) addToast("Could not read selected image file.", "error"); };
     reader.readAsDataURL(file);
 }
@@ -314,7 +337,7 @@ function SoundstageReadySignoff({ ctrl }) {
 }
 
 function SoundstageStepsOneToFour({ ctrl }) {
-    const { currentStep, brief, setField, selectTerritory, discovery, isDiscovering, handleDiscover } = ctrl;
+    const { currentStep, brief, setField, selectTerritory, selectInspirationChip, discovery, isDiscovering, handleDiscover } = ctrl;
     const physics = (discovery && discovery.physics) || null;
     const offerings = (discovery && Array.isArray(discovery.suggested_offerings)) ? discovery.suggested_offerings : [];
 
@@ -327,7 +350,7 @@ function SoundstageStepsOneToFour({ ctrl }) {
                 </div>
                 <div className="flex flex-wrap gap-2" role="group" aria-label="Campaign inspiration presets">
                     {SOUNDSTAGE_INSPIRATION_CHIPS.map((chip) => (
-                        <button key={chip.label} type="button" onClick={() => { setField("subject", chip.subject, false); setField("customDna", chip.dna, false); }} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 transition">✦ {chip.label}</button>
+                        <button key={chip.label} type="button" onClick={() => selectInspirationChip(chip)} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 transition">✦ {chip.label}</button>
                     ))}
                 </div>
                 <div>
@@ -440,7 +463,7 @@ function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
             <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                     {languages.map((lang) => (
-                        <button key={lang.code || lang.label} type="button" onClick={() => { setField("language", lang.label, false); if (lang.vocal_cadence) setField("vocalCadence", lang.vocal_cadence, false); }} className={`text-left rounded-xl p-3 border transition space-y-1 ${brief.language === lang.label ? "border-rose-500 bg-rose-950/25" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
+                        <button key={lang.code || lang.label} type="button" onClick={() => { setField("language", lang.label, true); if (lang.vocal_cadence) setField("vocalCadence", lang.vocal_cadence, true); }} className={`text-left rounded-xl p-3 border transition space-y-1 ${brief.language === lang.label ? "border-rose-500 bg-rose-950/25" : "border-stone-800 bg-stone-950/60 hover:border-stone-600"}`}>
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-stone-100">{lang.label}</span>
                                 <span className="text-xs font-mono uppercase text-rose-300">{lang.code}</span>
@@ -452,11 +475,11 @@ function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                         <label htmlFor="soundstage-input-language" className="block text-xs font-mono uppercase tracking-wider text-stone-300 mb-1">Spoken Language</label>
-                        <input id="soundstage-input-language" type="text" value={brief.language} onChange={(e) => setField("language", e.target.value, false)} className="w-full rounded-xl bg-stone-950/90 border border-stone-700/80 px-3.5 py-2 text-sm text-stone-100" />
+                        <input id="soundstage-input-language" type="text" value={brief.language} onChange={(e) => setField("language", e.target.value, true)} className="w-full rounded-xl bg-stone-950/90 border border-stone-700/80 px-3.5 py-2 text-sm text-stone-100" />
                     </div>
                     <div>
                         <label htmlFor="soundstage-input-cadence" className="block text-xs font-mono uppercase tracking-wider text-stone-300 mb-1">Vocal Cadence &amp; Delivery</label>
-                        <input id="soundstage-input-cadence" type="text" value={brief.vocalCadence} onChange={(e) => setField("vocalCadence", e.target.value, false)} className="w-full rounded-xl bg-stone-950/90 border border-stone-700/80 px-3.5 py-2 text-sm text-stone-100" />
+                        <input id="soundstage-input-cadence" type="text" value={brief.vocalCadence} onChange={(e) => setField("vocalCadence", e.target.value, true)} className="w-full rounded-xl bg-stone-950/90 border border-stone-700/80 px-3.5 py-2 text-sm text-stone-100" />
                     </div>
                 </div>
             </div>
@@ -499,7 +522,7 @@ function SoundstageStepsFiveToTen({ ctrl, addToast, getDisplayableRefUrl }) {
 }
 
 function SoundstageGuidedIntake({ ctrl, fullscreenFocus, setFullscreenFocus, addToast, getDisplayableRefUrl }) {
-    const { guidedBriefMode, setGuidedBriefMode, activeRun, setViewMode, currentStep, setCurrentStep, brief, setField, launchFilm, isLaunchingFilm } = ctrl;
+    const { guidedBriefMode, setGuidedBriefMode, activeRun, setViewMode, currentStep, setCurrentStep, brief, setField, selectInspirationChip, launchFilm, isLaunchingFilm } = ctrl;
     const stepMeta = SOUNDSTAGE_STEPS[currentStep - 1] || SOUNDSTAGE_STEPS[0];
     const isEarlyStep = currentStep <= 4;
 
@@ -538,7 +561,7 @@ function SoundstageGuidedIntake({ ctrl, fullscreenFocus, setFullscreenFocus, add
                     </div>
                     <div className="flex flex-wrap gap-2">
                         {SOUNDSTAGE_INSPIRATION_CHIPS.map((chip) => (
-                            <button key={chip.label} type="button" onClick={() => { setField("subject", chip.subject, false); setField("customDna", chip.dna, false); }} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 transition">✦ {chip.label}</button>
+                            <button key={chip.label} type="button" onClick={() => selectInspirationChip(chip)} className="px-3 py-1.5 rounded-lg text-xs bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 transition">✦ {chip.label}</button>
                         ))}
                     </div>
                     <div>
@@ -597,6 +620,7 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
     const [guidedBriefMode, setGuidedBriefMode] = useState(true);
     const [currentStep, setCurrentStep] = useState(1);
     const [activeRun, setActiveRun] = useState(null);
+    const [draftAssetRun, setDraftAssetRun] = useState(null);
     const [discovery, setDiscovery] = useState(null);
     const [editedFields, setEditedFields] = useState({});
     const [errorBanner, setErrorBanner] = useState("");
@@ -629,7 +653,13 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
             culturalPulse: spec.cultural_pulse || prev.culturalPulse
         }));
     };
-    const safeSessionName = String(sessionName || "soundstage_session").replace(/[^A-Za-z0-9_-]/g, "_") || "soundstage_session";
+    const selectInspirationChip = (chip) => {
+        setEditedFields({});
+        setDraftAssetRun(null);
+        setBrief((prev) => ({ ...prev, subject: chip.subject, customDna: chip.dna }));
+    };
+    const safeSessionName = sanitizeSoundstageIdentifier(sessionName, "soundstage_session");
+    const safeProjectName = sanitizeSoundstageIdentifier(activeProject, "default_project");
 
     const postJson = async (url, payload) => {
         const resp = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -653,6 +683,11 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
             }
             if (!editedFields.palette && disc.palette) next.palette = disc.palette;
             if (!editedFields.moment && disc.cultural_moments && disc.cultural_moments[0]) next.moment = disc.cultural_moments[0].title || disc.cultural_moments[0].label || prev.moment;
+            if (!editedFields.language && disc.spoken_languages && disc.spoken_languages[0]) {
+                const l0 = disc.spoken_languages[0];
+                if (l0.label) next.language = l0.label;
+                if (!editedFields.vocalCadence && l0.vocal_cadence) next.vocalCadence = l0.vocal_cadence;
+            }
             if (!editedFields.tagline && disc.tagline) next.tagline = disc.tagline;
             return next;
         });
@@ -678,10 +713,11 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
         tagline: (ov.tagline !== undefined ? ov.tagline : brief.tagline) || null,
         palette_hexes: ov.palette_hexes || brief.palette,
         moment: (ov.moment !== undefined ? ov.moment : brief.moment) || null,
-        language: brief.language || "English", vocal_cadence: brief.vocalCadence || null,
+        language: (ov.language !== undefined ? ov.language : brief.language) || "English",
+        vocal_cadence: ov.vocal_cadence !== undefined ? ov.vocal_cadence : (brief.vocalCadence || null),
         emblem_url: brief.emblemUrl || null, packshot_url: brief.packshotUrl || null,
         custom_dna: brief.customDna || null, manual_board_gate: brief.manualBoardGate,
-        resolution: brief.resolution, session_name: safeSessionName, project_name: activeProject || "default_project"
+        resolution: brief.resolution, session_name: safeSessionName, project_name: safeProjectName
     });
 
     const handleSynthesizeAsset = async (assetAction) => {
@@ -689,13 +725,14 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
         if (isEmblem) setIsSynthesizingEmblem(true); else setIsSynthesizingPackshot(true);
         setErrorBanner("");
         try {
-            let targetRunId = activeRun && activeRun.run_id;
+            const sig = computePlanSignature(brief);
+            let targetRunId = (draftAssetRun && draftAssetRun.signature === sig) ? draftAssetRun.runId : null;
             if (!targetRunId) {
                 const draftRun = await postJson("/api/soundstage/plan", buildPlanPayload());
-                setActiveRun(draftRun); targetRunId = draftRun.run_id;
+                targetRunId = draftRun.run_id;
+                setDraftAssetRun({ runId: targetRunId, signature: sig });
             }
             const updatedRun = await postJson("/api/soundstage/cast", { run_id: targetRunId, action: assetAction, candidate_count: 3 });
-            setActiveRun(updatedRun);
             const kit = updatedRun.reference_kit || {};
             if (isEmblem) { setEmblemCandidates(kit.emblem_candidates || []); if (kit.emblem_url) setField("emblemUrl", kit.emblem_url, false); }
             else { setPackshotCandidates(kit.packshot_candidates || []); if (kit.packshot_url) setField("packshotUrl", kit.packshot_url, false); }
@@ -714,11 +751,22 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
                 applyDiscoveryDefaults(disc);
                 const firstOff = disc.suggested_offerings && disc.suggested_offerings[0] && disc.suggested_offerings[0].name;
                 const firstTerr = disc.suggested_territories && disc.suggested_territories[0];
-                planOverrides = { offering: firstOff || brief.offering, territory: (firstTerr && firstTerr.place_name) || brief.territory, weather_condition: (firstTerr && firstTerr.condition) || brief.weatherCondition, tagline: disc.tagline || brief.tagline, palette_hexes: disc.palette || brief.palette };
+                const firstMoment = disc.cultural_moments && disc.cultural_moments[0] && (disc.cultural_moments[0].title || disc.cultural_moments[0].label);
+                const firstLang = disc.spoken_languages && disc.spoken_languages[0];
+                planOverrides = {
+                    offering: editedFields.offering ? brief.offering : (firstOff || brief.offering),
+                    territory: editedFields.territory ? brief.territory : ((firstTerr && firstTerr.place_name) || brief.territory),
+                    weather_condition: editedFields.weatherCondition ? brief.weatherCondition : ((firstTerr && firstTerr.condition) || brief.weatherCondition),
+                    tagline: editedFields.tagline ? brief.tagline : (disc.tagline || brief.tagline),
+                    palette_hexes: editedFields.palette ? brief.palette : (disc.palette || brief.palette),
+                    moment: editedFields.moment ? brief.moment : (firstMoment || brief.moment),
+                    language: editedFields.language ? brief.language : ((firstLang && firstLang.label) || brief.language),
+                    vocal_cadence: editedFields.vocalCadence ? brief.vocalCadence : ((firstLang && firstLang.vocal_cadence) || brief.vocalCadence)
+                };
             }
             const plannedRun = await postJson("/api/soundstage/plan", buildPlanPayload(planOverrides));
             const castReadyRun = await postJson("/api/soundstage/cast", { run_id: plannedRun.run_id, action: "generate", candidate_count: 2 });
-            setActiveRun(castReadyRun); setViewMode("production");
+            setDraftAssetRun(null); setActiveRun(castReadyRun); setViewMode("production");
             if (addToast) addToast("Commercial Soundstage plan & lead cast locked.", "success");
         } catch (err) { setErrorBanner(err.message || "Failed to launch Commercial Soundstage run."); }
         finally { setIsLaunchingFilm(false); }
@@ -740,7 +788,7 @@ function useSoundstageBriefController({ activeProject, sessionName, addToast }) 
         viewMode, setViewMode, guidedBriefMode, setGuidedBriefMode, currentStep, setCurrentStep,
         activeRun, setActiveRun, discovery, errorBanner, setErrorBanner, emblemCandidates, packshotCandidates,
         isDiscovering, isSynthesizingEmblem, isSynthesizingPackshot, isLaunchingFilm,
-        brief, setField, selectTerritory, handleDiscover, handleSynthesizeAsset, launchFilm, summaryRows
+        brief, setField, selectTerritory, selectInspirationChip, handleDiscover, handleSynthesizeAsset, launchFilm, summaryRows
     };
 }
 

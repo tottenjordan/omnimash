@@ -1445,8 +1445,10 @@
                         prevJ3DescSyncRef.current = visualConcept;
                         setJ3MasterDescription(visualConcept);
                     }
-                    return;
                 }
+            }, [visualConcept, j3MasterDescription]);
+
+            useEffect(() => {
                 if (j3MasterDescription !== prevJ3DescSyncRef.current) {
                     prevJ3DescSyncRef.current = j3MasterDescription;
                     if (typeof j3MasterDescription === "string" && j3MasterDescription !== visualConcept) {
@@ -1455,7 +1457,7 @@
                         setKeyframeImagePrompt(j3MasterDescription);
                     }
                 }
-            }, [visualConcept, j3MasterDescription]);
+            }, [j3MasterDescription, visualConcept]);
 
             const prevAestheticSyncRef = useRef((aestheticTags && aestheticTags[0]) || "");
             const prevJ3StyleSyncRef = useRef(j3StylePreset);
@@ -1810,6 +1812,7 @@
                         setShowStoryboardLibraryModal(false);
                         setShowRemixModal(false);
                         setShowShareModal(false);
+                        setSoundstageFullscreen(false);
                     } else if (e.key === "Tab") {
                         const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
                         if (dialogs.length > 0) {
