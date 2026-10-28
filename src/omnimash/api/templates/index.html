@@ -36,6 +36,13 @@
             --accent-secondary: #2563eb;
             --focus-ring: #6366f1;
             --border-subtle: rgba(255, 255, 255, 0.08);
+            --sstage-bg: #090a0f;
+            --sstage-surface: #11131a;
+            --sstage-elevated: #171a24;
+            --sstage-ivory: #f5f2eb;
+            --sstage-rose: #e11d48;
+            --sstage-stone: #a8a29e;
+            --sstage-border: rgba(245, 242, 235, 0.10);
         }
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background-color: var(--bg-primary); color: var(--text-primary); }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
@@ -45,6 +52,13 @@
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #374151; }
         .studio-glass { background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
         .studio-panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); }
+        .sstage-canvas { background-color: var(--sstage-bg); color: var(--sstage-ivory); }
+        .sstage-card { background-color: var(--sstage-surface); border: 1px solid var(--sstage-border); }
+        .sstage-elevated { background-color: var(--sstage-elevated); border: 1px solid rgba(245, 242, 235, 0.14); }
+        .sstage-switch { position: relative; display: inline-flex; align-items: center; width: 2.75rem; height: 1.5rem; padding: 2px; border-radius: 9999px; background-color: #44403c; border: 1px solid rgba(245, 242, 235, 0.16); transition: background-color 150ms ease; cursor: pointer; flex-shrink: 0; }
+        .sstage-switch[aria-checked="true"] { background-color: #e11d48; }
+        .sstage-switch-thumb { width: 1.125rem; height: 1.125rem; border-radius: 9999px; background-color: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); transform: translateX(0); transition: transform 150ms ease; pointer-events: none; }
+        .sstage-switch[aria-checked="true"] .sstage-switch-thumb { transform: translateX(1.25rem); }
         button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
             outline: 2px solid var(--focus-ring);
             outline-offset: 2px;
@@ -738,6 +752,8 @@
             return `${currSession}_v2`;
         }
 
+        /* __SOUNDSTAGE_STUDIO_COMPONENTS__ */
+
         function OmniMashApp() {
             // Non-blocking Toast Notification State (WCAG AA polite live region)
             const [toasts, setToasts] = useState([]);
@@ -1265,8 +1281,9 @@
             const [harmonyStitchLoading, setHarmonyStitchLoading] = useState(false);
             const [harmonizedMasterResult, setHarmonizedMasterResult] = useState(null);
 
-            // Studio Mode Switcher State ("acts" | "stages" | "journey3" | "intent")
+            // Studio Mode Switcher State ("acts" | "stages" | "journey3" | "intent" | "soundstage")
             const [studioMode, setStudioMode] = useState("stages");
+            const [soundstageFullscreen, setSoundstageFullscreen] = useState(false);
 
             // Mode 4: Director's Co-Pilot State
             const [intentText, setIntentText] = useState("");
@@ -1375,6 +1392,11 @@
             // Tab 3: Journey 3 Multi-Shot Continuity Studio State
             const [activeTab, setActiveTab] = useState("journey3");
             const [j3StepFilter, setJ3StepFilter] = useState("all");
+            useEffect(() => {
+                if (studioMode !== "soundstage" || activeTab === "journey3") {
+                    setSoundstageFullscreen(false);
+                }
+            }, [studioMode, activeTab]);
             const visualConcept = concept;
             const setVisualConcept = setConcept;
 
@@ -1794,6 +1816,7 @@
                         setShowStoryboardLibraryModal(false);
                         setShowRemixModal(false);
                         setShowShareModal(false);
+                        setSoundstageFullscreen(false);
                     } else if (e.key === "Tab") {
                         const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
                         if (dialogs.length > 0) {
@@ -5584,6 +5607,7 @@
                     )}
 
                     {/* Top Application Header & Toolbar */}
+                    {!(studioMode === "soundstage" && activeTab !== "journey3" && soundstageFullscreen) && (
                     <header className="border-b border-gray-800 bg-gray-900/95 backdrop-blur sticky top-0 z-40 px-6 py-3 flex flex-wrap items-center justify-between gap-4">
                         <div className="flex items-center space-x-4">
                             <div className="flex items-center space-x-3">
@@ -5606,10 +5630,10 @@
 
                         {/* Studio Mode Switcher Toggle */}
                         <div className="flex items-center bg-gray-950/80 border border-gray-800 rounded-xl p-1 shadow-inner">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 w-full">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1.5 w-full">
                                 <button
                                     type="button"
-                                    onClick={() => { setStudioMode("stages"); setActiveTab("stages"); }}
+                                    onClick={() => { setSoundstageFullscreen(false); setStudioMode("stages"); setActiveTab("stages"); }}
                                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-between gap-2.5 ${
                                         (studioMode === "stages" && activeTab !== "journey3")
                                             ? "bg-amber-500/20 text-amber-200 border border-amber-500/40 shadow-sm font-bold"
@@ -5629,7 +5653,7 @@
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => { setStudioMode("acts"); setActiveTab("acts"); }}
+                                    onClick={() => { setSoundstageFullscreen(false); setStudioMode("acts"); setActiveTab("acts"); }}
                                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-between gap-2.5 ${
                                         (studioMode === "acts" && activeTab !== "journey3")
                                             ? "bg-blue-600/20 text-blue-200 border border-blue-500/40 shadow-sm font-bold"
@@ -5649,7 +5673,7 @@
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => { setActiveTab("journey3"); setStudioMode("journey3"); }}
+                                    onClick={() => { setSoundstageFullscreen(false); setActiveTab("journey3"); setStudioMode("journey3"); }}
                                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-between gap-2.5 ${
                                         (activeTab === "journey3" || studioMode === "journey3")
                                             ? "bg-emerald-600/20 text-emerald-200 border border-emerald-500/40 shadow-sm font-bold"
@@ -5669,7 +5693,7 @@
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => { setStudioMode("intent"); setActiveTab("intent"); }}
+                                    onClick={() => { setSoundstageFullscreen(false); setStudioMode("intent"); setActiveTab("intent"); }}
                                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-between gap-2.5 ${
                                         (studioMode === "intent" && activeTab !== "journey3")
                                             ? "bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm font-bold"
@@ -5681,6 +5705,27 @@
                                     </span>
                                     <span className="text-xs px-1.5 py-0.5 rounded font-mono font-medium bg-cyan-950/80 text-cyan-300 border border-cyan-800/60">
                                         Zero-Friction Intent Target
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    id="btn-mode-soundstage"
+                                    onClick={() => { setStudioMode("soundstage"); setActiveTab("soundstage"); }}
+                                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-between gap-2.5 ${
+                                        (studioMode === "soundstage" && activeTab !== "journey3")
+                                            ? "bg-rose-500/20 text-rose-100 border border-rose-500/40 shadow-sm font-bold"
+                                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/80 border border-transparent"
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-1.5">
+                                        <span>Mode 5: Commercial Soundstage</span>
+                                    </span>
+                                    <span className={`text-xs px-1.5 py-0.5 rounded font-mono font-medium ${
+                                        (studioMode === "soundstage" && activeTab !== "journey3")
+                                            ? "bg-rose-950/80 text-rose-200 border border-rose-800/60"
+                                            : "bg-gray-900 text-gray-400 border border-gray-800"
+                                    }`}>
+                                        30s + 15s + 6s Campaign
                                     </span>
                                 </button>
                             </div>
@@ -5750,6 +5795,9 @@
                                         className="bg-gray-900 border border-gray-700 text-xs font-mono text-purple-200 rounded px-2 py-1 focus:outline-none focus:border-purple-400"
                                     >
                                         <option value="">-- Select Session --</option>
+                                        {sessionName && !availableSessions.includes(sessionName) && (
+                                            <option value={sessionName}>{sessionName}</option>
+                                        )}
                                         {availableSessions.map((s) => (
                                             <option key={s} value={s}>{s}</option>
                                         ))}
@@ -5794,6 +5842,7 @@
 
                         </div>
                     </header>
+                    )}
 
                     {/* Navigation Bar based on Studio Mode (Mode 3 uses its own Step Filter bar) */}
                     {studioMode === "acts" && activeTab !== "journey3" && (
@@ -10863,6 +10912,24 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                     </div>
                                 )}
                             </div>
+                        )}
+
+                        {/* ========================================================= */}
+                        {/* 🎬 MODE 5: COMMERCIAL SOUNDSTAGE                          */}
+                        {/* ========================================================= */}
+                        {studioMode === "soundstage" && activeTab !== "journey3" && (
+                            <SoundstageStudio
+                                activeProject={activeProject}
+                                sessionName={sessionName}
+                                setSessionName={(next) => { setSessionName(next); if (next) setAvailableSessions((prev) => (prev.includes(next) ? prev : [...prev, next])); }}
+                                vaultCharacters={availableVaultLibraryCharacters}
+                                addToast={addToast}
+                                getDisplayableRefUrl={getDisplayableRefUrl}
+                                fullscreenFocus={soundstageFullscreen}
+                                setFullscreenFocus={setSoundstageFullscreen}
+                                onPromoteToMode2={handlePromoteToMode2}
+                                onPromoteToMode3={handlePromoteToMode3}
+                            />
                         )}
 
                         {/* ========================================================= */}

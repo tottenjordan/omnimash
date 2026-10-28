@@ -26,20 +26,7 @@ from omnimash.api.routers import (
     storyboard as storyboard_router,
 )
 
-_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "index.html")
-_CACHED_UI_HTML: str | None = None
-
-
-def get_ui_html() -> str:
-    """Loads and caches the frontend SPA template."""
-    global _CACHED_UI_HTML
-    if _CACHED_UI_HTML is None:
-        with open(_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-            _CACHED_UI_HTML = f.read()
-    return _CACHED_UI_HTML
-
-
-UI_HTML = get_ui_html()
+from omnimash.api.ui_loader import UI_HTML, get_ui_html
 
 __all__ = [
     "UI_HTML",
@@ -47,6 +34,7 @@ __all__ = [
     "GenerateShotRequest",
     "StitchMasterRequest",
     "create_app",
+    "get_ui_html",
 ]
 
 

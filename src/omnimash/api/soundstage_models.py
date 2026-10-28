@@ -143,6 +143,7 @@ class SoundstageCastRequest(BaseModel):
         "older",
         "younger",
         "tweak",
+        "select",
         "vault",
         "emblem",
         "packshot",

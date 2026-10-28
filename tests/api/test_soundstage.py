@@ -572,3 +572,96 @@ def test_soundstage_security_traversal_guardrail_not_found_and_share_lockdown(
     assert locked_discover.status_code == 404
     locked_status = client.get(f"/api/soundstage/{unfilmed_id}/status")
     assert locked_status.status_code == 404
+
+
+def test_soundstage_cast_vault_resolves_project_scoped_saved_character(
+    soundstage_app_and_client: tuple[Any, TestClient],
+) -> None:
+    """Verifies action='vault' falls back to project-scoped saved_characters when load_character misses."""
+    app, client = soundstage_app_and_client
+    storage = app.state.agent.storage
+
+    save_resp = client.post(
+        "/api/characters/save",
+        json={
+            "character": {
+                "role_id": "Role A",
+                "name": "Dumble Dior",
+                "description": "Couture arcane headmaster",
+                "wardrobe": "Charcoal tailored silk cloak",
+                "voice_style": "Measured editorial baritone",
+                "reference_url": "/static/rendered/mock_dumble_sheet.png",
+            },
+            "session_name": "sstage_proj_vault_sess",
+            "project_name": "atelier_vault_proj",
+            "is_library": True,
+        },
+    )
+    assert save_resp.status_code == 200
+
+    # Simulate real GCS / container restart where global/session load_character cache misses
+    # and the character only exists under projects/{project_name}/saved_characters/{slug}.json
+    storage._mock_characters.clear()
+
+    planned = client.post(
+        "/api/soundstage/plan",
+        json={
+            "subject": "Trapwarts Alchemical Guild",
+            "offering": "Obsidian Spellcraft Wand",
+            "session_name": "sstage_proj_vault_sess",
+            "project_name": "atelier_vault_proj",
+        },
+    ).json()
+
+    vault_resp = client.post(
+        "/api/soundstage/cast",
+        json={
+            "run_id": planned["run_id"],
+            "action": "vault",
+            "vault_character_slug": "Dumble Dior",
+        },
+    )
+    assert vault_resp.status_code == 200
+    vault_data = vault_resp.json()
+    assert vault_data["reference_kit"]["lead_cast_url"] == "/static/rendered/mock_dumble_sheet.png"
+    assert vault_data["plan"]["lead_character"]["wardrobe"] == "Charcoal tailored silk cloak"
+
+
+def test_soundstage_cast_select_persists_candidate_across_board_synthesis(
+    soundstage_app_and_client: tuple[Any, TestClient],
+) -> None:
+    """Verifies action='select' persists candidate #2 in SoundstageRunStore across 3x3 board generation."""
+    _app, client = soundstage_app_and_client
+
+    planned = client.post(
+        "/api/soundstage/plan",
+        json={"subject": "Atelier Horlogerie", "offering": "Tourbillon Chronograph"},
+    ).json()
+    run_id = planned["run_id"]
+
+    recast = client.post(
+        "/api/soundstage/cast",
+        json={"run_id": run_id, "action": "recast", "candidate_count": 2},
+    ).json()
+    cands = recast["reference_kit"]["lead_cast_candidates"]
+    assert len(cands) == 2
+    assert cands[0] != cands[1]
+
+    selected_resp = client.post(
+        "/api/soundstage/cast",
+        json={"run_id": run_id, "action": "select", "custom_image_url": cands[1]},
+    )
+    assert selected_resp.status_code == 200
+    selected_data = selected_resp.json()
+    assert selected_data["reference_kit"]["lead_cast_url"] == cands[1]
+    assert selected_data["reference_kit"]["lead_cast_candidates"] == cands
+    assert selected_data["plan"]["lead_character"]["reference_url"] == cands[1]
+
+    boards_resp = client.post(
+        "/api/soundstage/boards",
+        json={"run_id": run_id, "manual_board_gate": True},
+    )
+    assert boards_resp.status_code == 200
+    boards_data = boards_resp.json()
+    assert boards_data["reference_kit"]["lead_cast_url"] == cands[1]
+    assert boards_data["plan"]["lead_character"]["reference_url"] == cands[1]
