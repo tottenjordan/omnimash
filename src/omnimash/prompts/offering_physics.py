@@ -95,173 +95,190 @@ VALID_ERGONOMIC_ROLES: frozenset[str] = frozenset(
 )
 
 VALID_SURFACE_BRANDING_MODES: frozenset[str] = frozenset(
-    {
-        "PRINTED_RETAIL_LABEL",
-        "SUBTLE_OEM_EMBLEM_ONLY",
-        "UNMARKED_CLEAN_EXTERIOR",
-    }
+    {"PRINTED_RETAIL_LABEL", "SUBTLE_OEM_EMBLEM_ONLY", "UNMARKED_CLEAN_EXTERIOR"}
 )
 
 VALID_THERMAL_STATES: frozenset[str] = frozenset({"ambient", "chilled", "hot"})
 
-# Generic physical nouns allowed to remain inside Omni-safe physical geometry descriptions
-# even when they also appear in an offering's descriptive title.
+# Generic physical nouns allowed inside Omni-safe physical geometry descriptions
 _GENERIC_PHYSICAL_NOUNS: frozenset[str] = frozenset(
-    {
-        "aerodynamic",
-        "aluminum",
-        "ambient",
-        "aperitif",
-        "app",
-        "appliance",
-        "architectural",
-        "artifact",
-        "artisan",
-        "bag",
-        "beverage",
-        "blade",
-        "blender",
-        "boiler",
-        "botanical",
-        "bottle",
-        "bowl",
-        "box",
-        "brushed",
-        "cabin",
-        "can",
-        "car",
-        "card",
-        "ceramic",
-        "chauffeur",
-        "chilled",
-        "chocolate",
-        "chronograph",
-        "citrus",
-        "classic",
-        "cliffside",
-        "coffee",
-        "cold",
-        "compact",
-        "container",
-        "countertop",
-        "coupe",
-        "cream",
-        "credit",
-        "cup",
-        "cyber",
-        "dark",
-        "delivery",
-        "device",
-        "digital",
-        "dining",
-        "drink",
-        "dropper",
-        "dry",
-        "dual",
-        "electric",
-        "elixir",
-        "espresso",
-        "executive",
-        "facial",
-        "flask",
-        "food",
-        "fragrance",
-        "glass",
-        "glowing",
-        "gold",
-        "handbag",
-        "handheld",
-        "headphones",
-        "hot",
-        "hotel",
-        "iced",
-        "jacket",
-        "jar",
-        "kettle",
-        "leather",
-        "lotion",
-        "luxury",
-        "machine",
-        "matte",
-        "meal",
-        "membership",
-        "metal",
-        "metallic",
-        "mobile",
-        "modern",
-        "motor",
-        "motorcycle",
-        "mug",
-        "obsidian",
-        "oil",
-        "orb",
-        "organic",
-        "pack",
-        "parfum",
-        "passenger",
-        "penthouse",
-        "perfume",
-        "phone",
-        "pizza",
-        "pocket",
-        "potion",
-        "pour",
-        "ramen",
-        "resort",
-        "ride",
-        "rideshare",
-        "roadster",
-        "roasted",
-        "runed",
-        "sanctuary",
-        "sculpted",
-        "sedan",
-        "serum",
-        "service",
-        "shoe",
-        "shuttle",
-        "silver",
-        "single",
-        "skincare",
-        "sleek",
-        "smart",
-        "smartphone",
-        "snack",
-        "sneaker",
-        "sneakers",
-        "soda",
-        "soup",
-        "spa",
-        "sparkling",
-        "spatial",
-        "speaker",
-        "spellbook",
-        "sport",
-        "sports",
-        "stainless",
-        "stay",
-        "steaming",
-        "steel",
-        "streaming",
-        "studio",
-        "suite",
-        "sunglasses",
-        "suv",
-        "sword",
-        "tea",
-        "titanium",
-        "toaster",
-        "tonic",
-        "transit",
-        "truck",
-        "turntable",
-        "vehicle",
-        "vessel",
-        "villa",
-        "wand",
-        "watch",
-        "water",
-    }
+    """
+    aerodynamic aluminum ambient aperitif app appliance architectural artifact artisan
+    bag beverage blade blender boiler botanical bottle bowl box brushed cabin can car
+    card ceramic chauffeur chilled chocolate chronograph citrus classic cliffside coffee
+    cold compact container countertop coupe cream credit cup cyber dark delivery device
+    digital dining drink dropper dry dual electric elixir espresso executive facial
+    flask food fragrance glass glowing gold handbag handheld headphones hot hotel iced
+    jacket jar kettle leather lotion luxury machine matte meal membership metal metallic
+    mobile modern motor motorcycle mug obsidian oil orb organic pack parfum passenger
+    penthouse perfume phone pizza pocket potion pour ramen resort ride rideshare roadster
+    roasted runed sanctuary sculpted sedan serum service shoe shuttle silver single
+    skincare sleek smart smartphone snack sneaker sneakers soda soup spa sparkling
+    spatial speaker spellbook sport sports stainless stay steaming steel streaming studio
+    suite sunglasses suv sword tea titanium toaster tonic transit truck turntable vehicle
+    vessel villa wand watch water
+    """.split()
+)
+
+_HOT_THERMAL_CUES: tuple[str, ...] = (
+    "steaming",
+    "hot coffee",
+    "hot pour",
+    "hot tea",
+    "espresso cup",
+    "pour-over",
+    "latte",
+    "cappuccino",
+    "ramen",
+    "hot soup",
+    "pizza",
+    "hot meal",
+    "hot chocolate",
+    "broth",
+    "freshly baked",
+    "piping hot",
+)
+_CHILLED_THERMAL_CUES: tuple[str, ...] = (
+    "iced",
+    "chilled",
+    "sparkling",
+    "cold brew",
+    "soda",
+    "cola",
+    "seltzer",
+    "aperitif can",
+    "botanical can",
+    "energy drink",
+    "gelato",
+    "ice cream",
+    "frost potion",
+    "frozen",
+    "tonic can",
+    "lager",
+)
+_PARODY_CUES: tuple[str, ...] = (
+    "wand",
+    "potion",
+    "elixir",
+    "spellbook",
+    "grimoire",
+    "trapwarts",
+    "wizard",
+    "sorcerer",
+    "cyber-blade",
+    "laser sword",
+    "mana",
+    "enchanted",
+    "arcane",
+    "gauntlet",
+    "relic",
+    "cauldron",
+)
+_FOOD_DELIVERY_CUES: tuple[str, ...] = (
+    "food delivery",
+    "meal delivery",
+    "dining delivery",
+    "takeout",
+    "courier",
+    "meal courier",
+    "doorstep dining",
+    "ramen",
+    "pizza delivery",
+    "dashbite",
+    "delivery bag",
+    "delivery parcel",
+)
+_PASSENGER_MOBILITY_CUES: tuple[str, ...] = (
+    "rideshare",
+    "ride-hail",
+    "ride hail",
+    "chauffeur",
+    "shuttle",
+    "transit",
+    "taxi",
+    "passenger cabin",
+    "rear cabin",
+    "metrohail",
+    "autonomous ride",
+    "town car service",
+)
+_HOSPITALITY_CUES: tuple[str, ...] = (
+    "villa",
+    "hotel",
+    "resort",
+    "architectural stay",
+    "penthouse stay",
+    "boutique suite",
+    "sanctuary",
+    "lodge",
+    "spa retreat",
+    "vacation rental",
+    "hospitality",
+)
+_MOTOR_VEHICLE_CUES: tuple[str, ...] = (
+    "coupe",
+    "sedan",
+    "suv",
+    "roadster",
+    "sportscar",
+    "sports car",
+    "hypercar",
+    "grand tourer",
+    "motor vehicle",
+    "electric vehicle",
+    "ev",
+    "pickup truck",
+    "motorcycle",
+    "motors",
+    "automotive",
+)
+_FINANCIAL_CARD_CUES: tuple[str, ...] = (
+    "credit card",
+    "debit card",
+    "membership card",
+    "titanium card",
+    "metal card",
+    "platinum card",
+    "black card",
+    "payment card",
+    "tap-to-pay",
+    "cardholder",
+)
+_DIGITAL_APP_CUES: tuple[str, ...] = (
+    "app",
+    "mobile app",
+    "streaming app",
+    "software",
+    "saas",
+    "cloud platform",
+    "digital service",
+    "fintech app",
+    "audio app",
+    "ai assistant",
+)
+_APPLIANCE_CUES: tuple[str, ...] = (
+    "espresso machine",
+    "coffee machine",
+    "coffee maker",
+    "countertop",
+    "blender",
+    "toaster",
+    "stand mixer",
+    "air fryer",
+    "turntable",
+    "smart speaker",
+    "dual-boiler",
+)
+_LUXURY_HARDGOOD_CUES: tuple[str, ...] = (
+    "watch",
+    "chronograph",
+    "timepiece",
+    "sneaker",
+    "sunglasses",
+    "headphones",
+    "fragrance",
+    "parfum",
+    "perfume",
 )
 
 
@@ -276,22 +293,14 @@ def extract_brand_scrub_tokens(subject: str, offering: str = "") -> list[str]:
     if len(off_clean) >= 3 and off_clean.lower() not in _GENERIC_PHYSICAL_NOUNS:
         phrases.append(off_clean)
 
-    # All individual tokens in `subject` are treated as brand tokens unless trivial 1-char stop words
     stop_words = {"the", "and", "for", "with", "from"}
-    for tok in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-']*", subj_clean):
-        t_low = tok.lower()
-        if len(t_low) >= 2 and t_low not in stop_words and t_low not in _GENERIC_PHYSICAL_NOUNS:
-            phrases.append(tok)
+    for source_text in (subj_clean, off_clean):
+        for tok in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-']*", source_text):
+            t_low = tok.lower()
+            if len(t_low) >= 2 and t_low not in stop_words and t_low not in _GENERIC_PHYSICAL_NOUNS:
+                phrases.append(tok)
 
-    # Individual tokens in `offering` that are NOT generic physical nouns (e.g. "911", "Carrera", "Submariner", "GT3")
-    for tok in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-']*", off_clean):
-        t_low = tok.lower()
-        if len(t_low) >= 2 and t_low not in stop_words and t_low not in _GENERIC_PHYSICAL_NOUNS:
-            phrases.append(tok)
-
-    # Sort longest-first so multi-word phrases scrub cleanly before single tokens
-    unique_sorted = sorted(set(phrases), key=len, reverse=True)
-    return unique_sorted
+    return sorted(set(phrases), key=len, reverse=True)
 
 
 def scrub_offering_trademarks(text: str, subject: str = "", offering: str = "") -> str:
@@ -300,12 +309,10 @@ def scrub_offering_trademarks(text: str, subject: str = "", offering: str = "") 
         return text
 
     cleaned = sanitize_real_names(text)
-    tokens = extract_brand_scrub_tokens(subject=subject, offering=offering)
-    for tok in tokens:
+    for tok in extract_brand_scrub_tokens(subject=subject, offering=offering):
         pattern = re.compile(rf"(?<![A-Za-z0-9#]){re.escape(tok)}(?![A-Za-z0-9])", re.IGNORECASE)
         cleaned = pattern.sub("", cleaned)
 
-    # Tidy residual spacing and punctuation without collapsing newlines
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
     cleaned = re.sub(r"([(\[])\s+", r"\1", cleaned)
@@ -368,45 +375,9 @@ class OfferingPhysicsAnalyzer:
         combined_lower: str,
         default: ThermalState = "ambient",
     ) -> ThermalState:
-        hot_cues = (
-            "steaming",
-            "hot coffee",
-            "hot pour",
-            "hot tea",
-            "espresso cup",
-            "pour-over",
-            "latte",
-            "cappuccino",
-            "ramen",
-            "hot soup",
-            "pizza",
-            "hot meal",
-            "hot chocolate",
-            "broth",
-            "freshly baked",
-            "piping hot",
-        )
-        chilled_cues = (
-            "iced",
-            "chilled",
-            "sparkling",
-            "cold brew",
-            "soda",
-            "cola",
-            "seltzer",
-            "aperitif can",
-            "botanical can",
-            "energy drink",
-            "gelato",
-            "ice cream",
-            "frost potion",
-            "frozen",
-            "tonic can",
-            "lager",
-        )
-        if cls._matches_any_keyword(combined_lower, hot_cues):
+        if cls._matches_any_keyword(combined_lower, _HOT_THERMAL_CUES):
             return "hot"
-        if cls._matches_any_keyword(combined_lower, chilled_cues):
+        if cls._matches_any_keyword(combined_lower, _CHILLED_THERMAL_CUES):
             return "chilled"
         return default
 
@@ -425,7 +396,6 @@ class OfferingPhysicsAnalyzer:
             "WIELDER_OF_ARTIFACT": "gripping the sculpted artifact hilt as subtle practical light responds to first tactile alignment",
         }
         contact_phrase = role_phrase_map[ergonomic_role]
-
         return {
             1: (
                 "Act 1 Temporal Lock: Lead performer appears empty-handed in pre-interaction anticipation "
@@ -456,17 +426,48 @@ class OfferingPhysicsAnalyzer:
             "Never place passenger-mobility or rideshare riders in the driver seat or behind the steering wheel.",
             "Never render floating holographic UI HUDs or burned-in subtitles inside the live-action camera frame.",
         ]
-        if archetype == "PASSENGER_MOBILITY_OR_TRANSIT":
-            rules.append(
+        archetype_rules: dict[OfferingArchetype, str] = {
+            "PASSENGER_MOBILITY_OR_TRANSIT": (
                 "Passenger must remain exclusively in the rear cabin seat; exterior doors remain clean and unmarked."
-            )
-        elif archetype == "OWNED_MOTOR_VEHICLE":
-            rules.append(
+            ),
+            "OWNED_MOTOR_VEHICLE": (
                 "Maintain true 1:1 5-meter wheelbase proportions on real roadway surfaces with subtle emblem-only trim."
-            )
-        elif thermal_state == "ambient":
+            ),
+            "FOOD_OR_DINING_DELIVERY": (
+                "Maintain human-scale doorstep handoff and dining table presentation without miniature vehicle props."
+            ),
+            "HOSPITALITY_OR_ARCHITECTURAL_STAY": (
+                "Stage performer naturally inside full-scale architectural rooms rather than viewing scale-model maquettes."
+            ),
+            "FINANCIAL_OR_MEMBERSHIP_CARD": (
+                "Keep ISO-85mm pocket card proportions accurate in hand with unreadable micro-engraving only."
+            ),
+            "DIGITAL_APP_OR_SERVICE": (
+                "Keep mobile screen graphics abstract and wordless without floating AR projections outside the glass."
+            ),
+            "COUNTERTOP_APPLIANCE": (
+                "Keep countertop machine anchored on stable architectural cabinetry at true 1:1 kitchen scale."
+            ),
+            "PARODY_PROP_OR_ARTIFACT": (
+                "Ground fantastical prop lighting in tactile physical materials rather than weightless CGI particle clouds."
+            ),
+            "HANDHELD_CPG_OR_OBJECT": (
+                "Maintain natural single-hand ergonomic grip proportions without oversized novelty scaling."
+            ),
+        }
+        rules.append(archetype_rules[archetype])
+
+        if thermal_state == "ambient":
             rules.append(
                 "Enforce dry room-temperature surface physics with zero condensation beads and zero rising vapor."
+            )
+        elif thermal_state == "chilled":
+            rules.append(
+                "Enforce chilled thermal physics: never render hot steam, rising vapor plumes, or boiling heat haze on chilled vessels."
+            )
+        elif thermal_state == "hot":
+            rules.append(
+                "Enforce warm thermal physics: never render frost crystals, ice-cold condensation droplets, or frozen exterior rime on hot offerings."
             )
         return rules
 
@@ -481,28 +482,7 @@ class OfferingPhysicsAnalyzer:
         off_clean = (offering or "").strip() or "Signature Edition"
         combined = f"{subj_clean} {off_clean}".lower()
 
-        # 1. Parody / Fantasy Props & Artifacts
-        if self._matches_any_keyword(
-            combined,
-            (
-                "wand",
-                "potion",
-                "elixir",
-                "spellbook",
-                "grimoire",
-                "trapwarts",
-                "wizard",
-                "sorcerer",
-                "cyber-blade",
-                "laser sword",
-                "mana",
-                "enchanted",
-                "arcane",
-                "gauntlet",
-                "relic",
-                "cauldron",
-            ),
-        ):
+        if self._matches_any_keyword(combined, _PARODY_CUES):
             archetype: OfferingArchetype = "PARODY_PROP_OR_ARTIFACT"
             physical_scale: PhysicalScale = "HANDHELD_10_TO_30CM"
             ergonomic_role: ErgonomicRole = "WIELDER_OF_ARTIFACT"
@@ -512,25 +492,7 @@ class OfferingPhysicsAnalyzer:
                 "1:1 handheld 28cm sculpted obsidian-and-brushed-brass artisan artifact with finely "
                 "engraved geometric fluting, balanced grip proportions, and subtle practical internal glow"
             )
-
-        # 2. Food or Dining Delivery (evaluated before passenger mobility so meal courier services route here)
-        elif self._matches_any_keyword(
-            combined,
-            (
-                "food delivery",
-                "meal delivery",
-                "dining delivery",
-                "takeout",
-                "courier",
-                "meal courier",
-                "doorstep dining",
-                "ramen",
-                "pizza delivery",
-                "dashbite",
-                "delivery bag",
-                "delivery parcel",
-            ),
-        ):
+        elif self._matches_any_keyword(combined, _FOOD_DELIVERY_CUES):
             archetype = "FOOD_OR_DINING_DELIVERY"
             physical_scale = "TABLETOP_30_TO_60CM"
             ergonomic_role = "RECIPIENT_AT_DOOR_AND_TABLE"
@@ -540,25 +502,7 @@ class OfferingPhysicsAnalyzer:
                 "1:1 structured kraft-and-linen culinary delivery parcel alongside an artisan ceramic "
                 "serving vessel arranged on a clean architectural dining surface"
             )
-
-        # 3. Passenger Mobility / Rideshare / Transit
-        elif self._matches_any_keyword(
-            combined,
-            (
-                "rideshare",
-                "ride-hail",
-                "ride hail",
-                "chauffeur",
-                "shuttle",
-                "transit",
-                "taxi",
-                "passenger cabin",
-                "rear cabin",
-                "metrohail",
-                "autonomous ride",
-                "town car service",
-            ),
-        ):
+        elif self._matches_any_keyword(combined, _PASSENGER_MOBILITY_CUES):
             archetype = "PASSENGER_MOBILITY_OR_TRANSIT"
             physical_scale = "FULL_SCALE_VEHICLE_5M"
             ergonomic_role = "PASSENGER_IN_REAR_CABIN"
@@ -568,24 +512,7 @@ class OfferingPhysicsAnalyzer:
                 "1:1 full-scale 5-meter executive town-car exterior with unmarked clean metallic coachwork "
                 "and a serene acoustic leather-and-alcantara rear passenger cabin"
             )
-
-        # 4. Hospitality / Architectural Stay
-        elif self._matches_any_keyword(
-            combined,
-            (
-                "villa",
-                "hotel",
-                "resort",
-                "architectural stay",
-                "penthouse stay",
-                "boutique suite",
-                "sanctuary",
-                "lodge",
-                "spa retreat",
-                "vacation rental",
-                "hospitality",
-            ),
-        ):
+        elif self._matches_any_keyword(combined, _HOSPITALITY_CUES):
             archetype = "HOSPITALITY_OR_ARCHITECTURAL_STAY"
             physical_scale = "ARCHITECTURAL_SPACE_OR_VENUE"
             ergonomic_role = "GUEST_LIVING_IN_SPACE"
@@ -595,28 +522,7 @@ class OfferingPhysicsAnalyzer:
                 "1:1 architectural hospitality pavilion crafted from board-formed travertine stone, "
                 "warm cedar joinery, and floor-to-ceiling frameless horizon glazing"
             )
-
-        # 5. Owned Motor Vehicle
-        elif self._matches_any_keyword(
-            combined,
-            (
-                "coupe",
-                "sedan",
-                "suv",
-                "roadster",
-                "sportscar",
-                "sports car",
-                "hypercar",
-                "grand tourer",
-                "motor vehicle",
-                "electric vehicle",
-                "ev",
-                "pickup truck",
-                "motorcycle",
-                "motors",
-                "automotive",
-            ),
-        ):
+        elif self._matches_any_keyword(combined, _MOTOR_VEHICLE_CUES):
             archetype = "OWNED_MOTOR_VEHICLE"
             physical_scale = "FULL_SCALE_VEHICLE_5M"
             ergonomic_role = "DRIVER_AT_WHEEL"
@@ -626,23 +532,7 @@ class OfferingPhysicsAnalyzer:
                 "1:1 full-scale 4.6-meter low-slung aerodynamic grand-touring coupe with sculpted metallic "
                 "fenders, precision LED light blade, forged alloy wheels, and unmarked coachwork"
             )
-
-        # 6. Financial or Membership Card
-        elif self._matches_any_keyword(
-            combined,
-            (
-                "credit card",
-                "debit card",
-                "membership card",
-                "titanium card",
-                "metal card",
-                "platinum card",
-                "black card",
-                "payment card",
-                "tap-to-pay",
-                "cardholder",
-            ),
-        ):
+        elif self._matches_any_keyword(combined, _FINANCIAL_CARD_CUES):
             archetype = "FINANCIAL_OR_MEMBERSHIP_CARD"
             physical_scale = "POCKET_CARD_OR_DEVICE"
             ergonomic_role = "CARDHOLDER_TAPPING_AT_VENUE"
@@ -652,23 +542,7 @@ class OfferingPhysicsAnalyzer:
                 "1:1 ISO-standard 85mm brushed-titanium pocket payment card with chamfered diamond-cut "
                 "bezel edges, matte anodized face, and precision metallic contact chip"
             )
-
-        # 7. Digital App or Software Service
-        elif self._matches_any_keyword(
-            combined,
-            (
-                "app",
-                "mobile app",
-                "streaming app",
-                "software",
-                "saas",
-                "cloud platform",
-                "digital service",
-                "fintech app",
-                "audio app",
-                "ai assistant",
-            ),
-        ):
+        elif self._matches_any_keyword(combined, _DIGITAL_APP_CUES):
             archetype = "DIGITAL_APP_OR_SERVICE"
             physical_scale = "POCKET_CARD_OR_DEVICE"
             ergonomic_role = "ACTIVE_USER_OR_CONSUMER"
@@ -678,24 +552,7 @@ class OfferingPhysicsAnalyzer:
                 "1:1 ultra-thin machined aluminum-and-glass pocket handset displaying a clean minimalist "
                 "geometric light-mode waveform interface with zero readable text"
             )
-
-        # 8. Countertop Appliance
-        elif self._matches_any_keyword(
-            combined,
-            (
-                "espresso machine",
-                "coffee machine",
-                "coffee maker",
-                "countertop",
-                "blender",
-                "toaster",
-                "stand mixer",
-                "air fryer",
-                "turntable",
-                "smart speaker",
-                "dual-boiler",
-            ),
-        ):
+        elif self._matches_any_keyword(combined, _APPLIANCE_CUES):
             archetype = "COUNTERTOP_APPLIANCE"
             physical_scale = "TABLETOP_30_TO_60CM"
             ergonomic_role = "ACTIVE_USER_OR_CONSUMER"
@@ -705,30 +562,13 @@ class OfferingPhysicsAnalyzer:
                 "1:1 42cm architectural countertop machine crafted from satin stainless steel and matte "
                 "anodized aluminum with precision knurled tactile rotary controls"
             )
-
-        # 9. Default: Handheld CPG or Object (beverages, skincare, watches, sneakers, fragrances)
         else:
             archetype = "HANDHELD_CPG_OR_OBJECT"
             physical_scale = "HANDHELD_10_TO_30CM"
             ergonomic_role = "ACTIVE_USER_OR_CONSUMER"
             thermal = self._detect_thermal_state(combined, default="ambient")
-            is_luxury_hardgood = self._matches_any_keyword(
-                combined,
-                (
-                    "watch",
-                    "chronograph",
-                    "timepiece",
-                    "sneaker",
-                    "sunglasses",
-                    "headphones",
-                    "fragrance",
-                    "parfum",
-                    "perfume",
-                ),
-            )
-            branding_mode = (
-                "SUBTLE_OEM_EMBLEM_ONLY" if is_luxury_hardgood else "PRINTED_RETAIL_LABEL"
-            )
+            is_luxury = self._matches_any_keyword(combined, _LUXURY_HARDGOOD_CUES)
+            branding_mode = "SUBTLE_OEM_EMBLEM_ONLY" if is_luxury else "PRINTED_RETAIL_LABEL"
             if thermal == "chilled":
                 anchor = (
                     "1:1 handheld 250ml satin-matte aluminum beverage vessel with crisp micro-condensation "
@@ -739,7 +579,7 @@ class OfferingPhysicsAnalyzer:
                     "1:1 handheld double-walled stoneware ceramic tasting cup cradling rich dark aromatic "
                     "crema with delicate natural thermal vapor wisps"
                 )
-            elif is_luxury_hardgood:
+            elif is_luxury:
                 anchor = (
                     "1:1 precision-crafted 18cm sculptural luxury object in brushed 316L steel, sapphire "
                     "crystal bevels, and tactile satin-matte artisan finish without wordmarks"
@@ -752,13 +592,9 @@ class OfferingPhysicsAnalyzer:
 
         clean_anchor = scrub_offering_trademarks(anchor, subject=subj_clean, offering=off_clean)
         laws = self._build_default_causality_laws(
-            archetype=archetype,
-            ergonomic_role=ergonomic_role,
+            archetype=archetype, ergonomic_role=ergonomic_role
         )
-        forbidden = self._build_forbidden_hallucinations(
-            archetype=archetype,
-            thermal_state=thermal,
-        )
+        forbidden = self._build_forbidden_hallucinations(archetype=archetype, thermal_state=thermal)
 
         return OfferingPhysicsSpec(
             subject=subj_clean,
@@ -782,8 +618,7 @@ class OfferingPhysicsAnalyzer:
         if fence_match:
             cleaned = fence_match.group(1)
         else:
-            start = cleaned.find("{")
-            end = cleaned.rfind("}")
+            start, end = cleaned.find("{"), cleaned.rfind("}")
             if start != -1 and end != -1 and end > start:
                 cleaned = cleaned[start : end + 1]
         try:
@@ -824,12 +659,17 @@ class OfferingPhysicsAnalyzer:
         )
 
         try:
-            resp = self._genai_client.models.generate_content(
-                model=getattr(settings, "flash_model_id", "gemini-3.8-flash"),
-                contents=prompt,
-            )
-            raw_text = getattr(resp, "text", "") or ""
-            payload = self._extract_json_dict(raw_text)
+            model_id = getattr(settings, "flash_model_id", "gemini-3.8-flash")
+            try:
+                resp = self._genai_client.models.generate_content(
+                    model=model_id,
+                    contents=prompt,
+                    config={"response_mime_type": "application/json"},
+                )
+            except TypeError:
+                resp = self._genai_client.models.generate_content(model=model_id, contents=prompt)
+
+            payload = self._extract_json_dict(getattr(resp, "text", "") or "")
             if not payload:
                 return fallback
 
@@ -839,28 +679,24 @@ class OfferingPhysicsAnalyzer:
                 if raw_arch in VALID_ARCHETYPES
                 else fallback.archetype
             )
-
             raw_scale = str(payload.get("physical_scale", "")).strip()
             physical_scale = (
                 cast(PhysicalScale, raw_scale)
                 if raw_scale in VALID_PHYSICAL_SCALES
                 else fallback.physical_scale
             )
-
             raw_role = str(payload.get("ergonomic_role", "")).strip()
             ergonomic_role = (
                 cast(ErgonomicRole, raw_role)
                 if raw_role in VALID_ERGONOMIC_ROLES
                 else fallback.ergonomic_role
             )
-
             raw_brand_mode = str(payload.get("surface_branding_mode", "")).strip()
             surface_branding_mode = (
                 cast(SurfaceBrandingMode, raw_brand_mode)
                 if raw_brand_mode in VALID_SURFACE_BRANDING_MODES
                 else fallback.surface_branding_mode
             )
-
             raw_thermal = str(payload.get("thermal_state", "")).strip().lower()
             thermal_state = (
                 cast(ThermalState, raw_thermal)
@@ -871,9 +707,7 @@ class OfferingPhysicsAnalyzer:
             raw_anchor = str(payload.get("canonical_anchor_spec", "")).strip()
             clean_anchor = (
                 scrub_offering_trademarks(
-                    raw_anchor,
-                    subject=fallback.subject,
-                    offering=fallback.offering,
+                    raw_anchor, subject=fallback.subject, offering=fallback.offering
                 )
                 if raw_anchor
                 else fallback.canonical_anchor_spec
@@ -890,9 +724,7 @@ class OfferingPhysicsAnalyzer:
                         raw_laws.get(act_idx) or raw_laws.get(str(act_idx)) or ""
                     ).strip()
                 clean_law = scrub_offering_trademarks(
-                    candidate_law,
-                    subject=fallback.subject,
-                    offering=fallback.offering,
+                    candidate_law, subject=fallback.subject, offering=fallback.offering
                 )
                 merged_laws[act_idx] = (
                     clean_law if len(clean_law) >= 10 else fallback.act_causality_laws[act_idx]
@@ -903,9 +735,7 @@ class OfferingPhysicsAnalyzer:
             if isinstance(raw_forbidden, list):
                 forbidden_list = [
                     scrub_offering_trademarks(
-                        str(item).strip(),
-                        subject=fallback.subject,
-                        offering=fallback.offering,
+                        str(item).strip(), subject=fallback.subject, offering=fallback.offering
                     )
                     for item in raw_forbidden
                     if str(item).strip()

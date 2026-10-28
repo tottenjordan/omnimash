@@ -184,6 +184,31 @@ def test_three_act_causality_laws_and_forbidden_hallucinations() -> None:
     assert "condensation" in joined
 
 
+def test_forbidden_hallucinations_decouples_archetype_and_all_thermal_states() -> None:
+    """Archetype-specific and thermal-specific forbidden_hallucinations both populate for ambient, chilled, and hot."""
+    analyzer = OfferingPhysicsAnalyzer(mock_mode=True)
+
+    vehicle_ambient = analyzer.analyze("Velox Motors", "GT9 Stradale Coupe")
+    assert vehicle_ambient.archetype == "OWNED_MOTOR_VEHICLE"
+    assert vehicle_ambient.thermal_state == "ambient"
+    veh_joined = " ".join(vehicle_ambient.forbidden_hallucinations).lower()
+    assert "wheelbase" in veh_joined
+    assert "dry room-temperature" in veh_joined
+
+    chilled_cpg = analyzer.analyze("YuzuPop", "Iced Sparkling Citrus Botanical Can")
+    assert chilled_cpg.thermal_state == "chilled"
+    chilled_joined = " ".join(chilled_cpg.forbidden_hallucinations).lower()
+    assert "chilled thermal physics" in chilled_joined
+    assert "steam" in chilled_joined
+
+    hot_delivery = analyzer.analyze("DashBite", "Hot Ramen Meal Delivery")
+    assert hot_delivery.archetype == "FOOD_OR_DINING_DELIVERY"
+    assert hot_delivery.thermal_state == "hot"
+    hot_joined = " ".join(hot_delivery.forbidden_hallucinations).lower()
+    assert "warm thermal physics" in hot_joined
+    assert "frost" in hot_joined
+
+
 def test_live_genai_json_parsing_and_invalid_enum_fallback_sanitization() -> None:
     """Live LLM responses parse valid JSON while sanitizing invalid enums and leaked brand names."""
     analyzer = OfferingPhysicsAnalyzer(mock_mode=True)

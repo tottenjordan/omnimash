@@ -21,6 +21,7 @@ from typing import Any
 
 from omnimash.prompts.character_roles import normalize_character_role
 from omnimash.prompts.models import PreFlightLintResult, PreFlightViolation
+from omnimash.prompts.soundstage_preflight import repair_soundstage_physics_and_causality
 
 
 class PreFlightGatekeeper:
@@ -838,28 +839,6 @@ class PreFlightGatekeeper:
 
         return repaired_prompt, violations
 
-    @staticmethod
-    def _append_to_scene_instructions(prompt_text: str, directive_line: str) -> str:
-        """Appends a directive line cleanly to ### SCENE INSTRUCTIONS (or creates Block 3 if absent)."""
-        scene_match = re.search(
-            r"(### SCENE INSTRUCTIONS[^\n]*\n)(.*?)(?=\n### |\Z)",
-            prompt_text,
-            flags=re.DOTALL,
-        )
-        if not scene_match:
-            return f"{prompt_text}\n\n### SCENE INSTRUCTIONS\n{directive_line}"
-
-        existing_body = scene_match.group(2).rstrip("\n")
-        trailing = "\n" if scene_match.group(2).endswith("\n") else ""
-        updated_body = (
-            f"{existing_body}\n{directive_line}{trailing}"
-            if existing_body
-            else f"{directive_line}{trailing}"
-        )
-        return (
-            prompt_text[: scene_match.start(2)] + updated_body + prompt_text[scene_match.end(2) :]
-        )
-
     @classmethod
     def repair_offering_physics_and_causality(
         cls,
@@ -868,187 +847,13 @@ class PreFlightGatekeeper:
         palette_60_30_10: Any | None = None,
         act_number: int | None = None,
     ) -> tuple[str, list[PreFlightViolation]]:
-        """Enforces Mode 5 60/30/10 palette lock, 3-act temporal causality gates, and ambient thermal physics."""
-        if not prompt_text or (offering_physics is None and palette_60_30_10 is None):
-            return prompt_text, []
-
-        violations: list[PreFlightViolation] = []
-        repaired = prompt_text
-
-        # 1. 60/30/10 Production Design Color-Lock
-        if palette_60_30_10 is not None:
-            if hasattr(palette_60_30_10, "production_design_directive"):
-                palette_directive = str(palette_60_30_10.production_design_directive).strip()
-            elif isinstance(palette_60_30_10, dict):
-                palette_directive = str(
-                    palette_60_30_10.get("production_design_directive", "")
-                ).strip()
-                if not palette_directive:
-                    p_hex = palette_60_30_10.get("primary_hex", "#1F242D")
-                    s_hex = palette_60_30_10.get("secondary_hex", "#C47D4E")
-                    n_hex = palette_60_30_10.get("neutral_hex", "#F2EFE9")
-                    palette_directive = (
-                        f"60% ({p_hex}) architectural set surfaces / "
-                        f"30% ({s_hex}) wardrobe & practical props / "
-                        f"10% ({n_hex}) foundational hero surface"
-                    )
-            else:
-                palette_directive = ""
-
-            if palette_directive:
-                scene_match = re.search(
-                    r"### SCENE INSTRUCTIONS[^\n]*\n(.*?)(?=\n### |\Z)",
-                    repaired,
-                    flags=re.DOTALL,
-                )
-                scene_body = scene_match.group(1) if scene_match else ""
-                has_ratio_lock = "60%" in scene_body and "30%" in scene_body and "10%" in scene_body
-                if not has_ratio_lock:
-                    palette_line = (
-                        f"- Production Design Palette (60/30/10 Color Lock): {palette_directive}"
-                    )
-                    repaired = cls._append_to_scene_instructions(repaired, palette_line)
-                    violations.append(
-                        PreFlightViolation(
-                            rule_id="PALETTE_60_30_10_LOCK",
-                            category="production_design",
-                            description=(
-                                "Injected 60/30/10 production design color-lock directive into "
-                                "Block 3 scene instructions."
-                            ),
-                            repaired=True,
-                            original_snippet="",
-                            repaired_snippet=palette_line,
-                        )
-                    )
-
-        # 2. Act-Specific Temporal Causality Gate & Ambient Thermal Physics
-        if offering_physics is not None:
-            laws = getattr(offering_physics, "act_causality_laws", None)
-            if laws is None and isinstance(offering_physics, dict):
-                laws = offering_physics.get("act_causality_laws")
-
-            if act_number is not None and isinstance(laws, dict):
-                act_law = str(laws.get(act_number) or laws.get(str(act_number)) or "").strip()
-                gate_header = f"Causality Gate (Act {act_number}):"
-                if act_law and act_law not in repaired and gate_header not in repaired:
-                    causality_line = f"- {gate_header} {act_law}"
-                    repaired = cls._append_to_scene_instructions(repaired, causality_line)
-                    violations.append(
-                        PreFlightViolation(
-                            rule_id="TEMPORAL_CAUSALITY_GATE",
-                            category="causality",
-                            description=(
-                                f"Injected Act {act_number} temporal causality guardrail into "
-                                "Block 3 scene instructions."
-                            ),
-                            repaired=True,
-                            original_snippet="",
-                            repaired_snippet=causality_line,
-                        )
-                    )
-
-            thermal_state = getattr(offering_physics, "thermal_state", None)
-            if thermal_state is None and isinstance(offering_physics, dict):
-                thermal_state = offering_physics.get("thermal_state")
-
-            if str(thermal_state or "").strip().lower() == "ambient":
-                ambient_replacements: tuple[tuple[re.Pattern[str], str], ...] = (
-                    (
-                        re.compile(
-                            r"\bcovered in\s+ice-cold condensation\s+and\s+frosty droplets\b",
-                            re.IGNORECASE,
-                        ),
-                        "with a clean dry ambient surface finish",
-                    ),
-                    (
-                        re.compile(r"\bice-cold condensation\b", re.IGNORECASE),
-                        "clean dry ambient surface finish",
-                    ),
-                    (
-                        re.compile(
-                            r"\b(?:icy|cold)\s+condensation(?:\s+droplets)?\b",
-                            re.IGNORECASE,
-                        ),
-                        "clean dry ambient finish",
-                    ),
-                    (
-                        re.compile(r"\bbeads of condensation\b", re.IGNORECASE),
-                        "crisp ambient specular highlights",
-                    ),
-                    (
-                        re.compile(r"\bcondensation droplets\b", re.IGNORECASE),
-                        "crisp ambient specular highlights",
-                    ),
-                    (
-                        re.compile(r"\bfrosty droplets\b", re.IGNORECASE),
-                        "crisp ambient specular highlights",
-                    ),
-                    (
-                        re.compile(r"\bfrost-covered\b", re.IGNORECASE),
-                        "dry matte ambient",
-                    ),
-                    (
-                        re.compile(r"\bwhile steaming hot\b", re.IGNORECASE),
-                        "at dry room-temperature equilibrium",
-                    ),
-                    (
-                        re.compile(r"\bsteaming hot\b", re.IGNORECASE),
-                        "dry room-temperature ambient",
-                    ),
-                    (
-                        re.compile(r"\bbillowing steam\b", re.IGNORECASE),
-                        "clean still studio air",
-                    ),
-                    (
-                        re.compile(
-                            r"\b(?:piping hot|rising|wisps of(?:\s+hot)?)\s+steam\b",
-                            re.IGNORECASE,
-                        ),
-                        "clean still ambient air",
-                    ),
-                )
-
-                updated_lines: list[str] = []
-                for line in repaired.splitlines():
-                    lower_line = line.lower()
-                    if any(
-                        skip_cue in lower_line
-                        for skip_cue in (
-                            "causality gate",
-                            "never add",
-                            "zero condensation",
-                            "without condensation",
-                            "no condensation",
-                        )
-                    ):
-                        updated_lines.append(line)
-                        continue
-
-                    working_line = line
-                    for pattern, replacement in ambient_replacements:
-                        match = pattern.search(working_line)
-                        if match:
-                            orig_snippet = match.group(0)
-                            working_line = pattern.sub(replacement, working_line)
-                            violations.append(
-                                PreFlightViolation(
-                                    rule_id="OFFERING_THERMAL_PHYSICS",
-                                    category="physics",
-                                    description=(
-                                        "Scrubbed thermal condensation/steam contradiction from "
-                                        "dry ambient offering prompt."
-                                    ),
-                                    repaired=True,
-                                    original_snippet=orig_snippet,
-                                    repaired_snippet=replacement,
-                                )
-                            )
-                    updated_lines.append(working_line)
-
-                repaired = "\n".join(updated_lines)
-
-        return repaired, violations
+        """Enforces Mode 5 clean-frame no-text, 60/30/10 hex lock, 3-act causality gates, and thermal physics."""
+        return repair_soundstage_physics_and_causality(
+            prompt_text=prompt_text,
+            offering_physics=offering_physics,
+            palette_60_30_10=palette_60_30_10,
+            act_number=act_number,
+        )
 
     @classmethod
     def lint_and_repair(
