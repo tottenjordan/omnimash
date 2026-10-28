@@ -57,6 +57,44 @@ const SOUNDSTAGE_STEPS = [
     { num: 10, shortLabel: "Sign-Off", title: "Step 10 · Ready Sign-Off", subtitle: "Review every brief decision, confirm resolution tier, and roll cameras." }
 ];
 
+const SOUNDSTAGE_FALLBACK_PLATE_DATA_URI = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgMzYwIj48cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM2MCIgZmlsbD0iIzA5MGEwZiIvPjxyZWN0IHg9IjIwIiB5PSIyMCIgd2lkdGg9IjYwMCIgaGVpZ2h0PSIzMjAiIHJ4PSIxNiIgZmlsbD0iIzE3MWEyNCIgc3Ryb2tlPSIjZTExZDQ4IiBzdHJva2Utb3BhY2l0eT0iMC41IiBzdHJva2Utd2lkdGg9IjIiLz48Y2lyY2xlIGN4PSIzMjAiIGN5PSIxNDIiIHI9IjQyIiBmaWxsPSIjMjkyNTI0IiBzdHJva2U9IiNmNWYyZWIiIHN0cm9rZS1vcGFjaXR5PSIwLjQiIHN0cm9rZS13aWR0aD0iMiIvPjxwYXRoIGQ9Ik0yNDQgMjU2IEMyNDQgMjEyIDM5NiAyMTIgMzk2IDI1NiBaIiBmaWxsPSIjMjkyNTI0IiBzdHJva2U9IiNmNWYyZWIiIHN0cm9rZS1vcGFjaXR5PSIwLjMiIHN0cm9rZS13aWR0aD0iMiIvPjx0ZXh0IHg9IjMyMCIgeT0iMzAyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZjVmMmViIiBmb250LWZhbWlseT0ibW9ub3NwYWNlIiBmb250LXNpemU9IjEzIiBsZXR0ZXItc3BhY2luZz0iMiI+U09VTkRTVEFHRSBTVFVESU8gQU5DSE9SIExPQ0tFRDwvdGV4dD48L3N2Zz4=";
+
+const SOUNDSTAGE_PROD_STAGES = [
+    { id: "brief", label: "1. Brief" },
+    { id: "world", label: "2. World" },
+    { id: "story", label: "3. Story" },
+    { id: "cast", label: "4. Cast Gate" },
+    { id: "boards", label: "5. 3×3 Boards" },
+    { id: "filming", label: "6. Filming" },
+    { id: "premiere", label: "7. Premiere" }
+];
+
+const SOUNDSTAGE_FILMING_TIERS = ["360p", "720p", "4k"];
+
+const SOUNDSTAGE_FORMAT_META = {
+    "30s": { id: "30s", label: "30s Master (16:9)", aspectLabel: "16:9 Master Broadcast", field: "master_30s_16x9_url", isVertical: false },
+    "15s": { id: "15s", label: "15s Cutdown (9:16)", aspectLabel: "9:16 Social Vertical", field: "cutdown_15s_9x16_url", isVertical: true },
+    "6s": { id: "6s", label: "6s Bumper (9:16)", aspectLabel: "9:16 High-Impact Bumper", field: "bumper_6s_9x16_url", isVertical: true }
+};
+
+const SOUNDSTAGE_VARIATION_AXES = [
+    { axis: "place", label: "Place", description: "Repoint filming territory & micro-climate", chips: ["Milan · Brera", "Kyoto · Higashiyama", "Reykjavik · Harbor"] },
+    { axis: "cast", label: "Cast", description: "Recast lead commercial persona in isolated session", chips: ["Seasoned Horologist", "Contemporary Architect", "Nocturnal Couturier"] },
+    { axis: "offering", label: "Offering", description: "Adapt edition & physical hero packshot", chips: ["Limited Collector Edition", "Travel Ritual Kit", "Nocturne Reserve"] }
+];
+
+const SOUNDSTAGE_CANONICAL_SUBSHOTS = [
+    { shot_id: "1.1", act_index: 0, default_start_sec: 0.0, default_duration_sec: 3.3 },
+    { shot_id: "1.2", act_index: 0, default_start_sec: 3.3, default_duration_sec: 3.4 },
+    { shot_id: "1.3", act_index: 0, default_start_sec: 6.7, default_duration_sec: 3.3 },
+    { shot_id: "2.1", act_index: 1, default_start_sec: 0.0, default_duration_sec: 3.3 },
+    { shot_id: "2.2", act_index: 1, default_start_sec: 3.3, default_duration_sec: 3.4 },
+    { shot_id: "2.3", act_index: 1, default_start_sec: 6.7, default_duration_sec: 3.3 },
+    { shot_id: "3.1", act_index: 2, default_start_sec: 0.0, default_duration_sec: 3.3 },
+    { shot_id: "3.2", act_index: 2, default_start_sec: 3.3, default_duration_sec: 3.4 },
+    { shot_id: "3.3", act_index: 2, default_start_sec: 6.7, default_duration_sec: 3.3 }
+];
+
 function cleanSoundstageOptionalText(val) {
     const trimmed = String(val === null || val === undefined ? "" : val).trim();
     return trimmed || null;
@@ -250,4 +288,90 @@ async function postSoundstageJson(url, payload) {
         throw new Error(detailMsg || `Soundstage request failed (${resp.status})`);
     }
     return data;
+}
+
+function resolveDefaultSoundstageStage(run) {
+    if (!run) return "cast";
+    if (run.stage === "completed" || Boolean(run.deliverables)) return "premiere";
+    if (run.stage === "filming_acts" || run.stage === "conforming" || run.stage === "critic_evaluated") return "filming";
+    if (run.stage === "boards_ready") return "boards";
+    return "cast";
+}
+
+function handleSoundstagePlateImgError(e) {
+    if (e && e.currentTarget && e.currentTarget.src !== SOUNDSTAGE_FALLBACK_PLATE_DATA_URI) {
+        e.currentTarget.src = SOUNDSTAGE_FALLBACK_PLATE_DATA_URI;
+    }
+}
+
+function buildNormalizedClientNleSpecs(rawSpecs) {
+    const byId = {};
+    (Array.isArray(rawSpecs) ? rawSpecs : []).forEach((s) => {
+        if (s && s.shot_id) byId[String(s.shot_id)] = s;
+    });
+    return SOUNDSTAGE_CANONICAL_SUBSHOTS.map((def) => {
+        const cur = byId[def.shot_id] || {};
+        return {
+            shot_id: def.shot_id,
+            act_index: def.act_index,
+            default_start_sec: typeof cur.default_start_sec === "number" ? cur.default_start_sec : def.default_start_sec,
+            default_duration_sec: typeof cur.default_duration_sec === "number" ? cur.default_duration_sec : def.default_duration_sec,
+            trim_in_sec: typeof cur.trim_in_sec === "number" ? cur.trim_in_sec : 0.0,
+            trim_out_sec: typeof cur.trim_out_sec === "number" ? cur.trim_out_sec : 0.0,
+            bypassed: Boolean(cur.bypassed)
+        };
+    });
+}
+
+function computeSubshotEffectiveWindow(spec) {
+    const minDur = 0.5;
+    const actDur = 10.0;
+    const maxStart = actDur - minDur;
+    const defStart = typeof spec.default_start_sec === "number" ? spec.default_start_sec : 0.0;
+    const defDur = typeof spec.default_duration_sec === "number" ? spec.default_duration_sec : 3.3;
+    const trimIn = typeof spec.trim_in_sec === "number" ? spec.trim_in_sec : 0.0;
+    const trimOut = typeof spec.trim_out_sec === "number" ? spec.trim_out_sec : 0.0;
+    const start = Math.min(Math.max(0.0, defStart + trimIn), maxStart);
+    const rawEnd = defStart + defDur - trimOut;
+    const end = Math.min(Math.max(start + minDur, rawEnd), Math.max(start + minDur, actDur));
+    return {
+        startSec: Math.round(start * 100) / 100,
+        endSec: Math.round(end * 100) / 100,
+        durSec: Math.round((end - start) * 100) / 100
+    };
+}
+
+function buildSoundstagePromotionPlan(activeRun) {
+    const plan = (activeRun && activeRun.plan) || {};
+    const identity = plan.identity || {};
+    const territory = plan.territory || {};
+    const palette = plan.palette || {};
+    const refKit = (activeRun && activeRun.reference_kit) || {};
+    const leadChar = plan.lead_character
+        ? { ...plan.lead_character, reference_url: refKit.lead_cast_url || plan.lead_character.reference_url || "" }
+        : null;
+    const heroRole = plan.hero_offering_role
+        ? { ...plan.hero_offering_role, reference_url: refKit.packshot_url || plan.hero_offering_role.reference_url || "" }
+        : null;
+    const characters = [leadChar, heroRole].filter(Boolean);
+    const acts = Array.isArray(plan.acts) ? plan.acts : [];
+    const intentSummary = (identity.display_subject || plan.subject || "Commercial") + " — " + (identity.display_offering || plan.offering || "Signature Edition") + " in " + (territory.place_name || "Metropolitan Studio");
+    const scenes = acts.map((act, idx) => ({
+        scene_number: act.act_number || (idx + 1),
+        action: act.narrative_summary || "",
+        dialogue: act.voiceover_line || "",
+        screenplay_script: act.compiled_omni_prompt || act.narrative_summary || "",
+        visual_focus: (act.title || ("Act " + (idx + 1))) + " (" + (act.time_window || "") + ")",
+        audio_soundscape: ((act.audio_score || "") + " " + (act.sound_effects || "")).trim()
+    }));
+    const fullScreenplay = acts.map((act) => "ACT " + act.act_number + " (" + act.time_window + ") — " + act.title + "\n" + act.narrative_summary + "\nVO: " + (act.voiceover_line || "(Instrumental)")).join("\n\n");
+    return {
+        intent: intentSummary,
+        characters,
+        vocal_delivery: (leadChar && leadChar.voice_style) || "",
+        style_tone: palette.production_design_directive || territory.lighting_directive || "Commercial Cinema 60/30/10",
+        screenplay_script: fullScreenplay || plan.voiceover_full_script || intentSummary,
+        audio_beat: (acts[0] && acts[0].audio_score) || "",
+        scenes
+    };
 }

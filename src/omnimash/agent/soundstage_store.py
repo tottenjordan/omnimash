@@ -577,6 +577,21 @@ def execute_cast_and_kit_update(
             raise ValueError("vault_character_slug is required when action='vault'.")
         vault_char = storage.load_character(slug, session_id=run.session_name)
         if not isinstance(vault_char, dict):
+            target_slug = storage._slugify(slug)
+            project_chars = storage.list_project_characters(project_id=run.project_name)
+            vault_char = next(
+                (
+                    c
+                    for c in (project_chars or [])
+                    if isinstance(c, dict)
+                    and (
+                        storage._slugify(str(c.get("name", ""))) == target_slug
+                        or storage._slugify(str(c.get("role_id", ""))) == target_slug
+                    )
+                ),
+                None,
+            )
+        if not isinstance(vault_char, dict):
             raise SoundstageNotFoundError(
                 f"Vault character '{slug}' not found in session or library."
             )

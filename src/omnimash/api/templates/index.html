@@ -5795,6 +5795,9 @@
                                         className="bg-gray-900 border border-gray-700 text-xs font-mono text-purple-200 rounded px-2 py-1 focus:outline-none focus:border-purple-400"
                                     >
                                         <option value="">-- Select Session --</option>
+                                        {sessionName && !availableSessions.includes(sessionName) && (
+                                            <option value={sessionName}>{sessionName}</option>
+                                        )}
                                         {availableSessions.map((s) => (
                                             <option key={s} value={s}>{s}</option>
                                         ))}

@@ -719,6 +719,7 @@ function SoundstageStudio(props) {
                     onEditBrief={() => ctrl.setViewMode("intake")}
                     fullscreenFocus={fullscreenFocus}
                     setFullscreenFocus={setFullscreenFocus}
+                    sessionName={sessionName}
                     setSessionName={setSessionName}
                     vaultCharacters={vaultCharacters}
                     addToast={addToast}

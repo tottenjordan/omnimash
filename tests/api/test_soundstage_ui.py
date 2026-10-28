@@ -18,6 +18,7 @@ _TEMPLATES_DIR = _API_DIR / "templates"
 _SHARED_JSX_PATH = _TEMPLATES_DIR / "soundstage_shared.jsx"
 _INTAKE_JSX_PATH = _TEMPLATES_DIR / "soundstage_intake.jsx"
 _PRODUCTION_JSX_PATH = _TEMPLATES_DIR / "soundstage_production.jsx"
+_PREMIERE_JSX_PATH = _TEMPLATES_DIR / "soundstage_premiere.jsx"
 
 
 def test_app_py_thin_budget_and_ui_loader_exports() -> None:
@@ -31,11 +32,24 @@ def test_app_py_thin_budget_and_ui_loader_exports() -> None:
 
 
 def test_modular_jsx_partials_exist_within_line_budget() -> None:
-    """Verifies modular Soundstage JSX partial files exist and stay well under the 850-line and 200-line/fn budgets."""
-    for path in (_SHARED_JSX_PATH, _INTAKE_JSX_PATH, _PRODUCTION_JSX_PATH):
+    """Verifies modular Soundstage JSX partial files exist and stay well under the 750/850-line and 190-line/fn budgets."""
+    for path in (
+        _SHARED_JSX_PATH,
+        _INTAKE_JSX_PATH,
+        _PRODUCTION_JSX_PATH,
+        _PREMIERE_JSX_PATH,
+        Path(__file__).resolve().parent / "test_soundstage_browser.py",
+    ):
         assert path.is_file(), f"Missing {path.name}"
         lines = path.read_text(encoding="utf-8").splitlines()
-        assert 30 <= len(lines) < 850, f"{path.name} should be < 850 lines, got {len(lines)}"
+        max_lines = (
+            450
+            if path.name == "test_soundstage_browser.py"
+            else (750 if path in (_PRODUCTION_JSX_PATH, _PREMIERE_JSX_PATH) else 850)
+        )
+        assert 30 <= len(lines) < max_lines, (
+            f"{path.name} should be < {max_lines} lines, got {len(lines)}"
+        )
         fn_starts = [
             idx
             for idx, line in enumerate(lines)
@@ -45,8 +59,8 @@ def test_modular_jsx_partials_exist_within_line_budget() -> None:
             fn_bounds = [*fn_starts, len(lines)]
             for i in range(len(fn_starts)):
                 span = fn_bounds[i + 1] - fn_bounds[i]
-                assert span < 200, (
-                    f"Function at line {fn_starts[i] + 1} in {path.name} is {span} lines (>= 200)"
+                assert span < 190, (
+                    f"Function at line {fn_starts[i] + 1} in {path.name} is {span} lines (>= 190)"
                 )
 
 
@@ -188,10 +202,102 @@ def test_soundstage_intake_components_a11y_and_security_guards() -> None:
         assert endpoint in ui_html, f"Missing endpoint binding {endpoint}"
 
 
+def test_soundstage_seven_stage_production_and_premiere_ui_controls() -> None:
+    """Verifies all Stage 1-7 Production & Premiere controls, ARIA labels, and API bindings exist in UI_HTML."""
+    ui_html = get_ui_html()
+
+    for component_name in (
+        "SoundstageBriefStageView",
+        "SoundstageWorldStageView",
+        "SoundstageStoryStageView",
+        "SoundstageCastGateView",
+        "SoundstageBoardsGateView",
+        "SoundstageFilmingStageView",
+        "SoundstagePremierePlayerCard",
+        "SoundstageNleTrimmerPanel",
+        "SoundstageDirectorNoteBar",
+        "SoundstageVariationsAndExportPanel",
+        "SoundstagePremiereStageView",
+        "SoundstageProductionRoom",
+    ):
+        assert f"function {component_name}(" in ui_html, f"Missing component {component_name}"
+
+    for required_id in (
+        "soundstage-production-room",
+        "soundstage-stage-rail",
+        "soundstage-btn-edit-brief",
+        "soundstage-prod-btn-fullscreen",
+        "soundstage-view-brief",
+        "soundstage-view-world",
+        "soundstage-view-story",
+        "soundstage-cast-gate",
+        "soundstage-btn-recast",
+        "soundstage-btn-cast-older",
+        "soundstage-btn-cast-younger",
+        "soundstage-input-cast-wardrobe",
+        "soundstage-input-cast-tweak",
+        "soundstage-btn-cast-tweak",
+        "soundstage-vault-cast-picker",
+        "soundstage-cast-toggle-manual-boards",
+        "soundstage-btn-approve-cast",
+        "soundstage-boards-gate",
+        "soundstage-btn-draw-boards",
+        "soundstage-btn-redraw-all-boards",
+        "soundstage-btn-roll-cameras",
+        "soundstage-filming-view",
+        "soundstage-premiere-view",
+        "soundstage-format-tabs",
+        "soundstage-tab-30s",
+        "soundstage-tab-15s",
+        "soundstage-tab-6s",
+        "soundstage-premiere-video",
+        "soundstage-nle-trimmer",
+        "soundstage-btn-reconform",
+        "soundstage-btn-reset-trims",
+        "soundstage-director-note-bar",
+        "soundstage-input-director-note",
+        "soundstage-select-target-act",
+        "soundstage-btn-revise",
+        "soundstage-variations-panel",
+        "soundstage-input-variation-value",
+        "soundstage-btn-fork-variation",
+        "soundstage-export-bar",
+        "soundstage-btn-download-zip",
+        "soundstage-btn-promote-mode2",
+        "soundstage-btn-promote-mode3",
+    ):
+        assert f'id="{required_id}"' in ui_html, f"Missing production/premiere id={required_id}"
+
+    for token in (
+        'aria-label="Pause at 3x3 Storyboard Gate before filming"',
+        'aria-label="Soundstage filming progress"',
+        "Human-Free Macro (@Image4 Only)",
+        "Lead Cast (@Image3)",
+        "Forked Variation",
+        "EventSource",
+        "/api/characters/save",
+        "/api/soundstage/boards",
+        "/api/soundstage/run",
+        "/events",
+        "/status",
+        "/reconform",
+        "/revise",
+        "/variations",
+        "/package.zip",
+    ):
+        assert token in ui_html, f"Missing production/premiere token: {token}"
+
+
 def test_soundstage_originality_and_video_model_hygiene() -> None:
     """Ensures zero prohibited external inspiration terms/URLs or prohibited video model names appear."""
     targets = [get_ui_html()]
-    for path in (_SHARED_JSX_PATH, _INTAKE_JSX_PATH, _PRODUCTION_JSX_PATH):
+    for path in (
+        _SHARED_JSX_PATH,
+        _INTAKE_JSX_PATH,
+        _PRODUCTION_JSX_PATH,
+        _PREMIERE_JSX_PATH,
+        Path(__file__).resolve().parent / "test_soundstage_browser.py",
+    ):
         if path.is_file():
             targets.append(path.read_text(encoding="utf-8"))
 
