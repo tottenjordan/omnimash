@@ -412,6 +412,68 @@ function SoundstageBoardsGateView({
     );
 }
 
+function attachSoundstageFilmingMonitor(opts) {
+    const {
+        runId, mountedRef, lastRunIdRef, monitoringRunIdRef, haltedRunIdRef, eventSourceRef, pollTimerRef,
+        cleanupFilmingStreams, setIsFilming, setLiveProgressPct, setLiveStageLabel, setLiveEvents,
+        setActiveRun, setActiveStageTab, setProdError, addToast
+    } = opts;
+    cleanupFilmingStreams();
+    monitoringRunIdRef.current = runId;
+    setIsFilming(true);
+    let finalized = false;
+    const isStale = () => finalized || !mountedRef.current || lastRunIdRef.current !== runId;
+
+    const reconcileStatus = async (reason) => {
+        if (isStale()) return;
+        try {
+            const resp = await fetch("/api/soundstage/" + encodeURIComponent(runId) + "/status");
+            if (!resp.ok || isStale()) return;
+            const snap = await resp.json();
+            if (isStale()) return;
+            setLiveProgressPct(typeof snap.progress_pct === "number" ? snap.progress_pct : 0);
+            setLiveStageLabel(snap.stage || "filming_acts");
+            if (Array.isArray(snap.events)) setLiveEvents(snap.events);
+            if (snap.stage === "completed") {
+                finalized = true; cleanupFilmingStreams(); setIsFilming(false);
+                setActiveRun(snap); setActiveStageTab("premiere");
+                if (addToast) addToast("30s Master, 15s Cutdown, and 6s Bumper ready in Premiere!", "success");
+            } else if (snap.stage === "failed") {
+                finalized = true; cleanupFilmingStreams(); setIsFilming(false);
+                setActiveRun(snap); setProdError(snap.error || "Soundstage filming failed.");
+            } else if (reason === "idle" || reason === "timeout") {
+                finalized = true; haltedRunIdRef.current = runId; cleanupFilmingStreams(); setIsFilming(false);
+                setActiveRun(snap);
+                if (reason === "timeout") setProdError("Filming stream timed out before completion; inspect stage status or retry filming.");
+            }
+        } catch (_err) {}
+    };
+
+    if (typeof EventSource !== "undefined") {
+        const es = new EventSource("/api/soundstage/" + encodeURIComponent(runId) + "/events");
+        eventSourceRef.current = es;
+        const closeEs = () => { try { es.close(); } catch (_e) {} if (eventSourceRef.current === es) eventSourceRef.current = null; };
+        es.addEventListener("progress", (ev) => {
+            if (isStale()) return;
+            try {
+                const p = JSON.parse(ev.data || "{}");
+                if (typeof p.progress_pct === "number") setLiveProgressPct(p.progress_pct);
+                if (p.stage) setLiveStageLabel(p.stage);
+                setLiveEvents((prev) => (prev.some((item) => item.event_id === p.event_id) ? prev : [...prev, p]));
+            } catch (_e) {}
+        });
+        ["complete", "idle", "timeout"].forEach((evtName) => {
+            es.addEventListener(evtName, () => { closeEs(); reconcileStatus(evtName); });
+        });
+        es.addEventListener("error", (ev) => {
+            if (isStale() || Boolean(ev && typeof ev.data === "string" && ev.data)) closeEs();
+            reconcileStatus("error");
+        });
+    }
+    pollTimerRef.current = setInterval(() => { reconcileStatus("poll"); }, 250);
+    reconcileStatus("init");
+}
+
 function useSoundstageProductionController({ activeRun, setActiveRun, addToast }) {
     const [activeStageTab, setActiveStageTab] = useState(() => resolveDefaultSoundstageStage(activeRun));
     const [manualBoardGate, setManualBoardGate] = useState(() => Boolean(activeRun && activeRun.manual_board_gate));
@@ -424,14 +486,24 @@ function useSoundstageProductionController({ activeRun, setActiveRun, addToast }
     const [liveEvents, setLiveEvents] = useState(() => (activeRun && Array.isArray(activeRun.events) ? activeRun.events : []));
 
     const lastRunIdRef = useRef((activeRun && activeRun.run_id) || "");
+    const monitoringRunIdRef = useRef("");
+    const haltedRunIdRef = useRef("");
+    const startingFilmingRef = useRef(false);
     const eventSourceRef = useRef(null);
     const pollTimerRef = useRef(null);
     const mountedRef = useRef(true);
 
     const cleanupFilmingStreams = () => {
+        monitoringRunIdRef.current = "";
         if (eventSourceRef.current) { try { eventSourceRef.current.close(); } catch (_err) {} eventSourceRef.current = null; }
         if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
     };
+
+    const attachFilmingMonitor = (runId) => attachSoundstageFilmingMonitor({
+        runId, mountedRef, lastRunIdRef, monitoringRunIdRef, haltedRunIdRef, eventSourceRef, pollTimerRef,
+        cleanupFilmingStreams, setIsFilming, setLiveProgressPct, setLiveStageLabel, setLiveEvents,
+        setActiveRun, setActiveStageTab, setProdError, addToast
+    });
 
     useEffect(() => {
         mountedRef.current = true;
@@ -444,72 +516,34 @@ function useSoundstageProductionController({ activeRun, setActiveRun, addToast }
         setLiveStageLabel(activeRun.stage || "cast_ready");
         if (Array.isArray(activeRun.events)) setLiveEvents(activeRun.events);
         if (lastRunIdRef.current !== activeRun.run_id) {
-            cleanupFilmingStreams(); setIsFilming(false);
+            cleanupFilmingStreams(); setIsFilming(false); haltedRunIdRef.current = "";
             lastRunIdRef.current = activeRun.run_id;
             setActiveStageTab(resolveDefaultSoundstageStage(activeRun));
             setManualBoardGate(Boolean(activeRun.manual_board_gate));
             setProdError("");
         }
+        if (isSoundstageFilmingStage(activeRun.stage) && monitoringRunIdRef.current !== activeRun.run_id && haltedRunIdRef.current !== activeRun.run_id && !startingFilmingRef.current) {
+            setActiveStageTab("filming"); attachFilmingMonitor(activeRun.run_id);
+        }
     }, [activeRun]);
 
     const startFilmingRun = async (runId, resolutionOverride) => {
-        if (!runId || isFilming) return;
-        cleanupFilmingStreams(); setProdError(""); setIsFilming(true); setActiveStageTab("filming");
-        let finalized = false;
-
-        const reconcileStatus = async () => {
-            if (finalized || !mountedRef.current) return;
-            try {
-                const resp = await fetch("/api/soundstage/" + encodeURIComponent(runId) + "/status");
-                if (!resp.ok || finalized || !mountedRef.current) return;
-                const snap = await resp.json();
-                if (finalized || !mountedRef.current) return;
-                setLiveProgressPct(snap.progress_pct || 0);
-                setLiveStageLabel(snap.stage || "filming_acts");
-                if (Array.isArray(snap.events)) setLiveEvents(snap.events);
-                if (snap.stage === "completed") {
-                    finalized = true; cleanupFilmingStreams(); setIsFilming(false);
-                    setActiveRun(snap); setActiveStageTab("premiere");
-                    if (addToast) addToast("30s Master, 15s Cutdown, and 6s Bumper ready in Premiere!", "success");
-                } else if (snap.stage === "failed") {
-                    finalized = true; cleanupFilmingStreams(); setIsFilming(false);
-                    setActiveRun(snap); setProdError(snap.error || "Soundstage filming failed.");
-                }
-            } catch (_err) {}
-        };
-
+        if (!runId || isFilming || startingFilmingRef.current) return;
+        cleanupFilmingStreams(); haltedRunIdRef.current = ""; lastRunIdRef.current = runId; startingFilmingRef.current = true;
+        setProdError(""); setIsFilming(true); setActiveStageTab("filming");
         try {
             const queued = await postSoundstageJson("/api/soundstage/run", {
-                run_id: runId,
-                resolution: resolutionOverride || (activeRun && activeRun.resolution) || "720p",
-                async_execution: true
+                run_id: runId, resolution: resolutionOverride || (activeRun && activeRun.resolution) || "720p", async_execution: true
             });
-            if (!mountedRef.current) return;
-            setActiveRun(queued); setLiveProgressPct(queued.progress_pct || 32); setLiveStageLabel(queued.stage || "filming_acts");
-            if (typeof EventSource !== "undefined") {
-                const es = new EventSource("/api/soundstage/" + encodeURIComponent(runId) + "/events");
-                eventSourceRef.current = es;
-                es.addEventListener("progress", (ev) => {
-                    if (finalized || !mountedRef.current) return;
-                    try {
-                        const p = JSON.parse(ev.data || "{}");
-                        if (typeof p.progress_pct === "number") setLiveProgressPct(p.progress_pct);
-                        if (p.stage) setLiveStageLabel(p.stage);
-                        setLiveEvents((prev) => (prev.some((item) => item.event_id === p.event_id) ? prev : [...prev, p]));
-                    } catch (_e) {}
-                });
-                const onTerminal = () => { reconcileStatus(); };
-                es.addEventListener("complete", onTerminal);
-                es.addEventListener("idle", onTerminal);
-                es.addEventListener("timeout", onTerminal);
-                es.addEventListener("error", onTerminal);
-            }
-            pollTimerRef.current = setInterval(reconcileStatus, 250);
-            await reconcileStatus();
+            if (!mountedRef.current || lastRunIdRef.current !== runId) return;
+            setLiveProgressPct(typeof queued.progress_pct === "number" ? queued.progress_pct : 32);
+            setLiveStageLabel(queued.stage || "filming_acts");
+            attachFilmingMonitor(runId); setActiveRun(queued);
         } catch (err) {
-            finalized = true; cleanupFilmingStreams(); setIsFilming(false);
+            if (!mountedRef.current || lastRunIdRef.current !== runId) return;
+            cleanupFilmingStreams(); setIsFilming(false);
             setProdError(err.message || "Could not start Commercial Soundstage filming.");
-        }
+        } finally { startingFilmingRef.current = false; }
     };
 
     const handleCastAction = async (extraPayload) => {
@@ -572,7 +606,7 @@ function useSoundstageProductionController({ activeRun, setActiveRun, addToast }
 
     const handleSwitchStage = (nextStage, nextRun) => {
         if (nextRun && nextRun.run_id) {
-            cleanupFilmingStreams(); setIsFilming(false);
+            cleanupFilmingStreams(); setIsFilming(false); haltedRunIdRef.current = "";
             lastRunIdRef.current = nextRun.run_id;
             setActiveRun(nextRun); setManualBoardGate(Boolean(nextRun.manual_board_gate));
         }

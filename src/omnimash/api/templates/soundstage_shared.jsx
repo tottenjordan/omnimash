@@ -290,10 +290,14 @@ async function postSoundstageJson(url, payload) {
     return data;
 }
 
+function isSoundstageFilmingStage(stage) {
+    return stage === "filming_acts" || stage === "conforming" || stage === "critic_evaluated";
+}
+
 function resolveDefaultSoundstageStage(run) {
     if (!run) return "cast";
     if (run.stage === "completed" || Boolean(run.deliverables)) return "premiere";
-    if (run.stage === "filming_acts" || run.stage === "conforming" || run.stage === "critic_evaluated") return "filming";
+    if (isSoundstageFilmingStage(run.stage)) return "filming";
     if (run.stage === "boards_ready") return "boards";
     return "cast";
 }
@@ -335,9 +339,9 @@ function computeSubshotEffectiveWindow(spec) {
     const rawEnd = defStart + defDur - trimOut;
     const end = Math.min(Math.max(start + minDur, rawEnd), Math.max(start + minDur, actDur));
     return {
-        startSec: Math.round(start * 100) / 100,
-        endSec: Math.round(end * 100) / 100,
-        durSec: Math.round((end - start) * 100) / 100
+        startSec: Math.round(start * 1000) / 1000,
+        endSec: Math.round(end * 1000) / 1000,
+        durSec: Math.round((end - start) * 1000) / 1000
     };
 }
 

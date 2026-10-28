@@ -353,6 +353,56 @@ const {{ chromium }} = require('playwright');
     throw new Error('Auto-advance filming failed to land in Premiere with conformed 30s_16x9_master, got: ' + autoMasterUrl);
   }}
 
+  // 13. LOW-4 (3-decimal NLE), HIGH-2 (es.close() + timeout unlock), and MEDIUM-3 (in-flight remount without re-POSTing /run)
+  const origEventsHits = observedEndpoints.filter((e) => e === `GET /api/soundstage/${{originalRunId}}/events`).length;
+  if (origEventsHits !== 1) throw new Error('Expected exactly 1 SSE connection for originalRunId (no reconnect), got ' + origEventsHits);
+  const win3Dec = await page.evaluate(() => computeSubshotEffectiveWindow({{ default_start_sec: 0.125, default_duration_sec: 3.333, trim_in_sec: 0, trim_out_sec: 0 }}));
+  if (win3Dec.startSec !== 0.125 || win3Dec.endSec !== 3.458 || win3Dec.durSec !== 3.333) {{
+    throw new Error('Expected 3-decimal NLE window, got: ' + JSON.stringify(win3Dec));
+  }}
+
+  let simPhase = 'timeout';
+  let simRunPosts = 0;
+  let timeoutSseHits = 0;
+  const inflightSnap = {{ ...postAutoJson, stage: 'filming_acts', progress_pct: 42, deliverables: null }};
+  await page.route('**/api/soundstage/run', async (route) => {{
+    simRunPosts += 1;
+    await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify(inflightSnap) }});
+  }});
+  await page.route(`**/api/soundstage/${{autoRunId}}/status`, async (route) => {{
+    const bodyObj = simPhase === 'timeout' ? inflightSnap : postAutoJson;
+    await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify(bodyObj) }});
+  }});
+  await page.route(`**/api/soundstage/${{autoRunId}}/events`, async (route) => {{
+    if (simPhase === 'timeout') {{
+      timeoutSseHits += 1;
+      await route.fulfill({{ status: 200, contentType: 'text/event-stream', body: `event: timeout\\ndata: {{"run_id":"${{autoRunId}}","stage":"filming_acts","progress_pct":42}}\\n\\n` }});
+    }} else {{
+      await route.fulfill({{ status: 200, contentType: 'text/event-stream', body: `event: complete\\ndata: {{"run_id":"${{autoRunId}}","stage":"completed","progress_pct":100}}\\n\\n` }});
+    }}
+  }});
+
+  await page.click('[data-stage-tab="filming"]');
+  await page.waitForSelector('#soundstage-filming-view', {{ timeout: 3000 }});
+  await page.getByRole('button', {{ name: 'Film / Re-Master in 360p' }}).click();
+  await page.waitForFunction(
+    () => {{
+      const alertEl = document.querySelector('[role="alert"]');
+      const btn = Array.from(document.querySelectorAll('#soundstage-filming-view button')).find((b) => b.textContent.includes('360p'));
+      return alertEl && /timed out/i.test(alertEl.textContent || '') && btn && !btn.disabled;
+    }},
+    {{ timeout: 5000 }}
+  );
+  if (timeoutSseHits !== 1) throw new Error('Expected 1 timeout SSE stream without reconnect, got ' + timeoutSseHits);
+
+  simPhase = 'remount';
+  const runsBeforeRemount = simRunPosts;
+  await page.click('#soundstage-btn-edit-brief');
+  await page.waitForSelector('#soundstage-btn-return-production', {{ timeout: 3000 }});
+  await page.click('#soundstage-btn-return-production');
+  await page.waitForSelector('#soundstage-premiere-view', {{ timeout: 8000 }});
+  if (simRunPosts !== runsBeforeRemount) throw new Error('In-flight remount must not re-POST /api/soundstage/run');
+
   if (pageErrors.length !== 0) {{
     throw new Error('Uncaught browser pageerror(s): ' + pageErrors.join(' | '));
   }}

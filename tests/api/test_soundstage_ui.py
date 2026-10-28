@@ -288,6 +288,32 @@ def test_soundstage_seven_stage_production_and_premiere_ui_controls() -> None:
         assert token in ui_html, f"Missing production/premiere token: {token}"
 
 
+def test_soundstage_sse_lifecycle_remount_and_3_decimal_nle_guards() -> None:
+    """HIGH-2, MEDIUM-3, LOW-4: Verifies SSE es.close() on terminal events, idle/timeout unlock, stale-runId guard, in-flight remount reconciliation, and 3-decimal NLE rounding."""
+    shared_src = _SHARED_JSX_PATH.read_text(encoding="utf-8")
+    prod_src = _PRODUCTION_JSX_PATH.read_text(encoding="utf-8")
+    premiere_src = _PREMIERE_JSX_PATH.read_text(encoding="utf-8")
+
+    # LOW-4: 3-decimal NLE precision in computeSubshotEffectiveWindow & handleAdjustTrim
+    assert "* 100) / 100" not in shared_src
+    assert "* 100) / 100" not in premiere_src
+    assert "Math.round(start * 1000) / 1000" in shared_src
+    assert "Math.round(end * 1000) / 1000" in shared_src
+    assert "Math.round((end - start) * 1000) / 1000" in shared_src
+    assert "Math.round(((spec[field] || 0) + delta) * 1000) / 1000" in premiere_src
+
+    # MEDIUM-3: In-flight filming stage detection & automatic remount monitor attachment
+    assert "function isSoundstageFilmingStage(" in shared_src
+    assert "isSoundstageFilmingStage(activeRun.stage)" in prod_src
+    assert "function attachSoundstageFilmingMonitor(" in prod_src
+
+    # HIGH-2: Stale-runId guard, immediate es.close() on terminal SSE events, and idle/timeout unlock
+    assert "lastRunIdRef.current !== runId" in prod_src
+    assert "es.close()" in prod_src
+    assert 'reason === "idle" || reason === "timeout"' in prod_src
+    assert 'if (reason === "timeout")' in prod_src
+
+
 def test_soundstage_originality_and_video_model_hygiene() -> None:
     """Ensures zero prohibited external inspiration terms/URLs or prohibited video model names appear."""
     targets = [get_ui_html()]

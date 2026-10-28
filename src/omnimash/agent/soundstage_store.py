@@ -179,6 +179,24 @@ def validate_confined_custom_image_url(url: str) -> str:
     return cleaned
 
 
+def _validate_vault_reference_url(url: str) -> str:
+    """Validates vault `reference_url`, allowing confined `/static/...` studio paths and `validate_confined_custom_image_url`."""
+    cleaned = (url or "").strip()
+    if not cleaned.lower().startswith("data:"):
+        unwrapped = _unwrap_media_proxy_uri(cleaned, max_hops=3)
+        if (
+            unwrapped.startswith("/static/")
+            and "\x00" not in unwrapped
+            and "\\" not in unwrapped
+            and ".." not in unwrapped.split("/")
+        ):
+            static_root = os.path.realpath(os.path.join(os.getcwd(), "static"))
+            target_real = os.path.realpath(os.path.join(os.getcwd(), unwrapped.lstrip("/")))
+            if target_real.startswith(static_root + os.sep):
+                return cleaned
+    return validate_confined_custom_image_url(cleaned)
+
+
 def validate_confined_audio_url(url: str) -> str:
     """Validates `background_music_path` rejecting `data:` URIs, SSRF URLs, out-of-root paths, and proxy bypasses."""
     cleaned = (url or "").strip()
@@ -589,13 +607,15 @@ def execute_cast_and_kit_update(
         )
 
     if req.action == "vault":
+        safe_session = validate_safe_identifier(run.session_name, "session_name")
+        safe_project = validate_safe_identifier(run.project_name, "project_name")
         slug = (req.vault_character_slug or "").strip()
         if not slug:
             raise ValueError("vault_character_slug is required when action='vault'.")
-        vault_char = storage.load_character(slug, session_id=run.session_name)
+        vault_char = storage.load_character(slug, session_id=safe_session)
         if not isinstance(vault_char, dict):
             target_slug = storage._slugify(slug)
-            for cand in storage.list_project_characters(project_id=run.project_name) or []:
+            for cand in storage.list_project_characters(project_id=safe_project) or []:
                 if isinstance(cand, dict) and target_slug in {
                     storage._slugify(str(cand.get("name", ""))),
                     storage._slugify(str(cand.get("role_id", ""))),
@@ -607,7 +627,9 @@ def execute_cast_and_kit_update(
                 f"Vault character '{slug}' not found in session or library."
             )
 
-        raw_name = str(vault_char.get("name", "") or "Vanguard")
+        raw_name = (
+            sanitize_single_line_field(str(vault_char.get("name", "") or "Vanguard")) or "Vanguard"
+        )
         raw_wardrobe = scrub_commercial_note(
             str(vault_char.get("wardrobe", "") or plan.lead_character.wardrobe), subj, off
         )
@@ -615,7 +637,9 @@ def execute_cast_and_kit_update(
             str(vault_char.get("voice_style", "") or plan.lead_character.voice_style)
         )
         raw_ref_url = str(vault_char.get("reference_url", "") or "").strip()
-        if not raw_ref_url:
+        if raw_ref_url:
+            raw_ref_url = _validate_vault_reference_url(raw_ref_url)
+        else:
             safe_identity = DualLayerIdentityAbstractor.abstract(
                 subject=subj,
                 offering=off,
@@ -629,7 +653,7 @@ def execute_cast_and_kit_update(
                 keyframe_client.generate_character_reference_sheet(
                     character_name=safe_identity.omni_safe_cast_handle,
                     description=safe_identity.omni_safe_cast_description,
-                    session_id=run.session_name,
+                    session_id=safe_session,
                 )
             )
 

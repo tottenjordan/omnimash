@@ -437,7 +437,7 @@ function SoundstagePremiereStageView({
     const handleAdjustTrim = (shotId, field, delta) => {
         setNleSpecs((prev) => prev.map((spec) => {
             if (spec.shot_id !== shotId) return spec;
-            const nextVal = Math.round(((spec[field] || 0) + delta) * 100) / 100;
+            const nextVal = Math.round(((spec[field] || 0) + delta) * 1000) / 1000;
             return { ...spec, [field]: Math.max(-3.0, Math.min(6.0, nextVal)) };
         }));
     };
