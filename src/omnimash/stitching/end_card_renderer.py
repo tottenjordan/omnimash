@@ -583,6 +583,8 @@ def concatenate_normalized_av_segments(
             resolved_audio,
             "-c:v",
             "copy",
+            "-af",
+            "apad",
             "-c:a",
             "aac",
             "-ar",
@@ -600,7 +602,16 @@ def concatenate_normalized_av_segments(
         res = subprocess.run(cmd_copy, capture_output=True, text=True, timeout=ffmpeg_timeout)
         if res.returncode != 0:
             cmd_reencode = (
-                [*base_in, "-i", resolved_audio, *_COMMON_AV_ENCODE_ARGS, *audio_map, output_path]
+                [
+                    *base_in,
+                    "-i",
+                    resolved_audio,
+                    "-af",
+                    "apad",
+                    *_COMMON_AV_ENCODE_ARGS,
+                    *audio_map,
+                    output_path,
+                ]
                 if resolved_audio
                 else [*base_in, *_COMMON_AV_ENCODE_ARGS, output_path]
             )

@@ -17,12 +17,14 @@ import os
 import re
 import tempfile
 from typing import Any, Literal
+from urllib.parse import parse_qs, unquote, urlparse
 import uuid
 import zipfile
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from omnimash.config import settings
+from omnimash.engine.media_loader import validate_local_media_path
 from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
 from omnimash.stitching.end_card_renderer import (
     _contrast_ratio,
@@ -337,39 +339,86 @@ class CommercialConformer:
         source_ref: str,
         arcname: str,
         temp_dir: str,
+        output_dir: str,
         mock_fallback_bytes: bytes,
-    ) -> None:
-        """Resolves a local or GCS media source and writes it into `zf` under `arcname`."""
-        if source_ref and os.path.isfile(source_ref):
-            zf.write(source_ref, arcname=arcname)
-            return
+    ) -> bool:
+        """Resolves a confined local or GCS media source and writes it into `zf` under `arcname`."""
+        if not source_ref or not isinstance(source_ref, str):
+            return False
+        raw = source_ref.strip()
+        if not raw:
+            return False
+
+        for _ in range(3):
+            if "/api/media-proxy" in raw and "uri=" in raw:
+                try:
+                    qs = parse_qs(urlparse(raw).query)
+                    raw = unquote(qs["uri"][0]).strip() if qs.get("uri") else ""
+                except Exception:
+                    return False
+            else:
+                break
+        if not raw or "/api/media-proxy" in raw:
+            return False
+
+        allowed_roots = (
+            os.path.realpath("static"),
+            os.path.realpath("/tmp"),
+            os.path.realpath(tempfile.gettempdir()),
+            os.path.realpath(output_dir),
+            os.path.realpath(temp_dir),
+        )
+
+        if not raw.startswith(("gs://", "http://", "https://")):
+            confined = validate_local_media_path(raw, allowed_roots=allowed_roots)
+            if confined:
+                zf.write(confined, arcname=arcname)
+                return True
+            check_candidates = [raw, raw.lstrip("/")] if raw.startswith("/static/") else [raw]
+            in_allowed_root = any(
+                (real_c := os.path.realpath(c)) == root or real_c.startswith(root + os.sep)
+                for c in check_candidates
+                for root in allowed_roots
+            )
+            if self.mock_mode and in_allowed_root and not os.path.exists(raw):
+                zf.writestr(arcname, mock_fallback_bytes)
+                return True
+            logger.warning("Skipping unconfined or missing local ZIP media entry: %s", source_ref)
+            return False
+
         resolved = resolve_media_source_to_local_path(
-            source_ref,
+            raw,
             temp_dir=temp_dir,
             storage=self.storage,
             mock_mode=self.mock_mode,
         )
-        if resolved and os.path.isfile(resolved):
-            zf.write(resolved, arcname=arcname)
-        elif self.mock_mode and source_ref:
+        if resolved:
+            confined_resolved = validate_local_media_path(resolved, allowed_roots=allowed_roots)
+            if confined_resolved:
+                zf.write(confined_resolved, arcname=arcname)
+                return True
+        if self.mock_mode and raw.startswith("gs://"):
             zf.writestr(arcname, mock_fallback_bytes)
+            return True
+        return False
+
+    def _has_valid_audio_ref(self, ref: str | None) -> bool:
+        return bool(ref and self.stitcher._is_valid_audio_reference(ref))
 
     def _resolve_master_audio(
         self,
         background_music_path: str | None,
         narrator_audio_path: str | None,
         temp_dir: str,
+        fallback_dialogue_path: str | None = None,
     ) -> str | None:
-        has_bgm = bool(
-            background_music_path and self.stitcher._is_valid_audio_reference(background_music_path)
-        )
-        has_vo = bool(
-            narrator_audio_path and self.stitcher._is_valid_audio_reference(narrator_audio_path)
-        )
-        if has_bgm and has_vo and background_music_path and narrator_audio_path:
+        has_bgm = self._has_valid_audio_ref(background_music_path)
+        has_vo = self._has_valid_audio_ref(narrator_audio_path)
+        dialogue_src = narrator_audio_path if has_vo else fallback_dialogue_path
+        if has_bgm and background_music_path and dialogue_src:
             return apply_dialogue_audio_ducking(
                 music_path=background_music_path,
-                dialogue_path=narrator_audio_path,
+                dialogue_path=dialogue_src,
                 output_dir=temp_dir,
                 ducking_db=-18.0,
                 mock_mode=self.mock_mode,
@@ -460,7 +509,10 @@ class CommercialConformer:
         if self.mock_mode:
             with tempfile.TemporaryDirectory() as mock_audio_tmp:
                 self._resolve_master_audio(
-                    background_music_path, narrator_audio_path, mock_audio_tmp
+                    background_music_path,
+                    narrator_audio_path,
+                    mock_audio_tmp,
+                    fallback_dialogue_path=act_clips[active_specs[0].act_index],
                 )
 
             total_duration = round(
@@ -542,13 +594,29 @@ class CommercialConformer:
                     for spec in bumper_specs
                 ] + [bumper_end_card]
 
-                master_audio = self._resolve_master_audio(
-                    background_music_path, narrator_audio_path, scoped_temp_dir
-                )
-
-                self._concatenate_normalized_segments(
-                    master_segments, master_path, scoped_temp_dir, master_audio
-                )
+                has_bgm = self._has_valid_audio_ref(background_music_path)
+                has_vo = self._has_valid_audio_ref(narrator_audio_path)
+                if has_bgm and not has_vo:
+                    raw_master_path = os.path.join(scoped_temp_dir, f"raw_master_{uid}.mp4")
+                    self._concatenate_normalized_segments(
+                        master_segments, raw_master_path, scoped_temp_dir
+                    )
+                    ducked_master_audio = self._resolve_master_audio(
+                        background_music_path,
+                        None,
+                        scoped_temp_dir,
+                        fallback_dialogue_path=raw_master_path,
+                    )
+                    self._concatenate_normalized_segments(
+                        [raw_master_path], master_path, scoped_temp_dir, ducked_master_audio
+                    )
+                else:
+                    master_audio = self._resolve_master_audio(
+                        background_music_path, narrator_audio_path, scoped_temp_dir
+                    )
+                    self._concatenate_normalized_segments(
+                        master_segments, master_path, scoped_temp_dir, master_audio
+                    )
                 self._concatenate_normalized_segments(
                     cutdown_segments, cutdown_path, scoped_temp_dir
                 )
@@ -729,6 +797,7 @@ class CommercialConformer:
                         source_ref,
                         arcname,
                         scoped_temp_dir,
+                        output_dir,
                         f"mock {key} deliverable bytes".encode("utf-8"),
                     )
 
@@ -745,10 +814,15 @@ class CommercialConformer:
                     arcname = f"storyboards/shot_{safe_shot_id}.png"
                     if arcname in used_arcnames:
                         arcname = f"storyboards/shot_{safe_shot_id}_{len(used_arcnames)}.png"
-                    used_arcnames.add(arcname)
-                    self._write_zip_media_entry(
-                        zf, frame_src, arcname, scoped_temp_dir, b"\x89PNG\r\n\x1a\nmock_storyboard"
-                    )
+                    if self._write_zip_media_entry(
+                        zf,
+                        frame_src,
+                        arcname,
+                        scoped_temp_dir,
+                        output_dir,
+                        b"\x89PNG\r\n\x1a\nmock_storyboard",
+                    ):
+                        used_arcnames.add(arcname)
 
                 for idx, (raw_asset_key, asset_src) in enumerate((reference_kit or {}).items()):
                     if not asset_src:
@@ -757,10 +831,15 @@ class CommercialConformer:
                     arcname = f"reference_kit/{safe_key}.png"
                     if arcname in used_arcnames:
                         arcname = f"reference_kit/{safe_key}_{idx}.png"
-                    used_arcnames.add(arcname)
-                    self._write_zip_media_entry(
-                        zf, asset_src, arcname, scoped_temp_dir, b"\x89PNG\r\n\x1a\nmock_reference"
-                    )
+                    if self._write_zip_media_entry(
+                        zf,
+                        asset_src,
+                        arcname,
+                        scoped_temp_dir,
+                        output_dir,
+                        b"\x89PNG\r\n\x1a\nmock_reference",
+                    ):
+                        used_arcnames.add(arcname)
 
                 zf.writestr(
                     "campaign_manifest.json",

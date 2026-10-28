@@ -763,3 +763,139 @@ def test_bumper_caps_each_subshot_to_2_4s_and_zip_integrates_with_soundstage_pla
         assert manifest["display_subject"] == "Atelier Vesper"
         assert manifest["display_offering"] == "Obsidian Pour-Over Kettle"
         assert manifest["palette_60_30_10"]["primary_hex"] == plan.palette.primary_hex
+
+
+def test_conform_all_formats_bgm_without_narrator_vo_ducks_against_native_clip_audio_mock(
+    tmp_path,
+) -> None:
+    conformer = CommercialConformer(mock_mode=True)
+    bgm = tmp_path / "ambient_score.mp3"
+    bgm.write_bytes(b"mock bgm bytes")
+    act_clips = ["/tmp/act1.mp4", "/tmp/act2.mp4", "/tmp/act3.mp4"]
+
+    with patch(
+        "omnimash.stitching.commercial_conformer.apply_dialogue_audio_ducking",
+        return_value=str(tmp_path / "ducked_native.aac"),
+    ) as mock_duck:
+        conformer.conform_all_formats(
+            act_clips=act_clips,
+            display_subject="Aura Soundstage",
+            background_music_path=str(bgm),
+            narrator_audio_path=None,
+            output_dir=str(tmp_path),
+        )
+
+    mock_duck.assert_called_once()
+    assert mock_duck.call_args.kwargs["music_path"] == str(bgm)
+    assert mock_duck.call_args.kwargs["dialogue_path"] == act_clips[0]
+    assert mock_duck.call_args.kwargs["ducking_db"] == -18.0
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg binary not installed")
+def test_conform_all_formats_real_ffmpeg_bgm_without_narrator_vo_preserves_and_ducks_native_audio(
+    tmp_path,
+) -> None:
+    from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking as real_ducking
+
+    src_dir = tmp_path / "native_vo_sources"
+    src_dir.mkdir()
+    out_dir = tmp_path / "native_vo_out"
+    act_clips = [
+        _create_synthetic_mp4(str(src_dir / "act1.mp4"), color="navy", with_audio=True),
+        _create_synthetic_mp4(str(src_dir / "act2.mp4"), color="darkred", with_audio=True),
+        _create_synthetic_mp4(str(src_dir / "act3.mp4"), color="teal", with_audio=True),
+    ]
+    bgm_path = str(src_dir / "bgm_bed.aac")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=220:sample_rate=44100:duration=8.0",
+            "-c:a",
+            "aac",
+            bgm_path,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30.0,
+    )
+
+    conformer = CommercialConformer(mock_mode=False, bucket_name="test-bucket")
+    with (
+        patch(
+            "omnimash.stitching.commercial_conformer.apply_dialogue_audio_ducking",
+            wraps=real_ducking,
+        ) as spy_duck,
+        patch.object(
+            conformer.storage,
+            "upload_file",
+            side_effect=lambda local_path, destination_blob_name=None, **kw: (
+                f"https://storage.googleapis.com/test-bucket/{destination_blob_name}"
+            ),
+        ),
+    ):
+        deliverables = conformer.conform_all_formats(
+            act_clips=act_clips,
+            display_subject="Native Audio Brand",
+            background_music_path=bgm_path,
+            narrator_audio_path=None,
+            end_card_duration_sec=0.5,
+            output_dir=str(out_dir),
+            session_id="native_duck_sess",
+        )
+
+    spy_duck.assert_called_once()
+    assert spy_duck.call_args.kwargs["ducking_db"] == -18.0
+    assert spy_duck.call_args.kwargs["dialogue_path"].endswith(".mp4")
+
+    master_info = _probe_streams(deliverables.local_paths["master_30s_16x9"])
+    if master_info:
+        mv = next(s for s in master_info["streams"] if s["codec_type"] == "video")
+        ma = next(s for s in master_info["streams"] if s["codec_type"] == "audio")
+        assert (mv["width"], mv["height"]) == (1280, 720)
+        assert ma["codec_name"] == "aac"
+        assert int(ma["channels"]) == 2
+        assert float(master_info["format"]["duration"]) >= 6.0
+
+
+def test_build_campaign_package_zip_blocks_out_of_root_local_files_in_storyboards_and_refs(
+    tmp_path,
+) -> None:
+    conformer = CommercialConformer(mock_mode=True, bucket_name="confinement-bucket")
+    deliverables = conformer.conform_all_formats(
+        act_clips=["/tmp/act1.mp4", "/tmp/act2.mp4", "/tmp/act3.mp4"],
+        display_subject="Confined Brand",
+        output_dir=str(tmp_path),
+    )
+
+    valid_sb = tmp_path / "valid_sb_1_1.png"
+    valid_sb.write_bytes(b"\x89PNG\r\n\x1a\nvalid_sb")
+    valid_ref = tmp_path / "valid_cast.png"
+    valid_ref.write_bytes(b"\x89PNG\r\n\x1a\nvalid_cast")
+
+    zip_path, _ = conformer.build_campaign_package_zip(
+        deliverables=deliverables,
+        display_subject="Confined Brand",
+        storyboard_frames={
+            "1.1": str(valid_sb),
+            "1.2": "/etc/hosts",
+        },
+        reference_kit={
+            "valid_cast": str(valid_ref),
+            "repo_leak": "pyproject.toml",
+            "proxy_leak": "/api/media-proxy?uri=/etc/hosts",
+        },
+        output_dir=str(tmp_path),
+    )
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        names = set(zf.namelist())
+        assert "storyboards/shot_1.1.png" in names
+        assert "reference_kit/valid_cast.png" in names
+        assert "storyboards/shot_1.2.png" not in names
+        assert "reference_kit/repo_leak.png" not in names
+        assert "reference_kit/proxy_leak.png" not in names
