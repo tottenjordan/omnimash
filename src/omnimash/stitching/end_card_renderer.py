@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 import json
 import logging
 import math
@@ -10,8 +11,11 @@ import re
 import subprocess
 import tempfile
 from typing import Any, Literal
+from urllib.parse import parse_qs, unquote, urlparse
 import uuid
+import zipfile
 
+from omnimash.engine.media_loader import validate_local_media_path
 from omnimash.stitching.resolver import resolve_media_source_to_local_path
 from omnimash.stitching.stitcher import HAS_PIL, _get_font
 
@@ -204,6 +208,68 @@ def _write_text_fallback(path: str, content: str) -> str:
     return path
 
 
+def resolve_confined_media_source(
+    source_ref: str | None,
+    temp_dir: str,
+    output_dir: str = "/tmp",
+    storage: Any = None,
+    mock_mode: bool = False,
+) -> str | None:
+    """Unwraps `/api/media-proxy` (up to 3 hops) and resolves confined local, GCS, or remote media."""
+    if not source_ref or not isinstance(source_ref, str):
+        return None
+    raw = source_ref.strip()
+    if not raw:
+        return None
+
+    for _ in range(3):
+        if "/api/media-proxy" in raw and "uri=" in raw:
+            try:
+                qs = parse_qs(urlparse(raw).query)
+                raw = unquote(qs["uri"][0]).strip() if qs.get("uri") else ""
+            except Exception:
+                return None
+        else:
+            break
+    if not raw or "/api/media-proxy" in raw:
+        return None
+
+    allowed_roots = (
+        os.path.realpath("static"),
+        os.path.realpath("/tmp"),
+        os.path.realpath(tempfile.gettempdir()),
+        os.path.realpath(output_dir),
+        os.path.realpath(temp_dir),
+    )
+
+    if not raw.startswith(("gs://", "http://", "https://")):
+        confined = validate_local_media_path(raw, allowed_roots=allowed_roots)
+        if confined:
+            return confined
+        check_candidates = [raw, raw.lstrip("/")] if raw.startswith("/static/") else [raw]
+        in_allowed_root = any(
+            (real_c := os.path.realpath(c)) == root or real_c.startswith(root + os.sep)
+            for c in check_candidates
+            for root in allowed_roots
+        )
+        if mock_mode and in_allowed_root and not os.path.exists(raw) and ".." not in raw:
+            return os.path.abspath(raw)
+        logger.warning("Blocked unconfined or missing local media source: %s", source_ref)
+        return None
+
+    resolved = resolve_media_source_to_local_path(
+        raw,
+        temp_dir=temp_dir,
+        storage=storage,
+        mock_mode=mock_mode,
+    )
+    if resolved:
+        confined_resolved = validate_local_media_path(resolved, allowed_roots=allowed_roots)
+        if confined_resolved:
+            return confined_resolved
+    return None
+
+
 def sanitize_zip_asset_key(raw_key: str, fallback: str = "asset") -> str:
     """Sanitizes user/reference asset keys against Zip Slip and directory traversal."""
     cleaned = (raw_key or "").strip()
@@ -215,14 +281,90 @@ def sanitize_zip_asset_key(raw_key: str, fallback: str = "asset") -> str:
 
 
 def serialize_manifest_field(val: Any) -> Any:
-    """Converts Pydantic models or arbitrary metadata objects into JSON-safe structures."""
+    """Recursively converts Pydantic models and arbitrary metadata containers into JSON-safe structures."""
     if val is None:
         return {}
     if hasattr(val, "model_dump") and callable(val.model_dump):
-        return val.model_dump()
-    if isinstance(val, (dict, list, str, int, float, bool)):
+        try:
+            dumped = val.model_dump(mode="json")
+        except TypeError:
+            dumped = val.model_dump()
+        return serialize_manifest_field(dumped)
+    if isinstance(val, dict):
+        return {
+            str(k): (None if v is None else serialize_manifest_field(v)) for k, v in val.items()
+        }
+    if isinstance(val, (list, tuple)):
+        return [None if item is None else serialize_manifest_field(item) for item in val]
+    if isinstance(val, float):
+        return val if math.isfinite(val) else str(val)
+    if isinstance(val, (str, int, bool)):
         return val
     return str(val)
+
+
+def _unique_arcname(prefix: str, stem: str, ext: str, used: set[str]) -> str:
+    """Returns a collision-free ZIP archive member path using an incrementing `_2`, `_3` suffix."""
+    candidate = f"{prefix}/{stem}{ext}"
+    suffix = 2
+    while candidate in used:
+        candidate = f"{prefix}/{stem}_{suffix}{ext}"
+        suffix += 1
+    return candidate
+
+
+def populate_campaign_zip_archive(
+    local_zip_path: str,
+    deliverable_sources: dict[str, tuple[str, str]],
+    storyboard_frames: dict[str, str] | None,
+    reference_kit: dict[str, str] | None,
+    canonical_subshot_ids: Sequence[str],
+    write_entry_fn: Callable[[zipfile.ZipFile, str, str, str, bytes], bool],
+    temp_dir: str,
+    build_manifest_fn: Callable[[dict[str, str]], dict[str, Any]],
+) -> None:
+    """Writes confined deliverables, collision-free storyboards/refs, and `campaign_manifest.json`."""
+    written_archive_entries: dict[str, str] = {}
+    with zipfile.ZipFile(local_zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for key, (arcname, source_ref) in deliverable_sources.items():
+            if write_entry_fn(
+                zf,
+                source_ref,
+                arcname,
+                temp_dir,
+                f"mock {key} deliverable bytes".encode("utf-8"),
+            ):
+                written_archive_entries[key] = arcname
+
+        used_arcnames: set[str] = set()
+        for raw_shot_id, frame_src in (storyboard_frames or {}).items():
+            if not frame_src:
+                continue
+            cleaned_id = str(raw_shot_id).strip()
+            safe_shot_id = (
+                cleaned_id
+                if cleaned_id in canonical_subshot_ids
+                else sanitize_zip_asset_key(cleaned_id, fallback="shot")
+            )
+            arcname = _unique_arcname("storyboards", f"shot_{safe_shot_id}", ".png", used_arcnames)
+            if write_entry_fn(
+                zf, frame_src, arcname, temp_dir, b"\x89PNG\r\n\x1a\nmock_storyboard"
+            ):
+                used_arcnames.add(arcname)
+
+        for idx, (raw_asset_key, asset_src) in enumerate((reference_kit or {}).items()):
+            if not asset_src:
+                continue
+            safe_key = sanitize_zip_asset_key(str(raw_asset_key), fallback=f"asset_{idx}")
+            arcname = _unique_arcname("reference_kit", safe_key, ".png", used_arcnames)
+            if write_entry_fn(zf, asset_src, arcname, temp_dir, b"\x89PNG\r\n\x1a\nmock_reference"):
+                used_arcnames.add(arcname)
+
+        manifest_payload = build_manifest_fn(written_archive_entries)
+        zf.writestr(
+            "campaign_manifest.json",
+            json.dumps(manifest_payload, indent=2, ensure_ascii=False).encode("utf-8"),
+        )
 
 
 def render_brand_end_card_mp4(
@@ -240,6 +382,15 @@ def render_brand_end_card_mp4(
     ffmpeg_timeout: float = 120.0,
 ) -> str:
     """Renders an editorial brand lockup end-card MP4 clip (`1280x720` or `720x1280`) at 24fps."""
+    if (
+        isinstance(duration_seconds, bool)
+        or not isinstance(duration_seconds, (int, float))
+        or not math.isfinite(duration_seconds)
+        or duration_seconds <= 0.0
+    ):
+        raise ValueError(
+            f"duration_seconds must be a finite positive number, got {duration_seconds!r}."
+        )
     os.makedirs(output_dir, exist_ok=True)
     aspect_slug = "9x16" if aspect_ratio == "9:16" else "16x9"
     out_path = os.path.join(output_dir, f"end_card_{aspect_slug}_{uuid.uuid4().hex[:8]}.mp4")
@@ -264,8 +415,12 @@ def render_brand_end_card_mp4(
         emblem_img: Any = None
         if emblem_path and isinstance(emblem_path, str) and emblem_path.strip():
             with tempfile.TemporaryDirectory() as emblem_tmp:
-                resolved = resolve_media_source_to_local_path(
-                    emblem_path, temp_dir=emblem_tmp, storage=storage, mock_mode=mock_mode
+                resolved = resolve_confined_media_source(
+                    emblem_path,
+                    temp_dir=emblem_tmp,
+                    output_dir=output_dir,
+                    storage=storage,
+                    mock_mode=mock_mode,
                 )
                 if resolved and os.path.isfile(resolved):
                     try:
@@ -553,77 +708,98 @@ def concatenate_normalized_av_segments(
 ) -> str:
     """Concatenates normalized video+audio segments via FFmpeg concat demuxer with re-encode fallback."""
     concat_list_path = os.path.join(temp_dir, f"concat_{uuid.uuid4().hex[:8]}.txt")
-    with open(concat_list_path, "w", encoding="utf-8") as f:
-        for seg in segment_paths:
-            escaped = os.path.abspath(seg).replace("'", "'\\''")
-            f.write(f"file '{escaped}'\n")
-
-    resolved_audio: str | None = None
-    if master_audio_path:
-        resolved_audio = resolve_media_source_to_local_path(
-            master_audio_path, temp_dir=temp_dir, storage=storage, mock_mode=mock_mode
-        )
-        if resolved_audio and os.path.exists(resolved_audio):
-            try:
-                if os.path.getsize(resolved_audio) < 64:
-                    with open(resolved_audio, "rb") as af:
-                        if af.read(64).startswith(b"fallback ducked audio content"):
-                            resolved_audio = None
-            except OSError:
-                pass
-        else:
-            resolved_audio = None
-
-    base_in = ("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list_path)
-    audio_map = ("-map", "0:v:0", "-map", "1:a:0", "-shortest")
-    cmd_copy = (
-        [
-            *base_in,
-            "-i",
-            resolved_audio,
-            "-c:v",
-            "copy",
-            "-af",
-            "apad",
-            "-c:a",
-            "aac",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            *audio_map,
-            output_path,
-        ]
-        if resolved_audio
-        else [*base_in, "-c", "copy", output_path]
-    )
+    temp_audio_to_cleanup: str | None = None
+    out_dir = os.path.dirname(os.path.abspath(output_path)) or "/tmp"
 
     try:
-        res = subprocess.run(cmd_copy, capture_output=True, text=True, timeout=ffmpeg_timeout)
-        if res.returncode != 0:
-            cmd_reencode = (
-                [
-                    *base_in,
-                    "-i",
-                    resolved_audio,
-                    "-af",
-                    "apad",
-                    *_COMMON_AV_ENCODE_ARGS,
-                    *audio_map,
-                    output_path,
-                ]
-                if resolved_audio
-                else [*base_in, *_COMMON_AV_ENCODE_ARGS, output_path]
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            for seg in segment_paths:
+                escaped = os.path.abspath(seg).replace("'", "'\\''")
+                f.write(f"file '{escaped}'\n")
+
+        resolved_audio: str | None = None
+        if master_audio_path:
+            resolved_audio = resolve_confined_media_source(
+                master_audio_path,
+                temp_dir=temp_dir,
+                output_dir=out_dir,
+                storage=storage,
+                mock_mode=mock_mode,
             )
-            res_reencode = subprocess.run(
-                cmd_reencode, capture_output=True, text=True, timeout=ffmpeg_timeout
-            )
-            if res_reencode.returncode != 0:
-                raise RuntimeError(
-                    f"FFmpeg deliverable concatenation failed: {res_reencode.stderr}"
+            if resolved_audio and os.path.exists(resolved_audio):
+                if os.path.realpath(resolved_audio) != os.path.realpath(
+                    master_audio_path
+                ) and os.path.dirname(os.path.realpath(resolved_audio)) == os.path.realpath(
+                    temp_dir
+                ):
+                    temp_audio_to_cleanup = resolved_audio
+                try:
+                    if os.path.getsize(resolved_audio) < 64:
+                        with open(resolved_audio, "rb") as af:
+                            if af.read(64).startswith(b"fallback ducked audio content"):
+                                resolved_audio = None
+                except OSError:
+                    pass
+            else:
+                resolved_audio = None
+
+        base_in = ("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list_path)
+        audio_map = ("-map", "0:v:0", "-map", "1:a:0", "-shortest")
+        cmd_copy = (
+            [
+                *base_in,
+                "-i",
+                resolved_audio,
+                "-c:v",
+                "copy",
+                "-af",
+                "apad",
+                "-c:a",
+                "aac",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                *audio_map,
+                output_path,
+            ]
+            if resolved_audio
+            else [*base_in, "-c", "copy", output_path]
+        )
+
+        try:
+            res = subprocess.run(cmd_copy, capture_output=True, text=True, timeout=ffmpeg_timeout)
+            if res.returncode != 0:
+                cmd_reencode = (
+                    [
+                        *base_in,
+                        "-i",
+                        resolved_audio,
+                        "-af",
+                        "apad",
+                        *_COMMON_AV_ENCODE_ARGS,
+                        *audio_map,
+                        output_path,
+                    ]
+                    if resolved_audio
+                    else [*base_in, *_COMMON_AV_ENCODE_ARGS, output_path]
                 )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"FFmpeg deliverable concatenation timed out after {ffmpeg_timeout} seconds"
-        ) from exc
+                res_reencode = subprocess.run(
+                    cmd_reencode, capture_output=True, text=True, timeout=ffmpeg_timeout
+                )
+                if res_reencode.returncode != 0:
+                    raise RuntimeError(
+                        f"FFmpeg deliverable concatenation failed: {res_reencode.stderr}"
+                    )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"FFmpeg deliverable concatenation timed out after {ffmpeg_timeout} seconds"
+            ) from exc
+    finally:
+        for tmp_file in (concat_list_path, temp_audio_to_cleanup):
+            if tmp_file and os.path.exists(tmp_file):
+                try:
+                    os.remove(tmp_file)
+                except OSError:
+                    pass
     return output_path

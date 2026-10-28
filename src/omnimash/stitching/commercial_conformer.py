@@ -10,35 +10,31 @@ Implements:
 from __future__ import annotations
 
 from collections.abc import Sequence
-import json
 import logging
 import math
 import os
 import re
 import tempfile
 from typing import Any, Literal
-from urllib.parse import parse_qs, unquote, urlparse
 import uuid
 import zipfile
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from omnimash.config import settings
-from omnimash.engine.media_loader import validate_local_media_path
 from omnimash.stitching.audio_overlay import apply_dialogue_audio_ducking
 from omnimash.stitching.end_card_renderer import (
     _contrast_ratio,
     _parse_hex_rgb,
-    _relative_luminance,
     _select_end_card_palette,
     concatenate_normalized_av_segments,
     extract_normalized_subshot_segment,
+    populate_campaign_zip_archive,
     probe_clip_media_info,
     render_brand_end_card_mp4,
-    sanitize_zip_asset_key as _sanitize_zip_asset_key,
+    resolve_confined_media_source,
     serialize_manifest_field as _serialize_manifest_field,
 )
-from omnimash.stitching.resolver import resolve_media_source_to_local_path
 from omnimash.stitching.stitcher import VideoStitcher
 from omnimash.storage.gcs import GcsStorageManager, validate_safe_identifier
 
@@ -143,6 +139,16 @@ class SubShotTrimSpec(BaseModel):
 
     def effective_window(self, act_duration_sec: float = 10.0) -> tuple[float, float]:
         """Returns `(start_sec, duration_sec)` clamped within `[0.0, act_duration_sec]` (`>= 0.5s`)."""
+        if (
+            isinstance(act_duration_sec, bool)
+            or not isinstance(act_duration_sec, (int, float))
+            or not math.isfinite(act_duration_sec)
+            or act_duration_sec < MIN_SUBSHOT_DURATION_SEC
+        ):
+            raise ValueError(
+                f"act_duration_sec must be a finite number >= {MIN_SUBSHOT_DURATION_SEC}s, "
+                f"got {act_duration_sec!r}."
+            )
         max_start = max(0.0, act_duration_sec - MIN_SUBSHOT_DURATION_SEC)
         start = min(max(0.0, self.default_start_sec + self.trim_in_sec), max_start)
         raw_end = self.default_start_sec + self.default_duration_sec - self.trim_out_sec
@@ -196,6 +202,15 @@ def normalize_subshot_specs(
     return [by_id[sid] for sid in CANONICAL_SUBSHOT_IDS]
 
 
+def _unlink_paths_quietly(paths: Sequence[str | None]) -> None:
+    for path in paths:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
 class ConformedDeliverables(BaseModel):
     """Conformed Mode 5 Commercial Soundstage multi-format video deliverables and timeline metadata."""
 
@@ -226,13 +241,10 @@ class CommercialConformer:
             mock_mode if mock_mode is not None else getattr(settings, "mock_mode", False)
         )
         self.storage = storage or GcsStorageManager(
-            bucket_name=bucket_name,
-            mock_mode=self.mock_mode,
+            bucket_name=bucket_name, mock_mode=self.mock_mode
         )
         self.stitcher = stitcher or VideoStitcher(
-            mock_mode=self.mock_mode,
-            bucket_name=bucket_name,
-            storage=self.storage,
+            mock_mode=self.mock_mode, bucket_name=bucket_name, storage=self.storage
         )
 
     @property
@@ -253,18 +265,18 @@ class CommercialConformer:
     ) -> str:
         """Renders an editorial brand lockup end-card MP4 clip (`1280x720` or `720x1280`) at 24fps."""
         return render_brand_end_card_mp4(
-            display_subject=display_subject,
-            display_tagline=display_tagline,
-            primary_hex=primary_hex,
-            secondary_hex=secondary_hex,
-            neutral_hex=neutral_hex,
-            emblem_path=emblem_path,
-            duration_seconds=duration_seconds,
-            aspect_ratio=aspect_ratio,
-            output_dir=output_dir,
-            mock_mode=self.mock_mode,
-            storage=self.storage,
-            ffmpeg_timeout=self._ffmpeg_timeout,
+            display_subject,
+            display_tagline,
+            primary_hex,
+            secondary_hex,
+            neutral_hex,
+            emblem_path,
+            duration_seconds,
+            aspect_ratio,
+            output_dir,
+            self.mock_mode,
+            self.storage,
+            self._ffmpeg_timeout,
         )
 
     def _probe_clip_info(self, clip_path: str) -> tuple[bool, float]:
@@ -282,13 +294,13 @@ class CommercialConformer:
     ) -> str:
         """Extracts a normalized 24fps H.264 + stereo 44.1kHz AAC sub-shot segment."""
         return extract_normalized_subshot_segment(
-            source_clip=source_clip,
-            start_sec=start_sec,
-            duration_sec=duration_sec,
-            aspect_ratio=aspect_ratio,
-            has_audio=has_audio,
-            output_path=output_path,
-            ffmpeg_timeout=self._ffmpeg_timeout,
+            source_clip,
+            start_sec,
+            duration_sec,
+            aspect_ratio,
+            has_audio,
+            output_path,
+            self._ffmpeg_timeout,
         )
 
     def _concatenate_normalized_segments(
@@ -300,13 +312,13 @@ class CommercialConformer:
     ) -> str:
         """Concatenates normalized video+audio segments via FFmpeg concat demuxer with re-encode fallback."""
         return concatenate_normalized_av_segments(
-            segment_paths=segment_paths,
-            output_path=output_path,
-            temp_dir=temp_dir,
-            master_audio_path=master_audio_path,
-            storage=self.storage,
-            mock_mode=self.mock_mode,
-            ffmpeg_timeout=self._ffmpeg_timeout,
+            segment_paths,
+            output_path,
+            temp_dir,
+            master_audio_path,
+            self.storage,
+            self.mock_mode,
+            self._ffmpeg_timeout,
         )
 
     def _upload_deliverable(
@@ -343,61 +355,13 @@ class CommercialConformer:
         mock_fallback_bytes: bytes,
     ) -> bool:
         """Resolves a confined local or GCS media source and writes it into `zf` under `arcname`."""
-        if not source_ref or not isinstance(source_ref, str):
-            return False
-        raw = source_ref.strip()
-        if not raw:
-            return False
-
-        for _ in range(3):
-            if "/api/media-proxy" in raw and "uri=" in raw:
-                try:
-                    qs = parse_qs(urlparse(raw).query)
-                    raw = unquote(qs["uri"][0]).strip() if qs.get("uri") else ""
-                except Exception:
-                    return False
-            else:
-                break
-        if not raw or "/api/media-proxy" in raw:
-            return False
-
-        allowed_roots = (
-            os.path.realpath("static"),
-            os.path.realpath("/tmp"),
-            os.path.realpath(tempfile.gettempdir()),
-            os.path.realpath(output_dir),
-            os.path.realpath(temp_dir),
+        resolved = resolve_confined_media_source(
+            source_ref, temp_dir, output_dir, self.storage, self.mock_mode
         )
-
-        if not raw.startswith(("gs://", "http://", "https://")):
-            confined = validate_local_media_path(raw, allowed_roots=allowed_roots)
-            if confined:
-                zf.write(confined, arcname=arcname)
-                return True
-            check_candidates = [raw, raw.lstrip("/")] if raw.startswith("/static/") else [raw]
-            in_allowed_root = any(
-                (real_c := os.path.realpath(c)) == root or real_c.startswith(root + os.sep)
-                for c in check_candidates
-                for root in allowed_roots
-            )
-            if self.mock_mode and in_allowed_root and not os.path.exists(raw):
-                zf.writestr(arcname, mock_fallback_bytes)
-                return True
-            logger.warning("Skipping unconfined or missing local ZIP media entry: %s", source_ref)
-            return False
-
-        resolved = resolve_media_source_to_local_path(
-            raw,
-            temp_dir=temp_dir,
-            storage=self.storage,
-            mock_mode=self.mock_mode,
-        )
-        if resolved:
-            confined_resolved = validate_local_media_path(resolved, allowed_roots=allowed_roots)
-            if confined_resolved:
-                zf.write(confined_resolved, arcname=arcname)
-                return True
-        if self.mock_mode and raw.startswith("gs://"):
+        if resolved and os.path.isfile(resolved):
+            zf.write(resolved, arcname=arcname)
+            return True
+        if self.mock_mode and resolved:
             zf.writestr(arcname, mock_fallback_bytes)
             return True
         return False
@@ -405,28 +369,33 @@ class CommercialConformer:
     def _has_valid_audio_ref(self, ref: str | None) -> bool:
         return bool(ref and self.stitcher._is_valid_audio_reference(ref))
 
+    def _resolve_confined_audio_ref(
+        self, ref: str | None, temp_dir: str, output_dir: str
+    ) -> str | None:
+        if not self._has_valid_audio_ref(ref):
+            return None
+        return resolve_confined_media_source(
+            ref, temp_dir, output_dir, self.storage, self.mock_mode
+        )
+
     def _resolve_master_audio(
         self,
-        background_music_path: str | None,
-        narrator_audio_path: str | None,
+        safe_bgm: str | None,
+        safe_vo: str | None,
         temp_dir: str,
         fallback_dialogue_path: str | None = None,
     ) -> str | None:
-        has_bgm = self._has_valid_audio_ref(background_music_path)
-        has_vo = self._has_valid_audio_ref(narrator_audio_path)
-        dialogue_src = narrator_audio_path if has_vo else fallback_dialogue_path
-        if has_bgm and background_music_path and dialogue_src:
+        dialogue_src = safe_vo or fallback_dialogue_path
+        if safe_bgm and dialogue_src:
             return apply_dialogue_audio_ducking(
-                music_path=background_music_path,
+                music_path=safe_bgm,
                 dialogue_path=dialogue_src,
                 output_dir=temp_dir,
                 ducking_db=-18.0,
                 mock_mode=self.mock_mode,
                 storage=self.storage,
             )
-        if has_bgm:
-            return background_music_path
-        return narrator_audio_path if has_vo else None
+        return safe_bgm or safe_vo
 
     def conform_all_formats(
         self,
@@ -450,6 +419,15 @@ class CommercialConformer:
             session_id = validate_safe_identifier(session_id, "session_id")
         if project_id is not None:
             project_id = validate_safe_identifier(project_id, "project_id")
+        if (
+            isinstance(end_card_duration_sec, bool)
+            or not isinstance(end_card_duration_sec, (int, float))
+            or not math.isfinite(end_card_duration_sec)
+            or end_card_duration_sec <= 0.0
+        ):
+            raise ValueError(
+                f"end_card_duration_sec must be a finite positive number, got {end_card_duration_sec!r}."
+            )
 
         if not act_clips or not any(isinstance(c, str) and c.strip() for c in act_clips):
             raise ValueError("conform_all_formats requires at least one non-empty act clip.")
@@ -480,164 +458,191 @@ class CommercialConformer:
             s for s in active_specs if s.shot_id in PREFERRED_BUMPER_6S_SUBSHOTS
         ] or active_specs[:2]
 
-        end_card_kwargs: dict[str, Any] = {
-            "display_subject": display_subject,
-            "display_tagline": display_tagline,
-            "primary_hex": primary_hex,
-            "secondary_hex": secondary_hex,
-            "neutral_hex": neutral_hex,
-            "emblem_path": emblem_path,
-        }
-        end_card_16x9 = self.render_brand_end_card_clip(
-            **end_card_kwargs,
-            duration_seconds=safe_end_dur,
-            aspect_ratio="16:9",
-            output_dir=output_dir,
-        )
-        end_card_9x16 = self.render_brand_end_card_clip(
-            **end_card_kwargs,
-            duration_seconds=cutdown_end_dur,
-            aspect_ratio="9:16",
-            output_dir=output_dir,
-        )
-
         uid = uuid.uuid4().hex[:8]
         master_path = os.path.join(output_dir, f"30s_16x9_master_{uid}.mp4")
         cutdown_path = os.path.join(output_dir, f"15s_9x16_cutdown_{uid}.mp4")
         bumper_path = os.path.join(output_dir, f"6s_9x16_bumper_{uid}.mp4")
+        created_outputs: list[str] = [master_path, cutdown_path, bumper_path]
 
-        if self.mock_mode:
-            with tempfile.TemporaryDirectory() as mock_audio_tmp:
-                self._resolve_master_audio(
-                    background_music_path,
-                    narrator_audio_path,
-                    mock_audio_tmp,
-                    fallback_dialogue_path=act_clips[active_specs[0].act_index],
-                )
-
-            total_duration = round(
-                sum(s.effective_window(10.0)[1] for s in active_specs) + safe_end_dur,
-                3,
-            )
-            for out_file, label, selected in (
-                (master_path, "30s_16x9_master", active_specs),
-                (cutdown_path, "15s_9x16_cutdown", cutdown_specs),
-                (bumper_path, "6s_9x16_bumper", bumper_specs),
-            ):
-                ids_csv = ",".join(s.shot_id for s in selected)
-                with open(out_file, "w", encoding="utf-8") as f:
-                    f.write(f"mock {label} mp4 [{ids_csv}]")
-        else:
+        try:
             with tempfile.TemporaryDirectory() as scoped_temp_dir:
                 resolved_acts: dict[int, str] = {}
                 act_info: dict[int, tuple[bool, float]] = {}
                 for act_idx in sorted({s.act_index for s in active_specs}):
-                    resolved = resolve_media_source_to_local_path(
+                    resolved = resolve_confined_media_source(
                         act_clips[act_idx],
                         temp_dir=scoped_temp_dir,
+                        output_dir=output_dir,
                         storage=self.storage,
                         mock_mode=self.mock_mode,
                     )
-                    if not resolved or not os.path.exists(resolved):
+                    if not resolved or (not self.mock_mode and not os.path.isfile(resolved)):
                         raise ValueError(
-                            f"Unable to resolve act clip at index {act_idx}: {act_clips[act_idx]!r}"
+                            f"Unable to resolve confined act clip at index {act_idx}: "
+                            f"{act_clips[act_idx]!r}"
                         )
                     resolved_acts[act_idx] = resolved
-                    act_info[act_idx] = self._probe_clip_info(resolved)
+                    if not self.mock_mode:
+                        act_info[act_idx] = self._probe_clip_info(resolved)
 
-                seg_cache: dict[tuple[str, str, float, float], str] = {}
-
-                def _get_segment(
-                    spec: SubShotTrimSpec,
-                    aspect: Literal["16:9", "9:16"],
-                    max_dur_cap: float | None = None,
-                ) -> tuple[str, float]:
-                    has_aud, act_dur = act_info[spec.act_index]
-                    start_s, dur_s = spec.effective_window(act_duration_sec=act_dur)
-                    if max_dur_cap is not None:
-                        dur_s = round(min(dur_s, max_dur_cap), 3)
-                    cache_key = (spec.shot_id, aspect, start_s, dur_s)
-                    if cache_key not in seg_cache:
-                        seg_name = f"seg_{spec.shot_id.replace('.', '_')}_{aspect.replace(':', 'x')}_{uuid.uuid4().hex[:6]}.mp4"
-                        seg_out = os.path.join(scoped_temp_dir, seg_name)
-                        self._extract_subshot_segment(
-                            source_clip=resolved_acts[spec.act_index],
-                            start_sec=start_s,
-                            duration_sec=dur_s,
-                            aspect_ratio=aspect,
-                            has_audio=has_aud,
-                            output_path=seg_out,
-                        )
-                        seg_cache[cache_key] = seg_out
-                    return (seg_cache[cache_key], dur_s)
-
-                master_pairs = [_get_segment(spec, "16:9") for spec in active_specs]
-                master_segments = [p for p, _ in master_pairs] + [end_card_16x9]
-                total_duration = round(sum(d for _, d in master_pairs) + safe_end_dur, 3)
-
-                cutdown_segments = [_get_segment(spec, "9:16")[0] for spec in cutdown_specs] + [
-                    end_card_9x16
-                ]
-
-                bumper_end_card = (
-                    end_card_9x16
-                    if abs(bumper_end_dur - cutdown_end_dur) < 1e-3
-                    else self.render_brand_end_card_clip(
-                        **end_card_kwargs,
-                        duration_seconds=bumper_end_dur,
-                        aspect_ratio="9:16",
-                        output_dir=scoped_temp_dir,
+                resolved_emblem = (
+                    resolve_confined_media_source(
+                        emblem_path,
+                        temp_dir=scoped_temp_dir,
+                        output_dir=output_dir,
+                        storage=self.storage,
+                        mock_mode=self.mock_mode,
                     )
+                    if emblem_path and isinstance(emblem_path, str) and emblem_path.strip()
+                    else None
                 )
-                bumper_segments = [
-                    _get_segment(spec, "9:16", max_dur_cap=MAX_BUMPER_SUBSHOT_DURATION_SEC)[0]
-                    for spec in bumper_specs
-                ] + [bumper_end_card]
+                end_card_kwargs: dict[str, Any] = {
+                    "display_subject": display_subject,
+                    "display_tagline": display_tagline,
+                    "primary_hex": primary_hex,
+                    "secondary_hex": secondary_hex,
+                    "neutral_hex": neutral_hex,
+                    "emblem_path": resolved_emblem,
+                }
+                end_card_16x9 = self.render_brand_end_card_clip(
+                    **end_card_kwargs,
+                    duration_seconds=safe_end_dur,
+                    aspect_ratio="16:9",
+                    output_dir=output_dir,
+                )
+                created_outputs.append(end_card_16x9)
+                end_card_9x16 = self.render_brand_end_card_clip(
+                    **end_card_kwargs,
+                    duration_seconds=cutdown_end_dur,
+                    aspect_ratio="9:16",
+                    output_dir=output_dir,
+                )
+                created_outputs.append(end_card_9x16)
 
-                has_bgm = self._has_valid_audio_ref(background_music_path)
-                has_vo = self._has_valid_audio_ref(narrator_audio_path)
-                if has_bgm and not has_vo:
-                    raw_master_path = os.path.join(scoped_temp_dir, f"raw_master_{uid}.mp4")
-                    self._concatenate_normalized_segments(
-                        master_segments, raw_master_path, scoped_temp_dir
-                    )
-                    ducked_master_audio = self._resolve_master_audio(
-                        background_music_path,
-                        None,
+                safe_bgm = self._resolve_confined_audio_ref(
+                    background_music_path, scoped_temp_dir, output_dir
+                )
+                safe_vo = self._resolve_confined_audio_ref(
+                    narrator_audio_path, scoped_temp_dir, output_dir
+                )
+
+                if self.mock_mode:
+                    self._resolve_master_audio(
+                        safe_bgm,
+                        safe_vo,
                         scoped_temp_dir,
-                        fallback_dialogue_path=raw_master_path,
+                        fallback_dialogue_path=resolved_acts[active_specs[0].act_index],
                     )
-                    self._concatenate_normalized_segments(
-                        [raw_master_path], master_path, scoped_temp_dir, ducked_master_audio
+                    total_duration = round(
+                        sum(s.effective_window(10.0)[1] for s in active_specs) + safe_end_dur,
+                        3,
                     )
+                    for out_file, label, selected in (
+                        (master_path, "30s_16x9_master", active_specs),
+                        (cutdown_path, "15s_9x16_cutdown", cutdown_specs),
+                        (bumper_path, "6s_9x16_bumper", bumper_specs),
+                    ):
+                        ids_csv = ",".join(s.shot_id for s in selected)
+                        with open(out_file, "w", encoding="utf-8") as f:
+                            f.write(f"mock {label} mp4 [{ids_csv}]")
                 else:
-                    master_audio = self._resolve_master_audio(
-                        background_music_path, narrator_audio_path, scoped_temp_dir
+                    seg_cache: dict[tuple[str, str, float, float], str] = {}
+
+                    def _get_segment(
+                        spec: SubShotTrimSpec,
+                        aspect: Literal["16:9", "9:16"],
+                        max_dur_cap: float | None = None,
+                    ) -> tuple[str, float]:
+                        has_aud, raw_act_dur = act_info[spec.act_index]
+                        act_dur = max(MIN_SUBSHOT_DURATION_SEC, raw_act_dur)
+                        start_s, dur_s = spec.effective_window(act_duration_sec=act_dur)
+                        if max_dur_cap is not None:
+                            dur_s = round(min(dur_s, max_dur_cap), 3)
+                        cache_key = (spec.shot_id, aspect, start_s, dur_s)
+                        if cache_key not in seg_cache:
+                            seg_name = f"seg_{spec.shot_id.replace('.', '_')}_{aspect.replace(':', 'x')}_{uuid.uuid4().hex[:6]}.mp4"
+                            seg_out = os.path.join(scoped_temp_dir, seg_name)
+                            self._extract_subshot_segment(
+                                source_clip=resolved_acts[spec.act_index],
+                                start_sec=start_s,
+                                duration_sec=dur_s,
+                                aspect_ratio=aspect,
+                                has_audio=has_aud,
+                                output_path=seg_out,
+                            )
+                            seg_cache[cache_key] = seg_out
+                        return (seg_cache[cache_key], dur_s)
+
+                    master_pairs = [_get_segment(spec, "16:9") for spec in active_specs]
+                    master_segments = [p for p, _ in master_pairs] + [end_card_16x9]
+                    total_duration = round(sum(d for _, d in master_pairs) + safe_end_dur, 3)
+
+                    cutdown_segments = [_get_segment(spec, "9:16")[0] for spec in cutdown_specs] + [
+                        end_card_9x16
+                    ]
+
+                    bumper_end_card = (
+                        end_card_9x16
+                        if abs(bumper_end_dur - cutdown_end_dur) < 1e-3
+                        else self.render_brand_end_card_clip(
+                            **end_card_kwargs,
+                            duration_seconds=bumper_end_dur,
+                            aspect_ratio="9:16",
+                            output_dir=scoped_temp_dir,
+                        )
+                    )
+                    bumper_segments = [
+                        _get_segment(spec, "9:16", max_dur_cap=MAX_BUMPER_SUBSHOT_DURATION_SEC)[0]
+                        for spec in bumper_specs
+                    ] + [bumper_end_card]
+
+                    if safe_bgm and not safe_vo:
+                        raw_master_path = os.path.join(scoped_temp_dir, f"raw_master_{uid}.mp4")
+                        self._concatenate_normalized_segments(
+                            master_segments, raw_master_path, scoped_temp_dir
+                        )
+                        ducked_master_audio = self._resolve_master_audio(
+                            safe_bgm,
+                            None,
+                            scoped_temp_dir,
+                            fallback_dialogue_path=raw_master_path,
+                        )
+                        self._concatenate_normalized_segments(
+                            [raw_master_path], master_path, scoped_temp_dir, ducked_master_audio
+                        )
+                    else:
+                        master_audio = self._resolve_master_audio(
+                            safe_bgm, safe_vo, scoped_temp_dir
+                        )
+                        self._concatenate_normalized_segments(
+                            master_segments, master_path, scoped_temp_dir, master_audio
+                        )
+                    self._concatenate_normalized_segments(
+                        cutdown_segments, cutdown_path, scoped_temp_dir
                     )
                     self._concatenate_normalized_segments(
-                        master_segments, master_path, scoped_temp_dir, master_audio
+                        bumper_segments, bumper_path, scoped_temp_dir
                     )
-                self._concatenate_normalized_segments(
-                    cutdown_segments, cutdown_path, scoped_temp_dir
-                )
-                self._concatenate_normalized_segments(bumper_segments, bumper_path, scoped_temp_dir)
 
-        local_paths = {
-            "master_30s_16x9": master_path,
-            "cutdown_15s_9x16": cutdown_path,
-            "bumper_6s_9x16": bumper_path,
-            "end_card_16x9": end_card_16x9,
-            "end_card_9x16": end_card_9x16,
-        }
-        urls: dict[str, str] = {}
-        gcs_uris: dict[str, str] = {}
-        for key, lpath in local_paths.items():
-            urls[key], gcs_uris[key] = self._upload_deliverable(
-                local_path=lpath,
-                session_id=session_id,
-                project_id=project_id,
-                content_type="video/mp4",
-            )
+            local_paths = {
+                "master_30s_16x9": master_path,
+                "cutdown_15s_9x16": cutdown_path,
+                "bumper_6s_9x16": bumper_path,
+                "end_card_16x9": end_card_16x9,
+                "end_card_9x16": end_card_9x16,
+            }
+            urls: dict[str, str] = {}
+            gcs_uris: dict[str, str] = {}
+            for key, lpath in local_paths.items():
+                urls[key], gcs_uris[key] = self._upload_deliverable(
+                    local_path=lpath,
+                    session_id=session_id,
+                    project_id=project_id,
+                    content_type="video/mp4",
+                )
+        except Exception:
+            _unlink_paths_quietly(created_outputs)
+            raise
 
         return ConformedDeliverables(
             master_30s_16x9_url=urls["master_30s_16x9"],
@@ -672,20 +677,20 @@ class CommercialConformer:
     ) -> ConformedDeliverables:
         """Re-conforms existing 3 act clips using updated NLE trims and Keep/Bypass overrides without re-filming."""
         return self.conform_all_formats(
-            act_clips=act_clips,
-            display_subject=display_subject,
-            display_tagline=display_tagline,
-            primary_hex=primary_hex,
-            secondary_hex=secondary_hex,
-            neutral_hex=neutral_hex,
-            emblem_path=emblem_path,
-            subshot_specs=subshot_specs,
-            background_music_path=background_music_path,
-            narrator_audio_path=narrator_audio_path,
-            end_card_duration_sec=end_card_duration_sec,
-            output_dir=output_dir,
-            session_id=session_id,
-            project_id=project_id,
+            act_clips,
+            display_subject,
+            display_tagline,
+            primary_hex,
+            secondary_hex,
+            neutral_hex,
+            emblem_path,
+            subshot_specs,
+            background_music_path,
+            narrator_audio_path,
+            end_card_duration_sec,
+            output_dir,
+            session_id,
+            project_id,
         )
 
     def build_campaign_package_zip(
@@ -697,7 +702,7 @@ class CommercialConformer:
         palette_60_30_10: Any = None,
         territory: Any = None,
         executive_brief: Any = None,
-        timed_voiceover: str | list[str] | dict[str, Any] = "",
+        timed_voiceover: str | Sequence[Any] | dict[str, Any] = "",
         storyboard_frames: dict[str, str] | None = None,
         reference_kit: dict[str, str] | None = None,
         social_copy: dict[str, Any] | None = None,
@@ -713,33 +718,31 @@ class CommercialConformer:
             project_id = validate_safe_identifier(project_id, "project_id")
 
         if plan is not None:
-            identity = getattr(plan, "identity", None)
+            ident = getattr(plan, "identity", None)
             display_subject = (
                 display_subject
-                or getattr(identity, "display_subject", "")
+                or getattr(ident, "display_subject", "")
                 or getattr(plan, "subject", "")
             )
             display_offering = (
                 display_offering
-                or getattr(identity, "display_offering", "")
+                or getattr(ident, "display_offering", "")
                 or getattr(plan, "offering", "")
             )
-            display_tagline = display_tagline or getattr(identity, "display_tagline", "")
-            palette_60_30_10 = (
-                palette_60_30_10 if palette_60_30_10 is not None else getattr(plan, "palette", None)
-            )
-            territory = territory if territory is not None else getattr(plan, "territory", None)
-            executive_brief = (
-                executive_brief if executive_brief is not None else getattr(plan, "brief", None)
-            )
+            display_tagline = display_tagline or getattr(ident, "display_tagline", "")
+            if palette_60_30_10 is None:
+                palette_60_30_10 = getattr(plan, "palette", None)
+            if territory is None:
+                territory = getattr(plan, "territory", None)
+            if executive_brief is None:
+                executive_brief = getattr(plan, "brief", None)
             timed_voiceover = timed_voiceover or getattr(plan, "voiceover_full_script", "")
 
         subj_clean = (display_subject or "Campaign").strip() or "Campaign"
         safe_slug = re.sub(r"[^a-z0-9]+", "_", subj_clean.lower()).strip("_")[:40] or "campaign"
         os.makedirs(output_dir, exist_ok=True)
         local_zip_path = os.path.join(
-            output_dir,
-            f"campaign_package_{safe_slug}_{uuid.uuid4().hex[:8]}.zip",
+            output_dir, f"campaign_package_{safe_slug}_{uuid.uuid4().hex[:8]}.zip"
         )
 
         resolved_social = social_copy or {
@@ -751,108 +754,75 @@ class CommercialConformer:
             "bumper_hook": display_tagline or subj_clean,
         }
 
-        archive_entries = {
-            "master_30s_16x9": "deliverables/30s_16x9_master.mp4",
-            "cutdown_15s_9x16": "deliverables/15s_9x16_cutdown.mp4",
-            "bumper_6s_9x16": "deliverables/6s_9x16_bumper.mp4",
-        }
         fallback_urls = {
             "master_30s_16x9": deliverables.master_30s_16x9_url,
             "cutdown_15s_9x16": deliverables.cutdown_15s_9x16_url,
             "bumper_6s_9x16": deliverables.bumper_6s_9x16_url,
         }
-
-        manifest_payload: dict[str, Any] = {
-            "display_subject": subj_clean,
-            "display_offering": display_offering,
-            "display_tagline": display_tagline,
-            "palette_60_30_10": _serialize_manifest_field(palette_60_30_10),
-            "territory": _serialize_manifest_field(territory),
-            "executive_brief": _serialize_manifest_field(executive_brief),
-            "timed_voiceover": timed_voiceover,
-            "subshot_specs": [s.model_dump() for s in deliverables.subshot_specs],
-            "deliverables": {
-                **{f"{k}_url": v for k, v in fallback_urls.items()},
-                "end_card_clip_url": deliverables.end_card_clip_url,
-                "end_card_9x16_url": deliverables.end_card_9x16_url,
-                "gcs_uris": dict(deliverables.gcs_uris),
-                "active_subshot_ids": list(deliverables.active_subshot_ids),
-                "active_subshot_count": deliverables.active_subshot_count,
-                "total_duration_sec": deliverables.total_duration_sec,
-                "archive_entries": archive_entries,
-            },
-            "social_copy": resolved_social,
+        deliverable_sources = {
+            key: (
+                arcname,
+                deliverables.local_paths.get(key)
+                or deliverables.gcs_uris.get(key)
+                or fallback_urls[key],
+            )
+            for key, arcname in (
+                ("master_30s_16x9", "deliverables/30s_16x9_master.mp4"),
+                ("cutdown_15s_9x16", "deliverables/15s_9x16_cutdown.mp4"),
+                ("bumper_6s_9x16", "deliverables/6s_9x16_bumper.mp4"),
+            )
         }
 
-        with tempfile.TemporaryDirectory() as scoped_temp_dir:
-            with zipfile.ZipFile(local_zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                for key, arcname in archive_entries.items():
-                    source_ref = (
-                        deliverables.local_paths.get(key)
-                        or deliverables.gcs_uris.get(key)
-                        or fallback_urls[key]
-                    )
-                    self._write_zip_media_entry(
-                        zf,
-                        source_ref,
-                        arcname,
-                        scoped_temp_dir,
-                        output_dir,
-                        f"mock {key} deliverable bytes".encode("utf-8"),
-                    )
+        def _build_manifest(written_entries: dict[str, str]) -> dict[str, Any]:
+            return {
+                "display_subject": subj_clean,
+                "display_offering": display_offering,
+                "display_tagline": display_tagline,
+                "palette_60_30_10": _serialize_manifest_field(palette_60_30_10),
+                "territory": _serialize_manifest_field(territory),
+                "executive_brief": _serialize_manifest_field(executive_brief),
+                "timed_voiceover": (
+                    "" if not timed_voiceover else _serialize_manifest_field(timed_voiceover)
+                ),
+                "subshot_specs": [s.model_dump() for s in deliverables.subshot_specs],
+                "deliverables": {
+                    **{f"{k}_url": v for k, v in fallback_urls.items()},
+                    "end_card_clip_url": deliverables.end_card_clip_url,
+                    "end_card_9x16_url": deliverables.end_card_9x16_url,
+                    "gcs_uris": dict(deliverables.gcs_uris),
+                    "active_subshot_ids": list(deliverables.active_subshot_ids),
+                    "active_subshot_count": deliverables.active_subshot_count,
+                    "total_duration_sec": deliverables.total_duration_sec,
+                    "archive_entries": written_entries,
+                },
+                "social_copy": _serialize_manifest_field(resolved_social),
+            }
 
-                used_arcnames: set[str] = set()
-                for raw_shot_id, frame_src in (storyboard_frames or {}).items():
-                    if not frame_src:
-                        continue
-                    cleaned_id = str(raw_shot_id).strip()
-                    safe_shot_id = (
-                        cleaned_id
-                        if cleaned_id in CANONICAL_SUBSHOT_IDS
-                        else _sanitize_zip_asset_key(cleaned_id, fallback="shot")
-                    )
-                    arcname = f"storyboards/shot_{safe_shot_id}.png"
-                    if arcname in used_arcnames:
-                        arcname = f"storyboards/shot_{safe_shot_id}_{len(used_arcnames)}.png"
-                    if self._write_zip_media_entry(
-                        zf,
-                        frame_src,
-                        arcname,
-                        scoped_temp_dir,
-                        output_dir,
-                        b"\x89PNG\r\n\x1a\nmock_storyboard",
-                    ):
-                        used_arcnames.add(arcname)
-
-                for idx, (raw_asset_key, asset_src) in enumerate((reference_kit or {}).items()):
-                    if not asset_src:
-                        continue
-                    safe_key = _sanitize_zip_asset_key(str(raw_asset_key), fallback=f"asset_{idx}")
-                    arcname = f"reference_kit/{safe_key}.png"
-                    if arcname in used_arcnames:
-                        arcname = f"reference_kit/{safe_key}_{idx}.png"
-                    if self._write_zip_media_entry(
-                        zf,
-                        asset_src,
-                        arcname,
-                        scoped_temp_dir,
-                        output_dir,
-                        b"\x89PNG\r\n\x1a\nmock_reference",
-                    ):
-                        used_arcnames.add(arcname)
-
-                zf.writestr(
-                    "campaign_manifest.json",
-                    json.dumps(manifest_payload, indent=2, ensure_ascii=False).encode("utf-8"),
+        try:
+            with tempfile.TemporaryDirectory() as scoped_temp_dir:
+                populate_campaign_zip_archive(
+                    local_zip_path=local_zip_path,
+                    deliverable_sources=deliverable_sources,
+                    storyboard_frames=storyboard_frames,
+                    reference_kit=reference_kit,
+                    canonical_subshot_ids=CANONICAL_SUBSHOT_IDS,
+                    write_entry_fn=lambda zf, src, arc, tmp, fb: self._write_zip_media_entry(
+                        zf, src, arc, tmp, output_dir, fb
+                    ),
+                    temp_dir=scoped_temp_dir,
+                    build_manifest_fn=_build_manifest,
                 )
 
-        _, gcs_uri = self._upload_deliverable(
-            local_path=local_zip_path,
-            session_id=session_id,
-            project_id=project_id,
-            content_type="application/zip",
-        )
-        return (local_zip_path, gcs_uri)
+            _, gcs_uri = self._upload_deliverable(
+                local_path=local_zip_path,
+                session_id=session_id,
+                project_id=project_id,
+                content_type="application/zip",
+            )
+            return (local_zip_path, gcs_uri)
+        except Exception:
+            _unlink_paths_quietly((local_zip_path,))
+            raise
 
 
 __all__ = [
@@ -866,7 +836,6 @@ __all__ = [
     "SubShotTrimSpec",
     "_contrast_ratio",
     "_parse_hex_rgb",
-    "_relative_luminance",
     "_select_end_card_palette",
     "build_default_subshot_specs",
     "normalize_subshot_specs",
