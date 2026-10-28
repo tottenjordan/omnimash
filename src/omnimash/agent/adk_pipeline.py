@@ -40,11 +40,14 @@ def preflight_lint_and_repair(
     last_frame_image_url: str | None = None,
     is_seamless_loop: bool = False,
     has_dialogue: bool = False,
+    offering_physics: dict[str, Any] | None = None,
+    palette_60_30_10: dict[str, Any] | None = None,
+    act_number: int | None = None,
 ) -> dict[str, Any]:
-    """Validates and auto-repairs prompt against DOMA Phase 3 directorial invariants using PreFlightGatekeeper.
+    """Validates and auto-repairs prompt against DOMA Phase 3 and Mode 5 Soundstage invariants using PreFlightGatekeeper.
 
     Enforces tag collision repair, keyframe offset adjustments, zero wardrobe redundancy,
-    dual-layer audio ducking, and spatial staging.
+    dual-layer audio ducking, spatial staging, 60/30/10 palette lock, and 3-act causality gates.
     """
     res = PreFlightGatekeeper.lint_and_repair(
         prompt_text=prompt,
@@ -52,6 +55,9 @@ def preflight_lint_and_repair(
         last_frame_image_url=last_frame_image_url,
         is_seamless_loop=is_seamless_loop,
         has_dialogue=has_dialogue,
+        offering_physics=offering_physics,
+        palette_60_30_10=palette_60_30_10,
+        act_number=act_number,
     )
     return {
         "is_valid": res.is_valid,

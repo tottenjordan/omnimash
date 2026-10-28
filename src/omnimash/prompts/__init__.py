@@ -1,6 +1,19 @@
 """Prompt taxonomy and compiler module for OmniMash."""
 
 from omnimash.prompts.character_roles import CharacterRole
+from omnimash.prompts.commercial_planner import (
+    DualLayerIdentityAbstractor,
+    DualLayerIdentitySpec,
+    ExecutiveCreativeBrief,
+    Palette603010,
+    SoundstageActPlan,
+    SoundstageCommercialPlan,
+    SoundstageDiscoveryEngine,
+    SoundstageDiscoveryResult,
+    SoundstageThreeActPlanner,
+    StoryboardTileSpec,
+    TerritoryAtmosphereSpec,
+)
 from omnimash.prompts.compiler import (
     CompiledDeltaPrompt,
     CompiledPromptParts,
@@ -19,6 +32,10 @@ from omnimash.prompts.models import (
     MetaPromptTags,
     PreFlightLintResult,
     PreFlightViolation,
+)
+from omnimash.prompts.offering_physics import (
+    OfferingPhysicsAnalyzer,
+    OfferingPhysicsSpec,
 )
 from omnimash.prompts.parody import sanitize_real_names
 from omnimash.prompts.preflight_linter import PreFlightGatekeeper
@@ -44,7 +61,13 @@ __all__ = [
     "CumulativeShotState",
     "DeconstructedCharacterSchema",
     "DeconstructedConceptSchema",
+    "DualLayerIdentityAbstractor",
+    "DualLayerIdentitySpec",
+    "ExecutiveCreativeBrief",
     "MetaPromptTags",
+    "OfferingPhysicsAnalyzer",
+    "OfferingPhysicsSpec",
+    "Palette603010",
     "PreFlightGatekeeper",
     "PreFlightLintResult",
     "PreFlightViolation",
@@ -52,9 +75,16 @@ __all__ = [
     "PromptOptimizer",
     "PromptTaxonomyEngine",
     "SceneDirective",
+    "SoundstageActPlan",
+    "SoundstageCommercialPlan",
+    "SoundstageDiscoveryEngine",
+    "SoundstageDiscoveryResult",
+    "SoundstageThreeActPlanner",
     "StoryboardAgent",
     "StoryboardShot",
+    "StoryboardTileSpec",
     "StylePreset",
+    "TerritoryAtmosphereSpec",
     "apply_conversational_voice_edits",
     "compile_journey3_shot_prompt",
     "enrich_timeline_dialogue_speakers",
