@@ -1,6 +1,6 @@
-# Mode 5: Commercial Soundstage — Backend Engine & Production Physics
+# Mode 5: Commercial Soundstage — Engine, Physics & Editorial UI
 
-This note documents the architecture, non-obvious multimodal safety/physics invariants, and multi-format post-production design of **Mode 5: Commercial Soundstage** (`src/omnimash/prompts/`, `src/omnimash/stitching/`, `src/omnimash/agent/`, and `src/omnimash/api/routers/soundstage.py`).
+This note documents the architecture, non-obvious multimodal safety/physics invariants, multi-format post-production design, and modular JSX UI partials of **Mode 5: Commercial Soundstage** (`src/omnimash/prompts/`, `src/omnimash/stitching/`, `src/omnimash/agent/`, `src/omnimash/api/routers/soundstage.py`, `src/omnimash/api/ui_loader.py`, and `src/omnimash/api/templates/soundstage_*.jsx`).
 
 ---
 
@@ -49,3 +49,18 @@ Gemini Omni Flash (`gemini-omni-1.1-flash`, `location="global"`) enforces strict
   - `POST /api/soundstage/discover`, `POST /api/soundstage/plan`, `POST /api/soundstage/cast`, `POST /api/soundstage/boards`, `POST /api/soundstage/run`
   - `GET /api/soundstage/{run_id}/events` (non-blocking `asyncio.to_thread` SSE stream) & `GET /api/soundstage/{run_id}/status`
   - `POST /api/soundstage/{run_id}/revise` (Lock & Isolate single-act `PromptRefiner` re-cut), `POST /api/soundstage/{run_id}/reconform` (0-call FFmpeg NLE trim/bypass), `POST /api/soundstage/{run_id}/variations` (`fork_session` across `"place" | "cast" | "offering"`), and `GET /api/soundstage/{run_id}/package.zip`.
+
+---
+
+## 5. Editorial Soundstage UI & Modular JSX Partial Splicing
+
+Mode 5 (`studioMode === "soundstage"`) adds a 10-step editorial intake (with 1-step Express toggle, interactive SVG territory map, auto-contrast emblem plate, and 60/30/10 palette editor), a 7-stage production rail (`1. Brief` → `2. World` → `3. Story` → `4. Cast Gate` → `5. 3×3 Boards` → `6. Filming` → `7. Premiere`), and a `30s/15s/6s` Premiere room with `1.1–3.3` NLE sub-shot trimming, single-line `Director Note` re-cuts, multi-axis session-forked `Variations`, `.zip` Campaign Package download, and 1-click Mode 2/3 promotion.
+
+### Non-Obvious UI & Browser Test Invariants
+1. **Modular JSX Partial Splicing (`src/omnimash/api/ui_loader.py`):** `tests/api/test_projects_security.py` enforces `< 120` lines on `src/omnimash/api/app.py`, while `tests/api/test_app.py` renders `UI_HTML` standalone over `file://` without a web server. `ui_loader.py` splices `_SOUNDSTAGE_JSX_PARTIALS` (`soundstage_shared.jsx`, `soundstage_intake.jsx`, `soundstage_production.jsx`, `soundstage_premiere.jsx`) into `templates/index.html` at `/* __SOUNDSTAGE_STUDIO_COMPONENTS__ */`, keeping `app.py` compact and `UI_HTML` 100% self-contained.
+2. **JSX Tag-Balance Scanner Rules (`test_ui_html_syntax_and_tag_balance`):**
+   - Every void/SVG tag outside `img,input,br,hr,meta,link` (`<svg>`, `<rect />`, `<path />`, `<circle />`, `<g>`) must self-close with `/>` or close explicitly.
+   - Never place raw `>` or `>=` inside JSX `<Tag ...>` attributes (precompute comparisons in `const` bindings before JSX, and construct regexes containing `/` or `>` via `new RegExp(...)`).
+   - Never nest backtick template literals inside backtick template literals.
+3. **Synchronous Switch Styling (`.sstage-switch[aria-checked]`):** Tailwind Play CDN compiles dynamic utility classes asynchronously via `MutationObserver`; driving switch track background and thumb `transform` off `.sstage-switch[aria-checked="true"]` in `index.html` `<style>` guarantees 0ms visual + ARIA state parity.
+4. **Deterministic `EventSource` Teardown:** `attachSoundstageFilmingMonitor` (`soundstage_production.jsx`) calls `es.close()` synchronously upon receiving server-terminated `complete`, `idle`, `timeout`, or payload-bearing `error` SSE frames before reconciling `/api/soundstage/{run_id}/status`, preventing native 3-second `EventSource` auto-reconnect loops.
