@@ -252,15 +252,218 @@ def deconstruct_screenplay_with_adk(
     return shots
 
 
+SOUNDSTAGE_PHYSICS_DEFAULT_INSTRUCTION = (
+    "You are the Mode 5 Commercial Soundstage Offering Physics & Brand DNA Agent for OmniMash. "
+    "Your responsibility is to deduce first-principles physical scale, human-offering ergonomic roles, "
+    "surface branding constraints, thermal equilibrium states, 3-act temporal causality laws, "
+    "60/30/10 architectural palette color locks, and Dual-Layer brand/cast trademark abstractions."
+)
+
+SOUNDSTAGE_PLANNER_DEFAULT_INSTRUCTION = (
+    "You are the Mode 5 Commercial Soundstage Three-Act Planner Agent for OmniMash. "
+    "Your responsibility is to architect a 30-second 3-act x 3-beat (9-tile) commercial spot plan "
+    "and compile trademark-scrubbed 4-Block Meta-Prompt act directives "
+    "(`### INPUT ROLES & REFERENCES`, `### CHARACTER PROFILES`, `### SCENE INSTRUCTIONS`, `### TIMELINE`) "
+    f"for Gemini Omni Flash ({settings.omni_model_id}).\n\n"
+    "Enforce strict 60/30/10 production design palette lock, 3-act temporal causality gates "
+    "(Act 1 pre-interaction empty-handed anticipation, Act 2 tactile first contact + 100mm human-free "
+    "craft macro + signature reaction, Act 3 post-experience payoff + motionless solo hero packshot), "
+    "dual-keyframe slot offsets (@Image3/@Image4), and pre-flight validation via preflight_lint_and_repair.\n\n"
+    f"{GEMINI_OMNI_FLASH_INSTR}"
+)
+
+KIT_AND_BOARDS_WORKER_DEFAULT_INSTRUCTION = (
+    "You are the Mode 5 Reference Kit & 9-Tile Storyboard Worker Agent for OmniMash. "
+    "Your responsibility is to synthesize stylized 2K multi-panel character turnaround reference sheets, "
+    "abstract geometric emblem marks, 1:1 hero offering packshots, and all 9 dual-keyframe storyboard plates "
+    "(`1.1` through `3.3`), strictly isolating human-free (`has_person=False`) plates (`1.3`, `2.2`, `3.3`) "
+    "from cast reference bleed."
+)
+
+SOUNDSTAGE_ACT_WORKER_DEFAULT_INSTRUCTION = (
+    "You are the Mode 5 Soundstage Act Execution Worker Agent for OmniMash. "
+    "Your responsibility is to film continuous 10-second commercial Act #{act_idx} with native synchronized "
+    "voiceover, foley, and ducked instrumental score using Gemini Omni Flash ({omni_model_id}) anchored by "
+    "<FIRST_FRAME>, <LAST_FRAME>, and compiled 4-Block Meta-Prompt specifications."
+)
+
+COMMERCIAL_CONFORMER_DEFAULT_INSTRUCTION = (
+    "You are the Mode 5 Commercial Conformer Agent for OmniMash. "
+    "Your responsibility is to conform rendered 10-second continuous act clips with sub-shot NLE trims, "
+    "-18dB dialogue audio ducking, and WCAG contrast-verified editorial brand lockup end-cards into "
+    "30s 16:9 Master, 15s 9:16 Cutdown, and 6s 9:16 Bumper deliverables plus campaign archive packages."
+)
+
+DOMA_COMMERCIAL_CRITIC_DEFAULT_INSTRUCTION = (
+    "You are the Mode 5 DOMA Commercial Critic Agent for OmniMash. "
+    "Your responsibility is to evaluate conformed commercial Soundstage deliverables across 4 rubric "
+    "dimensions: 3-act temporal causality & video-text adherence, cast/offering reference likeness, "
+    "-18dB audio ducking harmony, and ordinal tag/index symmetry."
+)
+
+
+def create_soundstage_physics_agent(
+    name: str = "soundstage_physics_and_dna",
+    model: str | None = None,
+    instruction: str | None = None,
+    tools: list | None = None,
+) -> Agent:
+    """Creates a Google ADK Agent for Mode 5 offering physics deduction and brand DNA discovery."""
+    effective_instruction = instruction or SOUNDSTAGE_PHYSICS_DEFAULT_INSTRUCTION
+    return Agent(
+        name=name,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
+        instruction=effective_instruction,
+        tools=tools or [],
+    )
+
+
+def create_soundstage_planner_agent(
+    name: str = "soundstage_three_act_planner",
+    model: str | None = None,
+    instruction: str | None = None,
+    tools: list | None = None,
+) -> Agent:
+    """Creates a Google ADK Agent for Mode 5 3-act x 3-beat commercial planning and 4-Block compilation."""
+    effective_instruction = instruction or SOUNDSTAGE_PLANNER_DEFAULT_INSTRUCTION
+    effective_tools = tools if tools is not None else [preflight_lint_and_repair]
+    return Agent(
+        name=name,
+        model=model or getattr(settings, "pro_model_id", "gemini-4-argon"),
+        instruction=effective_instruction,
+        tools=effective_tools,
+    )
+
+
+def create_kit_and_boards_worker_agent(
+    name: str = "kit_and_boards_worker",
+    model: str | None = None,
+    instruction: str | None = None,
+    tools: list | None = None,
+) -> Agent:
+    """Creates a Google ADK Agent for Mode 5 reference kit synthesis and 9-tile storyboard generation."""
+    effective_instruction = instruction or KIT_AND_BOARDS_WORKER_DEFAULT_INSTRUCTION
+    return Agent(
+        name=name,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
+        instruction=effective_instruction,
+        tools=tools or [],
+    )
+
+
+def create_soundstage_act_worker(
+    act_idx: int,
+    name: str | None = None,
+    model: str | None = None,
+    instruction: str | None = None,
+    tools: list | None = None,
+) -> Agent:
+    """Creates a Google ADK Agent for filming a single 10-second continuous Mode 5 commercial act."""
+    effective_name = name or f"soundstage_act_worker_{act_idx}"
+    omni_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash")
+    effective_instruction = instruction or SOUNDSTAGE_ACT_WORKER_DEFAULT_INSTRUCTION.format(
+        act_idx=act_idx,
+        omni_model_id=omni_id,
+    )
+    return Agent(
+        name=effective_name,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
+        instruction=effective_instruction,
+        tools=tools or [],
+    )
+
+
+def create_commercial_conformer_agent(
+    name: str = "commercial_conformer",
+    model: str | None = None,
+    instruction: str | None = None,
+    tools: list | None = None,
+) -> Agent:
+    """Creates a Google ADK Agent for Mode 5 post-production conforming and multi-format deliverables."""
+    effective_instruction = instruction or COMMERCIAL_CONFORMER_DEFAULT_INSTRUCTION
+    return Agent(
+        name=name,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
+        instruction=effective_instruction,
+        tools=tools or [],
+    )
+
+
+def create_doma_commercial_critic_agent(
+    name: str = "doma_commercial_critic",
+    model: str | None = None,
+    instruction: str | None = None,
+    tools: list | None = None,
+) -> Agent:
+    """Creates a Google ADK Agent for Mode 5 DOMA commercial video evaluation."""
+    effective_instruction = instruction or DOMA_COMMERCIAL_CRITIC_DEFAULT_INSTRUCTION
+    return Agent(
+        name=name,
+        model=model or getattr(settings, "flash_model_id", "gemini-3.8-flash"),
+        instruction=effective_instruction,
+        tools=tools or [],
+    )
+
+
+def build_soundstage_commercial_workflow(num_acts: int = 3) -> Workflow:
+    """Builds the Mode 5 Commercial Soundstage multi-agent DAG as an ADK 2.11+ Workflow.
+
+    Architecture (DAG):
+      START -> soundstage_physics_and_dna -> soundstage_three_act_planner -> kit_and_boards_worker
+             -> [soundstage_act_worker_1 .. soundstage_act_worker_{num_acts} in parallel]
+             -> JoinNode(name="acts_execution_join") -> commercial_conformer -> doma_commercial_critic
+    """
+    if isinstance(num_acts, bool) or not isinstance(num_acts, int) or num_acts < 1:
+        raise ValueError(f"num_acts must be an integer >= 1, got {num_acts!r}.")
+
+    physics_agent = create_soundstage_physics_agent()
+    planner_agent = create_soundstage_planner_agent()
+    kit_and_boards = create_kit_and_boards_worker_agent()
+    act_workers = [create_soundstage_act_worker(act_idx=i) for i in range(1, num_acts + 1)]
+    acts_join = JoinNode(name="acts_execution_join")
+    conformer = create_commercial_conformer_agent()
+    critic = create_doma_commercial_critic_agent()
+
+    edges: list[tuple[Any, Any]] = [
+        (START, physics_agent),
+        (physics_agent, planner_agent),
+        (planner_agent, kit_and_boards),
+    ]
+    for worker in act_workers:
+        edges.append((kit_and_boards, worker))
+    for worker in act_workers:
+        edges.append((worker, acts_join))
+    edges.append((acts_join, conformer))
+    edges.append((conformer, critic))
+
+    return Workflow(
+        name="soundstage_commercial_orchestrator",
+        edges=edges,
+    )
+
+
 __all__ = [
+    "COMMERCIAL_CONFORMER_DEFAULT_INSTRUCTION",
+    "DOMA_COMMERCIAL_CRITIC_DEFAULT_INSTRUCTION",
     "INTENT_CLARIFIER_DEFAULT_INSTRUCTION",
+    "KIT_AND_BOARDS_WORKER_DEFAULT_INSTRUCTION",
+    "SOUNDSTAGE_ACT_WORKER_DEFAULT_INSTRUCTION",
+    "SOUNDSTAGE_PHYSICS_DEFAULT_INSTRUCTION",
+    "SOUNDSTAGE_PLANNER_DEFAULT_INSTRUCTION",
     "STORYBOARD_COMPILER_DEFAULT_INSTRUCTION",
     "build_production_orchestrator",
+    "build_soundstage_commercial_workflow",
     "create_adk_agent_tool_pipeline",
+    "create_commercial_conformer_agent",
+    "create_doma_commercial_critic_agent",
     "create_final_cut_stitcher_agent",
     "create_intent_clarifier_agent",
+    "create_kit_and_boards_worker_agent",
     "create_script_deconstructor_agent",
     "create_shot_execution_worker",
+    "create_soundstage_act_worker",
+    "create_soundstage_physics_agent",
+    "create_soundstage_planner_agent",
     "create_storyboard_compiler_agent",
     "deconstruct_screenplay_with_adk",
     "preflight_lint_and_repair",
