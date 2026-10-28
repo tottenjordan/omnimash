@@ -22,6 +22,7 @@ from omnimash.api.routers import (
     projects as projects_router,
     scenes_vault as scenes_vault_router,
     share as share_router,
+    soundstage as soundstage_router,
     storyboard as storyboard_router,
 )
 
@@ -95,6 +96,7 @@ def create_app(mock_mode: bool | None = None) -> FastAPI:
     app.include_router(evaluation_router.router)
     app.include_router(share_router.router)
     app.include_router(intent_router.router)
+    app.include_router(soundstage_router.router)
 
     return app
 

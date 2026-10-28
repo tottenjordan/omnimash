@@ -21,6 +21,7 @@ from typing import Any
 
 from omnimash.prompts.character_roles import normalize_character_role
 from omnimash.prompts.models import PreFlightLintResult, PreFlightViolation
+from omnimash.prompts.soundstage_preflight import repair_soundstage_physics_and_causality
 
 
 class PreFlightGatekeeper:
@@ -839,6 +840,22 @@ class PreFlightGatekeeper:
         return repaired_prompt, violations
 
     @classmethod
+    def repair_offering_physics_and_causality(
+        cls,
+        prompt_text: str,
+        offering_physics: Any | None = None,
+        palette_60_30_10: Any | None = None,
+        act_number: int | None = None,
+    ) -> tuple[str, list[PreFlightViolation]]:
+        """Enforces Mode 5 clean-frame no-text, 60/30/10 hex lock, 3-act causality gates, and thermal physics."""
+        return repair_soundstage_physics_and_causality(
+            prompt_text=prompt_text,
+            offering_physics=offering_physics,
+            palette_60_30_10=palette_60_30_10,
+            act_number=act_number,
+        )
+
+    @classmethod
     def lint_and_repair(
         cls,
         prompt_text: str,
@@ -847,15 +864,19 @@ class PreFlightGatekeeper:
         last_frame_image_url: str | None = None,
         is_seamless_loop: bool = False,
         has_dialogue: bool = False,
+        offering_physics: Any | None = None,
+        palette_60_30_10: Any | None = None,
+        act_number: int | None = None,
     ) -> PreFlightLintResult:
         """Main entry point for Pre-Flight Gatekeeper.
 
-        Sequentially applies all 5 invariant repair passes:
+        Sequentially applies all 6 invariant repair passes:
         1. Tag collisions (stacked tags, duplicate @Image, phantom tokens)
         2. Keyframe offsets (auto-shifting character @Image indices)
         3. Zero Wardrobe Redundancy (scrubbing conflicting clothing prose)
         4. Audio ducking (instrumental prefix + canonical ducking clause)
         5. Spatial staging (screen-left / screen-right separation for multiple characters)
+        6. Offering physics, 60/30/10 palette lock & 3-act temporal causality gates
         """
         all_violations: list[PreFlightViolation] = []
         current_text = prompt_text
@@ -885,6 +906,15 @@ class PreFlightGatekeeper:
         # Pass 5: Spatial Staging
         current_text, v5 = cls.repair_spatial_staging(current_text, characters=characters)
         all_violations.extend(v5)
+
+        # Pass 6: Offering Physics, 60/30/10 Palette Lock & Temporal Causality
+        current_text, v6 = cls.repair_offering_physics_and_causality(
+            current_text,
+            offering_physics=offering_physics,
+            palette_60_30_10=palette_60_30_10,
+            act_number=act_number,
+        )
+        all_violations.extend(v6)
 
         invariants_applied = list(dict.fromkeys(v.rule_id for v in all_violations))
         is_valid = len(all_violations) == 0
