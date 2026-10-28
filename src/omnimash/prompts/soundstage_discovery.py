@@ -9,7 +9,6 @@ Implements:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from typing import Any
@@ -22,7 +21,10 @@ from omnimash.prompts.offering_physics import (
     OfferingArchetype,
     OfferingPhysicsAnalyzer,
     OfferingPhysicsSpec,
+    clean_json_str,
     extract_brand_scrub_tokens,
+    parse_json_dict_safely,
+    sanitize_single_line_field,
     scrub_offering_trademarks,
 )
 from omnimash.prompts.parody import sanitize_real_names
@@ -30,6 +32,8 @@ from omnimash.prompts.parody import sanitize_real_names
 logger = logging.getLogger(__name__)
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_UNICODE_LETTERS_RE = re.compile(r"[^\W_\d]+")
+_UNICODE_NAME_TOK_RE = re.compile(r"[^\W_\d]{2,}")
 
 _SAFE_ROLE_HANDLES: tuple[str, ...] = (
     "Architect",
@@ -149,29 +153,39 @@ class DualLayerIdentityAbstractor:
         subject: str,
         offering: str,
     ) -> str:
-        default_handle = _ARCHETYPE_DEFAULT_HANDLE.get(physics.archetype, "Vanguard")
-        if not lead_name or not lead_name.strip():
-            return default_handle
-
-        raw = lead_name.strip()
-        sanitized = sanitize_real_names(raw)
         brand_tokens_lower = {
             t.lower() for t in extract_brand_scrub_tokens(subject=subject, offering=offering)
         }
 
+        def _non_brand_handle(candidate: str) -> str:
+            if candidate and candidate.lower() not in brand_tokens_lower:
+                return candidate
+            for safe_h in _SAFE_ROLE_HANDLES:
+                if safe_h.lower() not in brand_tokens_lower:
+                    return safe_h
+            return "Protagonist"
+
+        raw_default = _ARCHETYPE_DEFAULT_HANDLE.get(physics.archetype, "Vanguard")
+        default_handle = _non_brand_handle(raw_default)
+
+        raw = sanitize_single_line_field(lead_name)
+        if not raw:
+            return default_handle
+
+        sanitized = sanitize_real_names(raw)
         if sanitized != raw:
             san_lower = sanitized.lower()
             if "chef" in san_lower or "culinary" in san_lower:
-                return "Chef"
+                return _non_brand_handle("Chef")
             if "wizard" in san_lower or "potion" in san_lower or "sorcerer" in san_lower:
-                return "Alchemist"
+                return _non_brand_handle("Alchemist")
             if "rap" in san_lower or "pop" in san_lower or "melodic" in san_lower:
-                return "Maestro"
+                return _non_brand_handle("Maestro")
             if "entrepreneur" in san_lower or "executive" in san_lower or "statesman" in san_lower:
-                return "Founder"
+                return _non_brand_handle("Founder")
             return default_handle
 
-        words = re.findall(r"[A-Za-z]+", raw)
+        words = _UNICODE_LETTERS_RE.findall(raw)
         if not words:
             return default_handle
 
@@ -182,13 +196,24 @@ class DualLayerIdentityAbstractor:
                 return safe_lookup[w_low]
 
         if len(words) == 1 and len(words[0]) >= 3 and words[0].lower() not in brand_tokens_lower:
-            return words[0].capitalize()
+            return _non_brand_handle(words[0].capitalize())
 
-        fallback_pool = ("Vanguard", "Architect", "Curator", "Artisan", "Navigator", "Nomad")
-        if default_handle not in fallback_pool:
+        fallback_pool = tuple(
+            h
+            for h in ("Vanguard", "Architect", "Curator", "Artisan", "Navigator", "Nomad")
+            if h.lower() not in brand_tokens_lower
+        )
+        if not fallback_pool or raw_default not in (
+            "Vanguard",
+            "Architect",
+            "Curator",
+            "Artisan",
+            "Navigator",
+            "Nomad",
+        ):
             return default_handle
         checksum = sum(ord(ch) for ch in raw)
-        return fallback_pool[checksum % len(fallback_pool)]
+        return _non_brand_handle(fallback_pool[checksum % len(fallback_pool)])
 
     @classmethod
     def abstract(
@@ -202,11 +227,20 @@ class DualLayerIdentityAbstractor:
         tagline: str | None = None,
     ) -> DualLayerIdentitySpec:
         """Preserves exact display names for UI/end-cards while scrubbing Omni-safe descriptors."""
-        display_subject = (subject or "").strip() or physics.subject or "Artisan Studio"
-        display_offering = (offering or "").strip() or physics.offering or "Signature Edition"
+        display_subject = (
+            sanitize_single_line_field(subject)
+            or sanitize_single_line_field(physics.subject)
+            or "Artisan Studio"
+        )
+        display_offering = (
+            sanitize_single_line_field(offering)
+            or sanitize_single_line_field(physics.offering)
+            or "Signature Edition"
+        )
         display_tagline = (
-            tagline or ""
-        ).strip() or f"Crafted for the quiet pulse of {display_offering}."
+            sanitize_single_line_field(tagline)
+            or f"Crafted for the quiet pulse of {display_offering}."
+        )
 
         cast_handle = cls._derive_single_word_cast_handle(
             lead_name=lead_name,
@@ -224,17 +258,21 @@ class DualLayerIdentityAbstractor:
             raw_offering_desc, subject=display_subject, offering=display_offering
         )
 
-        wardrobe_clause = (lead_wardrobe or "").strip()
+        wardrobe_clause = sanitize_single_line_field(lead_wardrobe)
         if wardrobe_clause:
             wardrobe_clause = scrub_offering_trademarks(
                 wardrobe_clause, subject=display_subject, offering=display_offering
             )
         if lead_name and lead_name.strip():
-            for name_tok in re.findall(r"[A-Za-z]{2,}", lead_name):
+            for name_tok in _UNICODE_NAME_TOK_RE.findall(lead_name):
                 if name_tok.lower() != cast_handle.lower():
                     wardrobe_clause = re.sub(
-                        rf"\b{re.escape(name_tok)}\b", "", wardrobe_clause, flags=re.IGNORECASE
+                        rf"(?<![^\W_]){re.escape(name_tok)}(?![^\W_])",
+                        "",
+                        wardrobe_clause,
+                        flags=re.IGNORECASE,
                     ).strip()
+                    wardrobe_clause = re.sub(r"[ \t]{2,}", " ", wardrobe_clause)
 
         if not wardrobe_clause:
             wardrobe_clause = (
@@ -351,7 +389,7 @@ SPOKEN_LANGUAGES: list[dict[str, str]] = [
 
 def resolve_territory(territory_hint: str) -> TerritoryAtmosphereSpec:
     """Resolves a territory hint into a curated or synthesized TerritoryAtmosphereSpec."""
-    hint_clean = (territory_hint or "").strip()
+    hint_clean = sanitize_single_line_field(territory_hint)
     if not hint_clean:
         return CURATED_TERRITORIES["tokyo"]
 
@@ -483,17 +521,7 @@ def invoke_flash_json_dict(genai_client: Any, prompt: str) -> dict[str, Any] | N
     except TypeError:
         resp = genai_client.models.generate_content(model=model_id, contents=prompt)
 
-    raw_text = (getattr(resp, "text", "") or "").strip()
-    if not raw_text:
-        return None
-    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, flags=re.DOTALL)
-    candidate = fence_match.group(1) if fence_match else raw_text
-    if not fence_match:
-        start, end = candidate.find("{"), candidate.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            candidate = candidate[start : end + 1]
-    parsed = json.loads(candidate)
-    return parsed if isinstance(parsed, dict) else None
+    return parse_json_dict_safely(getattr(resp, "text", "") or "")
 
 
 class SoundstageDiscoveryEngine:
@@ -519,7 +547,7 @@ class SoundstageDiscoveryEngine:
         offering_hint: str,
         archetype: OfferingArchetype,
     ) -> list[dict[str, str]]:
-        primary_name = (offering_hint or "").strip() or f"{subject} Signature Edition"
+        primary_name = sanitize_single_line_field(offering_hint) or f"{subject} Signature Edition"
         if archetype == "OWNED_MOTOR_VEHICLE":
             return [
                 {
@@ -617,20 +645,24 @@ class SoundstageDiscoveryEngine:
         custom_dna: str = "",
     ) -> SoundstageDiscoveryResult:
         """Executes deterministic + optional Gemini Flash enriched 10-step Soundstage discovery."""
-        subj_clean = (subject or "").strip() or "Artisan Studio"
-        primary_territory = resolve_territory(territory_hint)
+        subj_clean = sanitize_single_line_field(subject) or "Artisan Studio"
+        off_hint_clean = sanitize_single_line_field(offering_hint)
+        terr_hint_clean = sanitize_single_line_field(territory_hint)
+        dna_clean = sanitize_single_line_field(custom_dna)
+
+        primary_territory = resolve_territory(terr_hint_clean)
         physics = self._physics_analyzer.analyze(
             subject=subj_clean,
-            offering=offering_hint or f"{subj_clean} Signature Edition",
+            offering=off_hint_clean or f"{subj_clean} Signature Edition",
             territory=primary_territory.place_name,
         )
         palette = select_palette_for_archetype(physics.archetype)
         tagline = f"Precision crafted for the quiet pulse of {primary_territory.place_name.split('·')[0].strip()}."
-        if custom_dna and custom_dna.strip():
-            tagline = f"Designed around {custom_dna.strip().rstrip('.')}."
+        if dna_clean:
+            tagline = f"Designed around {dna_clean.rstrip('.')}."
 
         suggested_offerings = self._build_suggested_offerings(
-            subject=subj_clean, offering_hint=offering_hint, archetype=physics.archetype
+            subject=subj_clean, offering_hint=off_hint_clean, archetype=physics.archetype
         )
         territories: list[TerritoryAtmosphereSpec] = [primary_territory]
         for spec in CURATED_TERRITORIES.values():
@@ -643,7 +675,7 @@ class SoundstageDiscoveryEngine:
                 enrich_prompt = (
                     "Return ONLY a JSON object for a 30-second commercial soundstage discovery intake.\n"
                     f"Subject: {subj_clean} | Offering: {physics.offering} | "
-                    f"Territory Hint: {primary_territory.place_name} | Creative DNA: {custom_dna}\n"
+                    f"Territory Hint: {primary_territory.place_name} | Creative DNA: {dna_clean}\n"
                     "Required JSON keys:\n"
                     "- tagline: crisp commercial tagline (max 10 words)\n"
                     "- palette: {primary_hex, primary_name, secondary_hex, secondary_name, neutral_hex, neutral_name}\n"
@@ -653,7 +685,7 @@ class SoundstageDiscoveryEngine:
                 )
                 parsed = invoke_flash_json_dict(self._genai_client, enrich_prompt)
                 if parsed:
-                    cand_tag = str(parsed.get("tagline", "")).strip()
+                    cand_tag = clean_json_str(parsed.get("tagline"))
                     if 4 <= len(cand_tag) <= 100:
                         tagline = cand_tag
                     cand_pal = parsed.get("palette")
@@ -664,18 +696,15 @@ class SoundstageDiscoveryEngine:
                             pass
                     cand_off = parsed.get("suggested_offerings")
                     if isinstance(cand_off, list):
-                        valid_off = [
-                            {
-                                "name": str(item["name"]).strip(),
-                                "category": str(item["category"]).strip(),
-                                "description": str(item["description"]).strip(),
-                            }
-                            for item in cand_off
-                            if isinstance(item, dict)
-                            and str(item.get("name", "")).strip()
-                            and str(item.get("category", "")).strip()
-                            and str(item.get("description", "")).strip()
-                        ]
+                        valid_off: list[dict[str, str]] = []
+                        for item in cand_off:
+                            if not isinstance(item, dict):
+                                continue
+                            n = clean_json_str(item.get("name"))
+                            c = clean_json_str(item.get("category"))
+                            d = clean_json_str(item.get("description"))
+                            if n and c and d:
+                                valid_off.append({"name": n, "category": c, "description": d})
                         if valid_off:
                             for fb_item in suggested_offerings:
                                 if len(valid_off) >= 3:
@@ -699,16 +728,14 @@ class SoundstageDiscoveryEngine:
                             territories = valid_terr
                     cand_mom = parsed.get("cultural_moments")
                     if isinstance(cand_mom, list):
-                        valid_mom = [
-                            {
-                                "title": str(item["title"]).strip(),
-                                "description": str(item["description"]).strip(),
-                            }
-                            for item in cand_mom
-                            if isinstance(item, dict)
-                            and str(item.get("title", "")).strip()
-                            and str(item.get("description", "")).strip()
-                        ]
+                        valid_mom: list[dict[str, str]] = []
+                        for item in cand_mom:
+                            if not isinstance(item, dict):
+                                continue
+                            t = clean_json_str(item.get("title"))
+                            d = clean_json_str(item.get("description"))
+                            if t and d:
+                                valid_mom.append({"title": t, "description": d})
                         if valid_mom:
                             for fb_m in cultural_moments:
                                 if len(valid_mom) >= 3:

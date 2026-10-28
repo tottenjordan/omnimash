@@ -13,6 +13,14 @@ import re
 from typing import Any
 
 from omnimash.prompts.models import PreFlightViolation
+from omnimash.prompts.offering_physics import clean_json_str
+
+_SCENE_BLOCK_RE = re.compile(
+    r"(### SCENE INSTRUCTIONS[^\n]*\n)(.*?)(?=^### |\Z)",
+    flags=re.DOTALL | re.MULTILINE,
+)
+_RAW_HEX6_RE = re.compile(r"^#?([0-9A-Fa-f]{6})$")
+_INLINE_HEX_RE = re.compile(r"#[0-9A-Fa-f]{6}")
 
 _SKIP_GUARDRAIL_CUES: tuple[str, ...] = (
     "causality gate",
@@ -100,59 +108,71 @@ _THERMAL_RULES_MAP: dict[str, tuple[tuple[tuple[re.Pattern[str], str], ...], str
 
 
 def append_to_scene_instructions(prompt_text: str, directive_line: str) -> str:
-    """Appends a directive line cleanly to ### SCENE INSTRUCTIONS (or creates Block 3 if absent)."""
-    scene_match = re.search(
-        r"(### SCENE INSTRUCTIONS[^\n]*\n)(.*?)(?=\n### |\Z)",
-        prompt_text,
-        flags=re.DOTALL,
-    )
+    """Appends a directive line cleanly to ### SCENE INSTRUCTIONS without swallowing subsequent blocks."""
+    scene_match = _SCENE_BLOCK_RE.search(prompt_text)
     if not scene_match:
         return f"{prompt_text}\n\n### SCENE INSTRUCTIONS\n{directive_line}"
 
-    existing_body = scene_match.group(2).rstrip("\n")
-    trailing = "\n" if scene_match.group(2).endswith("\n") else ""
+    raw_body = scene_match.group(2)
+    existing_body = raw_body.rstrip("\n")
+    trailing_newlines = raw_body[len(existing_body) :]
+    rest = prompt_text[scene_match.end(2) :]
+    if not trailing_newlines and rest:
+        trailing_newlines = "\n"
+
     updated_body = (
-        f"{existing_body}\n{directive_line}{trailing}"
+        f"{existing_body}\n{directive_line}{trailing_newlines}"
         if existing_body
-        else f"{directive_line}{trailing}"
+        else f"{directive_line}{trailing_newlines}"
     )
-    return prompt_text[: scene_match.start(2)] + updated_body + prompt_text[scene_match.end(2) :]
+    return prompt_text[: scene_match.start(2)] + updated_body + rest
+
+
+def _normalize_hex_code(raw: Any) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    m = _RAW_HEX6_RE.match(raw.strip())
+    return f"#{m.group(1).upper()}" if m else None
 
 
 def _extract_palette_directive_and_hexes(palette_60_30_10: Any) -> tuple[str, list[str]]:
-    """Extracts formatted 60/30/10 directive and expected #RRGGBB hex codes from model or dict."""
-    hex_60: str | None = None
-    hex_30: str | None = None
-    hex_10: str | None = None
-    directive = ""
-
+    """Extracts formatted 60/30/10 directive and normalized #RRGGBB hex codes from model or dict."""
     if isinstance(palette_60_30_10, dict):
-        directive = str(palette_60_30_10.get("production_design_directive", "") or "").strip()
+        raw_directive = clean_json_str(palette_60_30_10.get("production_design_directive"))
         hex_60 = palette_60_30_10.get("primary_hex") or palette_60_30_10.get("neutral_hex_60")
         hex_30 = palette_60_30_10.get("secondary_hex") or palette_60_30_10.get("secondary_hex_30")
         hex_10 = palette_60_30_10.get("neutral_hex") or palette_60_30_10.get("primary_hex_10")
     else:
-        directive = str(getattr(palette_60_30_10, "production_design_directive", "") or "").strip()
+        raw_directive = clean_json_str(
+            getattr(palette_60_30_10, "production_design_directive", None)
+        )
         hex_60 = getattr(palette_60_30_10, "primary_hex", None)
         hex_30 = getattr(palette_60_30_10, "secondary_hex", None)
         hex_10 = getattr(palette_60_30_10, "neutral_hex", None)
 
-    expected_hexes = [
-        str(h).strip().upper()
-        for h in (hex_60, hex_30, hex_10)
-        if h and str(h).strip().startswith("#")
-    ]
+    n60 = _normalize_hex_code(hex_60)
+    n30 = _normalize_hex_code(hex_30)
+    n10 = _normalize_hex_code(hex_10)
+    explicit_hexes = [h for h in (n60, n30, n10) if h]
 
-    if not directive or any(h.lower() not in directive.lower() for h in expected_hexes):
-        c60 = str(hex_60 or "#1F242D").strip().upper()
-        c30 = str(hex_30 or "#C47D4E").strip().upper()
-        c10 = str(hex_10 or "#F2EFE9").strip().upper()
-        directive = (
-            f"60% ({c60}) architectural & set surfaces / "
-            f"30% ({c30}) wardrobe & practical props / "
-            f"10% ({c10}) foundational hero surface"
-        )
+    has_ratios = "60%" in raw_directive and "30%" in raw_directive and "10%" in raw_directive
+    inline_hexes = [m.upper() for m in _INLINE_HEX_RE.findall(raw_directive)]
+    all_explicit_in_dir = all(h.lower() in raw_directive.lower() for h in explicit_hexes)
 
+    if raw_directive and has_ratios and all_explicit_in_dir and (explicit_hexes or inline_hexes):
+        expected_hexes = list(dict.fromkeys([*explicit_hexes, *inline_hexes]))
+        return raw_directive, expected_hexes
+
+    c60 = n60 or "#1F242D"
+    c30 = n30 or "#C47D4E"
+    c10 = n10 or "#F2EFE9"
+    expected_hexes = [c60, c30, c10]
+    suffix = f" ({raw_directive})" if raw_directive and not has_ratios else ""
+    directive = (
+        f"60% ({c60}) architectural & set surfaces / "
+        f"30% ({c30}) wardrobe & practical props / "
+        f"10% ({c10}) foundational hero surface{suffix}"
+    )
     return directive, expected_hexes
 
 
@@ -193,12 +213,8 @@ def repair_soundstage_physics_and_causality(
     if palette_60_30_10 is not None:
         palette_directive, expected_hexes = _extract_palette_directive_and_hexes(palette_60_30_10)
         if palette_directive:
-            scene_match = re.search(
-                r"### SCENE INSTRUCTIONS[^\n]*\n(.*?)(?=\n### |\Z)",
-                repaired,
-                flags=re.DOTALL,
-            )
-            scene_body = scene_match.group(1) if scene_match else ""
+            scene_match = _SCENE_BLOCK_RE.search(repaired)
+            scene_body = scene_match.group(2) if scene_match else ""
             scene_lower = scene_body.lower()
             has_ratio_lock = "60%" in scene_body and "30%" in scene_body and "10%" in scene_body
             has_all_hexes = all(h.lower() in scene_lower for h in expected_hexes)
@@ -228,7 +244,12 @@ def repair_soundstage_physics_and_causality(
             laws = offering_physics.get("act_causality_laws")
 
         if act_number is not None and isinstance(laws, dict):
-            act_law = str(laws.get(act_number) or laws.get(str(act_number)) or "").strip()
+            raw_law = (
+                laws.get(act_number)
+                if laws.get(act_number) is not None
+                else laws.get(str(act_number))
+            )
+            act_law = clean_json_str(raw_law)
             gate_header = f"Causality Gate (Act {act_number}):"
             if act_law and act_law not in repaired and gate_header not in repaired:
                 causality_line = f"- {gate_header} {act_law}"
@@ -251,7 +272,7 @@ def repair_soundstage_physics_and_causality(
         if thermal_state is None and isinstance(offering_physics, dict):
             thermal_state = offering_physics.get("thermal_state")
 
-        thermal_key = str(thermal_state or "").strip().lower()
+        thermal_key = clean_json_str(thermal_state).lower()
         if thermal_key in _THERMAL_RULES_MAP:
             replacements, violation_desc = _THERMAL_RULES_MAP[thermal_key]
             updated_lines: list[str] = []

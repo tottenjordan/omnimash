@@ -18,6 +18,8 @@ from omnimash.prompts.genai_client import get_genai_client
 from omnimash.prompts.offering_physics import (
     OfferingPhysicsAnalyzer,
     OfferingPhysicsSpec,
+    clean_json_str,
+    sanitize_single_line_field,
     scrub_offering_trademarks,
 )
 from omnimash.prompts.preflight_linter import PreFlightGatekeeper
@@ -302,38 +304,55 @@ class SoundstageThreeActPlanner:
             if isinstance(raw_brief, dict):
                 merged_brief = default_brief.model_dump()
                 for key in merged_brief:
-                    val = str(raw_brief.get(key, "") or "").strip()
+                    val = clean_json_str(raw_brief.get(key))
                     if val:
-                        merged_brief[key] = val
+                        merged_brief[key] = sanitize_single_line_field(val)
                 brief = ExecutiveCreativeBrief(**merged_brief)
 
-            vo1, vo2, vo3 = default_vo
+            vo_list = list(default_vo)
             raw_vo = parsed.get("voiceover_lines")
             if isinstance(raw_vo, dict):
-                c1 = str(raw_vo.get("1") or raw_vo.get(1) or "").strip()
-                c2 = str(raw_vo.get("2") or raw_vo.get(2) or "").strip()
-                c3 = str(raw_vo.get("3") or raw_vo.get(3) or "").strip()
-                if c1:
-                    vo1 = c1
-                if c2:
-                    vo2 = c2
-                if c3:
-                    vo3 = c3
+                for idx, act_idx in enumerate((1, 2, 3)):
+                    raw_val = (
+                        raw_vo.get(str(act_idx))
+                        if raw_vo.get(str(act_idx)) is not None
+                        else raw_vo.get(act_idx)
+                    )
+                    cv = sanitize_single_line_field(clean_json_str(raw_val))
+                    if cv:
+                        vo_list[idx] = cv
 
             raw_beats = parsed.get("beat_actions")
             if isinstance(raw_beats, dict):
+                cast_re = re.compile(
+                    rf"(?<![^\W_]){re.escape(identity.omni_safe_cast_handle)}(?![^\W_])",
+                    re.IGNORECASE,
+                )
                 for tile in all_tiles:
-                    cand_act = str(raw_beats.get(tile.shot_id, "") or "").strip()
-                    if cand_act:
-                        clean_act = scrub_offering_trademarks(
+                    cand_act = clean_json_str(raw_beats.get(tile.shot_id))
+                    if not cand_act:
+                        continue
+                    clean_act = sanitize_single_line_field(
+                        scrub_offering_trademarks(
                             cand_act,
                             subject=identity.display_subject,
                             offering=identity.display_offering,
                         )
-                        if len(clean_act) >= 8:
-                            tile.action = clean_act
+                    )
+                    if len(clean_act) < 8:
+                        continue
+                    if not tile.has_person:
+                        if re.search(
+                            r"@Image[13]\b", clean_act, flags=re.IGNORECASE
+                        ) or cast_re.search(clean_act):
+                            continue
+                        clean_act = re.sub(r"@Image2\b", "@Image4", clean_act, flags=re.IGNORECASE)
+                    else:
+                        clean_act = re.sub(r"@Image2\b", "@Image4", clean_act, flags=re.IGNORECASE)
+                        clean_act = re.sub(r"@Image1\b", "@Image3", clean_act, flags=re.IGNORECASE)
+                    tile.action = clean_act
 
-            return brief, (vo1, vo2, vo3)
+            return brief, (vo_list[0], vo_list[1], vo_list[2])
         except Exception as exc:
             logger.warning("SoundstageThreeActPlanner live enrichment fallback: %s", exc)
             return default_brief, default_vo
@@ -356,17 +375,22 @@ class SoundstageThreeActPlanner:
         palette_override: Palette603010 | None = None,
     ) -> SoundstageCommercialPlan:
         """Builds a 3-Act x 3-Beat (9-Shot) SoundstageCommercialPlan with PreFlight-linted 4-block prompts."""
-        subj_clean = (subject or "").strip() or "Artisan Studio"
-        off_clean = (offering or "").strip() or f"{subj_clean} Signature Edition"
+        subj_clean = sanitize_single_line_field(subject) or "Artisan Studio"
+        off_clean = sanitize_single_line_field(offering) or f"{subj_clean} Signature Edition"
+        terr_clean = sanitize_single_line_field(territory)
+        weather_clean = sanitize_single_line_field(weather_condition)
+        moment_clean = sanitize_single_line_field(moment) or "Twilight Threshold Ritual"
+        lang_clean = sanitize_single_line_field(language) or "English"
+        tagline_clean = sanitize_single_line_field(tagline)
+        dna_clean = sanitize_single_line_field(custom_dna)
+
         territory_spec = (
             territory_override.model_copy()
             if territory_override is not None
-            else resolve_territory(territory)
+            else resolve_territory(terr_clean)
         )
-        if weather_condition and weather_condition.strip():
-            territory_spec = territory_spec.model_copy(
-                update={"condition": weather_condition.strip()}
-            )
+        if weather_clean:
+            territory_spec = territory_spec.model_copy(update={"condition": weather_clean})
 
         physics = self._physics_analyzer.analyze(
             subject=subj_clean,
@@ -382,20 +406,23 @@ class SoundstageThreeActPlanner:
             )
         )
 
+        custom_wardrobe = (
+            sanitize_single_line_field(lead_character_override.wardrobe)
+            if lead_character_override
+            else ""
+        )
         identity = DualLayerIdentityAbstractor.abstract(
             subject=subj_clean,
             offering=off_clean,
             physics=physics,
             palette=palette,
             lead_name=lead_character_override.name if lead_character_override else None,
-            lead_wardrobe=lead_character_override.wardrobe if lead_character_override else None,
-            tagline=tagline or None,
+            lead_wardrobe=custom_wardrobe or None,
+            tagline=tagline_clean or None,
         )
 
-        moment_clean = (moment or "").strip() or "Twilight Threshold Ritual"
-        lang_clean = (language or "English").strip() or "English"
         vocal_cadence = (
-            lead_character_override.voice_style
+            sanitize_single_line_field(lead_character_override.voice_style)
             if (lead_character_override and lead_character_override.voice_style)
             else self._resolve_language_cadence(lang_clean)
         )
@@ -417,7 +444,10 @@ class SoundstageThreeActPlanner:
             name=cast_handle,
             description=identity.omni_safe_cast_description,
             reference_url=lead_ref_url,
-            wardrobe=f"Tailored architectural silhouette in {palette.secondary_name} ({palette.secondary_hex})",
+            wardrobe=(
+                custom_wardrobe
+                or f"Tailored architectural silhouette in {palette.secondary_name} ({palette.secondary_hex})"
+            ),
             voice_style=vocal_cadence,
             aesthetic_tags=[palette.secondary_name, palette.secondary_hex, "Commercial Soundstage"],
             image_role="Character Reference",
@@ -435,7 +465,7 @@ class SoundstageThreeActPlanner:
             is_offscreen_narrator=False,
         )
 
-        dna_clause = f" Guided by creative DNA: {custom_dna.strip()}." if custom_dna.strip() else ""
+        dna_clause = f" Guided by creative DNA: {dna_clean}." if dna_clean else ""
         brief = ExecutiveCreativeBrief(
             title=f"{identity.display_subject} · {identity.display_offering} ({territory_spec.place_name})",
             objective=(
@@ -462,9 +492,24 @@ class SoundstageThreeActPlanner:
             subject=identity.display_subject,
             offering=identity.display_offering,
         )
+        safe_condition = scrub_offering_trademarks(
+            territory_spec.condition,
+            subject=identity.display_subject,
+            offering=identity.display_offering,
+        )
+        safe_lighting = scrub_offering_trademarks(
+            territory_spec.lighting_directive,
+            subject=identity.display_subject,
+            offering=identity.display_offering,
+        )
+        safe_moment = scrub_offering_trademarks(
+            moment_clean,
+            subject=identity.display_subject,
+            offering=identity.display_offering,
+        )
         palette_suffix = (
             f"Production design locked to {palette.production_design_directive}. "
-            f"{territory_spec.lighting_directive}. Shot on 35mm cinema prime for {settings.image_model_id}, "
+            f"{safe_lighting}. Shot on 35mm cinema prime for {settings.image_model_id}, "
             "photorealistic 8k commercial cinematography, zero text, zero watermarks."
         )
         thermal_detail = {
@@ -482,11 +527,11 @@ class SoundstageThreeActPlanner:
                 framing="Wide Architectural Tracking Shot",
                 action=(
                     f"{cast_handle} (@Image3) walks empty-handed along the {safe_place} threshold "
-                    f"under {territory_spec.condition}, immersed in pre-interaction anticipation."
+                    f"under {safe_condition}, immersed in pre-interaction anticipation."
                 ),
                 has_person=True,
                 image_prompt=(
-                    f"Wide architectural establishing frame in {safe_place} ({territory_spec.condition}), "
+                    f"Wide architectural establishing frame in {safe_place} ({safe_condition}), "
                     f"{identity.omni_safe_cast_description} walking empty-handed on screen-left with poised anticipation. {palette_suffix}"
                 ),
             ),
@@ -593,7 +638,7 @@ class SoundstageThreeActPlanner:
                 has_person=True,
                 image_prompt=(
                     f"Fluid Steadicam medium-wide lifestyle payoff shot of {identity.omni_safe_cast_description} "
-                    f"in {safe_place} during {moment_clean}, post-experience poise without repeated consumption. {palette_suffix}"
+                    f"in {safe_place} during {safe_moment}, post-experience poise without repeated consumption. {palette_suffix}"
                 ),
             ),
             StoryboardTileSpec(
@@ -638,7 +683,7 @@ class SoundstageThreeActPlanner:
             physics=physics,
             moment_clean=moment_clean,
             lang_clean=lang_clean,
-            custom_dna=custom_dna,
+            custom_dna=dna_clean,
             default_brief=brief,
             default_vo=default_vo,
             all_tiles=[*act1_shots, *act2_shots, *act3_shots],
@@ -738,7 +783,7 @@ class SoundstageThreeActPlanner:
         new_value: str,
     ) -> SoundstageCommercialPlan:
         """Rebuilds a SoundstageCommercialPlan mutating only the target axis while locking all unchanged axes."""
-        val_clean = (new_value or "").strip()
+        val_clean = sanitize_single_line_field(new_value)
         if not val_clean:
             return existing_plan
 

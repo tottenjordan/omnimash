@@ -8,6 +8,7 @@ from pydantic import ValidationError
 import pytest
 
 from omnimash.agent.adk_pipeline import preflight_lint_and_repair
+from omnimash.api.models import CharacterRoleModel
 from omnimash.prompts.commercial_planner import (
     DualLayerIdentityAbstractor,
     Palette603010,
@@ -592,3 +593,187 @@ def test_preflight_pass6_chilled_hot_no_text_and_hex_verification() -> None:
     )
     assert hex_relint.is_valid is True
     assert hex_relint.violations == []
+
+
+def test_brand_name_collision_with_cast_handle_and_unicode_lead_names() -> None:
+    """Cast handle never collides with brand tokens (e.g. 'Vanguard Motors'), and accented lead names scrub cleanly."""
+    planner = SoundstageThreeActPlanner(mock_mode=True)
+    plan = planner.build_plan(
+        subject="Vanguard Motors",
+        offering="GT9 Stradale Coupe",
+        territory="Tokyo · Shibuya",
+    )
+
+    assert plan.identity.omni_safe_cast_handle.lower() != "vanguard"
+    assert "vanguard" not in plan.identity.omni_safe_cast_description.lower()
+    assert not plan.identity.omni_safe_cast_description.lstrip().startswith(",")
+    for act in plan.acts:
+        assert "vanguard" not in act.compiled_omni_prompt.lower()
+        relint = PreFlightGatekeeper.lint_and_repair(
+            act.compiled_omni_prompt,
+            has_dialogue=bool(act.voiceover_line),
+            offering_physics=plan.physics,
+            palette_60_30_10=plan.palette,
+            act_number=act.act_number,
+        )
+        assert relint.is_valid is True
+
+    # Accented lead name ('Timothée Laurent') must not fragment into dangling 'é'
+    palette = Palette603010(
+        primary_hex="#1A222D",
+        primary_name="Obsidian Slate",
+        secondary_hex="#C4633B",
+        secondary_name="Sienna Saddle",
+        neutral_hex="#EAE6DF",
+        neutral_name="Chalk Travertine",
+    )
+    unicode_id = DualLayerIdentityAbstractor.abstract(
+        subject="Atelier Étoile",
+        offering="Sérum Lumière",
+        physics=OfferingPhysicsAnalyzer(mock_mode=True).analyze("Atelier Étoile", "Sérum Lumière"),
+        palette=palette,
+        lead_name="Timothée Laurent",
+        lead_wardrobe="Timothée tailored wool coat",
+    )
+    assert "timothée" not in unicode_id.omni_safe_cast_handle.lower()
+    assert "timothée" not in unicode_id.omni_safe_cast_description.lower()
+    assert " é " not in f" {unicode_id.omni_safe_cast_description.lower()} "
+    assert "étoile" not in unicode_id.omni_safe_offering_descriptor.lower()
+
+
+def test_preflight_pass6_partial_palette_idempotency_hashless_hex_and_empty_block3() -> None:
+    """Pass 6 normalizes hashless hexes, achieves idempotency on partial dict palettes, and preserves ### TIMELINE after empty Block 3."""
+    # 1. Partial dict palette with prose-only production_design_directive is idempotent on re-lint
+    partial_palette = {
+        "production_design_directive": "Dark slate walls, warm ochre coat, chalk stone",
+    }
+    base_prompt = (
+        "### SCENE INSTRUCTIONS\n"
+        "- Clean Frame Directive: No text, no subtitles on screen.\n\n"
+        "### TIMELINE\n"
+        "[0-5s] Action: Quiet hold."
+    )
+    first_pass = PreFlightGatekeeper.lint_and_repair(base_prompt, palette_60_30_10=partial_palette)
+    assert any(v.rule_id == "PALETTE_60_30_10_LOCK" for v in first_pass.violations)
+    second_pass = PreFlightGatekeeper.lint_and_repair(
+        first_pass.repaired_prompt, palette_60_30_10=partial_palette
+    )
+    assert second_pass.is_valid is True
+    assert second_pass.violations == []
+
+    # 2. Hashless 6-char hex codes normalize to #RRGGBB and empty Block 3 does not swallow ### TIMELINE
+    empty_block3_prompt = "### SCENE INSTRUCTIONS\n### TIMELINE\n[0-5s] Action: Walk."
+    hashless_palette = {
+        "primary_hex": "1a222d",
+        "secondary_hex": "c4633b",
+        "neutral_hex": "eae6df",
+    }
+    empty_b3_res = PreFlightGatekeeper.lint_and_repair(
+        empty_block3_prompt,
+        palette_60_30_10=hashless_palette,
+        act_number=1,
+    )
+    repaired = empty_b3_res.repaired_prompt
+    assert "### SCENE INSTRUCTIONS" in repaired
+    assert "### TIMELINE" in repaired
+    assert repaired.index("#1A222D") < repaired.index("### TIMELINE")
+    assert "#C4633B" in repaired
+    assert "#EAE6DF" in repaired
+
+    empty_b3_relint = PreFlightGatekeeper.lint_and_repair(
+        repaired,
+        palette_60_30_10=hashless_palette,
+        act_number=1,
+    )
+    assert empty_b3_relint.is_valid is True
+    assert empty_b3_relint.violations == []
+
+
+def test_json_null_guards_malformed_json_and_minor_planner_hardening() -> None:
+    """Discovery & Planner guard JSON nulls/malformed JSON, sanitize headers/newlines, preserve custom wardrobe, and keep macro tiles person-free."""
+    # 1. Discovery JSON null & malformed JSON resilience
+    engine = SoundstageDiscoveryEngine(mock_mode=True)
+    engine.mock_mode = False
+    null_discovery_payload = {
+        "tagline": None,
+        "suggested_offerings": [{"name": None, "category": "Cat", "description": "Desc"}],
+        "cultural_moments": [None, {"title": None, "description": "Desc"}],
+    }
+    engine._genai_client = SimpleNamespace(
+        models=SimpleNamespace(
+            generate_content=lambda model, contents, **kwargs: SimpleNamespace(
+                text=json.dumps(null_discovery_payload)
+            )
+        )
+    )
+    disc_null = engine.discover(subject="Atelier Verre", offering_hint="Glass Serum")
+    assert disc_null.tagline != "None"
+    assert all(item["name"] != "None" for item in disc_null.suggested_offerings)
+    assert all(item["title"] != "None" for item in disc_null.cultural_moments)
+
+    engine._genai_client = SimpleNamespace(
+        models=SimpleNamespace(
+            generate_content=lambda model, contents, **kwargs: SimpleNamespace(
+                text="{malformed unclosed json"
+            )
+        )
+    )
+    disc_malformed = engine.discover(subject="Atelier Verre", offering_hint="Glass Serum")
+    assert len(disc_malformed.suggested_offerings) >= 3
+
+    # 2. Header/newline sanitization, scrubbed image_prompt weather, custom wardrobe preservation, and human-free beat guard
+    planner = SoundstageThreeActPlanner(mock_mode=True)
+    planner.mock_mode = False
+    planner._genai_client = SimpleNamespace(
+        models=SimpleNamespace(
+            generate_content=lambda model, contents, **kwargs: SimpleNamespace(
+                text=json.dumps(
+                    {
+                        "brief": {"title": None},
+                        "voiceover_lines": {"1": None},
+                        "beat_actions": {
+                            "1.1": "Curator (@Image1) walks empty-handed across sunlit courtyard.",
+                            "2.2": "Curator (@Image3) holds the bottle up to face in close-up.",
+                        },
+                    }
+                )
+            )
+        )
+    )
+    custom_lead = CharacterRoleModel(
+        role_id="Role A",
+        name="Curator",
+        description="",
+        wardrobe="Bespoke double-breasted charcoal cashmere overcoat",
+        image_role="Character Reference",
+    )
+    hardened_plan = planner.build_plan(
+        subject="Velox\n### INJECTED\tStudio",
+        offering="Signature Serum",
+        territory="Paris · Le Marais",
+        weather_condition="Velox twilight drizzle",
+        lead_character_override=custom_lead,
+    )
+    assert "###" not in hardened_plan.subject
+    assert "\n" not in hardened_plan.subject
+    assert "None" != hardened_plan.brief.title
+    assert "None" != hardened_plan.acts[0].voiceover_line
+    # Weather trademark scrubbed from storyboard tile image_prompt
+    assert all("velox" not in b.image_prompt.lower() for b in hardened_plan.boards)
+    # Shot 2.2 (has_person=False) rejected person-contaminated LLM action mentioning Curator / @Image3
+    board_22 = next(b for b in hardened_plan.boards if b.shot_id == "2.2")
+    assert "@image3" not in board_22.action.lower()
+    assert "curator" not in board_22.action.lower()
+    # Shot 1.1 remapped stray @Image1 to @Image3
+    board_11 = next(b for b in hardened_plan.boards if b.shot_id == "1.1")
+    assert "@Image3" in board_11.action
+    assert "@Image1" not in board_11.action
+
+    # Custom wardrobe preserved on lead_character and across repoint_plan_for_variation('place')
+    assert "charcoal cashmere overcoat" in hardened_plan.lead_character.wardrobe
+    repointed = planner.repoint_plan_for_variation(
+        existing_plan=hardened_plan,
+        axis="place",
+        new_value="Milan · Brera",
+    )
+    assert "charcoal cashmere overcoat" in repointed.lead_character.wardrobe

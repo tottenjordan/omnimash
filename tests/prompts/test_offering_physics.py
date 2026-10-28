@@ -8,6 +8,7 @@ import pytest
 from omnimash.prompts.offering_physics import (
     OfferingPhysicsAnalyzer,
     OfferingPhysicsSpec,
+    scrub_offering_trademarks,
 )
 
 
@@ -281,3 +282,56 @@ def test_live_genai_json_parsing_and_invalid_enum_fallback_sanitization() -> Non
     analyzer._genai_client = SimpleNamespace(models=_FailingModels())
     fallback_spec = analyzer.analyze(subject="Velox Motors", offering="GT9 Coupe")
     assert fallback_spec.archetype == "OWNED_MOTOR_VEHICLE"
+
+
+def test_unicode_brand_scrubbing_and_image_tag_protection() -> None:
+    """Unicode accented brand names scrub cleanly without fragmenting, and @ImageN tags stay intact."""
+    raw = "A sleek Café Kitsuné ceramic cup beside L'Oréal botanical glass serum."
+    scrubbed_1 = scrub_offering_trademarks(raw, subject="Café Kitsuné", offering="L'Oréal Serum")
+    low_1 = scrubbed_1.lower()
+    assert "café" not in low_1
+    assert "kitsuné" not in low_1
+    assert "l'oréal" not in low_1
+    assert " sleek é " not in f" {low_1} "
+    assert " al " not in f" {low_1} "
+
+    # Offering containing 'Image4' must scrub standalone 'Image4' while preserving '@Image4'
+    img_text = "Hero camera (@Image4) captures crisp Image4 OptiLens studio light."
+    scrubbed_2 = scrub_offering_trademarks(
+        img_text,
+        subject="OptiLens",
+        offering="Image4 Cinema Camera",
+    )
+    assert "(@Image4)" in scrubbed_2
+    assert "optilens" not in scrubbed_2.lower()
+    assert "crisp studio light" in scrubbed_2.lower()
+
+
+def test_es_plural_luxury_hardgood_cues_and_null_json_guards() -> None:
+    """Pre-compiled cue regexes match -es plurals ('Watches') and live JSON guards against null/empty items."""
+    analyzer = OfferingPhysicsAnalyzer(mock_mode=True)
+    watches_spec = analyzer.analyze(subject="Helvetia", offering="Swiss Dive Watches")
+    assert watches_spec.archetype == "HANDHELD_CPG_OR_OBJECT"
+    assert watches_spec.surface_branding_mode == "SUBTLE_OEM_EMBLEM_ONLY"
+    assert "316l steel" in watches_spec.canonical_anchor_spec.lower()
+
+    # Live mode JSON with null values and brand-only forbidden_hallucinations entry
+    analyzer.mock_mode = False
+    null_payload = {
+        "archetype": None,
+        "canonical_anchor_spec": None,
+        "act_causality_laws": {"1": None, "2": "Velox", "3": None},
+        "forbidden_hallucinations": [None, "Velox"],
+    }
+    analyzer._genai_client = SimpleNamespace(
+        models=SimpleNamespace(
+            generate_content=lambda model, contents, **kwargs: SimpleNamespace(
+                text=json.dumps(null_payload)
+            )
+        )
+    )
+    guarded_spec = analyzer.analyze(subject="Velox", offering="GT9 Coupe")
+    assert guarded_spec.archetype == "OWNED_MOTOR_VEHICLE"
+    assert "none" not in guarded_spec.canonical_anchor_spec.lower()
+    assert all(item and item.lower() != "none" for item in guarded_spec.forbidden_hallucinations)
+    assert len(guarded_spec.forbidden_hallucinations) >= 4
