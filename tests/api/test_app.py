@@ -3054,3 +3054,104 @@ def test_evaluation_review_endpoint_returns_200() -> None:
     data = res.json()
     assert data["success"] is True
     assert "feedback_id" in data
+
+
+@pytest.mark.slow
+@pytest.mark.browser
+def test_ui_html_sync_defaults_preserves_user_prompts_and_new_project_resets_state(
+    tmp_path,
+) -> None:
+    """Verify clicking Sync Intuitive Defaults from Vision Prompt never overwrites user-typed Screenplay Script or Keyframe Prompt, prioritizes user-typed Screenplay Script over default concept, and + New Project resets stale default concept state."""
+    import os
+    import subprocess
+    from omnimash.api.app import UI_HTML
+
+    assert "resolveActiveConceptInput" in UI_HTML
+
+    skill_dir = "/usr/local/google/home/jordantotten/.gemini/config/skills/playwright-skill"
+    if not os.path.exists(skill_dir):
+        pytest.skip("Playwright skill dir not available")
+
+    html_file = tmp_path / "ui_sync_preserve_check.html"
+    html_file.write_text(UI_HTML, encoding="utf-8")
+    inline_js = (
+        "const { chromium } = require('playwright');"
+        "(async () => {"
+        "  const browser = await chromium.launch({ headless: true });"
+        "  const page = await browser.newPage();"
+        "  page.on('pageerror', err => { console.error('BROWSER ERROR:', err.message); process.exit(2); });"
+        f"  await page.goto('file://{html_file}', {{ waitUntil: 'domcontentloaded' }});"
+        "  await page.waitForFunction(() => {"
+        "    const el = document.querySelector('#__next');"
+        "    return el && el.innerHTML.length > 1000;"
+        "  }, { timeout: 15000 });"
+        "  await page.evaluate(() => {"
+        "    window.__deconstructRequests = [];"
+        "    const origFetch = window.fetch;"
+        "    window.fetch = async (url, opts) => {"
+        "      const u = String(url);"
+        "      if (u.includes('/api/projects/create')) {"
+        "        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });"
+        "      }"
+        "      if (u.includes('/api/deconstruct-concept')) {"
+        "        const body = JSON.parse(opts.body || '{}');"
+        "        window.__deconstructRequests.push(body);"
+        "        return new Response(JSON.stringify({"
+        "          characters: [{ role_id: 'Role A', name: 'Exec', description: 'Tailored suit', aesthetic_tags: ['Luxury'], voice_style: 'Confident', wardrobe: 'Suit' }],"
+        "          aesthetic_tags: ['High-Contrast Cinema'],"
+        "          environment_tag: 'Private tarmac at dawn',"
+        "          camera_lighting_tag: '35mm tracking shot',"
+        "          audio_beat: '130 BPM Triumphant Beat',"
+        "          vocal_delivery: 'Confident spoken delivery',"
+        "          keyframe_image_prompt: 'AI_GENERATED_KEYFRAME_FOR: ' + (body.concept || ''),"
+        "          screenplay_script: '[0-3s] AI_OVERWRITE_SCRIPT_THAT_MUST_NOT_CLOBBER_USER [3-6s] mid [6-10s] end',"
+        "          scenes: [{ scene_number: 1, active_roles: ['Role A'], action: '[0-3s] Exec steps out [3-6s] Walks to SUV [6-10s] Smiles', dialogue: 'Exec: \"Fresh air.\"' }]"
+        "        }), { status: 200, headers: { 'Content-Type': 'application/json' } });"
+        "      }"
+        "      return origFetch(url, opts);"
+        "    };"
+        "  });"
+        "  await page.getByRole('button', { name: /Mode 1: Guided Fine-Tune/i }).first().click();"
+        "  const kfBox = page.locator('textarea[placeholder*=\"Specify the exact keyframe frame visual setup\"]');"
+        "  const spBox = page.locator('textarea[placeholder*=\"Character (Action)\"]');"
+        "  const myScript = 'Exec: (Walks out of gates into morning sunlight) \"First day out, breathe it in.\"';"
+        "  await spBox.fill(myScript);"
+        "  await page.getByRole('button', { name: /Sync Intuitive Defaults from Vision Prompt/i }).click();"
+        "  await page.waitForFunction(() => window.__deconstructRequests.length === 1 && !document.querySelector('#__next').textContent.includes('Syncing...'), null, { timeout: 5000 });"
+        "  const req1 = await page.evaluate(() => window.__deconstructRequests[0]);"
+        "  if (!req1.concept.includes('First day out') || req1.concept.includes('Spectacled Wizard Bruv')) {"
+        "    throw new Error('Expected Sync button to send user screenplay instead of stale default concept, got: ' + JSON.stringify(req1));"
+        "  }"
+        "  if ((await spBox.inputValue()) !== myScript) {"
+        "    throw new Error('Expected user Screenplay Script to be preserved verbatim, got: ' + (await spBox.inputValue()));"
+        "  }"
+        "  if (!(await kfBox.inputValue()).includes('AI_GENERATED_KEYFRAME_FOR:')) {"
+        "    throw new Error('Expected empty Keyframe Prompt box to be filled with generated keyframe prompt, got: ' + (await kfBox.inputValue()));"
+        "  }"
+        "  const myKf = 'Custom user keyframe prompt that must never be erased';"
+        "  await kfBox.fill(myKf);"
+        "  await page.getByRole('button', { name: /Sync Intuitive Defaults from Vision Prompt/i }).click();"
+        "  await page.waitForFunction(() => window.__deconstructRequests.length === 2 && !document.querySelector('#__next').textContent.includes('Syncing...'), null, { timeout: 5000 });"
+        "  if ((await kfBox.inputValue()) !== myKf) {"
+        "    throw new Error('Expected user Keyframe Prompt to be preserved verbatim, got: ' + (await kfBox.inputValue()));"
+        "  }"
+        "  await page.getByRole('button', { name: /\\+ New Project/i }).first().click();"
+        "  await page.locator('input[placeholder*=\"parody_universe_v2\"]').fill('first_day_out');"
+        "  await page.getByRole('button', { name: /Create Project/i }).click();"
+        "  await page.waitForFunction(() => document.querySelectorAll('[role=\"dialog\"]').length === 0, null, { timeout: 5000 });"
+        "  if ((await kfBox.inputValue()) !== '' || (await spBox.inputValue()) !== '') {"
+        "    throw new Error('Expected + New Project to clear stale prompts, got kf=' + (await kfBox.inputValue()) + ' sp=' + (await spBox.inputValue()));"
+        "  }"
+        "  console.log('SYNC_PRESERVE_AND_NEW_PROJECT_RESET_OK');"
+        "  await browser.close();"
+        "})();"
+    )
+    res = subprocess.run(
+        ["node", "-e", inline_js],
+        cwd=skill_dir,
+        capture_output=True,
+        text=True,
+    )
+    output = res.stdout + res.stderr
+    assert res.returncode == 0, f"Playwright sync preserve test failed: {output}"
+    assert "SYNC_PRESERVE_AND_NEW_PROJECT_RESET_OK" in output

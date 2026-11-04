@@ -973,7 +973,8 @@
                 }
             ];
 
-            const [concept, setConcept] = useState("Spectacled Wizard Bruv vs Platinum Rival Blood rap battle in 2000s Atlanta trap style");
+            const DEFAULT_INITIAL_CONCEPT = "Spectacled Wizard Bruv vs Platinum Rival Blood rap battle in 2000s Atlanta trap style";
+            const [concept, setConcept] = useState(DEFAULT_INITIAL_CONCEPT);
             const [deconstructLoading, setDeconstructLoading] = useState(false);
 
             const [characters, setCharacters] = useState([
@@ -2522,7 +2523,7 @@
                 setExpandLoading(true);
                 setLastError(null);
                 try {
-                    const targetConcept = (concept || keyframeImagePrompt || screenplayScript || "").trim();
+                    const targetConcept = resolveActiveConceptInput();
                     let deconstructed = null;
                     if (targetConcept) {
                         deconstructed = await handleDeconstructConcept(targetConcept);
@@ -2534,7 +2535,7 @@
                     const effectiveAudio = decData.audio_beat || audioBeat;
                     const effectiveVocal = decData.vocal_delivery || vocalDelivery;
                     const effectiveEnv = decData.environment_tag || environmentTag;
-                    const effectiveScript = decData.screenplay_script || screenplayScript;
+                    const effectiveScript = (screenplayScript && screenplayScript.trim()) || decData.screenplay_script || "";
                     const res = await fetch("/api/storyboard/expand", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -2954,9 +2955,30 @@
             };
             const buildLivePromptPreview = compileStoryboardPreview;
 
+            const resolveActiveConceptInput = (conceptOverride) => {
+                if (typeof conceptOverride === "string" && conceptOverride.trim()) {
+                    return conceptOverride.trim();
+                }
+                const kf = (keyframeImagePrompt || "").trim();
+                const sp = (screenplayScript || "").trim();
+                const rawConcept = (concept || "").trim();
+                if (kf && sp && kf !== sp) {
+                    return `${kf}\n\n${sp}`;
+                }
+                if (kf) return kf;
+                if (sp) return sp;
+                return rawConcept;
+            };
+
             // Act 1 Handler: Deconstruct Concept (POST /api/deconstruct-concept)
-            const handleDeconstructConcept = async (conceptOverride) => {
-                const targetConcept = (typeof conceptOverride === "string" && conceptOverride.trim()) ? conceptOverride : (concept || keyframeImagePrompt || screenplayScript || "");
+            const handleDeconstructConcept = async (conceptOverride, options = {}) => {
+                const overwritePrompts = Boolean(options && options.overwritePrompts);
+                const hasUserKeyframePrompt = Boolean(
+                    (keyframeImagePrompt && keyframeImagePrompt.trim())
+                    || (studioMode === "acts" && concept && concept.trim() && concept !== DEFAULT_INITIAL_CONCEPT)
+                );
+                const hasUserScreenplay = Boolean(screenplayScript && screenplayScript.trim());
+                const targetConcept = resolveActiveConceptInput(conceptOverride);
                 if (!targetConcept || !targetConcept.trim()) return null;
                 setParentTurnId(null);
                 setRawCompiledPrompt("");
@@ -3010,8 +3032,22 @@
                             return baseShots;
                         });
                     }
-                    if (data.keyframe_image_prompt) setKeyframeImagePrompt(data.keyframe_image_prompt);
-                    if (data.screenplay_script) setScreenplayScript(data.screenplay_script);
+                    if (overwritePrompts) {
+                        if (data.keyframe_image_prompt) setKeyframeImagePrompt(data.keyframe_image_prompt);
+                        if (data.screenplay_script) setScreenplayScript(data.screenplay_script);
+                    } else {
+                        if (!hasUserKeyframePrompt && data.keyframe_image_prompt) {
+                            setKeyframeImagePrompt(data.keyframe_image_prompt);
+                            if (!concept || concept === DEFAULT_INITIAL_CONCEPT) {
+                                setConcept(data.keyframe_image_prompt);
+                            }
+                        } else if (!hasUserKeyframePrompt && hasUserScreenplay && (!concept || concept === DEFAULT_INITIAL_CONCEPT)) {
+                            setConcept(screenplayScript.trim());
+                        }
+                        if (!hasUserScreenplay && data.screenplay_script) {
+                            setScreenplayScript(data.screenplay_script);
+                        }
+                    }
                     if (data.aesthetic_tags) setAestheticTags(data.aesthetic_tags);
                     if (data.environment_tag) setEnvironmentTag(data.environment_tag);
                     if (data.camera_lighting_tag) setCameraLightingTag(data.camera_lighting_tag);
@@ -3791,7 +3827,7 @@
                 setShotGeneratingMap((prev) => ({ ...prev, 1: true }));
                 setLastError(null);
                 try {
-                    const targetConcept = (concept || keyframeImagePrompt || screenplayScript || "").trim();
+                    const targetConcept = resolveActiveConceptInput();
                     let deconstructed = null;
                     if (targetConcept && !(screenplayScript && screenplayScript.trim()) && lastDeconstructedConceptRef.current !== targetConcept) {
                         deconstructed = await handleDeconstructConcept(targetConcept);
@@ -4339,6 +4375,9 @@
             // Helper: Reset Studio / Start Over
             const handleResetStudio = () => {
                 setConcept("");
+                setKeyframeImagePrompt("");
+                setScreenplayScript("");
+                lastDeconstructedConceptRef.current = "";
                 setCharacters([]);
                 setJ3Characters([]);
                 setAestheticTags([]);
@@ -4737,8 +4776,7 @@
                     if (data && data.success) {
                         setProjectsList((prev) => (prev.includes(cleaned) ? prev : [...prev, cleaned]));
                         setActiveProject(cleaned);
-                        setCharacters([]);
-                        setJ3Characters([]);
+                        handleResetStudio();
                         setShowNewProjectModal(false);
                         setNewProjectInput("");
                         addToast(`Created project '${cleaned}'.`, "success");
@@ -6180,7 +6218,7 @@
                                                     onClick={() => {
                                                         setConcept(ex);
                                                         setKeyframeImagePrompt(ex);
-                                                        handleDeconstructConcept(ex);
+                                                        handleDeconstructConcept(ex, { overwritePrompts: true });
                                                     }}
                                                     className="bg-gray-950 border border-gray-800 hover:border-pink-500/70 text-gray-300 hover:text-pink-200 px-3 py-1.5 rounded-lg text-xs transition text-left"
                                                 >
@@ -6194,7 +6232,7 @@
                                         <button
                                             type="button"
                                             disabled={deconstructLoading || !concept.trim()}
-                                            onClick={() => handleDeconstructConcept(concept)}
+                                            onClick={() => handleDeconstructConcept()}
                                             className="bg-gradient-to-r from-blue-600 to-indigo-600 font-bold text-xs py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition disabled:opacity-50 text-white"
                                         >
                                             <span>⚡</span>
@@ -7487,7 +7525,7 @@
                                                         onClick={() => {
                                                             setConcept(item.concept);
                                                             setKeyframeImagePrompt(item.concept);
-                                                            handleDeconstructConcept(item.concept);
+                                                            handleDeconstructConcept(item.concept, { overwritePrompts: true });
                                                         }}
                                                         className="bg-amber-950/60 border border-amber-800/80 hover:border-amber-500 text-amber-200 text-[11px] px-2.5 py-1 rounded-lg transition"
                                                     >
@@ -7499,7 +7537,7 @@
                                                 <button
                                                     type="button"
                                                     disabled={deconstructLoading || !(concept || keyframeImagePrompt || screenplayScript || "").trim()}
-                                                    onClick={() => handleDeconstructConcept(concept || keyframeImagePrompt || screenplayScript)}
+                                                    onClick={() => handleDeconstructConcept()}
                                                     className="bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 font-bold text-xs py-1.5 px-3 rounded-lg shadow flex items-center gap-1.5 transition disabled:opacity-50 text-white"
                                                 >
                                                     <span>⚡</span>
