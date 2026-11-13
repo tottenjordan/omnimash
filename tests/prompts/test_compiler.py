@@ -1065,11 +1065,11 @@ def test_compile_storyboard_multi_speaker_dialogue_tag_binding():
         scenes=[scene],
     )
     assert (
-        'Role A - a high-fashion wizard headmaster <IMAGE_REF_0> [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence] says: "Welcome to Dripwarts!"'
+        "Role A - a high-fashion wizard headmaster <IMAGE_REF_0> [Voice Style: Pompous Queen's English British drawl with theatrical cadence] says: Welcome to Dripwarts!"
         in compiled
     )
     assert (
-        'Role B - Potion Master Dawg <IMAGE_REF_1> [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence] says: "Potions class is in session!"'
+        "Role B - Potion Master Dawg <IMAGE_REF_1> [Voice Style: Pompous Queen's English British drawl with theatrical cadence] says: Potions class is in session!"
         in compiled
     )
 
@@ -1103,7 +1103,7 @@ def test_compile_storyboard_screenplay_script_injects_character_tags():
     )
     assert "### TIMELINE" in compiled
     assert (
-        'Role A - a tatted wizard <IMAGE_REF_0> [Voice Style: Smooth Atlanta rap flow with distinct rhythmic trap cadence] says: "let’s see..."'
+        "Role A - a tatted wizard <IMAGE_REF_0> [Voice Style: Smooth Atlanta rap flow with distinct rhythmic trap cadence] says: let’s see..."
         in compiled
     )
 
@@ -1445,11 +1445,11 @@ def test_compile_journey3_shot_prompt_timeline_separates_dialogue_and_visual_act
     assert "### TIMELINE" in prompt
     assert "- Visual Action: Potion Master reaches carefully for the beaker" in prompt
     assert (
-        '- Spoken Dialogue (Role A) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Silence, Spectacled Wizard Bruv!"'
+        "- Spoken Dialogue (Role A) [Voice Style: Pompous Queen's English British drawl with theatrical cadence]: Silence, Spectacled Wizard Bruv!"
         in prompt
     )
     assert (
-        '- Spoken Dialogue (Role B) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Never!"'
+        "- Spoken Dialogue (Role B) [Voice Style: Pompous Queen's English British drawl with theatrical cadence]: Never!"
         in prompt
     )
 
@@ -1614,11 +1614,11 @@ def test_compile_journey3_shot_prompt_uses_role_ids_for_all_character_references
     assert "DumbleDior" not in prompt
     # Verify timeline uses Role A and Role B for dialogue
     assert (
-        '- Spoken Dialogue (Role A) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Fifty bands for pure finesse!"'
+        "- Spoken Dialogue (Role A) [Voice Style: Pompous Queen's English British drawl with theatrical cadence]: Fifty bands for pure finesse!"
         in prompt
     )
     assert (
-        '- Spoken Dialogue (Role B) [Voice Style: Pompous Queen\'s English British drawl with theatrical cadence]: "Type shit, on God!"'
+        "- Spoken Dialogue (Role B) [Voice Style: Pompous Queen's English British drawl with theatrical cadence]: Type shit, on God!"
         in prompt
     )
 
