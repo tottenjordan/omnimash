@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from omnimash.prompts.image_tags import get_character_identifier
 from omnimash.prompts.parody import sanitize_real_names
+from omnimash.prompts.voice import ensure_character_voice_style
 
 CompilationMode = Literal["auto", "i2v_delta_only", "t2v_4block"]
 
@@ -274,10 +276,68 @@ class I2VDeltaPromptSpec(BaseModel):
         return sanitize_real_names(result) if self.enable_sanitization else result
 
 
+def build_i2v_delta_prompt(
+    *,
+    action_text: str,
+    dialogue_text: str = "",
+    characters: list[Any] | None = None,
+    ambient_noise: str = "steady room tone",
+    concept: str = "",
+    include_starting_frame_binding: bool = True,
+    enable_sanitization: bool = True,
+) -> tuple[str, bool]:
+    """Builds a lean untimed I2V delta prompt from scene action, dialogue, and character roster.
+
+    Returns (compiled_prompt, has_dialogue).
+    """
+    speaker_desc = "the speaker"
+    speaker_voice = ""
+    if characters:
+        on_cam = [c for c in characters if not getattr(c, "is_offscreen_narrator", False)]
+        if on_cam:
+            lead = on_cam[0]
+            speaker_desc = get_character_identifier(
+                lead, enable_sanitization=enable_sanitization, use_role_id=False
+            )
+            speaker_voice = ensure_character_voice_style(lead, concept=concept or action_text)
+
+    spoken_line = ""
+    if dialogue_text and str(dialogue_text).strip():
+        first_chunk = [
+            c.strip() for c in re.split(r"[\n/|]", str(dialogue_text).strip()) if c.strip()
+        ][0]
+        m_diag = re.match(r"^(?:-\s*)?([^:]+):\s*(.*)$", first_chunk)
+        if m_diag:
+            raw_spk = re.sub(r"\s+says$", "", m_diag.group(1).strip(), flags=re.IGNORECASE)
+            spoken_line = m_diag.group(2).strip()
+            if raw_spk and not characters:
+                speaker_desc = raw_spk
+        else:
+            spoken_line = first_chunk
+
+    clean_action = _TIMECODE_PREFIX_RE.sub("", str(action_text or "")).strip()
+    amb = (ambient_noise or "steady room tone").strip()
+    whitelist = ["the speaker's voice", amb] if spoken_line else [amb]
+    spec = I2VDeltaPromptSpec(
+        camera_motion="Smooth continuous camera motion from the starting frame",
+        subject_action=clean_action or "The subject moves naturally from the starting pose",
+        speaker_descriptor=speaker_desc,
+        voice_style=speaker_voice,
+        spoken_dialogue=spoken_line,
+        post_dialogue_hold="",
+        ambient_noise=amb,
+        explicit_sound_whitelist=whitelist,
+        include_starting_frame_binding=include_starting_frame_binding,
+        enable_sanitization=enable_sanitization,
+    )
+    return spec.compile(), bool(spoken_line)
+
+
 __all__ = [
     "CompilationMode",
     "I2VDeltaPromptSpec",
     "KeyframeModularPromptSpec",
+    "build_i2v_delta_prompt",
     "calculate_shot_word_budget",
     "convert_legacy_tags_to_omni_1_2_natural_language",
     "format_unquoted_video_dialogue",

@@ -20,6 +20,7 @@ import re
 from typing import Any
 
 from omnimash.prompts.character_roles import normalize_character_role
+from omnimash.prompts.delta_compiler import calculate_shot_word_budget
 from omnimash.prompts.models import PreFlightLintResult, PreFlightViolation
 from omnimash.prompts.soundstage_preflight import repair_soundstage_physics_and_causality
 
@@ -585,7 +586,7 @@ class PreFlightGatekeeper:
             has_dialogue
             or re.search(r"Dialogue(?:\s*between\s*subjects)?\s*:", prompt_text, re.IGNORECASE)
             or re.search(
-                r'\b(?:says|speaks|whispers|shouts|yells):\s*["\']|["\'][^"\']{2,}["\']',
+                r'\b(?:says|speaks|whispers|shouts|yells):\s*\S|-\s*Spoken\s+Dialogue\b[^:\n]*:\s*\S|["\'][^"\']{2,}["\']',
                 timeline_body,
                 flags=re.IGNORECASE,
             )
@@ -601,6 +602,13 @@ class PreFlightGatekeeper:
             flags=re.DOTALL,
         )
         if not scene_match:
+            lower_prompt = prompt_text.lower()
+            if (
+                "ambient noise:" in lower_prompt
+                and "the only sounds are" in lower_prompt
+                and "### " not in prompt_text
+            ):
+                return prompt_text, []
             # Inject ### SCENE INSTRUCTIONS if missing
             ducking_clause = cls.CANONICAL_DUCKING_CLAUSE
             injected = (
@@ -855,6 +863,343 @@ class PreFlightGatekeeper:
             act_number=act_number,
         )
 
+    _NEGATIVE_PHYSICAL_GENERAL_REWRITES: tuple[tuple[re.Pattern[str], str, str], ...] = (
+        (
+            re.compile(
+                r"\b(?:zero|no|without|never\s+render|nothing)\s+(?:water|drips?|liquid|droplets?)\s+(?:hanging\s+or\s+dripping\s+)?(?:on|from)\s+(?:his\s+|her\s+|their\s+|the\s+)?(?:ears?|face|cheeks?|jawline|skin)\b",
+                re.IGNORECASE,
+            ),
+            "hair is damp in slightly separated strands and skin has a realistic wet specular sheen with crisp facial detail",
+            "Rewrote negative water/drip prohibition into positive damp-sheen state.",
+        ),
+        (
+            re.compile(
+                r"(?<!No text,\s)\b(?:zero|no|without|never\s+render)\s+(?:subtitles?|captions?|on[-\s]*screen\s+text)\b(?!\s+on\s+screen)",
+                re.IGNORECASE,
+            ),
+            "clean unobstructed full-bleed cinema frame with pure visual storytelling",
+            "Rewrote negative subtitle/caption prohibition into positive clean-frame description.",
+        ),
+        (
+            re.compile(
+                r"\b(?:with\s+)?(?:zero|no|without)\s+fire\s+embers?(?:,?\s*(?:smoke,?\s*)?(?:or\s+)?sparks?)?\b",
+                re.IGNORECASE,
+            ),
+            "centered on a pure, solid, uniform #000000 pitch-black background",
+            "Rewrote negative fire-ember prohibition into positive solid #000000 background lock.",
+        ),
+        (
+            re.compile(
+                r"(?<!Silent video\.\s)\b(?:no|zero|without)\s+(?:background\s+)?(?:music|808s?|bass\s+hits?|soundtrack)\b(?!,\s*no\s+audio)",
+                re.IGNORECASE,
+            ),
+            "The only sounds are the spoken voice and the natural room ambiance",
+            "Rewrote negative music/808 prohibition into positive audio whitelist.",
+        ),
+    )
+
+    _NEGATIVE_ARCH_PATTERN = re.compile(
+        r"\b(?:zero|no|without|never\s+render)\s+(?:wooden|timber)\s+(?:guard[-\s]*camp\s+)?watchtowers?(?:,?\s*(?:zero|no|or)\s+conical\s+(?:fairytale|hogwarts)?\s*turrets?)?\b",
+        re.IGNORECASE,
+    )
+    _NEGATIVE_SEARCHLIGHT_PATTERN = re.compile(
+        r"\b(?:zero|no|without|never\s+render)\s+(?:harsh\s+)?(?:chalky\s+)?(?:white\s+)?(?:searchlight|laser)\s*(?:v[-\s]*cones?|beams?)?\b",
+        re.IGNORECASE,
+    )
+
+    _PERSISTENT_PROP_RE = re.compile(
+        r"\b(styrofoam\s+cup|double\s+cup|coffee\s+cup|leather\s+briefcase|chalice|goblet|briefcase|smartphone|phone|handbag|purse)\b",
+        re.IGNORECASE,
+    )
+    _WARDROBE_PROP_NOUN_RE = re.compile(
+        r"\b([a-z]+(?:\s+[a-z]+){0,2}\s+(?:satchel|briefcase|handbag|purse|cup|chalice|goblet|mug|phone|lantern|flask|bag|cane|umbrella))\b",
+        re.IGNORECASE,
+    )
+    _HANDOFF_ACTION_RE = re.compile(
+        r"\b(?:reaches\s+out|takes\s+the|grabs\s+the|accepts\s+the|receives\s+the|picks\s+up)\b",
+        re.IGNORECASE,
+    )
+    _THIN_PROP_RE = re.compile(
+        r"(?<!light\s)\b(wand|blade|sword|dropper|pipette|stylus)\b",
+        re.IGNORECASE,
+    )
+
+    _SPOKEN_SAYS_QUOTED_RE = re.compile(
+        r'(\b(?:says|speaks|whispers|shouts|yells):\s*)(?:"([^"\n]+)"|“([^”\n]+)”|\'([^\'\n]+)\')',
+        re.IGNORECASE,
+    )
+    _SPOKEN_DIALOGUE_LINE_QUOTED_RE = re.compile(
+        r'(-\s*Spoken\s+Dialogue\b[^\n]*?:\s*)(?:"([^"\n]+)"|“([^”\n]+)”|\'([^\'\n]+)\')',
+        re.IGNORECASE,
+    )
+    _OFFSCREEN_NARRATOR_LINE_RE = re.compile(
+        r"(?m)^\s*(?:-\s*)?Offscreen\s+Narrator\s*\([^)]*\)\s*:[^\n]*\n?",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def repair_negative_physical_clauses(
+        cls,
+        prompt_text: str,
+        style_preset: str | None = None,
+    ) -> tuple[str, list[PreFlightViolation]]:
+        """Pass 7: Rewrites negative visual/audio prohibitions into positive physical state descriptions."""
+        if not prompt_text:
+            return prompt_text, []
+
+        is_gothic = str(style_preset or "").strip().lower() == "gothic_trailer"
+        arch_repl = (
+            "pure wet black basalt Gothic fortress-cathedral architecture with pointed-arch gatehouse, ribbed vaults, carved basalt gargoyles, iron-barred lancet windows, and flat crenellated basalt battlements"
+            if is_gothic
+            else "solid monolithic stone architecture with clean geometric battlements"
+        )
+        light_repl = (
+            "natural midnight storm lighting with cool cyan-indigo cloud backlight, distant lightning high behind the stone structure, and subtle warm 2700K iron lantern rim light"
+            if is_gothic
+            else "natural atmospheric lighting with soft diffused backlight and subtle warm practical rim light"
+        )
+
+        rules: list[tuple[re.Pattern[str], str, str]] = [
+            *cls._NEGATIVE_PHYSICAL_GENERAL_REWRITES,
+            (
+                cls._NEGATIVE_ARCH_PATTERN,
+                arch_repl,
+                "Rewrote negative watchtower/turret prohibition into positive architecture lock.",
+            ),
+            (
+                cls._NEGATIVE_SEARCHLIGHT_PATTERN,
+                light_repl,
+                "Rewrote negative searchlight prohibition into positive lighting description.",
+            ),
+        ]
+
+        violations: list[PreFlightViolation] = []
+        repaired = prompt_text
+        for pattern, positive_replacement, desc in rules:
+            matches = list(pattern.finditer(repaired))
+            if matches:
+                for m in reversed(matches):
+                    orig = m.group(0)
+                    repaired = repaired[: m.start()] + positive_replacement + repaired[m.end() :]
+                    violations.append(
+                        PreFlightViolation(
+                            rule_id="NEGATIVE_PHYSICAL_CLAUSE",
+                            category="physics",
+                            description=desc,
+                            repaired=True,
+                            original_snippet=orig,
+                            repaired_snippet=positive_replacement,
+                        )
+                    )
+        return repaired, violations
+
+    @classmethod
+    def repair_bilateral_prop_locks(
+        cls,
+        prompt_text: str,
+        characters: list[Any] | None = None,
+    ) -> tuple[str, list[PreFlightViolation]]:
+        """Pass 8: Locks left-hand vs right-hand roles during two-prop interactions and prevents thin-prop background fusion."""
+        if not prompt_text:
+            return prompt_text, []
+
+        violations: list[PreFlightViolation] = []
+        repaired = prompt_text
+        lower_text = repaired.lower()
+
+        matched_prop: str | None = None
+        subject_label = "The subject"
+
+        if characters:
+            for char in characters:
+                sig_prop = (
+                    getattr(char, "signature_prop", None)
+                    if not isinstance(char, dict)
+                    else char.get("signature_prop")
+                )
+                c_wardrobe = (
+                    getattr(char, "wardrobe", None)
+                    if not isinstance(char, dict)
+                    else char.get("wardrobe")
+                )
+                c_name = (
+                    getattr(char, "name", "")
+                    if not isinstance(char, dict)
+                    else char.get("name", "")
+                ) or ""
+                c_role = (
+                    getattr(char, "role_id", "")
+                    if not isinstance(char, dict)
+                    else char.get("role_id", "")
+                ) or ""
+
+                if sig_prop and str(sig_prop).strip():
+                    matched_prop = str(sig_prop).strip()
+                    if c_name and c_name.lower() in lower_text:
+                        subject_label = c_name.strip()
+                    elif c_role:
+                        subject_label = c_role.strip()
+                    break
+
+                if c_wardrobe and str(c_wardrobe).strip():
+                    wm = cls._PERSISTENT_PROP_RE.search(
+                        str(c_wardrobe)
+                    ) or cls._WARDROBE_PROP_NOUN_RE.search(str(c_wardrobe))
+                    if wm:
+                        matched_prop = wm.group(1).strip()
+                        if c_name and c_name.lower() in lower_text:
+                            subject_label = c_name.strip()
+                        elif c_role:
+                            subject_label = c_role.strip()
+                        break
+
+        if not matched_prop:
+            prop_m = cls._PERSISTENT_PROP_RE.search(repaired)
+            if prop_m:
+                matched_prop = prop_m.group(1).strip()
+
+        if not matched_prop:
+            for w_block in re.findall(r"\[Wardrobe:\s*([^\]]+)\]", repaired, flags=re.IGNORECASE):
+                wm = cls._PERSISTENT_PROP_RE.search(w_block) or cls._WARDROBE_PROP_NOUN_RE.search(
+                    w_block
+                )
+                if wm:
+                    matched_prop = wm.group(1).strip()
+                    break
+
+        has_handoff = bool(cls._HANDOFF_ACTION_RE.search(repaired))
+        has_both_hands_locked = ("left hand" in lower_text or "left arm" in lower_text) and (
+            "right hand" in lower_text or "right arm" in lower_text
+        )
+
+        if matched_prop and has_handoff and not has_both_hands_locked:
+            prop_clean = re.sub(r"^(?:a|an|the)\s+", "", matched_prop, flags=re.IGNORECASE).strip()
+            bilateral_clause = (
+                f" Bimanual Prop Lock: {subject_label} holds the {prop_clean} motionless in their left hand "
+                "at waist height while only their right hand reaches out to complete the interaction, "
+                "then lowers their right arm cleanly to their side."
+            )
+            repaired = repaired.rstrip() + bilateral_clause
+            violations.append(
+                PreFlightViolation(
+                    rule_id="BILATERAL_PROP_LOCK",
+                    category="physics",
+                    description="Injected bilateral left/right hand lock to prevent two-hand prop duplication during object handoff.",
+                    repaired=True,
+                    original_snippet="",
+                    repaired_snippet=bilateral_clause.strip(),
+                )
+            )
+
+        thin_m = cls._THIN_PROP_RE.search(repaired)
+        if thin_m and "silhouetted cleanly against" not in lower_text:
+            thin_name = thin_m.group(1).lower()
+            separation_clause = (
+                f" Keep the wielded {thin_name} tip silhouetted cleanly against a contrasting dark "
+                "background surface well clear of bright foreground objects."
+            )
+            repaired = repaired.rstrip() + separation_clause
+            violations.append(
+                PreFlightViolation(
+                    rule_id="PROP_FIGURE_GROUND_LOCK",
+                    category="physics",
+                    description="Injected figure-ground contrast separation for thin wielded prop.",
+                    repaired=True,
+                    original_snippet="",
+                    repaired_snippet=separation_clause.strip(),
+                )
+            )
+
+        return repaired, violations
+
+    @classmethod
+    def repair_dialogue_quotes_and_word_budget(
+        cls,
+        prompt_text: str,
+        shot_seconds: float = 10.0,
+        strip_offscreen_narrator: bool = False,
+    ) -> tuple[str, list[PreFlightViolation]]:
+        """Pass 9: Strips quotes from spoken video dialogue, optionally removes Offscreen Narrator lines, and checks 3.5 WPS word budget."""
+        if not prompt_text:
+            return prompt_text, []
+
+        violations: list[PreFlightViolation] = []
+        repaired = prompt_text
+
+        if strip_offscreen_narrator:
+            narrator_matches = list(cls._OFFSCREEN_NARRATOR_LINE_RE.finditer(repaired))
+            if narrator_matches:
+                for m in reversed(narrator_matches):
+                    orig = m.group(0).strip()
+                    repaired = repaired[: m.start()] + repaired[m.end() :]
+                    violations.append(
+                        PreFlightViolation(
+                            rule_id="OFFSCREEN_NARRATOR_STRIPPED",
+                            category="dialogue",
+                            description="Stripped Offscreen Narrator line for dedicated TTS routing.",
+                            repaired=True,
+                            original_snippet=orig,
+                            repaired_snippet="",
+                        )
+                    )
+                repaired = re.sub(r"\n{3,}", "\n\n", repaired).strip()
+
+        def _strip_quote_match(m: re.Match[str]) -> str:
+            prefix = m.group(1)
+            line = (m.group(2) or m.group(3) or m.group(4) or "").strip()
+            updated = f"{prefix}{line}"
+            violations.append(
+                PreFlightViolation(
+                    rule_id="DIALOGUE_QUOTES",
+                    category="dialogue",
+                    description="Stripped quotation marks around spoken video dialogue to prevent burned-in subtitles.",
+                    repaired=True,
+                    original_snippet=m.group(0),
+                    repaired_snippet=updated,
+                )
+            )
+            return updated
+
+        repaired = cls._SPOKEN_SAYS_QUOTED_RE.sub(_strip_quote_match, repaired)
+        repaired = cls._SPOKEN_DIALOGUE_LINE_QUOTED_RE.sub(_strip_quote_match, repaired)
+
+        # Count spoken words across spoken dialogue lines and warn if > calculate_shot_word_budget
+        spoken_segments: list[str] = []
+        for m in re.finditer(
+            r"(?:\b(?:says|speaks|whispers|shouts|yells):|-\s*Spoken\s+Dialogue\b[^\n]*?:)\s*([^\n]+)",
+            repaired,
+            flags=re.IGNORECASE,
+        ):
+            seg = m.group(1).strip()
+            # Stop at trailing non-spoken directives if inline
+            seg = re.split(
+                r"\b(?:After the line|Ambient noise:|The only sounds are|Bimanual Prop Lock:|Keep the wielded)\b",
+                seg,
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0].strip()
+            if seg:
+                spoken_segments.append(seg)
+
+        total_words = sum(len(re.findall(r"\b[\w']+\b", s)) for s in spoken_segments)
+        word_budget = calculate_shot_word_budget(shot_seconds)
+        if total_words > 0 and total_words > word_budget:
+            violations.append(
+                PreFlightViolation(
+                    rule_id="WORD_BUDGET_EXCEEDED",
+                    category="dialogue",
+                    description=(
+                        f"Spoken dialogue contains {total_words} words, exceeding the {word_budget}-word "
+                        f"budget for a {float(shot_seconds):.1f}s shot (130 WPM / max 3.5 WPS with 0.7s cut buffer)."
+                    ),
+                    repaired=False,
+                    original_snippet=" ".join(spoken_segments)[:120],
+                    repaired_snippet="",
+                )
+            )
+
+        return repaired, violations
+
     @classmethod
     def lint_and_repair(
         cls,
@@ -867,16 +1212,22 @@ class PreFlightGatekeeper:
         offering_physics: Any | None = None,
         palette_60_30_10: Any | None = None,
         act_number: int | None = None,
+        style_preset: str | None = None,
+        shot_seconds: float | None = None,
+        strip_offscreen_narrator: bool = False,
     ) -> PreFlightLintResult:
         """Main entry point for Pre-Flight Gatekeeper.
 
-        Sequentially applies all 6 invariant repair passes:
+        Sequentially applies all 9 invariant repair passes:
         1. Tag collisions (stacked tags, duplicate @Image, phantom tokens)
         2. Keyframe offsets (auto-shifting character @Image indices)
         3. Zero Wardrobe Redundancy (scrubbing conflicting clothing prose)
         4. Audio ducking (instrumental prefix + canonical ducking clause)
         5. Spatial staging (screen-left / screen-right separation for multiple characters)
         6. Offering physics, 60/30/10 palette lock & 3-act temporal causality gates
+        7. Negative-to-positive physical state rewrites (parameterized by style_preset)
+        8. Bilateral hand & prop-trajectory locks + thin-prop contrast separation
+        9. Unquoted video dialogue, optional Offscreen Narrator stripping & 3.5 WPS word-budget warning
         """
         all_violations: list[PreFlightViolation] = []
         current_text = prompt_text
@@ -915,6 +1266,28 @@ class PreFlightGatekeeper:
             act_number=act_number,
         )
         all_violations.extend(v6)
+
+        # Pass 7: Negative-to-Positive Physical State Rewriter
+        current_text, v7 = cls.repair_negative_physical_clauses(
+            current_text,
+            style_preset=style_preset,
+        )
+        all_violations.extend(v7)
+
+        # Pass 8: Bilateral Hand & Prop-Trajectory Lock
+        current_text, v8 = cls.repair_bilateral_prop_locks(
+            current_text,
+            characters=characters,
+        )
+        all_violations.extend(v8)
+
+        # Pass 9: Unquoted Video Dialogue, Offscreen Narrator Stripper & Word Budget Check
+        current_text, v9 = cls.repair_dialogue_quotes_and_word_budget(
+            current_text,
+            shot_seconds=shot_seconds if shot_seconds is not None else 10.0,
+            strip_offscreen_narrator=strip_offscreen_narrator,
+        )
+        all_violations.extend(v9)
 
         invariants_applied = list(dict.fromkeys(v.rule_id for v in all_violations))
         is_valid = len(all_violations) == 0

@@ -17,6 +17,10 @@ from omnimash.prompts.compiler import (
     sanitize_real_names,
     sort_characters_by_role_id,
 )
+from omnimash.prompts.delta_compiler import (
+    CompilationMode,
+    convert_legacy_tags_to_omni_1_2_natural_language,
+)
 
 logger = logging.getLogger("omnimash.engine.multimodal")
 
@@ -41,7 +45,7 @@ def _is_placeholder_image_url(url: str | None) -> bool:
 
 def load_reference_images_as_input(
     session_id: str | None,
-    characters: list[CharacterRole] | None = None,
+    characters: list[Any] | None = None,
     fetch_image_fn: Callable[[str], tuple[bytes, str]] | None = None,
     genai_client: Any | None = None,
     dev_client: Any | None = None,
@@ -163,7 +167,7 @@ def load_reference_images_as_input(
 def build_multimodal_contents(
     prompt: str,
     session_id: str | None = None,
-    characters: list[CharacterRole] | None = None,
+    characters: list[Any] | None = None,
     keyframe_image_url: str | None = None,
     directors_notes: dict[str, Any] | str | None = None,
     enable_safety_sanitization: bool = True,
@@ -173,6 +177,8 @@ def build_multimodal_contents(
     dev_client: Any | None = None,
     last_frame_image_url: str | None = None,
     is_seamless_loop: bool = False,
+    compilation_mode: CompilationMode = "auto",
+    model_id: str | None = None,
 ) -> list[dict[str, Any]] | str:
     """Assembles keyframe seed image, motion reference video clip, character reference images, character roster header with visual reference bindings, and timecoded prompt text cleanly into Omni Flash multimodal payload."""
     if is_seamless_loop and keyframe_image_url:
@@ -247,10 +253,46 @@ def build_multimodal_contents(
     else:
         has_kf_seed = (not is_video_kf) and bool(valid_keyframe_url)
 
+    has_last_frame_input = bool(
+        last_frame_image_url and not _is_placeholder_image_url(last_frame_image_url)
+    ) or any(
+        (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", ""))
+        in ("Ending Frame", "Keyframe Last Anchor")
+        for c in (characters or [])
+    )
+
+    is_i2v_delta_mode = compilation_mode == "i2v_delta_only" or (
+        compilation_mode == "auto"
+        and has_kf_seed
+        and not has_last_frame_input
+        and not is_seamless_loop
+        and "### INPUT ROLES" not in (prompt or "")
+        and "### CHARACTER PROFILES" not in (prompt or "")
+    )
+
+    effective_characters: list[Any] | None = characters
+    if is_i2v_delta_mode and characters:
+        filtered_chars: list[Any] = []
+        for c in characters:
+            img_role = (
+                getattr(c, "image_role", "Character Reference")
+                if not isinstance(c, dict)
+                else c.get("image_role", "Character Reference")
+            ) or "Character Reference"
+            enters_mid_shot = bool(
+                getattr(c, "enters_mid_shot", False)
+                if not isinstance(c, dict)
+                else c.get("enters_mid_shot", False)
+            )
+            if img_role == "Character Reference" and not enters_mid_shot:
+                continue
+            filtered_chars.append(c)
+        effective_characters = filtered_chars
+
     start_ref_idx = 1
     ref_image_parts, _ = load_reference_images_as_input(
         session_id,
-        characters,
+        effective_characters,
         fetch_image_fn=fetch_image_fn,
         genai_client=genai_client,
         dev_client=dev_client,
@@ -259,7 +301,7 @@ def build_multimodal_contents(
     all_image_parts = keyframe_image_parts + motion_ref_parts + ref_image_parts
 
     sources_items, references_items, char_tag_map = build_character_image_ref_tags(
-        characters=characters,
+        characters=effective_characters,
         starting_index=start_ref_idx,
         has_keyframe_seed=has_kf_seed,
         enable_sanitization=enable_safety_sanitization,
@@ -278,8 +320,8 @@ def build_multimodal_contents(
     if references_items:
         input_roles_lines.append(f"[# References {' '.join(references_items)}]")
 
-    if characters:
-        for c in sort_characters_by_role_id(characters):
+    if not is_i2v_delta_mode and effective_characters:
+        for c in sort_characters_by_role_id(effective_characters):
             img_role = (
                 getattr(c, "image_role", "Character Reference")
                 if not isinstance(c, dict)
@@ -311,13 +353,14 @@ def build_multimodal_contents(
 
     input_roles_header = (
         "### INPUT ROLES & REFERENCES\n" + "\n".join(input_roles_lines) + "\n\n"
-        if input_roles_lines
+        if (not is_i2v_delta_mode and input_roles_lines)
         else ""
     )
 
     tone_header = ""
     if (
-        keyframe_image_parts
+        not is_i2v_delta_mode
+        and keyframe_image_parts
         and not is_video_kf
         and "# Visual Tone & Starting Frame Anchor" not in prompt
     ):
@@ -337,7 +380,7 @@ def build_multimodal_contents(
         )
 
     notes_header = ""
-    if directors_notes:
+    if not is_i2v_delta_mode and directors_notes:
         if isinstance(directors_notes, dict):
             lines_n = ["# Director's Notes & Relational Dynamics:"]
             for k, v in directors_notes.items():
@@ -351,9 +394,9 @@ def build_multimodal_contents(
             )
 
     character_roster_header = ""
-    if characters:
+    if not is_i2v_delta_mode and effective_characters:
         char_lines: list[str] = ["# Character Roster & Visual Directives:"]
-        for c in coerce_character_roles(characters):
+        for c in coerce_character_roles(effective_characters):
             char_id = get_character_identifier(c)
             tag_str = f" [Style: {', '.join(c.aesthetic_tags)}]" if c.aesthetic_tags else ""
             tag = char_tag_map.get(char_id)
@@ -379,6 +422,14 @@ def build_multimodal_contents(
         )
         input_roles_header = ""
 
+    if is_i2v_delta_mode:
+        clean_prompt = re.sub(
+            r"### (?:INPUT ROLES(?: & REFERENCES)?|CHARACTER PROFILES)\n.*?(?=\n### |\Z)",
+            "",
+            clean_prompt,
+            flags=re.DOTALL,
+        ).strip()
+
     if (
         "# Character Roster & Visual Directives:" in clean_prompt
         or "### CHARACTER PROFILES" in clean_prompt
@@ -397,7 +448,7 @@ def build_multimodal_contents(
         or any(
             (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", ""))
             in ("Starting Frame", "Keyframe Seed Anchor")
-            for c in (characters or [])
+            for c in (effective_characters or [])
         )
     )
 
@@ -412,7 +463,7 @@ def build_multimodal_contents(
         or any(
             (getattr(c, "image_role", "") if not isinstance(c, dict) else c.get("image_role", ""))
             in ("Ending Frame", "Keyframe Last Anchor")
-            for c in (characters or [])
+            for c in (effective_characters or [])
         )
     )
 
@@ -468,7 +519,7 @@ def build_multimodal_contents(
 
     has_image_refs = (
         any("<IMAGE_REF_" in r for r in references_items)
-        or ("<IMAGE_REF_" in clean_prompt)
+        or (not is_i2v_delta_mode and "<IMAGE_REF_" in clean_prompt)
         or any(
             (
                 getattr(c, "reference_url", None)
@@ -484,7 +535,7 @@ def build_multimodal_contents(
                 "Ending Frame",
                 "Keyframe Last Anchor",
             )
-            for c in (characters or [])
+            for c in (effective_characters or [])
         )
     )
 
@@ -542,6 +593,9 @@ def build_multimodal_contents(
         + character_roster_header
         + clean_prompt
     )
+
+    if model_id and str(model_id).strip().lower().startswith("gemini-omni-1.2"):
+        sanitized_input = convert_legacy_tags_to_omni_1_2_natural_language(sanitized_input)
 
     if all_image_parts:
         text_part = {"type": "text", "text": sanitized_input}

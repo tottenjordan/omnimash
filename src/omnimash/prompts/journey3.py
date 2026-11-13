@@ -6,6 +6,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from omnimash.prompts.delta_compiler import (
+    CompilationMode,
+    _TIMECODE_PREFIX_RE,
+    build_i2v_delta_prompt,
+)
 from omnimash.prompts.image_tags import (
     get_character_identifier,
     replace_character_in_text_image_tags,
@@ -86,6 +91,8 @@ def compile_journey3_shot_prompt(
     keyframe_image_url: str | None = None,
     is_seamless_loop: bool = False,
     enable_preflight: bool = True,
+    compilation_mode: CompilationMode = "auto",
+    shot_seconds: float | None = None,
 ) -> str:
     """Compiles 4-block prompt for Journey 3 shot generation adhering to GEMINI_OMNI_FLASH_INSTR.
 
@@ -97,6 +104,39 @@ def compile_journey3_shot_prompt(
     """
     if is_seamless_loop and keyframe_image_url and keyframe_image_url.strip():
         last_frame_image_url = keyframe_image_url.strip()
+
+    is_single_keyframe_i2v = bool(
+        keyframe_image_url
+        and keyframe_image_url.strip()
+        and not (last_frame_image_url and last_frame_image_url.strip())
+        and not is_seamless_loop
+    )
+
+    if compilation_mode == "i2v_delta_only":
+        amb = (
+            audio_stem or soundscape or global_audio_beat or audio_track or "steady room tone"
+        ).strip()
+        delta_prompt, has_spoken = build_i2v_delta_prompt(
+            action_text=action_directive,
+            dialogue_text=timeline_dialogue,
+            characters=characters,
+            ambient_noise=amb,
+            include_starting_frame_binding=bool(keyframe_image_url and keyframe_image_url.strip())
+            or True,
+            enable_sanitization=enable_sanitization,
+        )
+        if enable_preflight:
+            lint_res = PreFlightGatekeeper.lint_and_repair(
+                delta_prompt,
+                characters=list(characters) if characters else None,
+                keyframe_image_url=keyframe_image_url,
+                has_dialogue=has_spoken,
+                style_preset=style_preset,
+                shot_seconds=shot_seconds,
+                strip_offscreen_narrator=True,
+            )
+            return lint_res.repaired_prompt
+        return delta_prompt
 
     char_list: list[Any] = list(characters) if characters is not None else []
     if last_frame_image_url and last_frame_image_url.strip():
@@ -232,6 +272,8 @@ def compile_journey3_shot_prompt(
     roster_str = base_roster_str
 
     action_str = action_directive.strip()
+    if is_single_keyframe_i2v and action_str:
+        action_str = _TIMECODE_PREFIX_RE.sub("", action_str).strip()
     if enable_sanitization and action_str:
         action_str = sanitize_real_names(action_str)
 
@@ -383,9 +425,7 @@ def compile_journey3_shot_prompt(
                     v_clean = sanitize_real_names(v_style) if enable_sanitization else v_style
                     voice_tag = f" [Voice Style: {v_clean}]"
 
-                timeline_items.append(
-                    f'- Spoken Dialogue ({matched_spk}){voice_tag}: "{txt_clean}"'
-                )
+                timeline_items.append(f"- Spoken Dialogue ({matched_spk}){voice_tag}: {txt_clean}")
                 continue
 
             match = re.match(r"^(?:-\s*)?([^:]+):\s*[\"“]?(.*?)[\"”]?$", chunk)
@@ -436,7 +476,7 @@ def compile_journey3_shot_prompt(
                     voice_tag = f" [Voice Style: {v_clean}]"
 
                 timeline_items.append(
-                    f'- Spoken Dialogue ({matched_char_id}){voice_tag}: "{txt_clean}"'
+                    f"- Spoken Dialogue ({matched_char_id}){voice_tag}: {txt_clean}"
                 )
             else:
                 txt_clean = chunk.strip('"').strip("'").strip("“").strip("”")
@@ -452,7 +492,7 @@ def compile_journey3_shot_prompt(
                     voice_tag = ""
                 if enable_sanitization and txt_clean:
                     txt_clean = sanitize_real_names(txt_clean)
-                timeline_items.append(f'- Spoken Dialogue ({spk_id}){voice_tag}: "{txt_clean}"')
+                timeline_items.append(f"- Spoken Dialogue ({spk_id}){voice_tag}: {txt_clean}")
 
     has_spoken_audio = bool(
         (dialogue_str and dialogue_str.strip()) or (narrator_text and narrator_text.strip())
@@ -555,6 +595,8 @@ def compile_journey3_shot_prompt(
             last_frame_image_url=last_frame_image_url,
             is_seamless_loop=is_seamless_loop,
             has_dialogue=bool(timeline_dialogue and timeline_dialogue.strip()),
+            style_preset=style_preset,
+            shot_seconds=shot_seconds,
         )
         validate_compiled_prompt(lint_res.repaired_prompt)
         return lint_res.repaired_prompt
