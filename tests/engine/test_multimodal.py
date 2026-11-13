@@ -390,3 +390,101 @@ def test_build_multimodal_contents_empty_fetch_bytes_omits_first_frame():
     assert isinstance(res, str)
     assert "<FIRST_FRAME>" not in res
     assert "Use this image as the starting frame." not in res
+
+
+def test_build_multimodal_contents_i2v_delta_mode_filters_turnaround_sheets_and_omits_4block_headers():
+    """In auto/i2v_delta_only with single keyframe, turnaround sheets are filtered unless enters_mid_shot=True and 4-block headers are omitted."""
+    from types import SimpleNamespace
+
+    chars = [
+        SimpleNamespace(
+            role_id="Role A",
+            name="Lead",
+            description="Already in starting frame",
+            reference_url="http://example.com/lead_sheet.png",
+            image_role="Character Reference",
+            aesthetic_tags=["Dark Coat"],
+            enters_mid_shot=False,
+        ),
+        SimpleNamespace(
+            role_id="Role B",
+            name="Latecomer",
+            description="Enters from doorway mid-shot",
+            reference_url="http://example.com/latecomer_sheet.png",
+            image_role="Character Reference",
+            aesthetic_tags=["Silver Vest"],
+            enters_mid_shot=True,
+        ),
+    ]
+
+    def mock_fetch(url: str):
+        return b"img-bytes-" + url.encode("utf-8"), "image/png"
+
+    res = build_multimodal_contents(
+        prompt="Locked-off camera with a slow push in. Lead speaks to the lens.",
+        keyframe_image_url="http://example.com/kf.png",
+        characters=chars,
+        fetch_image_fn=mock_fetch,
+        compilation_mode="auto",
+        model_id="gemini-omni-1.2-flash-preview",
+    )
+    assert isinstance(res, list)
+    content = res[0]["content"]
+    image_parts = [p for p in content if p.get("type") == "image"]
+    text_part = next(p["text"] for p in content if p.get("type") == "text")
+
+    # Keyframe + Role B (enters_mid_shot=True) only -> 2 images, Role A turnaround sheet filtered out
+    assert len(image_parts) == 2
+    assert "### INPUT ROLES" not in text_part
+    assert "# Visual Tone & Starting Frame Anchor" not in text_part
+    assert "# Character Roster & Visual Directives" not in text_part
+    assert "Use this image as the starting frame." in text_part
+
+
+def test_build_multimodal_contents_omni_1_2_converts_legacy_tags_to_natural_language():
+    """When model_id starts with gemini-omni-1.2, legacy tags convert to natural-language positional references."""
+    chars = [
+        CharacterRole(
+            name="Hero",
+            role_id="Role A",
+            description="Cyber hero",
+            reference_url="http://example.com/hero.png",
+        )
+    ]
+    prompt = (
+        "### INPUT ROLES & REFERENCES\n"
+        "[# Sources <FIRST_FRAME>@KeyframeSeed]\n"
+        "[# References <IMAGE_REF_0>@Image2]\n"
+        "- Role A (Character Reference): Hero (@Image2)\n\n"
+        "### CHARACTER PROFILES\n"
+        "- Role A (<IMAGE_REF_0>): Cyber hero\n\n"
+        "### SCENE INSTRUCTIONS\n"
+        "Continue from <FIRST_FRAME>@KeyframeSeed.\n\n"
+        "### TIMELINE\n"
+        "Role A (<IMAGE_REF_0>) steps forward."
+    )
+    res_12 = build_multimodal_contents(
+        prompt=prompt,
+        keyframe_image_url="http://example.com/kf.png",
+        characters=chars,
+        compilation_mode="t2v_4block",
+        model_id="gemini-omni-1.2-flash-preview",
+    )
+    assert isinstance(res_12, str)
+    assert "<FIRST_FRAME>" not in res_12
+    assert "<IMAGE_REF_0>" not in res_12
+    assert "[# Sources" not in res_12
+    assert "[# References" not in res_12
+    assert "@Image" not in res_12
+    assert "Use this image as the starting frame." in res_12
+
+    # Legacy 1.1 model_id preserves legacy tags
+    res_11 = build_multimodal_contents(
+        prompt=prompt,
+        keyframe_image_url="http://example.com/kf.png",
+        characters=chars,
+        model_id="gemini-omni-1.1-flash-preview",
+    )
+    assert isinstance(res_11, str)
+    assert "<FIRST_FRAME>@KeyframeSeed" in res_11
+    assert "<IMAGE_REF_0>" in res_11

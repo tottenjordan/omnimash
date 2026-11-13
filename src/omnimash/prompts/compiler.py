@@ -9,6 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from omnimash.config import settings
 from omnimash.prompts.character_roles import CharacterRole
+from omnimash.prompts.delta_compiler import (
+    CompilationMode,
+    _TIMECODE_PREFIX_RE,
+    build_i2v_delta_prompt,
+)
 from omnimash.prompts.image_tags import (
     build_character_image_ref_tags,
     get_character_identifier,
@@ -327,8 +332,11 @@ class PromptCompiler:
         char_label: str = "Role A",
         env_tag: str = "",
         cam_tag: str = "",
+        skip_timecodes: bool = False,
     ) -> str:
         clean = (action_text or "").strip()
+        if skip_timecodes:
+            return _TIMECODE_PREFIX_RE.sub("", clean).strip()
         if "[0-3s]" in clean and "[3-6s]" in clean and "[6-10s]" in clean:
             return clean
         env_phrase = f" in {env_tag}" if env_tag else ""
@@ -974,6 +982,7 @@ class PromptCompiler:
         style_preset: str | None = None,
         is_seamless_loop: bool = False,
         directorial_invariants: list[str] | None = None,
+        compilation_mode: CompilationMode = "auto",
     ) -> str:
         validate_prompt_input_lengths(concept=concept)
         apply_conversational_voice_edits(concept, characters)
@@ -1260,10 +1269,11 @@ class PromptCompiler:
                 else getattr(scene, "timecode", None)
             )
             timecode_prefix = ""
-            if tc_val and str(tc_val).strip():
+            skip_timecode_slicing = compilation_mode == "i2v_delta_only"
+            if tc_val and str(tc_val).strip() and not skip_timecode_slicing:
                 tc_clean = str(tc_val).strip()
                 timecode_prefix = f"{tc_clean} " if tc_clean.startswith("[") else f"[{tc_clean}] "
-            elif len(scenes) == 1:
+            elif len(scenes) == 1 and not skip_timecode_slicing:
                 dur_int = (
                     int(dur_val)
                     if dur_val and isinstance(dur_val, (int, float)) and dur_val > 0
@@ -1429,6 +1439,8 @@ class PromptCompiler:
         project_id: str | None = None,
         enable_preflight: bool = True,
         directorial_invariants: list[str] | None = None,
+        compilation_mode: CompilationMode = "auto",
+        shot_seconds: float | None = None,
     ) -> str:
         if (
             is_seamless_loop
@@ -1468,6 +1480,54 @@ class PromptCompiler:
         )
         matched_invariants: list[str] = list(directorial_invariants or [])
         effective_has_keyframe = has_keyframe_seed or bool(keyframe_image_url)
+
+        if (
+            compilation_mode == "i2v_delta_only"
+            and not (last_frame_image_url and last_frame_image_url.strip())
+            and not is_seamless_loop
+        ):
+            first_scene = scenes[0] if scenes else None
+            raw_action = (
+                (
+                    first_scene.get("action", "")
+                    if isinstance(first_scene, dict)
+                    else getattr(first_scene, "action", "")
+                )
+                if first_scene is not None
+                else concept
+            )
+            raw_diag = (
+                (
+                    first_scene.get("dialogue", "")
+                    if isinstance(first_scene, dict)
+                    else getattr(first_scene, "dialogue", "")
+                )
+                if first_scene is not None
+                else ""
+            )
+            delta_prompt, has_spoken = build_i2v_delta_prompt(
+                action_text=str(raw_action or ""),
+                dialogue_text=str(raw_diag or ""),
+                characters=characters,
+                ambient_noise=(audio_beat or environment_tag or "steady room tone").strip(),
+                concept=concept,
+                include_starting_frame_binding=effective_has_keyframe,
+                enable_sanitization=enable_sanitization,
+            )
+            if edit_instruction and edit_instruction.strip():
+                delta_prompt = f"{delta_prompt} {edit_instruction.strip()}"
+            if enable_preflight:
+                lint_res = PreFlightGatekeeper.lint_and_repair(
+                    delta_prompt,
+                    characters=characters,
+                    keyframe_image_url=keyframe_image_url,
+                    has_dialogue=has_spoken,
+                    style_preset=style_preset,
+                    shot_seconds=shot_seconds,
+                    strip_offscreen_narrator=True,
+                )
+                return lint_res.repaired_prompt
+            return delta_prompt
 
         if active_strategy_bank is not None:
             char_names: list[str] = []
@@ -1511,6 +1571,7 @@ class PromptCompiler:
             style_preset=style_preset,
             is_seamless_loop=is_seamless_loop,
             directorial_invariants=matched_invariants,
+            compilation_mode=compilation_mode,
         )
         base_prompt = validate_and_repair_role_bindings(base_prompt, characters)
 
@@ -1565,6 +1626,8 @@ class PromptCompiler:
                 last_frame_image_url=last_frame_image_url,
                 is_seamless_loop=is_seamless_loop,
                 has_dialogue=has_dialogue,
+                style_preset=style_preset,
+                shot_seconds=shot_seconds,
             )
             if lint_res.violations:
                 logger.warning(
