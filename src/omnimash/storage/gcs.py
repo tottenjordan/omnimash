@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import dataclasses
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import json
 import logging
 import mimetypes
@@ -11,10 +11,11 @@ import os
 import re
 import threading
 from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 import uuid
 
 from omnimash.config import settings
+from omnimash.storage import library_store, signed_urls
 from omnimash.storage.defaults import DEFAULT_CHARACTERS
 
 logger = logging.getLogger(__name__)
@@ -744,172 +745,13 @@ class GcsStorageManager:
         """Generates a secure GCS V4 Signed URL (up to 7-day lifespan) allowing external
         users to stream or download finalized videos without exposing the main application.
         """
-        if not (1 <= expiration_days <= 7):
-            raise ValueError("Expiration days must be between 1 and 7")
-
-        clean_path = self._normalize_media_source_path(blob_path_or_uri).strip()
-        clean_path = unquote(clean_path)
-
-        if clean_path.startswith(f"gs://{self.bucket_name}/"):
-            blob_name = clean_path[len(f"gs://{self.bucket_name}/") :].lstrip("/")
-        elif clean_path.startswith("gs://"):
-            parts = clean_path[5:].split("/", 1)
-            blob_name = parts[1] if len(parts) > 1 else parts[0]
-        elif clean_path.startswith(f"https://storage.googleapis.com/{self.bucket_name}/"):
-            blob_name = clean_path[
-                len(f"https://storage.googleapis.com/{self.bucket_name}/") :
-            ].lstrip("/")
-        elif clean_path.startswith("https://storage.googleapis.com/"):
-            parts = clean_path[len("https://storage.googleapis.com/") :].split("/", 1)
-            blob_name = parts[1] if len(parts) > 1 else parts[0]
-        else:
-            blob_name = clean_path.lstrip("/")
-
-        if "?" in blob_name:
-            blob_name = blob_name.split("?", 1)[0]
-
-        if master_title and master_title.strip():
-            clean_title = master_title.strip()
-            filename = clean_title if clean_title.endswith(".mp4") else f"{clean_title}.mp4"
-        else:
-            raw_base = os.path.basename(blob_name)
-            if raw_base:
-                filename = raw_base if raw_base.endswith(".mp4") else f"{raw_base}.mp4"
-            else:
-                filename = "final_master.mp4"
-
-        if not os.path.basename(blob_name):
-            blob_name = f"{blob_name.rstrip('/')}/{filename}"
-
-        expires_delta = timedelta(days=expiration_days)
-        expiration_seconds = int(expires_delta.total_seconds())
-        now_dt = datetime.now(timezone.utc)
-        expires_at_dt = now_dt + expires_delta
-        expires_at_iso = expires_at_dt.isoformat()
-
-        project_id = self.project_id or "hybrid-vertex"
-        mock_sa = f"omnimash-sa@{project_id}.iam.gserviceaccount.com"
-
-        if self.mock_mode:
-            date_stamp = now_dt.strftime("%Y%m%d")
-            time_stamp = now_dt.strftime("%Y%m%dT%H%M%SZ")
-            cred_scope = f"{quote_plus(mock_sa)}%2F{date_stamp}%2Fauto%2Fstorage%2Fgoog4_request"
-            query_base = (
-                f"X-Goog-Algorithm=GOOG4-RSA-SHA256"
-                f"&X-Goog-Credential={cred_scope}"
-                f"&X-Goog-Date={time_stamp}"
-                f"&X-Goog-Expires={expiration_seconds}"
-                f"&X-Goog-SignedHeaders=host"
-                f"&X-Goog-Signature=mockv4signature{uuid.uuid4().hex}"
-            )
-            share_url = (
-                f"https://storage.googleapis.com/{self.bucket_name}/{blob_name}?"
-                f"{query_base}&response-content-disposition=inline&response-content-type={quote_plus(content_type)}"
-            )
-            download_url = (
-                f"https://storage.googleapis.com/{self.bucket_name}/{blob_name}?"
-                f"{query_base}&response-content-disposition={quote_plus(f'attachment; filename="{filename}"')}"
-            )
-            return {
-                "success": True,
-                "signed_v4": False,
-                "blob_name": blob_name,
-                "gcs_uri": f"gs://{self.bucket_name}/{blob_name}",
-                "share_url": share_url,
-                "download_url": download_url,
-                "expires_at": expires_at_iso,
-                "lifespan_days": expiration_days,
-                "filename": filename,
-                "message": f"Shareable link generated. Valid for {expiration_days} days until {expires_at_iso}.",
-            }
-
-        signed_v4 = False
-        share_url = f"https://storage.googleapis.com/{self.bucket_name}/{blob_name}"
-        download_url = f"https://storage.googleapis.com/{self.bucket_name}/{blob_name}"
-
-        if self.bucket:
-            blob = self.bucket.blob(blob_name)
-            try:
-                cand_share_url = blob.generate_signed_url(
-                    version="v4",
-                    expiration=expires_delta,
-                    method="GET",
-                    response_type=content_type,
-                    response_disposition="inline",
-                )
-                cand_download_url = blob.generate_signed_url(
-                    version="v4",
-                    expiration=expires_delta,
-                    method="GET",
-                    response_disposition=f'attachment; filename="{filename}"',
-                )
-                share_url = cand_share_url
-                download_url = cand_download_url
-                signed_v4 = True
-            except Exception as primary_exc:
-                try:
-                    import google.auth
-                    from google.auth.transport import requests as google_auth_requests
-
-                    creds = getattr(self._client_instance, "_credentials", None)
-                    if creds is None:
-                        creds, _ = google.auth.default()
-                    if creds is not None:
-                        needs_refresh = (
-                            not getattr(creds, "token", None)
-                            or getattr(creds, "valid", True) is False
-                            or getattr(creds, "service_account_email", None) in (None, "default")
-                        )
-                        if needs_refresh:
-                            creds.refresh(google_auth_requests.Request())
-                        sa_email = (
-                            getattr(creds, "service_account_email", None)
-                            or getattr(creds, "signer_email", None)
-                            or mock_sa
-                        )
-                        if sa_email == "default":
-                            sa_email = mock_sa
-                        access_token = getattr(creds, "token", None)
-                        if sa_email and access_token:
-                            cand_share_url = blob.generate_signed_url(
-                                version="v4",
-                                expiration=expires_delta,
-                                method="GET",
-                                response_type=content_type,
-                                response_disposition="inline",
-                                service_account_email=sa_email,
-                                access_token=access_token,
-                            )
-                            cand_download_url = blob.generate_signed_url(
-                                version="v4",
-                                expiration=expires_delta,
-                                method="GET",
-                                response_disposition=f'attachment; filename="{filename}"',
-                                service_account_email=sa_email,
-                                access_token=access_token,
-                            )
-                            share_url = cand_share_url
-                            download_url = cand_download_url
-                            signed_v4 = True
-                except Exception as iam_exc:
-                    logger.warning(
-                        "Cryptographic V4 signing via credentials/IAM failed (%s / %s); omitting fake V4 signature in live mode.",
-                        primary_exc,
-                        iam_exc,
-                    )
-
-        return {
-            "success": True,
-            "signed_v4": signed_v4,
-            "blob_name": blob_name,
-            "gcs_uri": f"gs://{self.bucket_name}/{blob_name}",
-            "share_url": share_url,
-            "download_url": download_url,
-            "expires_at": expires_at_iso,
-            "lifespan_days": expiration_days,
-            "filename": filename,
-            "message": f"Shareable link generated. Valid for {expiration_days} days until {expires_at_iso}.",
-        }
+        return signed_urls.create_v4_shareable_link(
+            self,
+            blob_path_or_uri=blob_path_or_uri,
+            expiration_days=expiration_days,
+            master_title=master_title,
+            content_type=content_type,
+        )
 
     def freeze_share_bundle(
         self,
@@ -1028,8 +870,7 @@ class GcsStorageManager:
     @staticmethod
     def _slugify(name: str) -> str:
         """Converts a character or entity name into a normalized lowercase slug."""
-        slug = re.sub(r"[^a-zA-Z0-9]+", "_", name).strip("_").lower()
-        return slug or "character"
+        return library_store.slugify(name)
 
     def save_character(
         self,
@@ -1039,36 +880,13 @@ class GcsStorageManager:
         project_id: str | None = None,
     ) -> tuple[str, str]:
         """Persists character definitions as JSON in GCS under project, library, or session scope."""
-        name = str(character.get("name", "character"))
-        slug = self._slugify(name)
-        if project_id:
-            blob_path = f"projects/{project_id}/saved_characters/{slug}.json"
-        elif is_library or session_id is None:
-            blob_path = f"library/characters/{slug}.json"
-        else:
-            blob_path = f"sessions/{session_id}/characters/{slug}.json"
-
-        pub_url, gcs_uri = self._upload_json_payload(
-            blob_path,
+        return library_store.save_character(
+            self,
             character,
-            mock_cache_dict=self._mock_characters,
-            mock_cache_key=slug,
+            session_id=session_id,
+            is_library=is_library,
+            project_id=project_id,
         )
-
-        if project_id:
-            if project_id not in self._mock_projects:
-                self._mock_projects.append(project_id)
-            if project_id not in self._mock_project_characters:
-                self._mock_project_characters[project_id] = []
-            existing = [
-                c
-                for c in self._mock_project_characters[project_id]
-                if self._slugify(str(c.get("name", ""))) != slug
-            ]
-            existing.append(character)
-            self._mock_project_characters[project_id] = existing
-
-        return pub_url, gcs_uri
 
     def save_character_sheet(
         self,
@@ -1078,69 +896,13 @@ class GcsStorageManager:
         project_id: str | None = None,
     ) -> tuple[str, str]:
         """Saves a character reference sheet image to GCS under project or session scope."""
-        name_base = (
-            custom_name.removesuffix(".png")
-            if isinstance(custom_name, str)
-            else "character_sheet_v1"
+        return library_store.save_character_sheet(
+            self,
+            image_data,
+            custom_name,
+            session_id=session_id,
+            project_id=project_id,
         )
-        clean_name = self._slugify(name_base)
-        if not clean_name:
-            clean_name = "character_sheet_v1"
-
-        filename = f"{clean_name}.png"
-        if project_id:
-            if session_id:
-                blob_path = (
-                    f"projects/{project_id}/sessions/{session_id}/character_sheets/{filename}"
-                )
-            else:
-                blob_path = f"projects/{project_id}/saved_reference_sheets/{filename}"
-        elif session_id:
-            blob_path = f"sessions/{session_id}/character_sheets/{filename}"
-        else:
-            blob_path = f"character_sheets/{filename}"
-
-        raw_bytes = b""
-        if isinstance(image_data, bytes):
-            raw_bytes = image_data
-        elif isinstance(image_data, str):
-            from omnimash.engine.media_loader import fetch_media_bytes
-
-            raw_bytes, _ = fetch_media_bytes(image_data, storage=self)
-            if not raw_bytes:
-                # Fallback: try decoding as raw base64 string
-                try:
-                    raw_bytes = base64.b64decode(image_data)
-                except Exception:
-                    pass
-
-        if not raw_bytes and self.mock_mode:
-            raw_bytes = b"mock_character_sheet_bytes"
-
-        self.upload_bytes(raw_bytes, blob_path, content_type="image/png")
-        pub_url = self.get_public_url(blob_path)
-        gcs_uri = self.get_gcs_uri(blob_path)
-
-        if project_id:
-            if project_id not in self._mock_projects:
-                self._mock_projects.append(project_id)
-            if project_id not in self._mock_project_reference_sheets:
-                self._mock_project_reference_sheets[project_id] = []
-            sheet_meta = {
-                "name": clean_name,
-                "filename": filename,
-                "url": pub_url,
-                "gcs_uri": gcs_uri,
-            }
-            existing = [
-                s
-                for s in self._mock_project_reference_sheets[project_id]
-                if s.get("name") != clean_name
-            ]
-            existing.append(sheet_meta)
-            self._mock_project_reference_sheets[project_id] = existing
-
-        return pub_url, gcs_uri
 
     def save_product(
         self,
@@ -1149,38 +911,12 @@ class GcsStorageManager:
         session_id: str | None = None,
     ) -> tuple[str, str]:
         """Persists product definition JSON in GCS under project, session, or library scope."""
-        name = str(product.get("name", "product"))
-        slug = self._slugify(name)
-        if project_id:
-            if session_id:
-                blob_path = f"projects/{project_id}/sessions/{session_id}/products/{slug}.json"
-            else:
-                blob_path = f"projects/{project_id}/saved_products/{slug}.json"
-        elif session_id:
-            blob_path = f"sessions/{session_id}/products/{slug}.json"
-        else:
-            blob_path = f"library/products/{slug}.json"
-
-        content = json.dumps(product, indent=2)
-        self.upload_bytes(
-            content.encode("utf-8"),
-            blob_path,
-            content_type="application/json",
+        return library_store.save_product(
+            self,
+            product,
+            project_id=project_id,
+            session_id=session_id,
         )
-        if project_id:
-            if project_id not in self._mock_projects:
-                self._mock_projects.append(project_id)
-            if project_id not in self._mock_project_products:
-                self._mock_project_products[project_id] = []
-            existing = [
-                p
-                for p in self._mock_project_products[project_id]
-                if self._slugify(str(p.get("name", ""))) != slug
-            ]
-            existing.append(product)
-            self._mock_project_products[project_id] = existing
-
-        return self.get_public_url(blob_path), self.get_gcs_uri(blob_path)
 
     def save_video_clip(
         self,
@@ -1362,7 +1098,7 @@ class GcsStorageManager:
         character: dict[str, Any],
     ) -> tuple[str, str]:
         """Saves a character definition under a project in GCS."""
-        return self.save_character(character, project_id=project_id)
+        return library_store.save_project_character(self, project_id, character)
 
     def copy_session_roster(
         self,
@@ -1536,145 +1272,24 @@ class GcsStorageManager:
 
     def list_project_characters(self, project_id: str = "default_project") -> list[dict[str, Any]]:
         """Lists character dicts from projects/{project_id}/saved_characters/ and legacy session subfolders."""
-        characters: list[dict[str, Any]] = []
-        seen_slugs: set[str] = set()
-
-        if not self.mock_mode and self._bucket:
-            try:
-                prefix = f"projects/{project_id}/saved_characters/"
-                blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
-                json_blobs = [b for b in blobs if getattr(b, "name", "").endswith(".json")]
-                for data in self._download_blobs_concurrently(json_blobs):
-                    slug = self._slugify(str(data.get("name", "")))
-                    if slug not in seen_slugs:
-                        seen_slugs.add(slug)
-                        characters.append(data)
-            except Exception as exc:
-                logger.warning("list_project_characters failed on prefix %s: %s", prefix, exc)
-
-            try:
-                prefix_sessions = f"projects/{project_id}/sessions/"
-                blobs = self._bucket.list_blobs(prefix=prefix_sessions, timeout=self.timeout)
-                json_blobs = [
-                    b
-                    for b in blobs
-                    if "/characters/" in getattr(b, "name", "")
-                    and getattr(b, "name", "").endswith(".json")
-                ]
-                for data in self._download_blobs_concurrently(json_blobs):
-                    slug = self._slugify(str(data.get("name", "")))
-                    if slug not in seen_slugs:
-                        seen_slugs.add(slug)
-                        characters.append(data)
-            except Exception as exc:
-                logger.warning(
-                    "list_project_characters failed on session prefix %s: %s", prefix_sessions, exc
-                )
-
-        if characters:
-            return characters
-
-        if project_id in self._mock_project_characters:
-            return self._mock_project_characters[project_id]
-
-        if project_id == "default_project":
-            return list(self._mock_characters.values())
-
-        return []
+        return library_store.list_project_characters(self, project_id=project_id)
 
     def list_project_products(self, project_id: str = "default_project") -> list[dict[str, Any]]:
         """Lists product dicts from projects/{project_id}/saved_products/."""
-        products: list[dict[str, Any]] = []
-        seen_slugs: set[str] = set()
-
-        if not self.mock_mode and self._bucket:
-            try:
-                prefix = f"projects/{project_id}/saved_products/"
-                blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
-                for blob in blobs:
-                    if blob.name.endswith(".json"):
-                        try:
-                            data = json.loads(blob.download_as_text(timeout=self.timeout))
-                            if isinstance(data, dict):
-                                slug = self._slugify(str(data.get("name", "")))
-                                if slug not in seen_slugs:
-                                    seen_slugs.add(slug)
-                                    products.append(data)
-                        except Exception as exc:
-                            logger.warning("Failed to load product blob %s: %s", blob.name, exc)
-            except Exception as exc:
-                logger.warning("list_project_products failed on prefix %s: %s", prefix, exc)
-
-        if products:
-            return products
-
-        return self._mock_project_products.get(project_id, [])
+        return library_store.list_project_products(self, project_id=project_id)
 
     def list_project_reference_sheets(
         self, project_id: str = "default_project"
     ) -> list[dict[str, Any]]:
         """Lists turnaround/reference sheet dicts from projects/{project_id}/saved_reference_sheets/."""
-        sheets: list[dict[str, Any]] = []
-        seen_names: set[str] = set()
-
-        if not self.mock_mode and self._bucket:
-            try:
-                prefix = f"projects/{project_id}/saved_reference_sheets/"
-                blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
-                for blob in blobs:
-                    name = os.path.basename(blob.name)
-                    if name and name not in seen_names:
-                        seen_names.add(name)
-                        sheets.append(
-                            {
-                                "name": name.removesuffix(".png").removesuffix(".jpg"),
-                                "filename": name,
-                                "url": self.get_public_url(blob.name),
-                                "gcs_uri": self.get_gcs_uri(blob.name),
-                            }
-                        )
-            except Exception as exc:
-                logger.warning("list_project_reference_sheets failed on prefix %s: %s", prefix, exc)
-
-        if sheets:
-            return sheets
-
-        return self._mock_project_reference_sheets.get(project_id, [])
+        return library_store.list_project_reference_sheets(self, project_id=project_id)
 
     def list_characters(
         self,
         session_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Returns list of character dicts from library and session scope."""
-        if not self.mock_mode and self._bucket:
-            try:
-                characters: list[dict[str, Any]] = []
-                seen_slugs: set[str] = set()
-
-                prefixes = ["library/characters/"]
-                if session_id:
-                    prefixes.append(f"sessions/{session_id}/characters/")
-
-                for prefix in prefixes:
-                    blobs = self._bucket.list_blobs(prefix=prefix, timeout=self.timeout)
-                    json_blobs = [
-                        b
-                        for b in blobs
-                        if getattr(b, "name", "").endswith(".json")
-                        and not getattr(b, "name", "").endswith("roster.json")
-                    ]
-                    for data in self._download_blobs_concurrently(json_blobs):
-                        slug = self._slugify(str(data.get("name", "")))
-                        if slug not in seen_slugs:
-                            seen_slugs.add(slug)
-                            characters.append(data)
-                            self._mock_characters[slug] = data
-                if characters:
-                    return characters
-            except Exception as exc:
-                logger.warning("list_characters failed: %s", exc)
-
-        return list(self._mock_characters.values())
+        return library_store.list_characters(self, session_id=session_id)
 
     def load_character(
         self,
@@ -1682,36 +1297,7 @@ class GcsStorageManager:
         session_id: str | None = None,
     ) -> dict[str, Any] | None:
         """Fetches character dict for a given slug from session scope, library scope, or mock cache."""
-        clean_slug = self._slugify(slug)
-
-        paths_to_try: list[str] = []
-        if session_id:
-            paths_to_try.append(f"sessions/{session_id}/characters/{clean_slug}.json")
-        paths_to_try.append(f"library/characters/{clean_slug}.json")
-
-        for blob_path in paths_to_try:
-            data = self._download_json_payload(
-                blob_path,
-                mock_cache_dict=self._mock_characters,
-                mock_cache_key=clean_slug,
-            )
-            if isinstance(data, dict):
-                return data
-
-        if slug in self._mock_characters:
-            return self._mock_characters[slug]
-        if clean_slug in self._mock_characters:
-            return self._mock_characters[clean_slug]
-
-        for key, char in self._mock_characters.items():
-            if (
-                key == clean_slug
-                or key.startswith(f"{clean_slug}_")
-                or self._slugify(str(char.get("name", ""))) == clean_slug
-            ):
-                return char
-
-        return None
+        return library_store.load_character(self, slug, session_id=session_id)
 
     def save_session_roster(
         self,
