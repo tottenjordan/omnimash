@@ -1541,7 +1541,7 @@ def test_journey3_setup_session_manifest_persistence() -> None:
     assert len(manifest["characters"]) == 2
     assert manifest["characters"][0]["name"] == "Neo"
 
-    # Verify legacy "gemini-3.1-flash-image" in persisted manifest or setup request normalizes to "gemini-nano-banana-2.1"
+    # Verify legacy "gemini-3.1-flash-image" in persisted manifest normalizes to default image_model_id ("gemini-3-pro-image")
     storage.save_session_manifest(
         session_id="legacy_session",
         manifest_data={"session_id": "legacy_session", "image_model": "gemini-3.1-flash-image"},
@@ -1550,7 +1550,7 @@ def test_journey3_setup_session_manifest_persistence() -> None:
     hydrated_session = app.state.agent.session_manager.get_or_create_session(
         "usr_default", "test_cyber_project", session_name="legacy_session"
     )
-    assert hydrated_session.image_model == "gemini-nano-banana-2.1"
+    assert hydrated_session.image_model == "gemini-3-pro-image"
 
     res_legacy = client.post(
         "/api/journey3/setup",

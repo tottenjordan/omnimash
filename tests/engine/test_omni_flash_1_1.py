@@ -11,8 +11,8 @@ from omnimash.prompts.compiler import (
 
 
 def test_omni_flash_1_1_config_defaults():
-    assert settings.omni_model_id == "gemini-omni-1.1-flash"
-    assert settings.default_resolution == "720p"
+    assert settings.omni_model_id == "gemini-omni-1.2-flash"
+    assert settings.default_resolution == "1080p"
     assert settings.draft_resolution == "360p"
     assert settings.master_resolution == "4k"
 

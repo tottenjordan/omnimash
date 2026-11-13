@@ -27,3 +27,22 @@ def test_omnimash_settings_gcs_timeout():
     assert s.gcs_timeout_seconds == 45.0
     default_s = OmniMashSettings()
     assert default_s.gcs_timeout_seconds == 30.0
+
+
+def test_omnimash_v2_model_and_mastering_defaults() -> None:
+    s = OmniMashSettings(_env_file=None)
+    assert s.omni_model_id == "gemini-omni-1.2-flash"
+    assert s.pro_model_id == "gemini-4-argon"
+    assert s.flash_model_id == "gemini-3.8-flash"
+    assert s.image_model_id == "gemini-3-pro-image"
+    assert s.fast_image_model_id == "gemini-nano-banana-2.1"
+    assert s.lite_image_model_id == "gemini-3.1-flash-lite-image"
+    assert s.tts_model_id == "gemini-3.8-flash-tts"
+    assert s.tts_lite_model_id == "gemini-3.8-flash-lite-tts"
+    assert s.lyria_pro_model_id == "lyria-3-pro-preview"
+    assert s.lyria_clip_model_id == "lyria-3-clip-preview"
+    assert s.default_image_size == "2K"
+    assert s.default_resolution == "1080p"
+    assert s.target_lufs == -14.0
+    assert s.target_true_peak_dbtp == -1.0
+    assert s.audio_sample_rate_hz == 48000
