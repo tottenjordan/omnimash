@@ -228,9 +228,10 @@ def test_generate_title_card_clip_aspect_ratios(tmp_path):
     mock_res.returncode = 0
 
     for aspect_ratio, expected_scale in [
-        ("9:16", "scale=720:1280"),
+        ("16:9", "scale=1920:1080"),
+        ("9:16", "scale=1080:1920"),
         ("1:1", "scale=1080:1080"),
-        ("21:9", "scale=1680:720"),
+        ("21:9", "scale=2520:1080"),
     ]:
         with patch("subprocess.run", return_value=mock_res) as mock_subproc:
             out_path = stitcher.generate_title_card_clip(
@@ -296,7 +297,7 @@ def test_generate_title_card_clip_uses_24fps_and_silent_audio_track(tmp_path):
         cmd = mock_subproc.call_args[0][0]
         assert "-r" in cmd
         assert cmd[cmd.index("-r") + 1] == "24"
-        assert "anullsrc=channel_layout=stereo:sample_rate=44100" in " ".join(cmd)
+        assert "anullsrc=channel_layout=stereo:sample_rate=48000" in " ".join(cmd)
         assert "-c:a" in cmd and "aac" in cmd
 
 
@@ -529,3 +530,82 @@ def test_concatenate_clips_preserves_clip_order_with_parallel_resolution(tmp_pat
 
     expected_lines = [f"file '{os.path.abspath(cp)}'" for cp in clip_paths]
     assert captured_concat_lines == expected_lines
+
+
+def test_resolve_target_dimensions_defaults_to_1920x1080_and_supports_all_tiers():
+    from omnimash.stitching.stitcher import RESOLUTION_ASPECT_DIMS, resolve_target_dimensions
+
+    assert resolve_target_dimensions() == (1920, 1080)
+    expected = {
+        "360p": {
+            "16:9": (640, 360),
+            "9:16": (360, 640),
+            "1:1": (480, 480),
+            "21:9": (840, 360),
+        },
+        "720p": {
+            "16:9": (1280, 720),
+            "9:16": (720, 1280),
+            "1:1": (1080, 1080),
+            "21:9": (1680, 720),
+        },
+        "1080p": {
+            "16:9": (1920, 1080),
+            "9:16": (1080, 1920),
+            "1:1": (1080, 1080),
+            "21:9": (2520, 1080),
+        },
+        "4k": {
+            "16:9": (3840, 2160),
+            "9:16": (2160, 3840),
+            "1:1": (2160, 2160),
+            "21:9": (5040, 2160),
+        },
+    }
+    for res_tier, aspect_map in expected.items():
+        assert res_tier in RESOLUTION_ASPECT_DIMS
+        for ar, dims in aspect_map.items():
+            assert resolve_target_dimensions(aspect_ratio=ar, resolution=res_tier) == dims
+
+    assert resolve_target_dimensions(aspect_ratio="4:3", resolution="unknown") == (1920, 1080)
+
+
+def test_stitch_clips_reencode_uses_1920x1080_crf16_and_48khz_320k_audio(tmp_path):
+    stitcher = VideoStitcher(mock_mode=False)
+    clip1 = tmp_path / "clip1.mp4"
+    clip1.write_bytes(b"clip1")
+    audio = tmp_path / "master.wav"
+    audio.write_bytes(b"RIFFdummywavdata" * 10)
+
+    captured_cmds = []
+
+    def fake_subproc(cmd, *args, **kwargs):
+        captured_cmds.append(cmd)
+        res = MagicMock()
+        res.returncode = 0
+        return res
+
+    with (
+        patch("subprocess.run", side_effect=fake_subproc),
+        patch.object(stitcher.storage, "upload_file"),
+    ):
+        out_path = stitcher.concatenate_clips(
+            [str(clip1)],
+            output_dir=str(tmp_path),
+            master_audio_path=str(audio),
+            aspect_ratio="16:9",
+            force_normalize=True,
+        )
+
+    assert out_path.endswith("_stitched.mp4")
+    assert len(captured_cmds) == 1
+    cmd_reencode = captured_cmds[0]
+    assert "-vf" in cmd_reencode
+    vf_val = cmd_reencode[cmd_reencode.index("-vf") + 1]
+    assert "scale=1920:1080" in vf_val
+    assert "pad=1920:1080" in vf_val
+    assert cmd_reencode[cmd_reencode.index("-crf") + 1] == "16"
+    assert cmd_reencode[cmd_reencode.index("-ar") + 1] == "48000"
+    assert cmd_reencode[cmd_reencode.index("-ac") + 1] == "2"
+    assert cmd_reencode[cmd_reencode.index("-b:a") + 1] == "320k"
+    assert cmd_reencode[cmd_reencode.index("-r") + 1] == "24"
