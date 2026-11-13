@@ -7976,13 +7976,26 @@
                                             <span>{master3StemLoading ? "Mastering -14 LUFS..." : "3-Stem -14 LUFS Master"}</span>
                                         </button>
                                     </div>
-                                    {gate1BatchResult && gate1BatchResult.contact_sheet_url && (
-                                        <div className="mt-2 bg-gray-950/90 border border-indigo-800/70 rounded-xl p-3 space-y-2">
+                                    {gate1BatchResult && gate1BatchResult.contact_sheet_url && gate1BatchResult.targetMode !== "mode3" && (
+                                        <div id="mode1-gate1-contact-sheet-panel" className="mt-2 bg-gray-950/90 border border-indigo-800/70 rounded-xl p-3 space-y-2">
                                             <div className="flex items-center justify-between text-xs font-mono text-indigo-200">
                                                 <span>Gate-1 Contact Sheet ({(gate1BatchResult.candidates || []).length} Seeds · 2K)</span>
                                                 <button type="button" onClick={() => setGate1BatchResult(null)} className="text-gray-400 hover:text-white">✕ Close</button>
                                             </div>
                                             <img src={getDisplayableRefUrl(gate1BatchResult.contact_sheet_url)} alt="Gate-1 6-Seed Contact Sheet" className="w-full max-w-xl rounded-lg border border-gray-800" />
+                                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                                                {(gate1BatchResult.candidates || []).map((cand, cIdx) => (
+                                                    <button
+                                                        key={cand.candidate_id || cIdx}
+                                                        type="button"
+                                                        onClick={() => updateStageShot(activeShotIdx, "keyframe_image_url", cand.image_url)}
+                                                        className="rounded-lg border border-indigo-800/70 hover:border-indigo-400 bg-black p-1 text-left"
+                                                    >
+                                                        <img src={getDisplayableRefUrl(cand.image_url)} alt={`Seed ${cand.seed || cIdx + 1}`} className="w-full h-12 object-cover rounded" />
+                                                        <span className="block text-xs font-mono text-indigo-200 mt-0.5">Use #{cIdx + 1}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                     {master3StemResult && master3StemResult.loudness_report && (
@@ -11693,6 +11706,29 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                     </button>
                                                 </div>
 
+                                                {gate1BatchResult && gate1BatchResult.contact_sheet_url && gate1BatchResult.targetMode === "mode3" && gate1BatchResult.shotIdx === card.shot_index && (
+                                                    <div id="mode3-gate1-contact-sheet-panel" className="bg-gray-950/90 border border-indigo-800/70 rounded-xl p-3 space-y-2 mt-2">
+                                                        <div className="flex items-center justify-between text-xs font-mono text-indigo-200">
+                                                            <span>Gate-1 Contact Sheet · Shot #{card.shot_index} ({(gate1BatchResult.candidates || []).length} Seeds)</span>
+                                                            <button type="button" onClick={() => setGate1BatchResult(null)} className="text-gray-400 hover:text-white">✕ Close</button>
+                                                        </div>
+                                                        <img src={getDisplayableRefUrl(gate1BatchResult.contact_sheet_url)} alt={`Mode 3 Gate-1 Contact Sheet Shot #${card.shot_index}`} className="w-full rounded-lg border border-gray-800" />
+                                                        <div className="grid grid-cols-3 gap-1.5">
+                                                            {(gate1BatchResult.candidates || []).map((cand, cIdx) => (
+                                                                <button
+                                                                    key={cand.candidate_id || cIdx}
+                                                                    type="button"
+                                                                    onClick={() => setJ3ShotCards((prev) => prev.map((c) => (c.shot_index === card.shot_index ? { ...c, keyframe_image_url: cand.image_url } : c)))}
+                                                                    className="rounded-lg border border-indigo-800/70 hover:border-indigo-400 bg-black p-1 text-left"
+                                                                >
+                                                                    <img src={getDisplayableRefUrl(cand.image_url)} alt={`Shot #${card.shot_index} Seed ${cand.seed || cIdx + 1}`} className="w-full h-12 object-cover rounded" />
+                                                                    <span className="block text-xs font-mono text-indigo-200 mt-0.5">Apply #{cIdx + 1}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 <div className="space-y-2 pt-1">
                                                     <div>
                                                         <label className="text-[11px] font-bold text-gray-300 block">Scene Instructions (Background, Camera, Action Directive):</label>
@@ -12140,6 +12176,11 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                 <div className="aspect-video bg-black rounded-xl overflow-hidden border border-gray-800 max-w-2xl mx-auto">
                                                     <video src={getDisplayableRefUrl(j3MasterVideoUrl)} controls className="w-full h-full object-contain" />
                                                 </div>
+                                            </div>
+                                        )}
+                                        {master3StemResult && master3StemResult.loudness_report && (
+                                            <div className="bg-emerald-950/40 border border-emerald-700/60 rounded-xl px-3 py-2 text-xs font-mono text-emerald-200">
+                                                <span>3-Stem Master Ready ({master3StemResult.preset}): {master3StemResult.loudness_report.integrated_lufs} LUFS · {master3StemResult.loudness_report.true_peak_dbtp} dBTP</span>
                                             </div>
                                         )}
 

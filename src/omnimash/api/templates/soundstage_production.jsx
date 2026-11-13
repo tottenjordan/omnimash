@@ -328,7 +328,7 @@ function SoundstageCastGateView({
     );
 }
 
-function SoundstageBoardsGateView({ activeRun, isBusy, redrawingShotId, onDrawAllBoards, onRedrawTile, onRollCameras, getDisplayableRefUrl }) {
+function SoundstageBoardsGateView({ activeRun, isBusy, redrawingShotId, onDrawAllBoards, onRedrawTile, onRollCameras, onSetError, addToast, getDisplayableRefUrl }) {
     const [tileNotes, setTileNotes] = useState({});
     const [gate1ShotId, setGate1ShotId] = useState("1.1");
     const [gate1Batch, setGate1Batch] = useState(null);
@@ -343,6 +343,7 @@ function SoundstageBoardsGateView({ activeRun, isBusy, redrawingShotId, onDrawAl
     const handleRunGate1ContactSheet = async () => {
         if (gate1Loading || isBusy) return;
         setGate1Loading(true);
+        if (onSetError) onSetError("");
         try {
             const tile = tiles.find((t) => t.shot_id === gate1ShotId) || tiles[0] || {};
             const res = await postSoundstageJson("/api/storyboard/gate1-batch", {
@@ -355,10 +356,11 @@ function SoundstageBoardsGateView({ activeRun, isBusy, redrawingShotId, onDrawAl
             });
             setGate1Batch(res);
             if (res.candidates && res.candidates[0]) setGate1SelectedUrl(res.candidates[0].image_url || "");
-        } catch (_err) {
-        } finally {
-            setGate1Loading(false);
-        }
+        } catch (err) {
+            const errMsg = (err && err.message) || "Gate-1 contact sheet failed.";
+            if (onSetError) onSetError(errMsg);
+            if (addToast) addToast(errMsg, "error");
+        } finally { setGate1Loading(false); }
     };
 
     return (
@@ -727,7 +729,7 @@ function SoundstageProductionRoom({
                 <SoundstageCastGateView activeRun={activeRun} manualBoardGate={pCtrl.manualBoardGate} setManualBoardGate={pCtrl.setManualBoardGate} isBusy={pCtrl.isBusy || pCtrl.isFilming} onCastAction={pCtrl.handleCastAction} onSelectCandidate={(candUrl) => pCtrl.handleCastAction({ action: "select", custom_image_url: candUrl })} onHydrateVaultChar={pCtrl.handleHydrateVaultChar} onApproveCast={pCtrl.handleApproveCastAndDrawBoards} vaultCharacters={vaultCharacters} getDisplayableRefUrl={getDisplayableRefUrl} />
             )}
             {pCtrl.activeStageTab === "boards" && (
-                <SoundstageBoardsGateView activeRun={activeRun} isBusy={pCtrl.isBusy || pCtrl.isFilming} redrawingShotId={pCtrl.redrawingShotId} onDrawAllBoards={() => pCtrl.handleDrawOrRedrawBoards(null, null)} onRedrawTile={(shotId, note) => pCtrl.handleDrawOrRedrawBoards(shotId, note)} onRollCameras={() => pCtrl.startFilmingRun(activeRun.run_id, activeRun.resolution)} getDisplayableRefUrl={getDisplayableRefUrl} />
+                <SoundstageBoardsGateView activeRun={activeRun} isBusy={pCtrl.isBusy || pCtrl.isFilming} redrawingShotId={pCtrl.redrawingShotId} onDrawAllBoards={() => pCtrl.handleDrawOrRedrawBoards(null, null)} onRedrawTile={(shotId, note) => pCtrl.handleDrawOrRedrawBoards(shotId, note)} onRollCameras={() => pCtrl.startFilmingRun(activeRun.run_id, activeRun.resolution)} onSetError={pCtrl.setProdError} addToast={addToast} getDisplayableRefUrl={getDisplayableRefUrl} />
             )}
             {pCtrl.activeStageTab === "filming" && (
                 <SoundstageFilmingStageView activeRun={activeRun} liveProgressPct={pCtrl.liveProgressPct} liveStageLabel={pCtrl.liveStageLabel} liveEvents={pCtrl.liveEvents} isFilming={pCtrl.isFilming} onStartFilming={pCtrl.startFilmingRun} />

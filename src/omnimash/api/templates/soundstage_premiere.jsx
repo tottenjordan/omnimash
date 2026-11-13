@@ -465,6 +465,7 @@ function SoundstageAudioGuillotinePanel({ activeRun, isBusy, onSetError, addToas
         { id: "diegetic", label: "Diegetic", detail: "Natural On-Camera Dialogue + Subtle Underscore" }
     ];
     const [preset, setPreset] = useState("trailer");
+    const [applyGuillotine, setApplyGuillotine] = useState(true);
     const [narratorText, setNarratorText] = useState(() => ((activeRun && activeRun.plan && activeRun.plan.voiceover_full_script) || "").slice(0, 140));
     const [lyriaPrompt, setLyriaPrompt] = useState("Dark cinematic orchestral trap underscore with deep sub-bass");
     const [rootNote808, setRootNote808] = useState("D1");
@@ -476,13 +477,18 @@ function SoundstageAudioGuillotinePanel({ activeRun, isBusy, onSetError, addToas
     const [masterResult, setMasterResult] = useState(null);
     const [masteringBusy, setMasteringBusy] = useState(false);
 
+    const handleSelectPreset = (nextPreset) => {
+        setPreset(nextPreset);
+        setApplyGuillotine(nextPreset !== "diegetic");
+    };
+
     const handleMaster3Stem = async () => {
         if (masteringBusy || isBusy) return;
         setMasteringBusy(true);
         if (onSetError) onSetError("");
         try {
             const deliverables = (activeRun && activeRun.deliverables) || {};
-            const res = await postSoundstageJson("/api/storyboard/master-3stem", {
+            const payload = {
                 session_name: (activeRun && activeRun.session_name) || "soundstage_master",
                 video_path: deliverables.master_30s_16x9_url || "/static/rendered/mock.mp4",
                 preset,
@@ -491,10 +497,13 @@ function SoundstageAudioGuillotinePanel({ activeRun, isBusy, onSetError, addToas
                 root_note_808: rootNote808,
                 bpm_808: Number(bpm808) || 142.0,
                 raw_808_timestamp_sec: Number(raw808Sec) || 9.78,
-                guillotine_start_sec: Number(guillotineStart),
-                guillotine_end_sec: Number(guillotineEnd),
                 target_lufs: Number(targetLufs) || -14.0
-            });
+            };
+            if (applyGuillotine) {
+                payload.guillotine_start_sec = Number(guillotineStart);
+                payload.guillotine_end_sec = Number(guillotineEnd);
+            }
+            const res = await postSoundstageJson("/api/storyboard/master-3stem", payload);
             setMasterResult(res);
             if (addToast) addToast("3-Stem -14 LUFS master completed (" + preset + ").", "success");
         } catch (err) {
@@ -522,7 +531,7 @@ function SoundstageAudioGuillotinePanel({ activeRun, isBusy, onSetError, addToas
                 {presetChoices.map((item) => {
                     const active = preset === item.id;
                     return (
-                        <button key={item.id} type="button" data-sonic-preset={item.id} aria-pressed={active} onClick={() => setPreset(item.id)} className={(active ? "border-rose-500 bg-rose-950/50 text-stone-100 " : "border-stone-800 bg-stone-950/70 text-stone-300 hover:border-stone-600 ") + "rounded-xl border p-3 text-left space-y-1 transition"}>
+                        <button key={item.id} type="button" data-sonic-preset={item.id} aria-pressed={active} onClick={() => handleSelectPreset(item.id)} className={(active ? "border-rose-500 bg-rose-950/50 text-stone-100 " : "border-stone-800 bg-stone-950/70 text-stone-300 hover:border-stone-600 ") + "rounded-xl border p-3 text-left space-y-1 transition"}>
                             <span className="block text-xs font-mono font-bold uppercase">{item.label} ({item.id})</span>
                             <span className="block text-[11px] text-stone-400">{item.detail}</span>
                         </button>
@@ -541,6 +550,10 @@ function SoundstageAudioGuillotinePanel({ activeRun, isBusy, onSetError, addToas
             </div>
             <details className="bg-stone-950/80 rounded-xl border border-stone-800 p-3 text-xs space-y-3">
                 <summary className="cursor-pointer font-mono font-semibold text-stone-200">Advanced DSP &amp; 808 Grid (Guillotine Window, BPM Snap &amp; LUFS)</summary>
+                <label className="inline-flex items-center gap-2 pt-1 text-xs font-mono text-stone-200 cursor-pointer">
+                    <input id="soundstage-dsp-enable-guillotine" type="checkbox" checked={applyGuillotine} onChange={(e) => setApplyGuillotine(e.target.checked)} className="rounded border-stone-600 bg-stone-900" />
+                    <span>Apply Audio Guillotine (-20 dB underscore drop)</span>
+                </label>
                 <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 pt-2">
                     <div><label htmlFor="soundstage-dsp-root808" className="block text-[11px] font-mono text-stone-400 mb-1">808 Key</label><input id="soundstage-dsp-root808" type="text" value={rootNote808} onChange={(e) => setRootNote808(e.target.value)} className="w-full rounded bg-stone-900 border border-stone-700 px-2 py-1 text-xs font-mono text-stone-100" /></div>
                     <div><label htmlFor="soundstage-dsp-bpm" className="block text-[11px] font-mono text-stone-400 mb-1">BPM</label><input id="soundstage-dsp-bpm" type="number" value={bpm808} onChange={(e) => setBpm808(e.target.value)} className="w-full rounded bg-stone-900 border border-stone-700 px-2 py-1 text-xs font-mono text-stone-100" /></div>

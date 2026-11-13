@@ -1,7 +1,5 @@
-from typing import Any, Literal
+from typing import Any
 from pydantic import BaseModel, Field
-
-CompilationMode = Literal["auto", "i2v_delta_only", "t2v_4block"]
 
 
 class GenerateCharacterSheetRequest(BaseModel):
@@ -383,6 +381,9 @@ class KeyframeImageRequest(BaseModel):
 class KeyframeImageResponse(BaseModel):
     success: bool = True
     keyframe_image_url: str
+
+
+from omnimash.prompts.delta_compiler import CompilationMode  # noqa: E402
 
 
 class GenerateShotRequest(BaseModel):

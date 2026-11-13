@@ -379,7 +379,7 @@ class SoundstageProductionService:
             turn_index=None,
             characters=coerce_character_roles([lead_role, hero_role]),
             keyframe_image_url=first_frame_url,
-            last_frame_image_url=last_frame_url,
+            last_frame_image_url=None if compilation_mode == "i2v_delta_only" else last_frame_url,
             resolution=resolution,
             aspect_ratio="16:9",
         )

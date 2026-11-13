@@ -9,7 +9,12 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 from omnimash.agent.adk_pipeline import deconstruct_screenplay_with_adk
+from omnimash.agent.soundstage_store import (
+    _unwrap_media_proxy_uri,
+    _validate_bucket_and_object_path,
+)
 from omnimash.api.deps import AgentDep
+from omnimash.config import settings
 from omnimash.api.helpers import (
     extract_reference_urls,
     normalize_character_roles,
@@ -86,29 +91,103 @@ def _resolve_confined_master_video_path(
     raw_video_path: str,
     *,
     temp_dir: str,
-    mock_mode: bool,
+    agent: AgentDep,
 ) -> str:
-    """Confines source video path to workspace static/rendered or temp_dir, creating mock input when needed."""
+    """Confines source video to /static/ or validated gs:// / /api/media-proxy GCS blobs downloaded to temp_dir."""
     cleaned = (raw_video_path or "").strip()
     if ".." in cleaned or "\x00" in cleaned:
         raise HTTPException(
             status_code=400,
             detail="Invalid video_path: path traversal sequences are not permitted.",
         )
-    if cleaned.startswith("/static/"):
-        rel = cleaned.lstrip("/")
+
+    try:
+        unwrapped = _unwrap_media_proxy_uri(cleaned, max_hops=3)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if ".." in unwrapped or "\x00" in unwrapped:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid video_path: path traversal sequences are not permitted.",
+        )
+
+    if unwrapped.startswith("https://storage.googleapis.com/"):
+        parts = unwrapped.replace("https://storage.googleapis.com/", "", 1).split("/", 1)
+        if len(parts) == 2:
+            unwrapped = f"gs://{parts[0]}/{parts[1]}"
+    elif unwrapped.startswith("https://storage.cloud.google.com/"):
+        parts = unwrapped.replace("https://storage.cloud.google.com/", "", 1).split("/", 1)
+        if len(parts) == 2:
+            unwrapped = f"gs://{parts[0]}/{parts[1]}"
+
+    if unwrapped.startswith("gs://"):
+        rest = unwrapped[5:]
+        if "/" not in rest:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid GCS URI: expected gs://<bucket>/<object>.",
+            )
+        req_bucket, obj_path = rest.split("/", 1)
+        try:
+            _validate_bucket_and_object_path(req_bucket, obj_path, "video_path")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        allowed_buckets = {
+            b
+            for b in (
+                getattr(agent.storage, "bucket_name", None),
+                getattr(settings, "gcs_bucket_name", None),
+                "reference-images-jt-trend-trawler",
+                "omnimash-media-hybrid-vertex",
+                "test-omnimash-bucket",
+                "bucket",
+            )
+            if b
+        }
+        if req_bucket not in allowed_buckets:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access to GCS bucket '{req_bucket}' is not permitted",
+            )
+
+        if agent.mock_mode:
+            mock_input = os.path.join(temp_dir, "mock_source.mp4")
+            with open(mock_input, "wb") as f:
+                f.write(b"mock_source_mp4")
+            return mock_input
+
+        data, _ = agent.storage.download_blob_bytes(unwrapped)
+        if not data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Source media not found or empty: {unwrapped}",
+            )
+        local_src = os.path.join(temp_dir, f"src_{uuid.uuid4().hex[:8]}.mp4")
+        with open(local_src, "wb") as f:
+            f.write(data)
+        return local_src
+
+    if unwrapped.startswith("/static/") and "\\" not in unwrapped:
+        rel = unwrapped.lstrip("/")
         candidate = os.path.realpath(os.path.join(os.getcwd(), rel))
         static_root = os.path.realpath(os.path.join(os.getcwd(), "static"))
         if candidate.startswith(static_root + os.sep) and os.path.isfile(candidate):
             return candidate
-    if mock_mode:
-        mock_input = os.path.join(temp_dir, "mock_source.mp4")
-        with open(mock_input, "wb") as f:
-            f.write(b"mock_source_mp4")
-        return mock_input
+        if agent.mock_mode:
+            mock_input = os.path.join(temp_dir, "mock_source.mp4")
+            with open(mock_input, "wb") as f:
+                f.write(b"mock_source_mp4")
+            return mock_input
+        raise HTTPException(
+            status_code=404,
+            detail="Source static video file not found.",
+        )
+
     raise HTTPException(
         status_code=400,
-        detail="Source video_path must reference an existing file under /static/.",
+        detail="Source video_path must reference a confined /static/ file, gs:// URI, or /api/media-proxy URL.",
     )
 
 
@@ -188,6 +267,7 @@ def generate_gate1_batch(req: Gate1BatchRequest, agent: AgentDep) -> Gate1BatchR
         if req.session_name and req.session_name.strip()
         else None
     )
+    safe_shot_label = validate_safe_identifier(req.shot_label, "shot_label")
     _screen_prompt_fields(agent, req.prompt, req.style_tone, req.wardrobe, req.style_preset)
 
     ref_urls: list[str] = list(req.reference_image_urls or [])
@@ -201,7 +281,7 @@ def generate_gate1_batch(req: Gate1BatchRequest, agent: AgentDep) -> Gate1BatchR
 
     batch = kf_client.generate_gate1_candidate_batch(
         prompt=req.prompt or "Cinematic establishing keyframe",
-        shot_label=req.shot_label,
+        shot_label=safe_shot_label,
         style_tone=req.style_tone,
         reference_image_urls=ref_urls or None,
         characters=req.characters,
@@ -222,6 +302,7 @@ def generate_gate1_batch(req: Gate1BatchRequest, agent: AgentDep) -> Gate1BatchR
 def plan_shot_pair(req: ShotPairPlanRequest, agent: AgentDep) -> ShotPairPlanResponse:
     if req.session_name and req.session_name.strip():
         validate_safe_identifier(req.session_name, "session_name")
+    safe_scene_id = validate_safe_identifier(req.scene_id, "scene_id")
     _screen_prompt_fields(
         agent,
         req.character_name,
@@ -237,7 +318,7 @@ def plan_shot_pair(req: ShotPairPlanRequest, agent: AgentDep) -> ShotPairPlanRes
     )
 
     plan = build_two_shot_hard_cut_plan(
-        scene_id=req.scene_id,
+        scene_id=safe_scene_id,
         character_name=req.character_name,
         speaker_descriptor=req.speaker_descriptor or req.character_name,
         voice_style=req.voice_style,
@@ -330,7 +411,7 @@ def master_3stem_audio(req: Master3StemRequest, agent: AgentDep) -> Master3StemR
         src_video = _resolve_confined_master_video_path(
             req.video_path,
             temp_dir=tmp_dir,
-            mock_mode=agent.mock_mode,
+            agent=agent,
         )
 
         narrator_wav_path: str | None = None
@@ -390,12 +471,23 @@ def master_3stem_audio(req: Master3StemRequest, agent: AgentDep) -> Master3StemR
         )
 
         gcs_dest = f"sessions/{safe_session}/masters/{os.path.basename(out_video_path)}"
-        gcs_uri = agent.storage.upload_file(out_video_path, gcs_dest)
-        master_url = (
-            f"/api/media-proxy?uri={quote_plus(gcs_uri)}"
-            if gcs_uri
-            else "/static/rendered/mock.mp4"
-        )
+        uploaded_ref = agent.storage.upload_file(out_video_path, gcs_dest)
+        if not uploaded_ref:
+            if not agent.mock_mode:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to upload 3-stem master video to GCS.",
+                )
+            gcs_uri = None
+            master_url = "/static/rendered/mock.mp4"
+        else:
+            if uploaded_ref.startswith("gs://"):
+                gcs_uri = uploaded_ref
+            elif hasattr(agent.storage, "get_gcs_uri"):
+                gcs_uri = agent.storage.get_gcs_uri(gcs_dest)
+            else:
+                gcs_uri = uploaded_ref
+            master_url = f"/api/media-proxy?uri={quote_plus(gcs_uri)}"
 
     return Master3StemResponse(
         success=True,

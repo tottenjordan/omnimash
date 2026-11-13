@@ -289,3 +289,179 @@ def test_dual_surface_studio_ui_components_and_8gate_scorecard() -> None:
     assert "3-Stem -14 LUFS Master" in index_html
     assert "/api/storyboard/gate1-batch" in index_html
     assert "/api/storyboard/master-3stem" in index_html
+    assert 'id="mode1-gate1-contact-sheet-panel"' in index_html
+    assert 'id="mode3-gate1-contact-sheet-panel"' in index_html
+    assert "handleSelectPreset" in premiere_jsx
+    assert "soundstage-dsp-enable-guillotine" in premiere_jsx
+    assert "onSetError(errMsg)" in prod_jsx
+
+
+def test_master_3stem_live_gcs_media_proxy_download_disallowed_bucket_and_upload_failure(
+    monkeypatch,
+) -> None:
+    from omnimash.audio import LoudnessReport
+
+    app = create_app(mock_mode=True)
+    agent = app.state.agent
+    agent.mock_mode = False
+
+    downloaded_uris: list[str] = []
+    uploaded_calls: list[tuple[str, str]] = []
+
+    class _FakeStorage:
+        bucket_name = "omnimash-media-hybrid-vertex"
+        mock_mode = False
+
+        def download_blob_bytes(self, gs_uri: str) -> tuple[bytes, str]:
+            downloaded_uris.append(gs_uri)
+            return (b"fake_live_mp4_bytes", "video/mp4")
+
+        def upload_file(self, local_path: str, dest: str) -> str:
+            uploaded_calls.append((local_path, dest))
+            return f"gs://{self.bucket_name}/{dest}"
+
+        def get_gcs_uri(self, blob_name: str) -> str:
+            return f"gs://{self.bucket_name}/{blob_name}"
+
+    agent.storage = _FakeStorage()
+
+    class _FakeMasteringEngine:
+        def __init__(self, mock_mode: bool | None = None) -> None:
+            self.mock_mode = mock_mode
+
+        def mix_and_master_scene(self, **kwargs) -> LoudnessReport:
+            with open(kwargs["output_video_path"], "wb") as f:
+                f.write(b"mastered_live_bytes")
+            assert kwargs["video_path"].endswith(".mp4")
+            return LoudnessReport(
+                integrated_lufs=-14.0,
+                true_peak_dbtp=-1.0,
+                lra_lu=6.0,
+                threshold_lufs=-24.0,
+                target_offset_lu=0.0,
+                passed_spec=True,
+            )
+
+    monkeypatch.setattr(
+        "omnimash.api.routers.storyboard.ThreeStemMasteringEngine",
+        _FakeMasteringEngine,
+    )
+    monkeypatch.setattr(
+        "omnimash.api.routers.storyboard.GeminiTTSClient",
+        lambda mock_mode=False: SimpleNamespace(
+            synthesize_narrator_stem=lambda **kw: SimpleNamespace(duration_seconds=3.2)
+        ),
+    )
+    monkeypatch.setattr(
+        "omnimash.api.routers.storyboard.LyriaClient",
+        lambda mock_mode=False: SimpleNamespace(
+            generate_score=lambda **kw: SimpleNamespace(model_id="lyria-3-clip-preview")
+        ),
+    )
+
+    client = TestClient(app)
+
+    # Valid /api/media-proxy?uri=gs://omnimash-media-hybrid-vertex/...
+    res_ok = client.post(
+        "/api/storyboard/master-3stem",
+        json={
+            "session_name": "live_proxy_session",
+            "video_path": "/api/media-proxy?uri=gs%3A%2F%2Fomnimash-media-hybrid-vertex%2Fsessions%2Fs1%2Fmaster.mp4",
+            "preset": "commercial",
+        },
+    )
+    assert res_ok.status_code == 200, res_ok.text
+    assert downloaded_uris == ["gs://omnimash-media-hybrid-vertex/sessions/s1/master.mp4"]
+    assert len(uploaded_calls) == 1
+    assert res_ok.json()["master_video_url"].startswith("/api/media-proxy?uri=gs%3A%2F%2F")
+
+    # Disallowed bucket -> HTTP 403
+    res_forbidden = client.post(
+        "/api/storyboard/master-3stem",
+        json={
+            "session_name": "live_proxy_session",
+            "video_path": "gs://evil-bucket/x.mp4",
+            "preset": "commercial",
+        },
+    )
+    assert res_forbidden.status_code == 403
+
+    # Upload failure in mock_mode=False -> HTTP 500 (never silent mock.mp4 fallback)
+    agent.storage.upload_file = lambda local_path, dest: ""
+    res_upload_fail = client.post(
+        "/api/storyboard/master-3stem",
+        json={
+            "session_name": "live_proxy_session",
+            "video_path": "gs://omnimash-media-hybrid-vertex/sessions/s1/master.mp4",
+            "preset": "commercial",
+        },
+    )
+    assert res_upload_fail.status_code == 500
+
+
+def test_gate1_batch_rejects_traversal_shot_label_and_shot_pair_rejects_bad_scene_id() -> None:
+    app = create_app(mock_mode=True)
+    client = TestClient(app)
+
+    bad_label = client.post(
+        "/api/storyboard/gate1-batch",
+        json={
+            "prompt": "Wide establishing shot",
+            "shot_label": "../../arbitrary/path",
+            "session_name": "valid_session",
+        },
+    )
+    assert bad_label.status_code == 400
+
+    bad_scene = client.post(
+        "/api/storyboard/shot-pair-plan",
+        json={
+            "scene_id": "../bad_scene",
+            "character_name": "Alchemist",
+            "wide_action_summary": "stepping forward",
+        },
+    )
+    assert bad_scene.status_code == 400
+
+
+def test_master_3stem_diegetic_without_guillotine_bounds_leaves_guillotine_none(
+    monkeypatch,
+) -> None:
+    from omnimash.audio import LoudnessReport
+
+    app = create_app(mock_mode=True)
+    captured_guillotine: list[object] = []
+
+    class _SpyMasteringEngine:
+        def __init__(self, mock_mode: bool | None = None) -> None:
+            self.mock_mode = mock_mode
+
+        def mix_and_master_scene(self, **kwargs) -> LoudnessReport:
+            captured_guillotine.append(kwargs.get("guillotine"))
+            with open(kwargs["output_video_path"], "wb") as f:
+                f.write(b"mock_master")
+            return LoudnessReport(
+                integrated_lufs=-14.0,
+                true_peak_dbtp=-1.0,
+                lra_lu=7.5,
+                threshold_lufs=-24.0,
+                target_offset_lu=0.0,
+                passed_spec=True,
+            )
+
+    monkeypatch.setattr(
+        "omnimash.api.routers.storyboard.ThreeStemMasteringEngine",
+        _SpyMasteringEngine,
+    )
+
+    client = TestClient(app)
+    res = client.post(
+        "/api/storyboard/master-3stem",
+        json={
+            "session_name": "diegetic_test",
+            "preset": "diegetic",
+            "lyria_prompt": "Subtle ambient underscore",
+        },
+    )
+    assert res.status_code == 200
+    assert captured_guillotine == [None]
