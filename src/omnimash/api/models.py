@@ -1,5 +1,7 @@
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, Field
+
+CompilationMode = Literal["auto", "i2v_delta_only", "t2v_4block"]
 
 
 class GenerateCharacterSheetRequest(BaseModel):
@@ -407,6 +409,7 @@ class GenerateShotRequest(BaseModel):
     aspect_ratio: str = "16:9"
     motion_reference_clip: str | None = None
     is_seamless_loop: bool = False
+    compilation_mode: CompilationMode = "auto"
 
 
 class GenerateShotResponse(BaseModel):

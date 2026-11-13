@@ -14,6 +14,7 @@ from omnimash.prompts.commercial_planner import (
     SoundstageDiscoveryResult,
     TerritoryAtmosphereSpec,
 )
+from omnimash.prompts.delta_compiler import CompilationMode
 from omnimash.prompts.offering_physics import OfferingPhysicsSpec
 from omnimash.stitching.commercial_conformer import (
     CANONICAL_SUBSHOT_IDS,
@@ -196,6 +197,7 @@ class SoundstageRunRequest(BaseModel):
     background_music_path: str | None = None
     end_card_duration_sec: float = Field(default=2.0, gt=0.0, le=10.0)
     async_execution: bool = False
+    compilation_mode: CompilationMode = "auto"
 
     @field_validator("run_id")
     @classmethod
@@ -209,6 +211,7 @@ class SoundstageReviseRequest(BaseModel):
     director_note: str
     target_act: Literal[1, 2, 3] | None = None
     resolution: SoundstageResolution | None = None
+    compilation_mode: CompilationMode | None = None
 
     @field_validator("director_note")
     @classmethod
@@ -284,6 +287,7 @@ class SoundstageStatusResponse(BaseModel):
     stage: str
     progress_pct: int = Field(ge=0, le=100)
     resolution: str
+    compilation_mode: CompilationMode = "auto"
     manual_board_gate: bool
     auto_advance_filming: bool = False
     end_card_duration_sec: float = 2.0

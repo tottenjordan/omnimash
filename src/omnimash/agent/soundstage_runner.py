@@ -53,6 +53,7 @@ from omnimash.prompts.commercial_planner import (
     SoundstageDiscoveryEngine,
     SoundstageThreeActPlanner,
 )
+from omnimash.prompts.delta_compiler import CompilationMode, build_i2v_delta_prompt
 from omnimash.prompts.offering_physics import scrub_offering_trademarks
 from omnimash.prompts.preflight_linter import PreFlightGatekeeper
 from omnimash.stitching.commercial_conformer import (
@@ -323,8 +324,9 @@ class SoundstageProductionService:
         prompt_override: str | None = None,
         revision_count: int = 0,
         last_director_note: str | None = None,
+        compilation_mode: CompilationMode = "auto",
     ) -> SoundstageActRenderRecord:
-        """Lints an act's 4-Block Meta-Prompt and renders its 10s continuous clip via Gemini Omni Flash."""
+        """Lints an act's 4-Block or I2V Delta prompt and renders its 10s continuous clip via Gemini Omni Flash."""
         plan = run.plan
         first_frame_url = run.boards[act.first_frame_shot_id]
         last_frame_url = run.boards[act.last_frame_shot_id]
@@ -341,16 +343,34 @@ class SoundstageProductionService:
                 or plan.hero_offering_role.reference_url
             }
         )
-        linted = PreFlightGatekeeper.lint_and_repair(
-            prompt_override or act.compiled_omni_prompt,
-            characters=[lead_role, hero_role],
-            keyframe_image_url=first_frame_url,
-            last_frame_image_url=last_frame_url,
-            has_dialogue=bool(act.voiceover_line),
-            offering_physics=plan.physics.model_dump(),
-            palette_60_30_10=plan.palette.model_dump(),
-            act_number=act.act_number,
-        )
+        if compilation_mode == "i2v_delta_only" and not prompt_override:
+            raw_prompt, has_diag = build_i2v_delta_prompt(
+                action_text=act.narrative_summary or act.title,
+                dialogue_text=act.voiceover_line or "",
+                characters=[lead_role, hero_role],
+                ambient_noise=act.audio_score or "steady room tone",
+                concept=act.title,
+                include_starting_frame_binding=bool(first_frame_url),
+            )
+            linted = PreFlightGatekeeper.lint_and_repair(
+                raw_prompt,
+                characters=[lead_role, hero_role],
+                keyframe_image_url=first_frame_url,
+                has_dialogue=has_diag,
+                shot_seconds=10.0,
+                strip_offscreen_narrator=True,
+            )
+        else:
+            linted = PreFlightGatekeeper.lint_and_repair(
+                prompt_override or act.compiled_omni_prompt,
+                characters=[lead_role, hero_role],
+                keyframe_image_url=first_frame_url,
+                last_frame_image_url=last_frame_url,
+                has_dialogue=bool(act.voiceover_line),
+                offering_physics=plan.physics.model_dump(),
+                palette_60_30_10=plan.palette.model_dump(),
+                act_number=act.act_number,
+            )
         gen_res = self.agent.omni_client.generate_clip(
             prompt=linted.repaired_prompt,
             session_id=run.session_name,
@@ -435,6 +455,7 @@ class SoundstageProductionService:
         background_music_path: str | None,
         update_bgm: bool,
         end_card_duration_sec: float,
+        compilation_mode: CompilationMode = "auto",
     ) -> SoundstageStatusResponse:
         with self._lock_for_run(run_id):
             try:
@@ -443,6 +464,7 @@ class SoundstageProductionService:
                 reset_cap = 32 if (run.stage == "filming_acts" and run.progress_pct == 32) else 30
                 run.progress_pct = min(run.progress_pct, reset_cap)
                 run.resolution = effective_resolution
+                run.compilation_mode = compilation_mode
                 run.end_card_duration_sec = end_card_duration_sec
                 if update_bgm:
                     run.background_music_path = background_music_path
@@ -451,6 +473,7 @@ class SoundstageProductionService:
                     run = self._generate_boards_locked(SoundstageBoardsRequest(run_id=run_id))
                     run.error = None
                     run.resolution = effective_resolution
+                    run.compilation_mode = compilation_mode
                     run.end_card_duration_sec = end_card_duration_sec
                     if update_bgm:
                         run.background_music_path = background_music_path
@@ -463,7 +486,7 @@ class SoundstageProductionService:
                         f"Filming 3 parallel 10-second continuous Soundstage acts at {effective_resolution} "
                         f"via {settings.omni_model_id}."
                     ),
-                    data={"resolution": effective_resolution},
+                    data={"resolution": effective_resolution, "compilation_mode": compilation_mode},
                 )
 
                 milestones = {1: 54, 2: 72, 3: 88}
@@ -473,7 +496,11 @@ class SoundstageProductionService:
                 try:
                     future_to_act = {
                         pool.submit(
-                            self._film_single_act, run, act_plan, effective_resolution
+                            self._film_single_act,
+                            run,
+                            act_plan,
+                            effective_resolution,
+                            compilation_mode=compilation_mode,
                         ): act_plan.act_number
                         for act_plan in ordered_act_plans
                     }
@@ -556,6 +583,7 @@ class SoundstageProductionService:
         has_bgm_field = req.background_music_path is not None
         validated_bgm = normalize_optional_confined_audio_url(req.background_music_path)
         effective_res = req.resolution or run.resolution or "720p"
+        effective_mode: CompilationMode = req.compilation_mode
 
         self._claim_active_job_or_raise(run.run_id)
         if not req.async_execution:
@@ -566,6 +594,7 @@ class SoundstageProductionService:
                     background_music_path=validated_bgm,
                     update_bgm=has_bgm_field,
                     end_card_duration_sec=req.end_card_duration_sec,
+                    compilation_mode=effective_mode,
                 )
             finally:
                 self._set_job_active(run.run_id, False)
@@ -578,6 +607,7 @@ class SoundstageProductionService:
                     background_music_path=validated_bgm,
                     update_bgm=has_bgm_field,
                     end_card_duration_sec=req.end_card_duration_sec,
+                    compilation_mode=effective_mode,
                 )
             except Exception as exc:
                 logger.exception("Async Soundstage run %s failed: %s", run.run_id, exc)
@@ -604,6 +634,7 @@ class SoundstageProductionService:
                 run.error = None
                 run.progress_pct = min(run.progress_pct, 30)
                 run.resolution = effective_res
+                run.compilation_mode = effective_mode
                 run.end_card_duration_sec = req.end_card_duration_sec
                 if has_bgm_field:
                     run.background_music_path = validated_bgm
@@ -684,6 +715,7 @@ class SoundstageProductionService:
                     prompt_override=patched_prompt,
                     revision_count=existing_record.revision_count + 1,
                     last_director_note=scrubbed_note,
+                    compilation_mode=req.compilation_mode or run.compilation_mode,
                 )
 
                 run.acts[act_idx] = revised_record
