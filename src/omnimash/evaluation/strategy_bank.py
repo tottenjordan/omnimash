@@ -123,6 +123,62 @@ FOUNDATIONAL_INVARIANTS: list[DirectorialInvariantRule] = [
         rationale="Avoids visual smearing caused by rapid multi-action overloading.",
         confidence_score=0.89,
     ),
+    DirectorialInvariantRule(
+        rule_id="INV-06",
+        category=DefectCategory.REF_PANEL_OR_LANDMARK_BLEED,
+        trigger_pattern="wide keyframe generation or multi-shot location matching",
+        invariant_directive=(
+            "Generation-1 Keyframe Isolation: Never derive a wide keyframe from a medium keyframe "
+            "via image-to-image reference; use clean_single_ref.png + MatchedLocationBlock."
+        ),
+        rationale="Prevents multi-panel turnaround bleed and preserves 15-20% wide character scale.",
+        confidence_score=0.97,
+    ),
+    DirectorialInvariantRule(
+        rule_id="INV-07",
+        category=DefectCategory.SYLLABLE_SKIP_OR_DIALECT_DRIFT,
+        trigger_pattern="delta-only i2v spoken dialogue",
+        invariant_directive=(
+            "Lean Delta-Only I2V Without Timecode Slicing or Dialogue Quotes: Never slice I2V spoken "
+            "dialogue into [0-3s] / [3-6s] / [6-10s] brackets and never wrap video dialogue in quotation marks."
+        ),
+        rationale="Prevents mid-line syllable dropouts and unscripted intonation resets in Gemini Omni Flash.",
+        confidence_score=0.96,
+    ),
+    DirectorialInvariantRule(
+        rule_id="INV-08",
+        category=DefectCategory.ARCHITECTURAL_TROPE_DRIFT,
+        trigger_pattern="negative weather lighting or architecture constraints",
+        invariant_directive=(
+            "Positive Physical State Phrasing: Express wetness, lighting, and architecture via "
+            'positive material states rather than "no / zero / never" negations.'
+        ),
+        rationale="Avoids activating forbidden negative tokens or overcorrecting into flat dry studio lighting.",
+        confidence_score=0.95,
+    ),
+    DirectorialInvariantRule(
+        rule_id="INV-09",
+        category=DefectCategory.BILATERAL_PROP_GLITCH,
+        trigger_pattern="two-hand prop or wand interaction",
+        invariant_directive=(
+            "Bilateral Hand & Prop-Trajectory Lock: Explicitly lock both left and right hands during "
+            "two-prop interactions and separate thin props from bright background clutter."
+        ),
+        rationale="Eliminates duplicated cups/wands and fused finger artifacts during bilateral hand motion.",
+        confidence_score=0.95,
+    ),
+    DirectorialInvariantRule(
+        rule_id="INV-10",
+        category=DefectCategory.GUILLOTINE_OR_808_MISALIGNED,
+        trigger_pattern="three-stem audio mastering voiceover and 808 drop",
+        invariant_directive=(
+            "3-Stem Audio Decoupling & Audio Guillotine: Route off-screen VO to GeminiTTSClient, "
+            "music to LyriaClient, and apply a -20 dB Audio Guillotine + BPM-snapped D1/D2 808 drop "
+            "mastered to -14.0 LUFS / -1.0 dBTP at 48 kHz."
+        ),
+        rationale="Prevents accent bleed, out-of-key bass clashes, and loudness variance across stitched scenes.",
+        confidence_score=0.98,
+    ),
 ]
 
 
@@ -205,7 +261,7 @@ class StrategyBankManager:
         return None
 
     def _seed_foundational_invariants(self) -> None:
-        """Seeds the 12 foundational rules into global GCS mirror if not already initialized."""
+        """Seeds the foundational rules into global GCS mirror if not already initialized."""
         existing = self.storage.get_strategy_bank()
         if not existing:
             bank = StrategyBank(
