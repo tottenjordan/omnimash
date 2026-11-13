@@ -80,6 +80,9 @@ def test_deploy_to_agent_engine_packages_omnimash_and_dependencies(monkeypatch):
         assert any(r.startswith(prefix) for r in reqs), (
             f"Expected dependency starting with {prefix!r} in requirements: {reqs}"
         )
+    assert "google-cloud-aiplatform[agent_engines,adk]>=2.9.0" in reqs
+    assert not any("google-cloud-aiplatform[agent_engines,a2a]" in r for r in reqs)
+    assert "google-adk>=2.14.1" in reqs
 
     env_vars = call_kwargs["env_vars"]
     assert env_vars["GOOGLE_CLOUD_LOCATION"] == "global"

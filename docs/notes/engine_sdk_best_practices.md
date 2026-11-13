@@ -6,10 +6,11 @@ This note captures non-derivable SDK quirks and official best-practice patterns 
 
 ## 1. Detected Package Versions
 
-- **`google-genai==2.31.0`** (`pyproject.toml`: `google-genai>=1.0.0`)
-- **`opentelemetry-api==1.42.1`** & **`opentelemetry-sdk==1.42.1`** (`pyproject.toml`: `>=1.20.0`)
-- **`pillow==12.3.0`** (`pyproject.toml`: `pillow>=10.0.0`)
-- **`google-cloud-storage==3.17.1`** (`pyproject.toml`: `>=2.14.0`)
+- **`google-genai==2.34.0`** (`pyproject.toml`: `google-genai>=2.34.0`)
+- **`google-cloud-aiplatform==2.9.0`** (`pyproject.toml`: `google-cloud-aiplatform>=2.9.0`; Agent Engine deploy requirements use `google-cloud-aiplatform[agent_engines,adk]>=2.9.0` because `a2a` is no longer a valid extra in `google-cloud-aiplatform` 2.9+)
+- **`opentelemetry-api==1.45.2`** & **`opentelemetry-sdk==1.45.2`** (transitive via `google-adk>=2.14.1`)
+- **`pillow==13.0.0`** (`pyproject.toml`: `pillow>=13.0.0`)
+- **`google-cloud-storage==3.17.1`** (`pyproject.toml`: `google-cloud-storage>=3.17.1`)
 
 ---
 

@@ -13,18 +13,18 @@ from vertexai import agent_engines  # noqa: E402
 from omnimash.agent.orchestrator import root_agent  # noqa: E402
 
 AGENT_ENGINE_REQUIREMENTS: list[str] = [
-    "google-cloud-aiplatform[agent_engines,a2a]>=1.112",
-    "google-adk>=2.5.0",
-    "google-genai",
-    "pydantic>=2.0",
-    "pydantic-settings>=2.0",
-    "google-cloud-storage",
-    "google-cloud-modelarmor",
-    "pillow",
-    "yt-dlp",
-    "httpx",
+    "google-cloud-aiplatform[agent_engines,adk]>=2.9.0",
+    "google-adk>=2.14.1",
+    "google-genai>=2.34.0",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.2",
+    "google-cloud-storage>=3.17.1",
+    "google-cloud-modelarmor>=0.7.5",
+    "pillow>=13.0.0",
+    "yt-dlp>=2026.10.21",
+    "httpx>=0.28.1",
     "numpy",
-    "cloudpickle",
+    "cloudpickle>=3.1.2",
 ]
 
 AGENT_ENGINE_EXTRA_PACKAGES: list[str] = ["omnimash"]
