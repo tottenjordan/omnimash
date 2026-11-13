@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import math
+import subprocess
 import struct
 from types import SimpleNamespace
 from typing import Any
@@ -13,6 +15,14 @@ import wave
 import pytest
 
 from omnimash.audio.lyria_client import LyriaClient, LyriaScoreResult
+from omnimash.audio.mastering import (
+    AudioGuillotineWindow,
+    LoudnessReport,
+    SonicMixPreset,
+    SonicMixPresetConfig,
+    ThreeStemMasteringEngine,
+    resolve_sonic_mix_preset_defaults,
+)
 from omnimash.audio.sub_bass_808 import (
     NOTE_FREQUENCIES_HZ,
     snap_timestamp_to_bpm_grid,
@@ -281,3 +291,192 @@ def test_lyria_client_selects_clip_model_under_30s_and_pro_model_above_30s(tmp_p
             assert wf.getsampwidth() == 2
             assert wf.getframerate() == 48000
             assert wf.getnframes() > 0
+
+
+def _create_test_mp4(path: str, duration_sec: float = 1.5, with_audio: bool = True) -> None:
+    """Creates a tiny hermetic H.264 MP4 (with or without an AAC audio stream) via FFmpeg."""
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c=black:s=160x90:r=24:d={duration_sec}",
+    ]
+    if with_audio:
+        cmd.extend(
+            [
+                "-f",
+                "lavfi",
+                "-i",
+                f"sine=frequency=180:sample_rate=48000:duration={duration_sec}",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-c:a",
+                "aac",
+                "-ac",
+                "2",
+                "-ar",
+                "48000",
+                path,
+            ]
+        )
+    else:
+        cmd.extend(["-an", "-c:v", "libx264", "-preset", "ultrafast", path])
+    subprocess.run(cmd, check=True, capture_output=True, timeout=30.0)
+
+
+def _ffprobe_audio_stream(media_path: str) -> dict[str, Any]:
+    """Returns the first audio stream metadata dict via ffprobe."""
+    out = subprocess.check_output(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=codec_name,sample_rate,channels",
+            "-of",
+            "json",
+            media_path,
+        ],
+        text=True,
+        timeout=15.0,
+    )
+    streams = json.loads(out).get("streams", [])
+    return streams[0] if streams else {}
+
+
+def test_three_stem_mastering_engine_masters_real_stems_to_minus_14_lufs_and_48khz_stereo(
+    tmp_path,
+) -> None:
+    in_mp4 = str(tmp_path / "scene_raw.mp4")
+    out_mp4 = str(tmp_path / "scene_mastered.mp4")
+    narrator_wav = str(tmp_path / "narrator.wav")
+    score_wav = str(tmp_path / "score.wav")
+    drop_wav = str(tmp_path / "drop_808.wav")
+
+    _create_test_mp4(in_mp4, duration_sec=1.5, with_audio=True)
+    with open(narrator_wav, "wb") as f:
+        f.write(_make_wav_bytes(duration_sec=1.2, sample_rate=48000, channels=2, freq_hz=440.0))
+    with open(score_wav, "wb") as f:
+        f.write(_make_wav_bytes(duration_sec=2.0, sample_rate=48000, channels=2, freq_hz=260.0))
+    synthesize_tuned_808_wav(drop_wav, root_note="D1", duration_sec=0.8, sample_rate=48000)
+
+    engine = ThreeStemMasteringEngine(mock_mode=False)
+    report = engine.mix_and_master_scene(
+        video_path=in_mp4,
+        output_video_path=out_mp4,
+        narrator_wav_path=narrator_wav,
+        narrator_delay_sec=0.1,
+        lyria_score_path=score_wav,
+        score_offset_sec=0.0,
+        sub_bass_808_path=drop_wav,
+        sub_bass_808_delay_sec=0.4,
+        guillotine=AudioGuillotineWindow(start_sec=0.5, end_sec=0.9, attenuation_linear=0.10),
+    )
+
+    assert isinstance(report, LoudnessReport)
+    assert math.isfinite(report.integrated_lufs)
+    assert -14.6 <= report.integrated_lufs <= -13.4
+    assert report.true_peak_dbtp <= -0.85
+    assert report.passed_spec is True
+
+    audio_meta = _ffprobe_audio_stream(out_mp4)
+    assert audio_meta["codec_name"] == "aac"
+    assert int(audio_meta["sample_rate"]) == 48000
+    assert int(audio_meta["channels"]) == 2
+
+
+def test_three_stem_mastering_engine_handles_silent_video_without_audio_stream_via_anullsrc(
+    tmp_path,
+) -> None:
+    silent_mp4 = str(tmp_path / "silent_video.mp4")
+    out_with_stems = str(tmp_path / "silent_with_stems.mp4")
+    out_pure_silent = str(tmp_path / "pure_silent_mastered.mp4")
+    narrator_wav = str(tmp_path / "narrator.wav")
+
+    _create_test_mp4(silent_mp4, duration_sec=1.5, with_audio=False)
+    with open(narrator_wav, "wb") as f:
+        f.write(_make_wav_bytes(duration_sec=1.2, sample_rate=48000, channels=2, freq_hz=330.0))
+
+    engine = ThreeStemMasteringEngine(mock_mode=False)
+    assert engine.has_audio_stream(silent_mp4) is False
+
+    report = engine.mix_and_master_scene(
+        video_path=silent_mp4,
+        output_video_path=out_with_stems,
+        narrator_wav_path=narrator_wav,
+        narrator_delay_sec=0.1,
+    )
+    assert engine.has_audio_stream(out_with_stems) is True
+    assert -14.6 <= report.integrated_lufs <= -13.4
+    assert report.passed_spec is True
+    audio_meta = _ffprobe_audio_stream(out_with_stems)
+    assert int(audio_meta["sample_rate"]) == 48000
+    assert int(audio_meta["channels"]) == 2
+
+    # Even with zero stems on a video-only MP4, mastering completes cleanly without crashing
+    silent_report = engine.mix_and_master_scene(
+        video_path=silent_mp4,
+        output_video_path=out_pure_silent,
+    )
+    assert engine.has_audio_stream(out_pure_silent) is True
+    assert math.isfinite(silent_report.integrated_lufs)
+    assert silent_report.passed_spec is False
+
+
+def test_measure_loudnorm_stats_guards_digital_silence_minus_inf_without_crashing(
+    tmp_path,
+) -> None:
+    silence_wav = tmp_path / "digital_silence.wav"
+    with wave.open(str(silence_wav), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(48000)
+        wf.writeframes(b"\x00\x00\x00\x00" * 48000)
+
+    engine = ThreeStemMasteringEngine(mock_mode=False)
+    report = engine.measure_loudnorm_stats(str(silence_wav))
+
+    assert math.isfinite(report.integrated_lufs)
+    assert math.isfinite(report.true_peak_dbtp)
+    assert math.isfinite(report.lra_lu)
+    assert math.isfinite(report.threshold_lufs)
+    assert math.isfinite(report.target_offset_lu)
+    assert report.integrated_lufs <= -70.0
+    assert report.passed_spec is False
+    # Must serialize to strict JSON without NaN/Infinity errors
+    assert json.loads(report.model_dump_json())["passed_spec"] is False
+
+
+def test_sonic_mix_preset_populates_trailer_commercial_and_diegetic_profiles() -> None:
+    trailer_cfg = resolve_sonic_mix_preset_defaults(SonicMixPreset.TRAILER)
+    commercial_cfg = resolve_sonic_mix_preset_defaults("commercial")
+    diegetic_cfg = resolve_sonic_mix_preset_defaults("DIEGETIC")
+
+    for cfg in (trailer_cfg, commercial_cfg, diegetic_cfg):
+        assert isinstance(cfg, SonicMixPresetConfig)
+        assert cfg.target_lufs == -14.0
+        assert cfg.target_true_peak_dbtp == -1.0
+        assert cfg.sample_rate_hz == 48000
+        assert cfg.consonant_carve_freq_hz == 2450
+
+    assert trailer_cfg.preset == SonicMixPreset.TRAILER
+    assert trailer_cfg.apply_narrator_baritone_dsp is True
+    assert trailer_cfg.enable_808_drops is True
+    assert trailer_cfg.enable_guillotine is True
+
+    assert commercial_cfg.preset == SonicMixPreset.COMMERCIAL
+    assert commercial_cfg.apply_narrator_baritone_dsp is False
+    assert commercial_cfg.enable_guillotine is True
+
+    assert diegetic_cfg.preset == SonicMixPreset.DIEGETIC
+    assert diegetic_cfg.enable_808_drops is False
+    assert diegetic_cfg.enable_guillotine is False
+
+    with pytest.raises(ValueError):
+        resolve_sonic_mix_preset_defaults("unknown_profile")
