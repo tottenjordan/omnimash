@@ -1262,6 +1262,10 @@
             const [stitchResultGcs, setStitchResultGcs] = useState(null);
             const [stitchMasterLoading, setStitchMasterLoading] = useState(false);
             const [stitchMasterResult, setStitchMasterResult] = useState(null);
+            const [gate1BatchLoading, setGate1BatchLoading] = useState(false);
+            const [gate1BatchResult, setGate1BatchResult] = useState(null);
+            const [master3StemLoading, setMaster3StemLoading] = useState(false);
+            const [master3StemResult, setMaster3StemResult] = useState(null);
 
             // 7-Day Shareable Video Link & Frozen Snapshot State
             const [showShareModal, setShowShareModal] = useState(false);
@@ -4313,6 +4317,74 @@
                     setLastError(err.message || "Failed to stitch master video.");
                 } finally {
                     setStitchMasterLoading(false);
+                }
+            };
+
+            const handleGate1ContactSheet = async (shotIdx, promptText, targetMode) => {
+                setGate1BatchLoading(true);
+                setLastError(null);
+                try {
+                    const res = await fetch("/api/storyboard/gate1-batch", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            prompt: promptText || concept || "Cinematic wide establishing frame",
+                            shot_label: `shot_${shotIdx || 1}`,
+                            characters: targetMode === "mode3" ? j3Characters : characters,
+                            style_preset: targetMode === "mode3" ? j3StylePreset : stageStyleTone,
+                            aspect_ratio: aspectRatio,
+                            image_size: "2K",
+                            base_seed: 4101,
+                            num_candidates: 6,
+                            session_name: sessionName
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        setLastError((data && data.detail) || "Gate-1 6-seed batch failed.");
+                        return;
+                    }
+                    setGate1BatchResult({ ...data, targetMode: targetMode || "mode1", shotIdx: shotIdx || 1 });
+                } catch (err) {
+                    setLastError(err.message || String(err));
+                } finally {
+                    setGate1BatchLoading(false);
+                }
+            };
+
+            const handleMaster3StemAudio = async (targetMode) => {
+                setMaster3StemLoading(true);
+                setLastError(null);
+                try {
+                    const fallbackClip = targetMode === "mode3"
+                        ? (j3MasterVideoUrl || (j3ShotCards.find((c) => c.video_url) || {}).video_url || "/static/rendered/mock.mp4")
+                        : ((stitchMasterResult && stitchMasterResult.master_video_url) || currentVideo || "/static/rendered/mock.mp4");
+                    const res = await fetch("/api/storyboard/master-3stem", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            session_name: sessionName,
+                            video_path: fallbackClip,
+                            preset: "trailer",
+                            narrator_text: (stageShots && stageShots[0] && stageShots[0].narrator_text) || "",
+                            lyria_prompt: audioBeat || "Cinematic orchestral trap underscore",
+                            target_lufs: -14.0
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        setLastError((data && data.detail) || "3-Stem -14 LUFS mastering failed.");
+                        return;
+                    }
+                    setMaster3StemResult(data);
+                    if (data && data.master_video_url) {
+                        setCurrentVideo(data.master_video_url);
+                        if (targetMode === "mode3") setJ3MasterVideoUrl(data.master_video_url);
+                    }
+                } catch (err) {
+                    setLastError(err.message || String(err));
+                } finally {
+                    setMaster3StemLoading(false);
                 }
             };
 
@@ -7874,6 +7946,19 @@
                                         </button>
                                         <button
                                             type="button"
+                                            disabled={gate1BatchLoading}
+                                            onClick={() => {
+                                                const curShot = stageShots[activeShotIdx] || stageShots[0] || {};
+                                                handleGate1ContactSheet(curShot.shot_index || (activeShotIdx + 1), curShot.image_prompt || curShot.action || concept, "mode1");
+                                            }}
+                                            className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700 text-indigo-200 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 disabled:opacity-50"
+                                            title="Generate 6 seeded 2K candidates and a 3x2 contact sheet via /api/storyboard/gate1-batch"
+                                        >
+                                            <span>🎞️</span>
+                                            <span>{gate1BatchLoading ? "Rendering 6 Seeds..." : "Gate-1 Contact Sheet (6 Seeds)"}</span>
+                                        </button>
+                                        <button
+                                            type="button"
                                             disabled={stitchMasterLoading}
                                             onClick={handleStitchMaster}
                                             className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-extrabold py-2 px-4 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
@@ -7881,7 +7966,43 @@
                                             <span>🎬</span>
                                             <span>{stitchMasterLoading ? "Stitching..." : "Stitch Master Video (30–60s)"}</span>
                                         </button>
+                                        <button
+                                            type="button"
+                                            disabled={master3StemLoading}
+                                            onClick={() => handleMaster3StemAudio("mode1")}
+                                            className="bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700 text-emerald-200 text-xs font-bold py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                                        >
+                                            <span>🎚️</span>
+                                            <span>{master3StemLoading ? "Mastering -14 LUFS..." : "3-Stem -14 LUFS Master"}</span>
+                                        </button>
                                     </div>
+                                    {gate1BatchResult && gate1BatchResult.contact_sheet_url && gate1BatchResult.targetMode !== "mode3" && (
+                                        <div id="mode1-gate1-contact-sheet-panel" className="mt-2 bg-gray-950/90 border border-indigo-800/70 rounded-xl p-3 space-y-2">
+                                            <div className="flex items-center justify-between text-xs font-mono text-indigo-200">
+                                                <span>Gate-1 Contact Sheet ({(gate1BatchResult.candidates || []).length} Seeds · 2K)</span>
+                                                <button type="button" onClick={() => setGate1BatchResult(null)} className="text-gray-400 hover:text-white">✕ Close</button>
+                                            </div>
+                                            <img src={getDisplayableRefUrl(gate1BatchResult.contact_sheet_url)} alt="Gate-1 6-Seed Contact Sheet" className="w-full max-w-xl rounded-lg border border-gray-800" />
+                                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                                                {(gate1BatchResult.candidates || []).map((cand, cIdx) => (
+                                                    <button
+                                                        key={cand.candidate_id || cIdx}
+                                                        type="button"
+                                                        onClick={() => updateStageShot(activeShotIdx, "keyframe_image_url", cand.image_url)}
+                                                        className="rounded-lg border border-indigo-800/70 hover:border-indigo-400 bg-black p-1 text-left"
+                                                    >
+                                                        <img src={getDisplayableRefUrl(cand.image_url)} alt={`Seed ${cand.seed || cIdx + 1}`} className="w-full h-12 object-cover rounded" />
+                                                        <span className="block text-xs font-mono text-indigo-200 mt-0.5">Use #{cIdx + 1}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {master3StemResult && master3StemResult.loudness_report && (
+                                        <div className="mt-2 bg-emerald-950/40 border border-emerald-700/60 rounded-xl px-3 py-2 text-xs font-mono text-emerald-200">
+                                            <span>3-Stem Master Ready ({master3StemResult.preset}): {master3StemResult.loudness_report.integrated_lufs} LUFS · {master3StemResult.loudness_report.true_peak_dbtp} dBTP</span>
+                                        </div>
+                                    )}
                                 </div>
 
                                         {/* Shot Stepper Tabs Header */}
@@ -11566,7 +11687,15 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                     </div>
                                                 )}
 
-                                                <div className="flex justify-end pt-1">
+                                                <div className="flex justify-end gap-2 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        disabled={gate1BatchLoading}
+                                                        onClick={() => handleGate1ContactSheet(card.shot_index, card.image_prompt || card.action_directive, "mode3")}
+                                                        className="bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-indigo-700 transition disabled:opacity-50"
+                                                    >
+                                                        🎞️ {gate1BatchLoading ? "Rendering 6 Seeds..." : "Gate-1 Contact Sheet (6 Seeds)"}
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         disabled={j3KeyframeLoadingMap[card.shot_index]}
@@ -11576,6 +11705,29 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                         🖼️ {j3KeyframeLoadingMap[card.shot_index] ? "Generating Keyframe..." : "Re-Generate Keyframe"}
                                                     </button>
                                                 </div>
+
+                                                {gate1BatchResult && gate1BatchResult.contact_sheet_url && gate1BatchResult.targetMode === "mode3" && gate1BatchResult.shotIdx === card.shot_index && (
+                                                    <div id="mode3-gate1-contact-sheet-panel" className="bg-gray-950/90 border border-indigo-800/70 rounded-xl p-3 space-y-2 mt-2">
+                                                        <div className="flex items-center justify-between text-xs font-mono text-indigo-200">
+                                                            <span>Gate-1 Contact Sheet · Shot #{card.shot_index} ({(gate1BatchResult.candidates || []).length} Seeds)</span>
+                                                            <button type="button" onClick={() => setGate1BatchResult(null)} className="text-gray-400 hover:text-white">✕ Close</button>
+                                                        </div>
+                                                        <img src={getDisplayableRefUrl(gate1BatchResult.contact_sheet_url)} alt={`Mode 3 Gate-1 Contact Sheet Shot #${card.shot_index}`} className="w-full rounded-lg border border-gray-800" />
+                                                        <div className="grid grid-cols-3 gap-1.5">
+                                                            {(gate1BatchResult.candidates || []).map((cand, cIdx) => (
+                                                                <button
+                                                                    key={cand.candidate_id || cIdx}
+                                                                    type="button"
+                                                                    onClick={() => setJ3ShotCards((prev) => prev.map((c) => (c.shot_index === card.shot_index ? { ...c, keyframe_image_url: cand.image_url } : c)))}
+                                                                    className="rounded-lg border border-indigo-800/70 hover:border-indigo-400 bg-black p-1 text-left"
+                                                                >
+                                                                    <img src={getDisplayableRefUrl(cand.image_url)} alt={`Shot #${card.shot_index} Seed ${cand.seed || cIdx + 1}`} className="w-full h-12 object-cover rounded" />
+                                                                    <span className="block text-xs font-mono text-indigo-200 mt-0.5">Apply #{cIdx + 1}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 <div className="space-y-2 pt-1">
                                                     <div>
@@ -12026,6 +12178,11 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                 </div>
                                             </div>
                                         )}
+                                        {master3StemResult && master3StemResult.loudness_report && (
+                                            <div className="bg-emerald-950/40 border border-emerald-700/60 rounded-xl px-3 py-2 text-xs font-mono text-emerald-200">
+                                                <span>3-Stem Master Ready ({master3StemResult.preset}): {master3StemResult.loudness_report.integrated_lufs} LUFS · {master3StemResult.loudness_report.true_peak_dbtp} dBTP</span>
+                                            </div>
+                                        )}
 
                                         <div className="flex justify-end gap-3">
                                             {j3MasterVideoUrl && (
@@ -12039,6 +12196,15 @@ Audio: instrumental 140 BPM Heavy 808 Trap. Ensure the background music ducks un
                                                     <span>Share Video (7 Days)</span>
                                                 </button>
                                             )}
+                                            <button
+                                                type="button"
+                                                disabled={master3StemLoading}
+                                                onClick={() => handleMaster3StemAudio("mode3")}
+                                                className="bg-emerald-950/80 hover:bg-emerald-900 text-emerald-200 border border-emerald-700/80 font-bold text-xs py-3 px-4 rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
+                                            >
+                                                <span>🎚️</span>
+                                                <span>{master3StemLoading ? "Mastering -14 LUFS..." : "3-Stem -14 LUFS Master"}</span>
+                                            </button>
                                             <button
                                                 type="button"
                                                 disabled={j3StitchLoading}

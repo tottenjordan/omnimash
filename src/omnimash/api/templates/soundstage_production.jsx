@@ -328,21 +328,40 @@ function SoundstageCastGateView({
     );
 }
 
-function SoundstageBoardsGateView({
-    activeRun,
-    isBusy,
-    redrawingShotId,
-    onDrawAllBoards,
-    onRedrawTile,
-    onRollCameras,
-    getDisplayableRefUrl
-}) {
+function SoundstageBoardsGateView({ activeRun, isBusy, redrawingShotId, onDrawAllBoards, onRedrawTile, onRollCameras, onSetError, addToast, getDisplayableRefUrl }) {
     const [tileNotes, setTileNotes] = useState({});
+    const [gate1ShotId, setGate1ShotId] = useState("1.1");
+    const [gate1Batch, setGate1Batch] = useState(null);
+    const [gate1Loading, setGate1Loading] = useState(false);
+    const [gate1SelectedUrl, setGate1SelectedUrl] = useState("");
     const plan = (activeRun && activeRun.plan) || {};
     const tiles = Array.isArray(plan.boards) ? plan.boards : [];
     const boardsMap = (activeRun && activeRun.boards) || {};
     const checksMap = (activeRun && activeRun.board_checks) || {};
     const hasBoards = Object.keys(boardsMap).length !== 0;
+
+    const handleRunGate1ContactSheet = async () => {
+        if (gate1Loading || isBusy) return;
+        setGate1Loading(true);
+        if (onSetError) onSetError("");
+        try {
+            const tile = tiles.find((t) => t.shot_id === gate1ShotId) || tiles[0] || {};
+            const res = await postSoundstageJson("/api/storyboard/gate1-batch", {
+                prompt: tile.action || (plan.identity && plan.identity.omni_safe_world_descriptor) || "Establishing keyframe",
+                shot_label: "shot_" + gate1ShotId.replace(".", "_"),
+                num_candidates: 6,
+                image_size: "2K",
+                base_seed: 4101,
+                session_name: (activeRun && activeRun.session_name) || "soundstage_gate1"
+            });
+            setGate1Batch(res);
+            if (res.candidates && res.candidates[0]) setGate1SelectedUrl(res.candidates[0].image_url || "");
+        } catch (err) {
+            const errMsg = (err && err.message) || "Gate-1 contact sheet failed.";
+            if (onSetError) onSetError(errMsg);
+            if (addToast) addToast(errMsg, "error");
+        } finally { setGate1Loading(false); }
+    };
 
     return (
         <div id="soundstage-boards-gate" className="space-y-5">
@@ -366,17 +385,34 @@ function SoundstageBoardsGateView({
                 </div>
             </div>
 
+            <div id="soundstage-gate1-drawer" className="sstage-card rounded-xl p-4 sm:p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <span className="text-xs font-mono uppercase tracking-wider text-rose-400 font-semibold">Gate-1 2K Seeded Keyframe Selector</span>
+                        <p className="text-xs text-stone-300 mt-0.5">Render a 6-seed 2K contact sheet before filming when you want multi-seed composition selection.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label htmlFor="soundstage-gate1-shot-select" className="sr-only">Gate-1 target shot</label>
+                        <select id="soundstage-gate1-shot-select" value={gate1ShotId} onChange={(e) => setGate1ShotId(e.target.value)} className="rounded-lg bg-stone-950 border border-stone-700 px-2.5 py-1.5 text-xs font-mono text-stone-100">
+                            {tiles.map((t) => <option key={t.shot_id} value={t.shot_id}>Plate {t.shot_id}</option>)}
+                        </select>
+                        <button type="button" id="soundstage-btn-gate1-batch" disabled={gate1Loading || isBusy} onClick={handleRunGate1ContactSheet} className="px-3.5 py-2 rounded-lg text-xs font-bold bg-stone-100 hover:bg-white text-stone-950 transition disabled:opacity-50">
+                            {gate1Loading ? "Generating 6 Seeds..." : "Gate-1 Contact Sheet (6 Seeds)"}
+                        </button>
+                    </div>
+                </div>
+                {gate1Batch && gate1Batch.contact_sheet_url && (
+                    <SoundstageGate1BatchResults gate1Batch={gate1Batch} gate1SelectedUrl={gate1SelectedUrl} onSelectUrl={setGate1SelectedUrl} getDisplayableRefUrl={getDisplayableRefUrl} />
+                )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {tiles.map((tile) => {
                     const shotUrl = getSafeSoundstageMediaUrl(boardsMap[tile.shot_id], getDisplayableRefUrl);
                     const check = checksMap[tile.shot_id];
-                    const isoBadgeCls = tile.has_person
-                        ? "px-2 py-0.5 rounded bg-stone-900 text-stone-200 border border-stone-700"
-                        : "px-2 py-0.5 rounded bg-rose-950/80 text-rose-200 border border-rose-800/70";
+                    const isoBadgeCls = tile.has_person ? "px-2 py-0.5 rounded bg-stone-900 text-stone-200 border border-stone-700" : "px-2 py-0.5 rounded bg-rose-950/80 text-rose-200 border border-rose-800/70";
                     const checkPassed = !check || check.passed !== false;
-                    const checkCls = checkPassed
-                        ? "px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-200 border border-emerald-700/60"
-                        : "px-2 py-0.5 rounded bg-amber-950/80 text-amber-200 border border-amber-700/70";
+                    const checkCls = checkPassed ? "px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-200 border border-emerald-700/60" : "px-2 py-0.5 rounded bg-amber-950/80 text-amber-200 border border-amber-700/70";
                     const checkText = !check ? "Pending Plate" : (checkPassed ? "DOMA Passed" : ("Flagged: " + (check.flagged_reason || "Review continuity")));
 
                     return (
@@ -397,7 +433,6 @@ function SoundstageBoardsGateView({
                                 </div>
                                 <p className="text-xs text-stone-300 leading-relaxed">{tile.action}</p>
                             </div>
-
                             <div className="flex items-center gap-1.5 pt-2 border-t border-stone-800/80">
                                 <input type="text" aria-label={"Director note for shot " + tile.shot_id} value={tileNotes[tile.shot_id] || ""} onChange={(e) => setTileNotes((prev) => ({ ...prev, [tile.shot_id]: e.target.value }))} placeholder="Surgical note..." className="flex-1 rounded-lg bg-stone-950 border border-stone-700 px-2.5 py-1.5 text-xs text-stone-100" />
                                 <button type="button" data-redraw-shot={tile.shot_id} disabled={isBusy} onClick={() => onRedrawTile(tile.shot_id, tileNotes[tile.shot_id] || "")} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-stone-100 border border-stone-700 transition disabled:opacity-50">
@@ -691,53 +726,16 @@ function SoundstageProductionRoom({
             {pCtrl.activeStageTab === "world" && <SoundstageWorldStageView plan={plan} />}
             {pCtrl.activeStageTab === "story" && <SoundstageStoryStageView plan={plan} />}
             {pCtrl.activeStageTab === "cast" && (
-                <SoundstageCastGateView
-                    activeRun={activeRun}
-                    manualBoardGate={pCtrl.manualBoardGate}
-                    setManualBoardGate={pCtrl.setManualBoardGate}
-                    isBusy={pCtrl.isBusy || pCtrl.isFilming}
-                    onCastAction={pCtrl.handleCastAction}
-                    onSelectCandidate={(candUrl) => pCtrl.handleCastAction({ action: "select", custom_image_url: candUrl })}
-                    onHydrateVaultChar={pCtrl.handleHydrateVaultChar}
-                    onApproveCast={pCtrl.handleApproveCastAndDrawBoards}
-                    vaultCharacters={vaultCharacters}
-                    getDisplayableRefUrl={getDisplayableRefUrl}
-                />
+                <SoundstageCastGateView activeRun={activeRun} manualBoardGate={pCtrl.manualBoardGate} setManualBoardGate={pCtrl.setManualBoardGate} isBusy={pCtrl.isBusy || pCtrl.isFilming} onCastAction={pCtrl.handleCastAction} onSelectCandidate={(candUrl) => pCtrl.handleCastAction({ action: "select", custom_image_url: candUrl })} onHydrateVaultChar={pCtrl.handleHydrateVaultChar} onApproveCast={pCtrl.handleApproveCastAndDrawBoards} vaultCharacters={vaultCharacters} getDisplayableRefUrl={getDisplayableRefUrl} />
             )}
             {pCtrl.activeStageTab === "boards" && (
-                <SoundstageBoardsGateView
-                    activeRun={activeRun}
-                    isBusy={pCtrl.isBusy || pCtrl.isFilming}
-                    redrawingShotId={pCtrl.redrawingShotId}
-                    onDrawAllBoards={() => pCtrl.handleDrawOrRedrawBoards(null, null)}
-                    onRedrawTile={(shotId, note) => pCtrl.handleDrawOrRedrawBoards(shotId, note)}
-                    onRollCameras={() => pCtrl.startFilmingRun(activeRun.run_id, activeRun.resolution)}
-                    getDisplayableRefUrl={getDisplayableRefUrl}
-                />
+                <SoundstageBoardsGateView activeRun={activeRun} isBusy={pCtrl.isBusy || pCtrl.isFilming} redrawingShotId={pCtrl.redrawingShotId} onDrawAllBoards={() => pCtrl.handleDrawOrRedrawBoards(null, null)} onRedrawTile={(shotId, note) => pCtrl.handleDrawOrRedrawBoards(shotId, note)} onRollCameras={() => pCtrl.startFilmingRun(activeRun.run_id, activeRun.resolution)} onSetError={pCtrl.setProdError} addToast={addToast} getDisplayableRefUrl={getDisplayableRefUrl} />
             )}
             {pCtrl.activeStageTab === "filming" && (
-                <SoundstageFilmingStageView
-                    activeRun={activeRun}
-                    liveProgressPct={pCtrl.liveProgressPct}
-                    liveStageLabel={pCtrl.liveStageLabel}
-                    liveEvents={pCtrl.liveEvents}
-                    isFilming={pCtrl.isFilming}
-                    onStartFilming={pCtrl.startFilmingRun}
-                />
+                <SoundstageFilmingStageView activeRun={activeRun} liveProgressPct={pCtrl.liveProgressPct} liveStageLabel={pCtrl.liveStageLabel} liveEvents={pCtrl.liveEvents} isFilming={pCtrl.isFilming} onStartFilming={pCtrl.startFilmingRun} />
             )}
             {pCtrl.activeStageTab === "premiere" && (
-                <SoundstagePremiereStageView
-                    activeRun={activeRun}
-                    setActiveRun={setActiveRun}
-                    setSessionName={setSessionName}
-                    setFullscreenFocus={setFullscreenFocus}
-                    onSwitchStage={pCtrl.handleSwitchStage}
-                    onSetError={pCtrl.setProdError}
-                    addToast={addToast}
-                    getDisplayableRefUrl={getDisplayableRefUrl}
-                    onPromoteToMode2={onPromoteToMode2}
-                    onPromoteToMode3={onPromoteToMode3}
-                />
+                <SoundstagePremiereStageView activeRun={activeRun} setActiveRun={setActiveRun} setSessionName={setSessionName} setFullscreenFocus={setFullscreenFocus} onSwitchStage={pCtrl.handleSwitchStage} onSetError={pCtrl.setProdError} addToast={addToast} getDisplayableRefUrl={getDisplayableRefUrl} onPromoteToMode2={onPromoteToMode2} onPromoteToMode3={onPromoteToMode3} />
             )}
         </section>
     );

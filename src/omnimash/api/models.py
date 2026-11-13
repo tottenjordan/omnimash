@@ -383,6 +383,9 @@ class KeyframeImageResponse(BaseModel):
     keyframe_image_url: str
 
 
+from omnimash.prompts.delta_compiler import CompilationMode  # noqa: E402
+
+
 class GenerateShotRequest(BaseModel):
     session_name: str | None = "parody_session_1"
     shot_index: int = 1
@@ -407,6 +410,7 @@ class GenerateShotRequest(BaseModel):
     aspect_ratio: str = "16:9"
     motion_reference_clip: str | None = None
     is_seamless_loop: bool = False
+    compilation_mode: CompilationMode = "auto"
 
 
 class GenerateShotResponse(BaseModel):
