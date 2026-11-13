@@ -375,6 +375,8 @@ class OmniFlashClient:
         generation_config: dict[str, Any] | None = None,
         last_frame_image_url: str | None = None,
         is_seamless_loop: bool = False,
+        seed: int | None = None,
+        project_id: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Calls Gemini Omni Flash 1.1 Preview via Interactions API for native video+audio generation & conversational editing with 3 retry attempts and active error mitigation."""
         if self.mock_mode:
@@ -422,16 +424,20 @@ class OmniFlashClient:
         last_error: str | None = None
         start_time_ns = time.time_ns()
 
-        input_payload = self._build_multimodal_contents(
-            prompt=prompt,
-            session_id=session_id,
-            characters=characters,
-            keyframe_image_url=keyframe_image_url,
-            directors_notes=directors_notes,
-            enable_safety_sanitization=enable_safety_sanitization,
-            motion_reference_clip=motion_reference_clip,
-            last_frame_image_url=last_frame_image_url,
-            is_seamless_loop=is_seamless_loop,
+        input_payload: list[dict[str, Any]] | str = (
+            []
+            if task == "upscale"
+            else self._build_multimodal_contents(
+                prompt=prompt,
+                session_id=session_id,
+                characters=characters,
+                keyframe_image_url=keyframe_image_url,
+                directors_notes=directors_notes,
+                enable_safety_sanitization=enable_safety_sanitization,
+                motion_reference_clip=motion_reference_clip,
+                last_frame_image_url=last_frame_image_url,
+                is_seamless_loop=is_seamless_loop,
+            )
         )
 
         model_id = getattr(settings, "omni_model_id", "gemini-omni-1.1-flash")
@@ -444,6 +450,7 @@ class OmniFlashClient:
         kwargs: dict[str, Any] = {
             "model": model_id,
             "input": input_payload,
+            "store": True,
             "safety_settings": _get_relaxed_interaction_safety_settings(),
         }
         if previous_interaction_id:
@@ -452,19 +459,36 @@ class OmniFlashClient:
         if generation_config is not None:
             kwargs["generation_config"] = copy.deepcopy(generation_config)
 
-        if task is not None:
-            if "generation_config" not in kwargs:
-                kwargs["generation_config"] = {}
-            if "video_config" not in kwargs["generation_config"]:
-                kwargs["generation_config"]["video_config"] = {}
-            kwargs["generation_config"]["video_config"]["task"] = task
+        if seed is not None:
+            kwargs.setdefault("generation_config", {})["seed"] = int(seed)
 
-        response_format: dict[str, Any] = {
-            "type": "video",
-            "resolution": resolution,
-            "aspect_ratio": aspect_ratio,
-        }
-        if duration_seconds is not None:
+        if task is not None and (not previous_interaction_id or task == "upscale"):
+            kwargs.setdefault("generation_config", {}).setdefault("video_config", {})["task"] = task
+
+        if previous_interaction_id and task != "upscale":
+            gen_cfg = kwargs.get("generation_config")
+            if isinstance(gen_cfg, dict) and isinstance(gen_cfg.get("video_config"), dict):
+                gen_cfg["video_config"].pop("task", None)
+
+        if self._genai_client is not self._dev_client:
+            gen_cfg = kwargs.setdefault("generation_config", {})
+            if not isinstance(gen_cfg.get("labels"), dict):
+                gen_cfg["labels"] = {
+                    "project": str(project_id or self.project or "omnimash"),
+                    "session_id": str(session_id or "default"),
+                    "resolution": str(resolution),
+                }
+
+        response_format: dict[str, Any] = (
+            {"type": "video", "resolution": resolution}
+            if task == "upscale"
+            else {
+                "type": "video",
+                "resolution": resolution,
+                "aspect_ratio": aspect_ratio,
+            }
+        )
+        if task != "upscale" and duration_seconds is not None:
             response_format["duration"] = f"{int(duration_seconds)}s"
         if resolution in ("4k", "1080p") and not self.mock_mode:
             response_format["delivery"] = "uri"
@@ -557,25 +581,58 @@ class OmniFlashClient:
                     logger.warning(
                         "401 UNAUTHENTICATED on Vertex AI. Actively switching to Google AI Studio Developer API client."
                     )
-                    self.switch_to_developer_api()
+                    if self.switch_to_developer_api() and isinstance(
+                        kwargs.get("generation_config"), dict
+                    ):
+                        kwargs["generation_config"].pop("labels", None)
                 elif "404" in exc_str or "Publisher model" in exc_str:
                     logger.warning(
                         "Vertex AI endpoint unavailable (%s). Actively switching to Google AI Studio Developer API client.",
                         exc_str,
                     )
-                    self.switch_to_developer_api()
+                    if self.switch_to_developer_api() and isinstance(
+                        kwargs.get("generation_config"), dict
+                    ):
+                        kwargs["generation_config"].pop("labels", None)
                     if kwargs.get("model") == "gemini-omni-1.1-flash-preview":
                         kwargs["model"] = "gemini-omni-1.1-flash"
                 elif (
-                    "safety_settings" in exc_str
+                    "safety_settings" in exc_str.lower()
+                    or "labels" in exc_str.lower()
                     or "unmarshaller" in exc_str.lower()
                     or "validationerror" in exc_str.lower()
                 ):
+                    if "labels" in exc_str.lower() and isinstance(
+                        kwargs.get("generation_config"), dict
+                    ):
+                        logger.warning(
+                            "Interactions API labels parameter error (%s). Removing labels from generation_config and retrying.",
+                            exc_str,
+                        )
+                        kwargs["generation_config"].pop("labels", None)
+                    elif "safety_settings" in exc_str.lower():
+                        logger.warning(
+                            "Interactions API parameter error (%s). Removing unsupported safety_settings kwarg and retrying.",
+                            exc_str,
+                        )
+                        kwargs.pop("safety_settings", None)
+                    else:
+                        logger.warning(
+                            "Interactions API parameter error (%s). Removing unsupported safety_settings/labels and retrying.",
+                            exc_str,
+                        )
+                        kwargs.pop("safety_settings", None)
+                        if isinstance(kwargs.get("generation_config"), dict):
+                            kwargs["generation_config"].pop("labels", None)
+                elif task == "upscale" and any(
+                    k in exc_str.lower()
+                    for k in ("400", "invalid_request", "not supported", "upscale", "rejected")
+                ):
                     logger.warning(
-                        "Interactions API parameter error (%s). Removing unsupported safety_settings kwarg and retrying.",
+                        "Stateful upscale rejected by Omni API (%s); aborting upscale retries for fallback.",
                         exc_str,
                     )
-                    kwargs.pop("safety_settings", None)
+                    break
                 elif any(
                     k in exc_str.lower()
                     for k in (
@@ -757,6 +814,7 @@ class OmniFlashClient:
         generation_config: dict[str, Any] | None = None,
         last_frame_image_url: str | None = None,
         is_seamless_loop: bool = False,
+        seed: int | None = None,
     ) -> GenerationResult:
         thread_id = f"thread_{uuid.uuid4().hex[:8]}"
         filename = (
@@ -788,6 +846,8 @@ class OmniFlashClient:
             generation_config=generation_config,
             last_frame_image_url=last_frame_image_url,
             is_seamless_loop=is_seamless_loop,
+            seed=seed,
+            project_id=project_id,
         )
         return self._finalize_video_clip_result(
             success=success,
@@ -823,6 +883,7 @@ class OmniFlashClient:
         project_id: str | None = None,
         task: str | None = None,
         generation_config: dict[str, Any] | None = None,
+        seed: int | None = None,
     ) -> GenerationResult:
         filename = (
             f"turn_{turn_index}_video.mp4"
@@ -854,6 +915,8 @@ class OmniFlashClient:
             motion_reference_clip=motion_reference_clip,
             task=task,
             generation_config=generation_config,
+            seed=seed,
+            project_id=project_id,
         )
         return self._finalize_video_clip_result(
             success=success,
@@ -870,6 +933,224 @@ class OmniFlashClient:
             is_silent=is_silent,
             audio_stem=audio_stem,
         )
+
+    def revise_clip(
+        self,
+        original_prompt: str,
+        revision_note: str,
+        seed: int | None = None,
+        keyframe_image_url: str | None = None,
+        resolution: str = "360p",
+        mode: str = "recreate",
+        interaction_thread_id: str | None = None,
+        session_id: str | None = None,
+        characters: list[CharacterRole] | None = None,
+        aspect_ratio: str = "16:9",
+        project_id: str | None = None,
+        enable_safety_sanitization: bool = True,
+        voiceover: str | None = None,
+        is_silent: bool = False,
+        audio_stem: str | None = None,
+        turn_index: int | None = None,
+        last_frame_image_url: str | None = None,
+        is_seamless_loop: bool = False,
+    ) -> GenerationResult:
+        """Revises a clip using Recreate-by-Default (merged prompt + locked seed) or explicit stateful edit."""
+        normalized_mode = (mode or "recreate").strip().lower()
+        clean_orig = (original_prompt or "").strip()
+        clean_note = (revision_note or "").strip()
+
+        if normalized_mode == "edit":
+            if not interaction_thread_id:
+                raise ValueError("interaction_thread_id is required when revise_clip mode='edit'.")
+            return self.apply_interaction_diff(
+                interaction_thread_id=interaction_thread_id,
+                diff_prompt=clean_note or clean_orig,
+                session_id=session_id,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
+                turn_index=turn_index,
+                characters=characters,
+                keyframe_image_url=keyframe_image_url,
+                enable_safety_sanitization=enable_safety_sanitization,
+                aspect_ratio=aspect_ratio,
+                resolution=resolution,
+                project_id=project_id,
+                seed=seed,
+            )
+
+        merged_prompt = (
+            f"{clean_orig}\n\n[REVISION DIRECTIVE]: {clean_note}"
+            if clean_orig and clean_note
+            else (clean_note or clean_orig)
+        )
+        return self.generate_clip(
+            prompt=merged_prompt,
+            session_id=session_id,
+            voiceover=voiceover,
+            is_silent=is_silent,
+            audio_stem=audio_stem,
+            turn_index=turn_index,
+            characters=characters,
+            keyframe_image_url=keyframe_image_url,
+            enable_safety_sanitization=enable_safety_sanitization,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            project_id=project_id,
+            last_frame_image_url=last_frame_image_url,
+            is_seamless_loop=is_seamless_loop,
+            seed=seed,
+        )
+
+    def upscale_clip(
+        self,
+        previous_interaction_id: str,
+        target_resolution: str = "1080p",
+        fallback_prompt: str | None = None,
+        seed: int | None = None,
+        keyframe_image_url: str | None = None,
+        session_id: str | None = None,
+        aspect_ratio: str = "16:9",
+        characters: list[CharacterRole] | None = None,
+        project_id: str | None = None,
+        voiceover: str | None = None,
+        is_silent: bool = False,
+        audio_stem: str | None = None,
+        enable_safety_sanitization: bool = True,
+    ) -> GenerationResult:
+        """Upscales a stored interaction clip via task='upscale' and empty input, falling back to seeded recreate."""
+        thread_id = f"upscale_{uuid.uuid4().hex[:8]}"
+        safe_sess = (
+            re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
+            if session_id and session_id.strip()
+            else ""
+        )
+        filename = f"{thread_id}_{target_resolution}.mp4"
+        url = (
+            f"/static/rendered/{safe_sess}/{filename}"
+            if safe_sess
+            else f"/static/rendered/{filename}"
+        )
+        rel_path = url.lstrip("/")
+
+        success, inter_id, error_message = self._generate_live_omni_flash_video(
+            prompt="",
+            target_rel_path=rel_path,
+            previous_interaction_id=previous_interaction_id,
+            session_id=session_id,
+            aspect_ratio=aspect_ratio,
+            resolution=target_resolution,
+            task="upscale",
+            seed=seed,
+            project_id=project_id,
+        )
+        if not success and fallback_prompt:
+            logger.warning(
+                "Stateful upscale failed for interaction %s (%s); falling back to seeded %s recreate.",
+                previous_interaction_id,
+                error_message,
+                target_resolution,
+            )
+            return self.generate_clip(
+                prompt=fallback_prompt,
+                session_id=session_id,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
+                characters=characters,
+                keyframe_image_url=keyframe_image_url,
+                enable_safety_sanitization=enable_safety_sanitization,
+                aspect_ratio=aspect_ratio,
+                resolution=target_resolution,
+                project_id=project_id,
+                seed=seed,
+            )
+
+        return self._finalize_video_clip_result(
+            success=success,
+            inter_id=inter_id,
+            fallback_thread_id=previous_interaction_id or thread_id,
+            error_message=error_message,
+            default_error="Gemini Omni Flash video upscale failed",
+            url=url,
+            rel_path=rel_path,
+            prompt=fallback_prompt or f"Upscale {previous_interaction_id} to {target_resolution}",
+            session_id=session_id,
+            project_id=project_id,
+            voiceover=voiceover,
+            is_silent=is_silent,
+            audio_stem=audio_stem,
+        )
+
+    def generate_dailies_two_tier(
+        self,
+        prompt: str,
+        session_id: str | None = None,
+        seed: int | None = None,
+        keyframe_image_url: str | None = None,
+        characters: list[CharacterRole] | None = None,
+        aspect_ratio: str = "16:9",
+        draft_resolution: str | None = None,
+        master_resolution: str | None = None,
+        promote_to_master: bool = False,
+        project_id: str | None = None,
+        enable_safety_sanitization: bool = True,
+        voiceover: str | None = None,
+        is_silent: bool = False,
+        audio_stem: str | None = None,
+        turn_index: int | None = None,
+        last_frame_image_url: str | None = None,
+        is_seamless_loop: bool = False,
+    ) -> dict[str, Any]:
+        """Runs a fast 360p draft daily first and optionally promotes the approved take to 1080p master."""
+        eff_draft_res = draft_resolution or getattr(settings, "draft_resolution", "360p")
+        eff_master_res = master_resolution or getattr(settings, "studio_resolution", "1080p")
+
+        draft_result = self.generate_clip(
+            prompt=prompt,
+            session_id=session_id,
+            voiceover=voiceover,
+            is_silent=is_silent,
+            audio_stem=audio_stem,
+            turn_index=turn_index,
+            characters=characters,
+            keyframe_image_url=keyframe_image_url,
+            enable_safety_sanitization=enable_safety_sanitization,
+            aspect_ratio=aspect_ratio,
+            resolution=eff_draft_res,
+            project_id=project_id,
+            last_frame_image_url=last_frame_image_url,
+            is_seamless_loop=is_seamless_loop,
+            seed=seed,
+        )
+
+        master_result: GenerationResult | None = None
+        if promote_to_master:
+            master_result = self.upscale_clip(
+                previous_interaction_id=draft_result.interaction_thread_id,
+                target_resolution=eff_master_res,
+                fallback_prompt=prompt,
+                seed=seed,
+                keyframe_image_url=keyframe_image_url,
+                session_id=session_id,
+                aspect_ratio=aspect_ratio,
+                characters=characters,
+                project_id=project_id,
+                voiceover=voiceover,
+                is_silent=is_silent,
+                audio_stem=audio_stem,
+                enable_safety_sanitization=enable_safety_sanitization,
+            )
+
+        final_result = master_result if master_result is not None else draft_result
+        return {
+            "draft": draft_result,
+            "master": master_result,
+            "final": final_result,
+            "resolution": eff_master_res if master_result is not None else eff_draft_res,
+            "seed": seed,
+        }
 
     def start_thread_from_video(
         self,
