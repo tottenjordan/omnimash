@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
+import io
 import logging
+import math
 import os
 import re
 import time
-from typing import Any, Callable
-from urllib.parse import quote
+from typing import Any, Callable, Sequence
+from urllib.parse import parse_qs, quote, urlparse
 import uuid
+
+from pydantic import BaseModel, Field
 
 from omnimash.config import settings
 from omnimash.engine.guardrails import (
@@ -23,6 +28,7 @@ from omnimash.engine.media_loader import (
     fetch_media_bytes,
     render_svg_to_png_bytes,
 )
+from omnimash.ingestion.ref_cleaner import ReferenceHygieneProcessor
 from omnimash.prompts.compiler import (
     AESTHETIC_SIGNIFIERS,
     CharacterRole,
@@ -38,10 +44,154 @@ try:
 except ImportError:
     genai: Any = None
 
+try:
+    from PIL import Image, ImageDraw, ImageOps
+
+    HAS_PIL = True
+except ImportError:
+    Image: Any = None
+    ImageDraw: Any = None
+    ImageOps: Any = None
+    HAS_PIL = False
+
+NO_SAMPLING_IMAGE_MODELS: frozenset[str] = frozenset({"gemini-nano-banana-2.1"})
+LITE_1K_ONLY_MODELS: frozenset[str] = frozenset({"gemini-3.1-flash-lite-image"})
+DEPRECATED_IMAGE_MODEL_MAP: dict[str, str] = {
+    "gemini-3.1-flash-image": "gemini-nano-banana-2.1",
+}
+_SCENE_FRAME_PATH_RE = re.compile(r"(?:/keyframes/|keyframe_[0-9a-f]{8}|shot[AB]_)", re.IGNORECASE)
+
 _LAST_KEYFRAME_PROMPT_VAR: ContextVar[str] = ContextVar("_last_keyframe_prompt", default="")
 _STOP_WORDS = frozenset(
     {"the", "and", "fam", "bruv", "chef", "blood", "star", "queen", "king", "master"}
 )
+
+
+class Gate1CandidateItem(BaseModel):
+    """Single seeded keyframe candidate produced during a Gate-1 batch run."""
+
+    candidate_id: str
+    shot_label: str
+    model: str
+    seed: int | None
+    image_size: str
+    aspect_ratio: str
+    image_url: str
+    gcs_uri: str | None = None
+    compiled_prompt: str
+
+
+class Gate1BatchResult(BaseModel):
+    """Complete result of a Gate-1 multi-candidate keyframe batch run."""
+
+    shot_label: str
+    compiled_prompt: str
+    candidates: list[Gate1CandidateItem] = Field(default_factory=list)
+    contact_sheet_url: str | None = None
+    recommended_candidate_id: str | None = None
+
+
+def _resolve_image_model_and_size(
+    image_model: str | None, image_size: str = "2K"
+) -> tuple[str, str]:
+    """Resolves deprecated image model aliases and enforces per-model image_size rules."""
+    clean_model = (image_model or "").strip() or getattr(
+        settings, "image_model_id", "gemini-3-pro-image"
+    )
+    if clean_model in DEPRECATED_IMAGE_MODEL_MAP:
+        mapped_model = DEPRECATED_IMAGE_MODEL_MAP[clean_model]
+        logger.warning(
+            "Deprecated image model %s mapped to %s",
+            clean_model,
+            mapped_model,
+        )
+        target_model = mapped_model
+    elif clean_model.startswith("gemini-3.1-flash-image"):
+        logger.warning(
+            "Deprecated image model %s mapped to %s",
+            clean_model,
+            "gemini-nano-banana-2.1",
+        )
+        target_model = "gemini-nano-banana-2.1"
+    else:
+        target_model = clean_model
+
+    if target_model in LITE_1K_ONLY_MODELS:
+        effective_size = "1K"
+    else:
+        normalized_size = (image_size or "2K").strip().upper()
+        effective_size = normalized_size if normalized_size in {"1K", "2K", "4K"} else "2K"
+    return target_model, effective_size
+
+
+def _extract_gcs_uri(url: str) -> str | None:
+    """Extracts a gs:// URI from a direct gs:// path or /api/media-proxy URL."""
+    if not url:
+        return None
+    if url.startswith("gs://"):
+        return url
+    if "/api/media-proxy?uri=" in url:
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        if "uri" in qs and qs["uri"]:
+            return qs["uri"][0]
+    return None
+
+
+def render_gate1_contact_sheet(
+    tiles: Sequence[tuple[str, bytes]],
+    *,
+    columns: int = 3,
+    tile_width: int = 640,
+    tile_height: int = 360,
+    padding: int = 16,
+    quality: int = 90,
+) -> bytes:
+    """Renders candidate keyframe tiles into a labeled JPEG contact sheet (default 3x2 for N=6)."""
+    if not HAS_PIL:
+        raise RuntimeError("Pillow is required to render Gate-1 contact sheets")
+
+    cols = max(1, int(columns))
+    rows = max(1, math.ceil(max(1, len(tiles)) / cols))
+    canvas_w = cols * tile_width + (cols + 1) * padding
+    canvas_h = rows * tile_height + (rows + 1) * padding
+    sheet = Image.new("RGB", (canvas_w, canvas_h), (14, 18, 28))
+    draw = ImageDraw.Draw(sheet)
+
+    resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1)
+
+    for idx, (label, img_bytes) in enumerate(tiles):
+        row = idx // cols
+        col = idx % cols
+        x0 = padding + col * (tile_width + padding)
+        y0 = padding + row * (tile_height + padding)
+
+        tile_img: Any = None
+        if img_bytes:
+            try:
+                with Image.open(io.BytesIO(img_bytes)) as opened:
+                    tile_img = ImageOps.fit(
+                        opened.convert("RGB"),
+                        (tile_width, tile_height),
+                        method=resample,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decode candidate tile %s for contact sheet: %s", label, exc
+                )
+                tile_img = None
+
+        if tile_img is None:
+            tile_img = Image.new("RGB", (tile_width, tile_height), (26, 32, 46))
+
+        sheet.paste(tile_img, (x0, y0))
+        badge_w = min(tile_width - 16, max(120, len(label) * 8 + 20))
+        draw.rectangle([(x0 + 8, y0 + 8), (x0 + 8 + badge_w, y0 + 34)], fill=(12, 16, 26))
+        draw.text((x0 + 16, y0 + 14), label, fill=(248, 250, 252))
+
+    out_buf = io.BytesIO()
+    sheet.save(out_buf, format="JPEG", quality=quality)
+    return out_buf.getvalue()
 
 
 def _is_char_in_prompt(char: CharacterRole, raw_p: str, san_p: str) -> bool:
@@ -164,8 +314,10 @@ class KeyframeClient:
         aspect_ratio: str,
         blob_prefix: str,
         log_context: str,
+        image_size: str = "2K",
+        seed: int | None = None,
     ) -> str | None:
-        """Shared execution helper for Gemini image generation with thought-part filtering and client cleanup."""
+        """Shared execution helper for Gemini image generation with 2K/seed support and thought filtering."""
         effective_key = (
             self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         )
@@ -177,30 +329,67 @@ class KeyframeClient:
                 project=self.project,
                 location="global",
             )
-        try:
-            config = None
-            if hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig"):
-                image_cfg = (
-                    genai.types.ImageConfig(aspect_ratio=aspect_ratio)
-                    if hasattr(genai.types, "ImageConfig") and aspect_ratio
-                    else None
-                )
-                config = genai.types.GenerateContentConfig(
-                    safety_settings=_guardrails_get_relaxed_safety_settings(genai_module=genai),
-                    image_config=image_cfg,
-                )
+        target_model, effective_size = _resolve_image_model_and_size(image_model, image_size)
 
-            clean_model = image_model.strip() if image_model else ""
-            target_model = (
-                "gemini-nano-banana-2.1"
-                if not clean_model or clean_model.startswith("gemini-3.1-flash-image")
-                else clean_model
-            )
-            response = image_client.models.generate_content(
-                model=target_model,
-                contents=contents,
-                config=config,
-            )
+        def _build_config(*, include_seed: bool) -> Any:
+            if not (hasattr(genai, "types") and hasattr(genai.types, "GenerateContentConfig")):
+                return None
+            image_cfg = None
+            if hasattr(genai.types, "ImageConfig"):
+                img_cfg_kwargs: dict[str, Any] = {}
+                if aspect_ratio:
+                    img_cfg_kwargs["aspect_ratio"] = aspect_ratio
+                if effective_size:
+                    img_cfg_kwargs["image_size"] = effective_size
+                if img_cfg_kwargs:
+                    try:
+                        image_cfg = genai.types.ImageConfig(**img_cfg_kwargs)
+                    except TypeError:
+                        img_cfg_kwargs.pop("image_size", None)
+                        image_cfg = (
+                            genai.types.ImageConfig(**img_cfg_kwargs) if img_cfg_kwargs else None
+                        )
+
+            gen_cfg_kwargs: dict[str, Any] = {
+                "safety_settings": _guardrails_get_relaxed_safety_settings(genai_module=genai),
+                "image_config": image_cfg,
+            }
+            if include_seed and seed is not None and target_model not in NO_SAMPLING_IMAGE_MODELS:
+                gen_cfg_kwargs["seed"] = int(seed)
+            return genai.types.GenerateContentConfig(**gen_cfg_kwargs)
+
+        try:
+            used_seed = seed is not None and target_model not in NO_SAMPLING_IMAGE_MODELS
+            config = _build_config(include_seed=used_seed)
+            try:
+                response = image_client.models.generate_content(
+                    model=target_model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as api_exc:
+                err_lower = str(api_exc).lower()
+                if used_seed and (
+                    "seed" in err_lower
+                    or "invalid" in err_lower
+                    or "unsupported" in err_lower
+                    or isinstance(api_exc, TypeError)
+                ):
+                    logger.warning(
+                        "Image model %s rejected seed=%s (%s); retrying once without seed.",
+                        target_model,
+                        seed,
+                        api_exc,
+                    )
+                    config = _build_config(include_seed=False)
+                    response = image_client.models.generate_content(
+                        model=target_model,
+                        contents=contents,
+                        config=config,
+                    )
+                else:
+                    raise
+
             if response and hasattr(response, "candidates") and response.candidates:
                 for candidate in response.candidates:
                     content = getattr(candidate, "content", None)
@@ -223,13 +412,13 @@ class KeyframeClient:
                                 gcs_uri = effective_storage.get_gcs_uri(blob_name)
                                 return f"/api/media-proxy?uri={quote(gcs_uri, safe='')}"
         except Exception as e:
-            logger.warning("gemini-nano-banana-2.1 generation failed for %s: %s", log_context, e)
+            logger.warning("Image generation (%s) failed for %s: %s", target_model, log_context, e)
         finally:
             if hasattr(image_client, "close"):
                 try:
                     image_client.close()
-                except Exception:
-                    pass
+                except Exception as close_exc:
+                    logger.debug("Failed to close GenAI image client: %s", close_exc)
         return None
 
     def _log_inference(self, **kwargs: Any) -> None:
@@ -253,8 +442,18 @@ class KeyframeClient:
         image_model: str = "gemini-nano-banana-2.1",
         return_compiled_prompt: bool = False,
         session_id: str | None = None,
+        image_size: str = "2K",
+        seed: int | None = None,
     ) -> Any:
         """Generates a visual keyframe image directive using Gemini Nano Banana 2.1 (or Gemini 3 Pro Image)."""
+        if anchor_keyframe_url and _SCENE_FRAME_PATH_RE.search(anchor_keyframe_url):
+            logger.warning(
+                "SCENE_KEYFRAME_CHAINING_BANNED: Stripping scene-frame anchor_keyframe_url=%s; "
+                "camera angle transitions must render independently from cleaned character portrait.",
+                anchor_keyframe_url,
+            )
+            anchor_keyframe_url = None
+
         sanitized_prompt = sanitize_real_names(prompt)
         full_prompt = f"{sanitized_prompt}, style: {style_tone}" if style_tone else sanitized_prompt
 
@@ -428,7 +627,11 @@ class KeyframeClient:
                         continue
                     img_bytes, mime_type = self._fetch_image_bytes(ref_url)
                     if img_bytes:
-                        self._append_image_part(contents, img_bytes, mime_type)
+                        cleaned_bytes, was_cropped = (
+                            ReferenceHygieneProcessor.extract_clean_single_portrait(img_bytes)
+                        )
+                        effective_mime = "image/png" if was_cropped else mime_type
+                        self._append_image_part(contents, cleaned_bytes, effective_mime)
 
             logger.info(
                 "==================== [KEYFRAME PROMPT SENT TO GEMINI] ====================\n%s\n=====================================================================",
@@ -442,6 +645,8 @@ class KeyframeClient:
                 aspect_ratio=aspect_ratio,
                 blob_prefix="keyframes/keyframe",
                 log_context="keyframe",
+                image_size=image_size,
+                seed=seed,
             )
             latency_ms = (time.time_ns() - start_time_ns) / 1_000_000.0
             if live_url:
@@ -582,8 +787,109 @@ class KeyframeClient:
             style_preset=style_preset,
         )
 
+    def generate_gate1_candidate_batch(
+        self,
+        prompt: str,
+        *,
+        shot_label: str = "shot_a",
+        style_tone: str = "",
+        reference_image_urls: list[str] | None = None,
+        characters: list[Any] | None = None,
+        directors_notes: dict[str, Any] | str | None = None,
+        style_preset: str | None = None,
+        wardrobe: str | None = None,
+        anchor_keyframe_url: str | None = None,
+        aspect_ratio: str = "16:9",
+        image_model: str = "gemini-3-pro-image",
+        image_size: str = "2K",
+        base_seed: int = 4101,
+        num_candidates: int = 1,
+        session_id: str | None = None,
+    ) -> Gate1BatchResult:
+        """Generates 1 (default Q2 Option A) or N seeded 2K candidates and a 3x2 JPEG contact sheet when N > 1."""
+        count = max(1, int(num_candidates))
+        resolved_model, effective_size = _resolve_image_model_and_size(image_model, image_size)
+
+        def _render_single(idx: int) -> Gate1CandidateItem:
+            seed_val: int | None = (
+                None if resolved_model in NO_SAMPLING_IMAGE_MODELS else int(base_seed) + idx
+            )
+            res = self.generate_keyframe_image(
+                prompt=prompt,
+                style_tone=style_tone,
+                reference_image_urls=reference_image_urls,
+                characters=characters,
+                directors_notes=directors_notes,
+                style_preset=style_preset,
+                wardrobe=wardrobe,
+                anchor_keyframe_url=anchor_keyframe_url,
+                aspect_ratio=aspect_ratio,
+                image_model=image_model,
+                return_compiled_prompt=True,
+                session_id=session_id,
+                image_size=effective_size,
+                seed=seed_val,
+            )
+            url, compiled_prompt = res if isinstance(res, tuple) else (str(res), prompt)
+            seed_suffix = str(seed_val) if seed_val is not None else "noseed"
+            return Gate1CandidateItem(
+                candidate_id=f"{shot_label}_c{idx + 1}_{seed_suffix}",
+                shot_label=shot_label,
+                model=resolved_model,
+                seed=seed_val,
+                image_size=effective_size,
+                aspect_ratio=aspect_ratio,
+                image_url=str(url),
+                gcs_uri=_extract_gcs_uri(str(url)),
+                compiled_prompt=compiled_prompt,
+            )
+
+        if count == 1:
+            candidates = [_render_single(0)]
+        else:
+            with ThreadPoolExecutor(max_workers=min(3, count)) as pool:
+                candidates = list(pool.map(_render_single, range(count)))
+
+        contact_sheet_url: str | None = None
+        if count > 1 and candidates:
+            tiles: list[tuple[str, bytes]] = []
+            for idx, item in enumerate(candidates):
+                raw_bytes, _ = self._fetch_image_bytes(item.image_url)
+                tile_bytes = (
+                    bytes(raw_bytes)
+                    if isinstance(raw_bytes, (bytes, bytearray)) and raw_bytes
+                    else self._render_svg_to_png_bytes()
+                )
+                label = f"#{idx + 1} seed={item.seed}" if item.seed is not None else f"#{idx + 1}"
+                tiles.append((label, tile_bytes))
+
+            sheet_bytes = render_gate1_contact_sheet(tiles, columns=3)
+            effective_storage = self.storage
+            if effective_storage is not None and hasattr(effective_storage, "upload_bytes"):
+                blob_name = f"keyframes/gate1_{shot_label}_{uuid.uuid4().hex[:8]}.jpg"
+                effective_storage.upload_bytes(sheet_bytes, blob_name, content_type="image/jpeg")
+                gcs_uri = effective_storage.get_gcs_uri(blob_name)
+                contact_sheet_url = f"/api/media-proxy?uri={quote(gcs_uri, safe='')}"
+            else:
+                encoded = base64.b64encode(sheet_bytes).decode("utf-8")
+                contact_sheet_url = f"data:image/jpeg;base64,{encoded}"
+
+        return Gate1BatchResult(
+            shot_label=shot_label,
+            compiled_prompt=candidates[0].compiled_prompt if candidates else prompt,
+            candidates=candidates,
+            contact_sheet_url=contact_sheet_url,
+            recommended_candidate_id=candidates[0].candidate_id if candidates else None,
+        )
+
 
 __all__ = [
+    "DEPRECATED_IMAGE_MODEL_MAP",
+    "Gate1BatchResult",
+    "Gate1CandidateItem",
     "KeyframeClient",
+    "LITE_1K_ONLY_MODELS",
+    "NO_SAMPLING_IMAGE_MODELS",
     "_LAST_KEYFRAME_PROMPT_VAR",
+    "render_gate1_contact_sheet",
 ]
