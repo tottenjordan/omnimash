@@ -2858,3 +2858,290 @@ def test_generate_clip_and_apply_interaction_diff_propagate_task() -> None:
         mock_gen_live2.assert_called_once()
         diff_call_kwargs = mock_gen_live2.call_args.kwargs
         assert diff_call_kwargs["task"] == "edit"
+
+
+def test_generate_live_omni_enforces_store_true_and_omits_task_when_previous_interaction_id_set(
+    tmp_path: Any,
+) -> None:
+    """Verify store=True is always enforced and video_config.task is stripped when previous_interaction_id is set (unless task=='upscale')."""
+    import base64
+
+    client = OmniFlashClient(mock_mode=False, retry_delay=0.0)
+    mock_interactions = MagicMock()
+    fake_video_bytes = base64.b64encode(b"fake_mp4_bytes").decode("utf-8")
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_turn_next", output_video=MagicMock(data=fake_video_bytes)
+    )
+    mock_dev = MagicMock(interactions=mock_interactions)
+    client._dev_client = mock_dev
+    client._genai_client = mock_dev
+
+    # 1. Follow-up turn with previous_interaction_id and task='edit' must omit video_config.task
+    out_follow = str(tmp_path / "followup.mp4")
+    ok, inter_id, err = client._generate_live_omni_flash_video(
+        prompt="Change lighting to moonlight",
+        target_rel_path=out_follow,
+        previous_interaction_id="inter_parent_001",
+        task="edit",
+        generation_config={"video_config": {"task": "edit"}},
+    )
+    assert ok is True
+    assert inter_id == "inter_turn_next"
+    assert err is None
+    follow_kwargs = mock_interactions.create.call_args.kwargs
+    assert follow_kwargs["store"] is True
+    assert follow_kwargs["previous_interaction_id"] == "inter_parent_001"
+    video_cfg = follow_kwargs.get("generation_config", {}).get("video_config", {})
+    assert "task" not in video_cfg
+
+    # 2. Initial turn without previous_interaction_id preserves task and enforces store=True
+    out_init = str(tmp_path / "initial.mp4")
+    ok_init, _, _ = client._generate_live_omni_flash_video(
+        prompt="Opening wide shot",
+        target_rel_path=out_init,
+        task="text_to_video",
+    )
+    assert ok_init is True
+    init_kwargs = mock_interactions.create.call_args.kwargs
+    assert init_kwargs["store"] is True
+    assert init_kwargs["generation_config"]["video_config"]["task"] == "text_to_video"
+
+
+def test_generate_live_omni_attaches_vertex_finops_labels_and_strips_on_dev_api_validation_error(
+    tmp_path: Any,
+) -> None:
+    """Verify Vertex AI calls attach FinOps labels and strip+retry on 400/ValidationError referencing labels."""
+    import base64
+
+    fake_video_bytes = base64.b64encode(b"fake_mp4_bytes").decode("utf-8")
+
+    # 1. Vertex client attaches FinOps labels inside generation_config
+    client = OmniFlashClient(mock_mode=False, retry_delay=0.0)
+    mock_vertex = MagicMock()
+    mock_vertex.interactions.create.return_value = MagicMock(
+        id="inter_vertex_lbl", output_video=MagicMock(data=fake_video_bytes)
+    )
+    mock_dev = MagicMock()
+    mock_dev.interactions.create.return_value = MagicMock(
+        id="inter_dev_nolbl", output_video=MagicMock(data=fake_video_bytes)
+    )
+    client._vertex_client = mock_vertex
+    client._dev_client = mock_dev
+    client._genai_client = mock_vertex
+
+    ok, _, _ = client._generate_live_omni_flash_video(
+        prompt="Vertex labeled render",
+        target_rel_path=str(tmp_path / "vertex.mp4"),
+        session_id="sess_finops",
+        resolution="1080p",
+        project_id="proj-finops",
+    )
+    assert ok is True
+    v_kwargs = mock_vertex.interactions.create.call_args.kwargs
+    assert v_kwargs["generation_config"]["labels"] == {
+        "project": "proj-finops",
+        "session_id": "sess_finops",
+        "resolution": "1080p",
+    }
+
+    # 2. Dev client omits FinOps labels
+    client._genai_client = mock_dev
+    ok_dev, _, _ = client._generate_live_omni_flash_video(
+        prompt="Dev unlabeled render",
+        target_rel_path=str(tmp_path / "dev.mp4"),
+        session_id="sess_dev",
+        resolution="360p",
+    )
+    assert ok_dev is True
+    d_kwargs = mock_dev.interactions.create.call_args.kwargs
+    assert "labels" not in d_kwargs.get("generation_config", {})
+
+    # 3. Validation error referencing labels strips labels and retries cleanly
+    client._genai_client = mock_vertex
+    mock_vertex.interactions.create.side_effect = [
+        Exception(
+            "400 ValidationError: Extra inputs are not permitted for generation_config.labels"
+        ),
+        MagicMock(id="inter_recovered_lbl", output_video=MagicMock(data=fake_video_bytes)),
+    ]
+    ok_rec, inter_rec, err_rec = client._generate_live_omni_flash_video(
+        prompt="Retry after labels error",
+        target_rel_path=str(tmp_path / "retry_lbl.mp4"),
+        session_id="sess_retry",
+        resolution="1080p",
+    )
+    assert ok_rec is True
+    assert inter_rec == "inter_recovered_lbl"
+    assert err_rec is None
+    assert mock_vertex.interactions.create.call_count == 3
+    retry_kwargs = mock_vertex.interactions.create.call_args_list[-1].kwargs
+    assert "labels" not in retry_kwargs.get("generation_config", {})
+
+
+def test_revise_clip_defaults_to_recreate_with_locked_seed_and_merged_prompt() -> None:
+    """Verify revise_clip defaults to Recreate-by-Default (generate_clip with locked seed + merged prompt) and supports explicit mode='edit'."""
+    client = OmniFlashClient(mock_mode=True)
+
+    with (
+        patch.object(
+            client,
+            "generate_clip",
+            return_value=MagicMock(interaction_thread_id="recreate_inter_1", video_url="/v1.mp4"),
+        ) as mock_gen,
+        patch.object(
+            client,
+            "apply_interaction_diff",
+            return_value=MagicMock(interaction_thread_id="edit_inter_2", video_url="/v2.mp4"),
+        ) as mock_diff,
+    ):
+        res_recreate = client.revise_clip(
+            original_prompt="Wizard on rooftop in rain",
+            revision_note="Add warm golden rim light on cloak",
+            seed=4242,
+            keyframe_image_url="gs://bucket/kf1.png",
+            resolution="360p",
+            session_id="sess_rev",
+        )
+        assert res_recreate.interaction_thread_id == "recreate_inter_1"
+        mock_diff.assert_not_called()
+        mock_gen.assert_called_once()
+        gen_kwargs = mock_gen.call_args.kwargs
+        assert gen_kwargs["seed"] == 4242
+        assert gen_kwargs["keyframe_image_url"] == "gs://bucket/kf1.png"
+        assert gen_kwargs["resolution"] == "360p"
+        assert "Wizard on rooftop in rain" in gen_kwargs["prompt"]
+        assert "Add warm golden rim light on cloak" in gen_kwargs["prompt"]
+
+        res_edit = client.revise_clip(
+            original_prompt="Wizard on rooftop in rain",
+            revision_note="Swap wand for microphone",
+            seed=4242,
+            keyframe_image_url="gs://bucket/kf1.png",
+            resolution="360p",
+            mode="edit",
+            interaction_thread_id="parent_inter_99",
+            session_id="sess_rev",
+        )
+        assert res_edit.interaction_thread_id == "edit_inter_2"
+        mock_diff.assert_called_once()
+        assert mock_diff.call_args.kwargs["interaction_thread_id"] == "parent_inter_99"
+
+
+def test_upscale_clip_sends_empty_input_and_falls_back_to_seeded_1080p_recreate_if_rejected(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify upscale_clip sends input=[] + task='upscale' + store=True and falls back to seeded 1080p recreate if rejected."""
+    import base64
+
+    monkeypatch.chdir(tmp_path)
+    fake_video_bytes = base64.b64encode(b"fake_1080p_bytes").decode("utf-8")
+
+    client = OmniFlashClient(mock_mode=False, retry_delay=0.0)
+    mock_interactions = MagicMock()
+    mock_interactions.create.return_value = MagicMock(
+        id="inter_upscale_1080", output_video=MagicMock(data=fake_video_bytes)
+    )
+    mock_dev = MagicMock(interactions=mock_interactions)
+    client._dev_client = mock_dev
+    client._genai_client = mock_dev
+
+    with patch.object(client.storage, "upload_file"):
+        res_ok = client.upscale_clip(
+            previous_interaction_id="inter_draft_360",
+            target_resolution="1080p",
+            session_id="sess_up",
+        )
+
+    assert res_ok.interaction_thread_id == "inter_upscale_1080"
+    assert res_ok.error_message is None
+    up_kwargs = mock_interactions.create.call_args.kwargs
+    assert up_kwargs["previous_interaction_id"] == "inter_draft_360"
+    assert up_kwargs["store"] is True
+    assert up_kwargs["input"] == []
+    assert up_kwargs["generation_config"]["video_config"]["task"] == "upscale"
+    assert up_kwargs["response_format"]["type"] == "video"
+    assert up_kwargs["response_format"]["resolution"] == "1080p"
+
+    # Rejection triggers fallback to seeded 1080p recreate via generate_clip
+    mock_interactions.create.side_effect = Exception("400 invalid_request: upscale not supported")
+    with patch.object(
+        client,
+        "generate_clip",
+        return_value=MagicMock(
+            interaction_thread_id="inter_fallback_1080",
+            video_url="/static/rendered/fallback_1080.mp4",
+            error_message=None,
+        ),
+    ) as mock_gen_clip:
+        res_fb = client.upscale_clip(
+            previous_interaction_id="inter_draft_360",
+            target_resolution="1080p",
+            fallback_prompt="Wizard duel in neon corridor",
+            seed=777,
+            keyframe_image_url="gs://bucket/kf.png",
+            session_id="sess_up",
+        )
+
+    assert res_fb.interaction_thread_id == "inter_fallback_1080"
+    mock_gen_clip.assert_called_once()
+    fb_kwargs = mock_gen_clip.call_args.kwargs
+    assert fb_kwargs["prompt"] == "Wizard duel in neon corridor"
+    assert fb_kwargs["resolution"] == "1080p"
+    assert fb_kwargs["seed"] == 777
+    assert fb_kwargs["keyframe_image_url"] == "gs://bucket/kf.png"
+
+
+def test_generate_dailies_two_tier_runs_360p_draft_before_optional_1080p_master() -> None:
+    """Verify generate_dailies_two_tier generates a 360p draft first and only promotes to 1080p when requested."""
+    client = OmniFlashClient(mock_mode=True)
+    call_order: list[str] = []
+
+    draft_res = MagicMock(
+        interaction_thread_id="inter_360", video_url="/draft.mp4", error_message=None
+    )
+    master_res = MagicMock(
+        interaction_thread_id="inter_1080", video_url="/master.mp4", error_message=None
+    )
+
+    def fake_generate_clip(*args: Any, **kwargs: Any) -> Any:
+        call_order.append(f"generate:{kwargs.get('resolution')}")
+        return draft_res
+
+    def fake_upscale_clip(*args: Any, **kwargs: Any) -> Any:
+        call_order.append(f"upscale:{kwargs.get('target_resolution')}")
+        return master_res
+
+    with (
+        patch.object(client, "generate_clip", side_effect=fake_generate_clip) as mock_gen,
+        patch.object(client, "upscale_clip", side_effect=fake_upscale_clip) as mock_up,
+    ):
+        # 1. Draft only (default promote_to_master=False)
+        out_draft = client.generate_dailies_two_tier(
+            prompt="Knight enters cathedral",
+            session_id="sess_dailies",
+            seed=1234,
+            promote_to_master=False,
+        )
+        assert call_order == ["generate:360p"]
+        assert out_draft["draft"] is draft_res
+        assert out_draft["master"] is None
+        assert out_draft["final"] is draft_res
+        mock_up.assert_not_called()
+
+        # 2. Draft followed by 1080p master promotion
+        call_order.clear()
+        out_promoted = client.generate_dailies_two_tier(
+            prompt="Knight enters cathedral",
+            session_id="sess_dailies",
+            seed=1234,
+            keyframe_image_url="gs://bucket/kf.png",
+            promote_to_master=True,
+        )
+        assert call_order == ["generate:360p", "upscale:1080p"]
+        assert out_promoted["draft"] is draft_res
+        assert out_promoted["master"] is master_res
+        assert out_promoted["final"] is master_res
+        assert mock_gen.call_args.kwargs["seed"] == 1234
+        assert mock_up.call_args.kwargs["previous_interaction_id"] == "inter_360"
+        assert mock_up.call_args.kwargs["seed"] == 1234
+        assert mock_up.call_args.kwargs["fallback_prompt"] == "Knight enters cathedral"
