@@ -238,3 +238,54 @@ def test_generate_shot_i2v_delta_only_routing_and_soundstage_compilation_mode() 
     assert run_res.compilation_mode == "i2v_delta_only"
     assert len(run_res.acts) == 3
     assert "Use this image as the starting frame." in run_res.acts[0].compiled_prompt
+
+
+def test_dual_surface_studio_ui_components_and_8gate_scorecard() -> None:
+    from pathlib import Path
+
+    from omnimash.api import app as app_module
+    from omnimash.api.app import get_ui_html
+
+    ui_html = get_ui_html()
+    templates_dir = Path(app_module.__file__).resolve().parent / "templates"
+    prod_jsx = (templates_dir / "soundstage_production.jsx").read_text(encoding="utf-8")
+    premiere_jsx = (templates_dir / "soundstage_premiere.jsx").read_text(encoding="utf-8")
+    index_html = (templates_dir / "index.html").read_text(encoding="utf-8")
+
+    # 1. Soundstage Gate-1 Contact Sheet Drawer
+    assert 'id="soundstage-gate1-drawer"' in prod_jsx
+    assert 'id="soundstage-gate1-drawer"' in ui_html
+    assert "/api/storyboard/gate1-batch" in prod_jsx or "/api/storyboard/gate1-batch" in ui_html
+
+    # 2. Soundstage Audio Guillotine & SonicMixPreset Panel
+    assert 'id="soundstage-audio-guillotine-panel"' in premiere_jsx
+    assert 'id="soundstage-audio-guillotine-panel"' in ui_html
+    for preset_name in ("trailer", "commercial", "diegetic"):
+        assert preset_name in premiere_jsx
+    assert "<details" in premiere_jsx and "Advanced DSP" in premiere_jsx
+    assert (
+        "/api/storyboard/master-3stem" in premiere_jsx or "/api/storyboard/master-3stem" in ui_html
+    )
+
+    # 3. Soundstage 8-Gate Scorecard & RemediationActionTier badge
+    assert 'id="soundstage-8gate-scorecard"' in premiere_jsx
+    assert 'id="soundstage-8gate-scorecard"' in ui_html
+    for gate_label in (
+        "1. Clean Single Ref",
+        "2. Wide Scale 15-20%",
+        "3. MCU Intimacy",
+        "4. World & Architecture Lock",
+        "5. Bilateral Prop Lock",
+        "6. 3D Parallax & Syllables",
+        "7. Stem Guillotine & Sub-Bass",
+        "8. 1080p24 & -14 LUFS",
+    ):
+        assert gate_label in premiere_jsx
+        assert gate_label in ui_html
+    assert "RemediationActionTier" in premiere_jsx or "TIER_" in premiere_jsx
+
+    # 4. Mode 1/3 Storyboard UI buttons in index.html
+    assert "Gate-1 Contact Sheet (6 Seeds)" in index_html
+    assert "3-Stem -14 LUFS Master" in index_html
+    assert "/api/storyboard/gate1-batch" in index_html
+    assert "/api/storyboard/master-3stem" in index_html

@@ -412,6 +412,154 @@ function SoundstageVariationsAndExportPanel({
     );
 }
 
+function SoundstageEightGateScorecard({ activeRun }) {
+    const gatePills = [
+        { gate: 1, label: "1. Clean Single Ref", defects: ["REF_PANEL_OR_LANDMARK_BLEED"] },
+        { gate: 2, label: "2. Wide Scale 15-20%", defects: ["SCALE_OR_AXIS_FRAMING_MISS"] },
+        { gate: 3, label: "3. MCU Intimacy", defects: ["LIKENESS_DRIFT", "WARDROBE_CONTRADICTION"] },
+        { gate: 4, label: "4. World & Architecture Lock", defects: ["ARCHITECTURAL_TROPE_DRIFT"] },
+        { gate: 5, label: "5. Bilateral Prop Lock", defects: ["BILATERAL_PROP_GLITCH"] },
+        { gate: 6, label: "6. 3D Parallax & Syllables", defects: ["FLAT_MATTE_NO_PARALLAX", "SYLLABLE_SKIP_OR_DIALECT_DRIFT"] },
+        { gate: 7, label: "7. Stem Guillotine & Sub-Bass", defects: ["GUILLOTINE_OR_808_MISALIGNED", "AUDIO_DROWNED", "AUDIO_VOCAL_HALLUCINATION"] },
+        { gate: 8, label: "8. 1080p24 & -14 LUFS", defects: ["TECHNICAL_SPEC_NONCOMPLIANT"] }
+    ];
+    const scorecards = (activeRun && activeRun.critic_scorecards) || {};
+    const summary = resolveSoundstageRemediationSummary(scorecards);
+    const tierCls = summary.tier === "NONE"
+        ? "px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-emerald-950/80 text-emerald-200 border border-emerald-700/60"
+        : "px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-amber-950/80 text-amber-200 border border-amber-700/70";
+
+    return (
+        <div id="soundstage-8gate-scorecard" className="sstage-card rounded-xl p-5 space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-800/80 pb-3">
+                <div>
+                    <span className="text-xs font-mono uppercase tracking-widest text-rose-400 font-semibold">DOMA v2 · 8-Gate Production Scorecard</span>
+                    <h3 className="text-sm sm:text-base font-bold text-stone-100 mt-0.5">Domain-Agnostic Quality Gates &amp; Cost-Ordered Remediation</h3>
+                </div>
+                <span id="soundstage-remediation-tier-badge" className={tierCls}>
+                    RemediationActionTier: {summary.tier}
+                </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                {gatePills.map((gate) => {
+                    const flagged = gate.defects.some((d) => summary.defects.indexOf(d) !== -1);
+                    const pillCls = flagged
+                        ? "px-3 py-2 rounded-lg text-xs font-mono bg-amber-950/70 text-amber-200 border border-amber-700/70 flex items-center justify-between gap-2"
+                        : "px-3 py-2 rounded-lg text-xs font-mono bg-emerald-950/60 text-emerald-200 border border-emerald-800/60 flex items-center justify-between gap-2";
+                    return (
+                        <div key={gate.gate} data-gate-id={gate.gate} className={pillCls}>
+                            <span>{gate.label}</span>
+                            <span className="font-bold">{flagged ? "FLAG" : "PASS"}</span>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function SoundstageAudioGuillotinePanel({ activeRun, isBusy, onSetError, addToast, getDisplayableRefUrl }) {
+    const presetChoices = [
+        { id: "trailer", label: "Trailer", detail: "Baritone VO DSP + Key-Locked 808 + -20 dB Guillotine" },
+        { id: "commercial", label: "Commercial", detail: "Broadcast -14 LUFS + 2450 Hz Consonant Carve" },
+        { id: "diegetic", label: "Diegetic", detail: "Natural On-Camera Dialogue + Subtle Underscore" }
+    ];
+    const [preset, setPreset] = useState("trailer");
+    const [narratorText, setNarratorText] = useState(() => ((activeRun && activeRun.plan && activeRun.plan.voiceover_full_script) || "").slice(0, 140));
+    const [lyriaPrompt, setLyriaPrompt] = useState("Dark cinematic orchestral trap underscore with deep sub-bass");
+    const [rootNote808, setRootNote808] = useState("D1");
+    const [bpm808, setBpm808] = useState(142);
+    const [raw808Sec, setRaw808Sec] = useState(9.78);
+    const [guillotineStart, setGuillotineStart] = useState(5.5);
+    const [guillotineEnd, setGuillotineEnd] = useState(9.75);
+    const [targetLufs, setTargetLufs] = useState(-14.0);
+    const [masterResult, setMasterResult] = useState(null);
+    const [masteringBusy, setMasteringBusy] = useState(false);
+
+    const handleMaster3Stem = async () => {
+        if (masteringBusy || isBusy) return;
+        setMasteringBusy(true);
+        if (onSetError) onSetError("");
+        try {
+            const deliverables = (activeRun && activeRun.deliverables) || {};
+            const res = await postSoundstageJson("/api/storyboard/master-3stem", {
+                session_name: (activeRun && activeRun.session_name) || "soundstage_master",
+                video_path: deliverables.master_30s_16x9_url || "/static/rendered/mock.mp4",
+                preset,
+                narrator_text: narratorText,
+                lyria_prompt: lyriaPrompt,
+                root_note_808: rootNote808,
+                bpm_808: Number(bpm808) || 142.0,
+                raw_808_timestamp_sec: Number(raw808Sec) || 9.78,
+                guillotine_start_sec: Number(guillotineStart),
+                guillotine_end_sec: Number(guillotineEnd),
+                target_lufs: Number(targetLufs) || -14.0
+            });
+            setMasterResult(res);
+            if (addToast) addToast("3-Stem -14 LUFS master completed (" + preset + ").", "success");
+        } catch (err) {
+            if (onSetError) onSetError(err.message || "3-Stem mastering failed.");
+        } finally {
+            setMasteringBusy(false);
+        }
+    };
+
+    const report = masterResult && masterResult.loudness_report;
+    const masterUrl = masterResult && getSafeSoundstageMediaUrl(masterResult.master_video_url, getDisplayableRefUrl);
+
+    return (
+        <div id="soundstage-audio-guillotine-panel" className="sstage-card rounded-xl p-5 sm:p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-800/80 pb-3.5">
+                <div>
+                    <span className="text-xs font-mono uppercase tracking-widest text-rose-400 font-semibold">3-Stem Mastering · SonicMixPreset &amp; Audio Guillotine</span>
+                    <h3 className="text-base font-bold text-stone-100 mt-0.5">Gemini 3.8 TTS + Lyria 3 Underscore + Key-Locked 808 (-14 LUFS)</h3>
+                </div>
+                <button type="button" id="soundstage-btn-master-3stem" disabled={masteringBusy || isBusy} onClick={handleMaster3Stem} className="px-4 py-2 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow transition disabled:opacity-50">
+                    {masteringBusy ? "Mastering 3-Stem..." : "Master 3-Stem (-14 LUFS)"}
+                </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5" role="radiogroup" aria-label="Sonic Mix Preset">
+                {presetChoices.map((item) => {
+                    const active = preset === item.id;
+                    return (
+                        <button key={item.id} type="button" data-sonic-preset={item.id} aria-pressed={active} onClick={() => setPreset(item.id)} className={(active ? "border-rose-500 bg-rose-950/50 text-stone-100 " : "border-stone-800 bg-stone-950/70 text-stone-300 hover:border-stone-600 ") + "rounded-xl border p-3 text-left space-y-1 transition"}>
+                            <span className="block text-xs font-mono font-bold uppercase">{item.label} ({item.id})</span>
+                            <span className="block text-[11px] text-stone-400">{item.detail}</span>
+                        </button>
+                    );
+                })}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                    <label htmlFor="soundstage-input-narrator-vo" className="block text-xs font-mono text-stone-300">Narrator VO Stem (Gemini 3.8 TTS)</label>
+                    <input id="soundstage-input-narrator-vo" type="text" value={narratorText} onChange={(e) => setNarratorText(e.target.value)} className="w-full rounded-lg bg-stone-950 border border-stone-700 px-3 py-2 text-xs text-stone-100" />
+                </div>
+                <div className="space-y-1">
+                    <label htmlFor="soundstage-input-lyria-prompt" className="block text-xs font-mono text-stone-300">Lyria 3 Score Directive</label>
+                    <input id="soundstage-input-lyria-prompt" type="text" value={lyriaPrompt} onChange={(e) => setLyriaPrompt(e.target.value)} className="w-full rounded-lg bg-stone-950 border border-stone-700 px-3 py-2 text-xs text-stone-100" />
+                </div>
+            </div>
+            <details className="bg-stone-950/80 rounded-xl border border-stone-800 p-3 text-xs space-y-3">
+                <summary className="cursor-pointer font-mono font-semibold text-stone-200">Advanced DSP &amp; 808 Grid (Guillotine Window, BPM Snap &amp; LUFS)</summary>
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 pt-2">
+                    <div><label htmlFor="soundstage-dsp-root808" className="block text-[11px] font-mono text-stone-400 mb-1">808 Key</label><input id="soundstage-dsp-root808" type="text" value={rootNote808} onChange={(e) => setRootNote808(e.target.value)} className="w-full rounded bg-stone-900 border border-stone-700 px-2 py-1 text-xs font-mono text-stone-100" /></div>
+                    <div><label htmlFor="soundstage-dsp-bpm" className="block text-[11px] font-mono text-stone-400 mb-1">BPM</label><input id="soundstage-dsp-bpm" type="number" value={bpm808} onChange={(e) => setBpm808(e.target.value)} className="w-full rounded bg-stone-900 border border-stone-700 px-2 py-1 text-xs font-mono text-stone-100" /></div>
+                    <div><label htmlFor="soundstage-dsp-808-sec" className="block text-[11px] font-mono text-stone-400 mb-1">808 Cue (s)</label><input id="soundstage-dsp-808-sec" type="number" step="0.01" value={raw808Sec} onChange={(e) => setRaw808Sec(e.target.value)} className="w-full rounded bg-stone-900 border border-stone-700 px-2 py-1 text-xs font-mono text-stone-100" /></div>
+                    <div><label htmlFor="soundstage-dsp-gstart" className="block text-[11px] font-mono text-stone-400 mb-1">Guillotine In</label><input id="soundstage-dsp-gstart" type="number" step="0.05" value={guillotineStart} onChange={(e) => setGuillotineStart(e.target.value)} className="w-full rounded bg-stone-900 border border-stone-700 px-2 py-1 text-xs font-mono text-stone-100" /></div>
+                    <div><label htmlFor="soundstage-dsp-gend" className="block text-[11px] font-mono text-stone-400 mb-1">Guillotine Out</label><input id="soundstage-dsp-gend" type="number" step="0.05" value={guillotineEnd} onChange={(e) => setGuillotineEnd(e.target.value)} className="w-full rounded bg-stone-900 border border-stone-700 px-2 py-1 text-xs font-mono text-stone-100" /></div>
+                    <div><label htmlFor="soundstage-dsp-lufs" className="block text-[11px] font-mono text-stone-400 mb-1">Target LUFS</label><input id="soundstage-dsp-lufs" type="number" step="0.1" value={targetLufs} onChange={(e) => setTargetLufs(e.target.value)} className="w-full rounded bg-stone-900 border border-stone-700 px-2 py-1 text-xs font-mono text-stone-100" /></div>
+                </div>
+            </details>
+            {report && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono bg-emerald-950/50 border border-emerald-700/60 rounded-lg px-3 py-2 text-emerald-200">
+                    <span>Integrated: {report.integrated_lufs} LUFS · True Peak: {report.true_peak_dbtp} dBTP · Spec: {report.passed_spec ? "PASS" : "CHECK"}</span>
+                    {masterUrl && <a href={masterUrl} target="_blank" rel="noopener noreferrer" className="underline text-emerald-100">Open 3-Stem Master</a>}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function SoundstagePremiereStageView({
     activeRun,
     setActiveRun,
@@ -505,6 +653,8 @@ function SoundstagePremiereStageView({
     return (
         <div id="soundstage-premiere-view" className="space-y-5">
             <SoundstagePremierePlayerCard activeRun={activeRun} selectedFormat={selectedFormat} setSelectedFormat={setSelectedFormat} onJumpToFilming={() => onSwitchStage("filming", null)} getDisplayableRefUrl={getDisplayableRefUrl} />
+            <SoundstageEightGateScorecard activeRun={activeRun} />
+            <SoundstageAudioGuillotinePanel activeRun={activeRun} isBusy={isBusy} onSetError={onSetError} addToast={addToast} getDisplayableRefUrl={getDisplayableRefUrl} />
             <SoundstageNleTrimmerPanel nleSpecs={nleSpecs} onAdjustTrim={handleAdjustTrim} onToggleBypass={handleToggleBypass} onResetTrims={() => setNleSpecs(buildNormalizedClientNleSpecs(null))} onReconform={handleReconform} isBusy={isBusy} hasDeliverables={Boolean(activeRun && activeRun.deliverables)} />
             <SoundstageDirectorNoteBar isBusy={isBusy} hasDeliverables={Boolean(activeRun && activeRun.deliverables)} onSubmitRevise={handleReviseAct} />
             <SoundstageVariationsAndExportPanel activeRun={activeRun} isBusy={isBusy} onForkVariation={handleForkVariation} onPromoteMode2={() => handlePromote(onPromoteToMode2)} onPromoteMode3={() => handlePromote(onPromoteToMode3)} />

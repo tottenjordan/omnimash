@@ -379,3 +379,41 @@ function buildSoundstagePromotionPlan(activeRun) {
         scenes
     };
 }
+
+function resolveSoundstageRemediationSummary(scorecards) {
+    const entries = Object.values(scorecards || {});
+    const defects = [];
+    let tier = "NONE";
+    entries.forEach((sc) => {
+        if (!sc) return;
+        if (Array.isArray(sc.detected_defects)) {
+            sc.detected_defects.forEach((d) => { if (d && defects.indexOf(d) === -1) defects.push(String(d)); });
+        }
+        if (sc.recommended_remediation_tier && sc.recommended_remediation_tier !== "NONE") {
+            tier = String(sc.recommended_remediation_tier);
+        }
+    });
+    return { defects, tier };
+}
+
+function SoundstageGate1BatchResults({ gate1Batch, gate1SelectedUrl, onSelectUrl, getDisplayableRefUrl }) {
+    if (!gate1Batch || !gate1Batch.contact_sheet_url) return null;
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-2 border-t border-stone-800/80">
+            <div className="lg:col-span-6">
+                <img src={getSafeSoundstageMediaUrl(gate1Batch.contact_sheet_url, getDisplayableRefUrl)} alt="Gate-1 6-seed contact sheet" onError={handleSoundstagePlateImgError} className="w-full rounded-lg border border-stone-800 bg-black" />
+            </div>
+            <div className="lg:col-span-6 grid grid-cols-3 gap-2">
+                {(gate1Batch.candidates || []).map((cand, idx) => {
+                    const isChosen = gate1SelectedUrl === cand.image_url;
+                    return (
+                        <button key={cand.candidate_id || idx} type="button" aria-pressed={isChosen} onClick={() => onSelectUrl(cand.image_url)} className={(isChosen ? "border-2 border-rose-500 " : "border border-stone-800 opacity-80 hover:opacity-100 ") + "rounded-lg p-1.5 bg-stone-950 text-left space-y-1"}>
+                            <img src={getSafeSoundstageMediaUrl(cand.image_url, getDisplayableRefUrl) || SOUNDSTAGE_FALLBACK_PLATE_DATA_URI} alt={"Gate-1 seed " + (cand.seed || idx + 1)} onError={handleSoundstagePlateImgError} className="w-full h-14 object-cover rounded bg-black" />
+                            <span className="block text-[11px] font-mono text-stone-200">#{idx + 1} · seed {cand.seed || "auto"}</span>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
