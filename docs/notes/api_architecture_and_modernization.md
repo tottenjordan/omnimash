@@ -1,14 +1,14 @@
 # API Architecture & Framework Modernization
 
 ## 📌 Context & Motivation
-During the Source-Driven Development review of `src/omnimash/api`, the API implementation was audited against current official documentation for FastAPI (`0.141.1`), Pydantic (`2.14.1`), and Starlette (`1.7.0`). The goal of this audit is to ensure all patterns adhere to modern framework standards, eliminate deprecated conventions, and establish architectural guidelines for future API expansions.
+During the Source-Driven Development review of `src/omnimash/api`, the API implementation was audited against current official documentation for FastAPI (`0.162.0`), Pydantic (`2.14.3`), and Starlette (`1.10.0`). The goal of this audit is to ensure all patterns adhere to modern framework standards, eliminate deprecated conventions, and establish architectural guidelines for future API expansions.
 
 ---
 
 ## 🛠️ Stack & Version Specifications
 - **Python:** 3.12 (`requires-python = ">=3.12"`)
-- **Web Framework:** FastAPI `0.141.1` (backed by Starlette `1.7.0`)
-- **Data Validation & Serialization:** Pydantic `2.14.1`
+- **Web Framework:** FastAPI `0.162.0` (backed by Starlette `1.10.0`)
+- **Data Validation & Serialization:** Pydantic `2.14.3`
 - **ASGI Server:** Uvicorn `0.54.0`
 - **Environment & Build Management:** `uv`
 
@@ -111,5 +111,5 @@ During the Source-Driven Development review of `src/omnimash/api`, the API imple
 ---
 
 ### 7. Dependency Grooming: `sse-starlette`
-- `sse-starlette>=3.5.0` is currently declared in `pyproject.toml` but is unused across `src/omnimash/api`.
-- Future milestone: Introduce Server-Sent Events (`EventSourceResponse`) to stream real-time progress for long-running batch video renders and storyboard generation. If unneeded, it should be pruned via `uv remove sse-starlette`.
+- `sse-starlette>=3.6.0` is currently declared in `pyproject.toml` (whereas Mode 5 Soundstage streams via manual `_format_sse_frame` helpers).
+- Future milestone: Adopt `EventSourceResponse` for SSE endpoints or prune `sse-starlette` via `uv remove sse-starlette` if unneeded.
