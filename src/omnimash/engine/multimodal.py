@@ -261,8 +261,10 @@ def build_multimodal_contents(
         for c in (characters or [])
     )
 
+    is_omni_1_2 = bool(model_id and str(model_id).strip().lower().startswith("gemini-omni-1.2"))
     is_i2v_delta_mode = compilation_mode == "i2v_delta_only" or (
         compilation_mode == "auto"
+        and is_omni_1_2
         and has_kf_seed
         and not has_last_frame_input
         and not is_seamless_loop

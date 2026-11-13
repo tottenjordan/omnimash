@@ -303,17 +303,17 @@ def build_i2v_delta_prompt(
 
     spoken_line = ""
     if dialogue_text and str(dialogue_text).strip():
-        first_chunk = [
-            c.strip() for c in re.split(r"[\n/|]", str(dialogue_text).strip()) if c.strip()
-        ][0]
-        m_diag = re.match(r"^(?:-\s*)?([^:]+):\s*(.*)$", first_chunk)
-        if m_diag:
-            raw_spk = re.sub(r"\s+says$", "", m_diag.group(1).strip(), flags=re.IGNORECASE)
-            spoken_line = m_diag.group(2).strip()
-            if raw_spk and not characters:
-                speaker_desc = raw_spk
-        else:
-            spoken_line = first_chunk
+        chunks = [c.strip() for c in re.split(r"[\n/|]", str(dialogue_text).strip()) if c.strip()]
+        if chunks:
+            first_chunk = chunks[0]
+            m_diag = re.match(r"^(?:-\s*)?([^:]+):\s*(.*)$", first_chunk)
+            if m_diag:
+                raw_spk = re.sub(r"\s+says$", "", m_diag.group(1).strip(), flags=re.IGNORECASE)
+                spoken_line = m_diag.group(2).strip()
+                if raw_spk and not characters:
+                    speaker_desc = raw_spk
+            else:
+                spoken_line = first_chunk
 
     clean_action = _TIMECODE_PREFIX_RE.sub("", str(action_text or "")).strip()
     amb = (ambient_noise or "steady room tone").strip()
