@@ -14,6 +14,29 @@ from omnimash.storage.gcs import GcsStorageManager
 
 AspectRatio = Literal["16:9", "9:16", "1:1", "21:9"]
 
+RESOLUTION_ASPECT_DIMS: dict[str, dict[str, tuple[int, int]]] = {
+    "360p": {"16:9": (640, 360), "9:16": (360, 640), "1:1": (480, 480), "21:9": (840, 360)},
+    "720p": {"16:9": (1280, 720), "9:16": (720, 1280), "1:1": (1080, 1080), "21:9": (1680, 720)},
+    "1080p": {
+        "16:9": (1920, 1080),
+        "9:16": (1080, 1920),
+        "1:1": (1080, 1080),
+        "21:9": (2520, 1080),
+    },
+    "4k": {"16:9": (3840, 2160), "9:16": (2160, 3840), "1:1": (2160, 2160), "21:9": (5040, 2160)},
+}
+
+
+def resolve_target_dimensions(
+    aspect_ratio: str = "16:9",
+    resolution: str | None = None,
+) -> tuple[int, int]:
+    """Resolves (width, height) from resolution tier and aspect ratio (defaults to 1080p studio standard)."""
+    res_key = (resolution or getattr(settings, "studio_resolution", "1080p")).lower().strip()
+    aspect_map = RESOLUTION_ASPECT_DIMS.get(res_key, RESOLUTION_ASPECT_DIMS["1080p"])
+    return aspect_map.get(str(aspect_ratio).strip(), aspect_map["16:9"])
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -59,6 +82,7 @@ class VideoStitcher:
         master_audio_path: str | None = None,
         aspect_ratio: AspectRatio | str | None = None,
         force_normalize: bool = False,
+        resolution: str | None = None,
     ) -> str:
         os.makedirs(output_dir, exist_ok=True)
         master_filename = f"master_{uuid.uuid4().hex[:8]}_stitched.mp4"
@@ -165,13 +189,10 @@ class VideoStitcher:
 
                     vf_args: list[str] = []
                     if aspect_ratio is not None:
-                        aspect_dims = {
-                            "16:9": (1280, 720),
-                            "9:16": (720, 1280),
-                            "1:1": (1080, 1080),
-                            "21:9": (1680, 720),
-                        }
-                        target_w, target_h = aspect_dims.get(str(aspect_ratio), (1280, 720))
+                        target_w, target_h = resolve_target_dimensions(
+                            aspect_ratio=str(aspect_ratio),
+                            resolution=resolution,
+                        )
                         vf_norm = (
                             f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
                             f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p"
@@ -179,6 +200,7 @@ class VideoStitcher:
                         vf_args = ["-vf", vf_norm]
 
                     timeout_secs = float(getattr(settings, "ffmpeg_timeout_seconds", 120.0))
+                    sample_rate = int(getattr(settings, "audio_sample_rate_hz", 48000))
                     try:
                         copy_rc = 1 if force_normalize else 0
                         if not force_normalize:
@@ -190,55 +212,49 @@ class VideoStitcher:
                             )
                             copy_rc = res.returncode
                         if copy_rc != 0:
-                            if resolved_audio and os.path.exists(resolved_audio):
-                                cmd_reencode = [
-                                    "ffmpeg",
-                                    "-y",
-                                    "-f",
-                                    "concat",
-                                    "-safe",
-                                    "0",
-                                    "-i",
-                                    concat_list_path,
-                                    "-i",
-                                    resolved_audio,
-                                    *vf_args,
-                                    "-c:v",
-                                    "libx264",
-                                    "-c:a",
-                                    "aac",
-                                    "-map",
-                                    "0:v:0",
-                                    "-map",
-                                    "1:a:0",
-                                    "-pix_fmt",
-                                    "yuv420p",
-                                    "-r",
-                                    "24",
-                                    "-shortest",
-                                    out_path,
-                                ]
-                            else:
-                                cmd_reencode = [
-                                    "ffmpeg",
-                                    "-y",
-                                    "-f",
-                                    "concat",
-                                    "-safe",
-                                    "0",
-                                    "-i",
-                                    concat_list_path,
-                                    *vf_args,
-                                    "-c:v",
-                                    "libx264",
-                                    "-c:a",
-                                    "aac",
-                                    "-pix_fmt",
-                                    "yuv420p",
-                                    "-r",
-                                    "24",
-                                    out_path,
-                                ]
+                            has_audio = bool(resolved_audio and os.path.exists(resolved_audio))
+                            audio_input_args = ["-i", resolved_audio] if has_audio else []
+                            audio_map_args = ["-map", "0:v:0", "-map", "1:a:0"] if has_audio else []
+                            shortest_args = ["-shortest"] if has_audio else []
+                            # Apply CRF 16 and 48kHz/320k master flags whenever resolution/aspect
+                            # normalization is requested; preserve exact legacy fallback args when
+                            # called without aspect_ratio/force_normalize/resolution.
+                            use_master_quality = bool(
+                                aspect_ratio is not None
+                                or force_normalize
+                                or resolution is not None
+                            )
+                            quality_v_args = ["-crf", "16"] if use_master_quality else []
+                            quality_a_args = (
+                                ["-ar", str(sample_rate), "-ac", "2", "-b:a", "320k"]
+                                if use_master_quality
+                                else []
+                            )
+                            cmd_reencode = [
+                                "ffmpeg",
+                                "-y",
+                                "-f",
+                                "concat",
+                                "-safe",
+                                "0",
+                                "-i",
+                                concat_list_path,
+                                *audio_input_args,
+                                *vf_args,
+                                "-c:v",
+                                "libx264",
+                                *quality_v_args,
+                                "-c:a",
+                                "aac",
+                                *quality_a_args,
+                                *audio_map_args,
+                                "-pix_fmt",
+                                "yuv420p",
+                                "-r",
+                                "24",
+                                *shortest_args,
+                                out_path,
+                            ]
                             res_reencode = subprocess.run(
                                 cmd_reencode,
                                 capture_output=True,
@@ -280,6 +296,7 @@ class VideoStitcher:
         style: str = "gothic_gold",
         output_dir: str = "/tmp",
         aspect_ratio: AspectRatio | str = "16:9",
+        resolution: str | None = None,
     ) -> str:
         os.makedirs(output_dir, exist_ok=True)
         clip_filename = f"title_card_{uuid.uuid4().hex[:8]}.mp4"
@@ -298,13 +315,11 @@ class VideoStitcher:
 
         img_path = os.path.join(output_dir, f"title_card_{uuid.uuid4().hex[:8]}.png")
 
-        aspect_map = {
-            "16:9": (1280, 720),
-            "9:16": (720, 1280),
-            "1:1": (1080, 1080),
-            "21:9": (1680, 720),
-        }
-        width, height = aspect_map.get(aspect_ratio, (1280, 720))
+        width, height = resolve_target_dimensions(
+            aspect_ratio=str(aspect_ratio),
+            resolution=resolution,
+        )
+        sample_rate = int(getattr(settings, "audio_sample_rate_hz", 48000))
 
         try:
             if style == "neon_cyber":
@@ -372,11 +387,19 @@ class VideoStitcher:
                 "-f",
                 "lavfi",
                 "-i",
-                "anullsrc=channel_layout=stereo:sample_rate=44100",
+                f"anullsrc=channel_layout=stereo:sample_rate={sample_rate}",
                 "-c:v",
                 "libx264",
+                "-crf",
+                "16",
                 "-c:a",
                 "aac",
+                "-ar",
+                str(sample_rate),
+                "-ac",
+                "2",
+                "-b:a",
+                "320k",
                 "-t",
                 str(duration_seconds),
                 "-pix_fmt",
