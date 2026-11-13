@@ -8,9 +8,9 @@ This document captures the current production operational state, recent mileston
 
 | Component | Target / Region | Active Revision / Identifier | Status |
 | :--- | :--- | :--- | :--- |
-| **Cloud Run Web App** | `us-central1` | `omnimash-api-00168-gxd` | Serving 100% traffic, HTTP 200 |
-| **Live Studio URL** | Public HTTPS | [https://omnimash-api-934903580331.us-central1.run.app](https://omnimash-api-934903580331.us-central1.run.app) | Verified live with PR #220 |
-| **Vertex AI Agent Engine** | `us-central1` | `projects/934903580331/locations/us-central1/reasoningEngines/7373056969906585600` | 1 active instance, 0 orphans |
+| **Cloud Run Web App** | `us-central1` | `omnimash-api-00169-hn2` | Serving 100% traffic, HTTP 200 |
+| **Live Studio URL** | Public HTTPS | [https://omnimash-api-934903580331.us-central1.run.app](https://omnimash-api-934903580331.us-central1.run.app) | Verified live with PR #221 |
+| **Vertex AI Agent Engine** | `us-central1` | `projects/934903580331/locations/us-central1/reasoningEngines/3773209721079595008` | 1 active instance, 0 orphans |
 | **Media Bucket** | GCS (`hybrid-vertex`) | `gs://omnimash-media-hybrid-vertex` | Staging, assets, storyboards |
 
 ---
@@ -22,6 +22,7 @@ This document captures the current production operational state, recent mileston
 - **[PR #218](https://github.com/tottenjordan/omnimash/pull/218)** (`fix(multimodal,api)`): Eliminate phantom keyframe seed to prevent character likeness drift and image shift.
 - **[PR #219](https://github.com/tottenjordan/omnimash/pull/219)** (`feat(evaluation)`): DOMA Phase 1 & 2 closed-loop critic evaluator, scorecards, and prompt refiner.
 - **[PR #220](https://github.com/tottenjordan/omnimash/pull/220)** (`feat(doma)`): DOMA Phase 3 & 4 pre-flight gatekeeper, macro-loop rule inducer, 5-star exemplar bank, and directorial memory UI.
+- **[PR #221](https://github.com/tottenjordan/omnimash/pull/221)** (`feat(studio)`): Session iteration engine (fresh Turn-0 generation with existing values) and Mode 4 AI Critic integration.
 
 ---
 
