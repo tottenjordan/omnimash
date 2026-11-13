@@ -273,7 +273,8 @@ def test_finding_8_config_model_ids_and_storyboard_agent_location():
     custom_settings = OmniMashSettings()
     assert custom_settings.pro_model_id == "gemini-4-argon"
     assert custom_settings.flash_model_id == "gemini-3.8-flash"
-    assert custom_settings.image_model_id == "gemini-nano-banana-2.1"
+    assert custom_settings.image_model_id == "gemini-3-pro-image"
+    assert custom_settings.fast_image_model_id == "gemini-nano-banana-2.1"
     assert settings.gemini_location == "global"
 
     sb_agent = StoryboardAgent(mock_mode=True)

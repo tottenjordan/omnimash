@@ -548,7 +548,7 @@ def test_generate_live_omni_flash_video_kwargs(tmp_path: Any) -> None:
 
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
-    assert call_kwargs["model"] == "gemini-omni-1.1-flash"
+    assert call_kwargs["model"] == "gemini-omni-1.2-flash"
     assert "safety_settings" in call_kwargs
     assert len(call_kwargs["safety_settings"]) == 6
 
@@ -716,7 +716,7 @@ def test_generate_live_omni_flash_video_multimodal_input(tmp_path: Any) -> None:
 
     assert mock_interactions.create.called
     call_kwargs = mock_interactions.create.call_args.kwargs
-    assert call_kwargs["model"] == "gemini-omni-1.1-flash"
+    assert call_kwargs["model"] == "gemini-omni-1.2-flash"
 
     input_arg = call_kwargs["input"]
     assert isinstance(input_arg, list)
