@@ -121,8 +121,7 @@ def compile_journey3_shot_prompt(
             dialogue_text=timeline_dialogue,
             characters=characters,
             ambient_noise=amb,
-            include_starting_frame_binding=bool(keyframe_image_url and keyframe_image_url.strip())
-            or True,
+            include_starting_frame_binding=bool(keyframe_image_url and keyframe_image_url.strip()),
             enable_sanitization=enable_sanitization,
         )
         if enable_preflight:

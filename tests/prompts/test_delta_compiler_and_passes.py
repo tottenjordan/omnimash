@@ -327,3 +327,27 @@ def test_compilers_emit_unquoted_dialogue_and_skip_forced_timecodes_for_single_k
     assert '"' not in sb_i2v
     assert "says: Keep moving." in sb_i2v
     assert sb_i2v.endswith("Use this image as the starting frame.")
+
+
+def test_i2v_delta_mode_without_keyframe_and_delimiter_only_dialogue():
+    """Verify i2v_delta_only omits starting-frame binding when keyframe_image_url=None and guards delimiter-only dialogue."""
+    from omnimash.prompts.delta_compiler import build_i2v_delta_prompt
+    from omnimash.prompts.journey3 import compile_journey3_shot_prompt
+
+    j3_no_kf = compile_journey3_shot_prompt(
+        shot_number=1,
+        action_directive="Camera glides through fog",
+        timeline_dialogue="/",
+        keyframe_image_url=None,
+        compilation_mode="i2v_delta_only",
+    )
+    assert "Use this image as the starting frame." not in j3_no_kf
+    assert "says:" not in j3_no_kf
+
+    prompt_txt, has_spoken = build_i2v_delta_prompt(
+        action_text="Camera pans slowly",
+        dialogue_text=" / \n | ",
+        include_starting_frame_binding=False,
+    )
+    assert has_spoken is False
+    assert "Use this image as the starting frame." not in prompt_txt

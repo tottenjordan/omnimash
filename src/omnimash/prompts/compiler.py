@@ -1269,23 +1269,11 @@ class PromptCompiler:
                 else getattr(scene, "timecode", None)
             )
             timecode_prefix = ""
-            is_single_kf_i2v = (
-                effective_has_keyframe
-                and not is_seamless_loop
-                and not any(
-                    (
-                        getattr(c, "image_role", "")
-                        if not isinstance(c, dict)
-                        else c.get("image_role", "")
-                    )
-                    in ("Ending Frame", "Keyframe Last Anchor")
-                    for c in (characters or [])
-                )
-            )
-            if tc_val and str(tc_val).strip() and not is_single_kf_i2v:
+            skip_timecode_slicing = compilation_mode == "i2v_delta_only"
+            if tc_val and str(tc_val).strip() and not skip_timecode_slicing:
                 tc_clean = str(tc_val).strip()
                 timecode_prefix = f"{tc_clean} " if tc_clean.startswith("[") else f"[{tc_clean}] "
-            elif len(scenes) == 1 and not is_single_kf_i2v and compilation_mode != "i2v_delta_only":
+            elif len(scenes) == 1 and not skip_timecode_slicing:
                 dur_int = (
                     int(dur_val)
                     if dur_val and isinstance(dur_val, (int, float)) and dur_val > 0
